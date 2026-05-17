@@ -1,0 +1,44 @@
+[package]
+name = "web_serviceworker_crackloader"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+
+# [lib]
+# crate-type = ["cdylib"]
+
+
+[dependencies]
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+js-sys = { workspace = true }
+thiserror = {workspace = true}
+tracing.workspace=true
+chrono = {version="0.4.44", features=["serde", "wasmbind"] }
+gloo-timers ={version= "0.4.0", features = ["futures"]}
+serde.workspace = true
+serde-wasm-bindgen = "0.6.5"
+tokio = { version = "1.52.3", default-features = false, features = ["sync"] }
+[dependencies.web-sys]
+workspace = true
+features = [
+    "console",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Location",
+    "Navigator",
+    "Node",
+    "Window",
+    "RegistrationOptions",
+    "ServiceWorkerGlobalScope",
+    "ServiceWorkerRegistration",
+    "ServiceWorkerState",
+    "ServiceWorker",
+    "ServiceWorkerContainer",
+    "Url",
+]
+
+[lints]
+workspace = true

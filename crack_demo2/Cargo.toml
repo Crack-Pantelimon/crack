@@ -1,5 +1,5 @@
 [package]
-name = "crack_demo"
+name = "crack_demo2"
 version = "0.1.0"
 authors = ["johnny-smitherson <127537716+johnny-smitherson@users.noreply.github.com>"]
 edition = "2021"
@@ -8,14 +8,11 @@ edition = "2021"
 
 [dependencies]
 dioxus = { version = "0.7.9", features = [] }
-# dioxus = { version = "0.7.9", features = ["router", "fullstack"] }
 crack = {path="../"}
-web_serviceworker_crackloader={path="../packages/web_serviceworker_crackloader", optional=true}
-
+web_serviceworker_crackloader={path="../packages/web_serviceworker_crackloader"}
 
 [features]
 default = ["web"]
-web = ["dioxus/web", "dep:web_serviceworker_crackloader"]
+web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
-server = ["dioxus/server"]
