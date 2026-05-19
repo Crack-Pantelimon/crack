@@ -1,0 +1,22 @@
+pub struct WorkerPipe {
+    pub req_tx: tokio::sync::mpsc::Sender<WorkerMessage>,
+    pub resp_rx: tokio::sync::mpsc::Receiver<WorkerMessage>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct WorkerMessage {
+    pub msg_type: String,
+    pub msg_content: String,
+}
+
+#[async_trait::async_trait(?Send)]
+pub trait WorkerLoaderFactory {
+    async fn load_worker(&self) -> anyhow::Result<WorkerPipe>;
+}
+
+#[async_trait::async_trait]
+pub trait WorkerComputeImpl {
+    async fn compute_response_message(&self, req: WorkerMessage) -> WorkerMessage;
+}
+
+pub type WorkerComputeDyn = std::sync::Arc<dyn WorkerComputeImpl + Send + Sync>;

@@ -19,14 +19,19 @@ path = "./packages/net_crackpipe"
 [dependencies.storage_crackhouse]
 path = "./packages/storage_crackhouse"
 
+[dependencies.api_asscrack]
+path = "./packages/api_asscrack"
+
 [workspace]
 members = [
-    "crack_demo",
     "packages/consensus_crackhead",
     "packages/net_crackpipe",
     "packages/storage_crackhouse",
     "packages/web_serviceworker_crackloader",
-    "packages/web_serviceworker_crackslave", "crack_demo2",
+    "packages/web_serviceworker_crackslave",
+    "crack_demo2",
+    "packages/api_asscrack",
+    "packages/thread_crackworker",
 ]
 resolver = "2"
 

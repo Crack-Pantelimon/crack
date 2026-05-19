@@ -1,14 +1,16 @@
 use dioxus::{logger::tracing, prelude::*};
+use web_serviceworker_crackloader::WebWorkerFactory;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const HEADER_SVG: Asset = asset!("/assets/header.svg");
 
-
 #[used]
-static WORKER_JS : Asset = asset!(
+static WORKER_JS: Asset = asset!(
     "/assets/pkg_web_serviceworker/web_serviceworker_crackslave.js",
-    AssetOptions::js().with_minify(false).with_hash_suffix(false)
+    AssetOptions::js()
+        .with_minify(false)
+        .with_hash_suffix(false)
 );
 // #[used]
 // static INDEX_JS : Asset = asset!(
@@ -19,15 +21,13 @@ static WORKER_JS : Asset = asset!(
 #[used]
 static SCRIPT_FOLDER: Asset = asset!(
     "/assets/scripts",
-    AssetOptions::folder()
-        .with_hash_suffix(false)
+    AssetOptions::folder().with_hash_suffix(false)
 );
 
 #[used]
 static WORKER_FOLDER: Asset = asset!(
     "/assets/pkg_web_serviceworker",
-    AssetOptions::folder()
-        .with_hash_suffix(false)
+    AssetOptions::folder().with_hash_suffix(false)
 );
 
 fn main() {
@@ -40,68 +40,67 @@ fn App() -> Element {
     // let script_wasm = String::from_utf8_lossy( include_bytes!("../assets/pkg_web_serviceworker/web_serviceworker_crackslave.js")).to_string();
     // let script_launch = String::from_utf8_lossy( include_bytes!("../assets/scripts/index.js")).to_string();
 
+    let web_worker = use_resource(move || async move {
+        let opt = WebWorkerFactory {
+            worker_url: "/assets/scripts/worker.js".to_string(),
+            worker_type: "classic".to_string(),
+            worker_scope: "/assets/scripts/".to_string(),
+            version: String::from_utf8_lossy(include_bytes!(
+                "../assets/pkg_web_serviceworker/md5.txt"
+            ))
+            .trim()
+            .to_string(),
+        };
+        use crack::api_asscrack::crack_worker::WorkerLoaderFactory;
+        let _active = opt.load_worker().await;
 
-    
-    let worker = use_resource(move || async move {
-        let _e = spawn(async move {
-            match web_serviceworker_crackloader::register_service_worker(
-                "/assets/scripts/worker.js".to_string(),
-                "classic".to_string(),
-                "/assets/scripts/".to_string(),
-            ).await {
-                Ok(_) => {
-                    tracing::info!("worker registration finished.")
-                },
-                Err(e) => {
-                    tracing::error!("error running wasm service registration: {:#?}", e)
-                }
-            }
-        });
-        let version = include_bytes!("../assets/pkg_web_serviceworker/md5.txt");
-        let version = String::from_utf8_lossy(version).trim().to_string();
-        tracing::info!("ping to worker version = {}", version);
-        let _active = web_serviceworker_crackloader::ping(version).await;
-
-        tracing::info!("reply from ping: {:?}", _active);
-        _active
-
-
-
-    });
-
-
-    rsx! {
-        document::Link { rel: "icon", href: FAVICON }
-        document::Link { rel: "stylesheet", href: MAIN_CSS }
-
-        // document::Script {"type": "module", src:format!("{WORKER_FOLDER}/web_serviceworker_crackslave.js")}
-        // document::Script {"type": "module", src:WORKER_JS}
-        // document::Script {"type": "module", src:INDEX_JS}
-        // document::Script {"type": "module", src:"/public/pkg_web_serviceworker/web_serviceworker_crackslave.js"}
-        // document::Script {"type": "module", src:"/public/scripts/index.js"}
-
-        // document::Script {"type": "module", src:format!("{SCRIPT_FOLDER}/index.js")}
-//      {script_wasm}
-        // document::Script {
-        //     "
-      
-            
-        //     {script_launch}
-        //     "
-        // }
-
-        Hero {}
-        pre {
-            "{worker():#?}"
+        if let Err(e) = &_active {
+            tracing::error!("Error with web worker: {e:?}");
+        } else {
+            tracing::info!("Web worker init OK.");
         }
 
-    }
+        _active
+    });
+
+    let web_worker_status = match web_worker.read().as_ref() {
+        None => rsx! {h1{"Loading..."}},
+        Some(Err(e)) => rsx! {pre{"Error: {e:#?}"}},
+        Some(Ok(_v)) => rsx! {"OK"},
+    };
+
+    rsx! {
+            document::Link { rel: "icon", href: FAVICON }
+            document::Link { rel: "stylesheet", href: MAIN_CSS }
+
+            // document::Script {"type": "module", src:format!("{WORKER_FOLDER}/web_serviceworker_crackslave.js")}
+            // document::Script {"type": "module", src:WORKER_JS}
+            // document::Script {"type": "module", src:INDEX_JS}
+            // document::Script {"type": "module", src:"/public/pkg_web_serviceworker/web_serviceworker_crackslave.js"}
+            // document::Script {"type": "module", src:"/public/scripts/index.js"}
+
+            // document::Script {"type": "module", src:format!("{SCRIPT_FOLDER}/index.js")}
+    //      {script_wasm}
+            // document::Script {
+            //     "
+
+
+            //     {script_launch}
+            //     "
+            // }
+
+            Hero {}
+            {web_worker_status}
+            // pre {
+            //     "{worker():#?}"
+            // }
+
+        }
 }
 
 #[component]
 pub fn Hero() -> Element {
     tracing::info!("Hero()");
-
 
     let mut i = use_signal(|| 0);
     // // let mut _loader_state = use_signal(|| None);
@@ -122,7 +121,6 @@ pub fn Hero() -> Element {
     //         // _loader_state.set(Some(_loader));
     //     });
     // });
-
 
     rsx! {
         div {

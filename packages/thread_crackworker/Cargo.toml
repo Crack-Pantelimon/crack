@@ -1,0 +1,21 @@
+[package]
+name = "thread_crackworker"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+# serde.workspace = true
+# serde_json = "1.0.87"
+tracing.workspace = true
+dioxus-logger = "0.7.9"
+chrono = {version="0.4.44", features=["serde"] }
+serde.workspace = true
+api_asscrack = {path="../api_asscrack"}
+
+tokio = { version = "1.52.3", features = ["full"] }
+
+
+[lints]
+workspace = true

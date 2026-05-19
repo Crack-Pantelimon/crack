@@ -23,6 +23,7 @@ dioxus-logger = "0.7.9"
 chrono = {version="0.4.44", features=["serde", "wasmbind"] }
 serde.workspace = true
 serde-wasm-bindgen = "0.6.5"
+api_asscrack = {path="../api_asscrack"}
 
 [dependencies.web-sys]
 workspace = true
