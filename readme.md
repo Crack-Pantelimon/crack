@@ -1,5 +1,5 @@
 
-<img src="docs/logo.png" width=30%   style="float:right"/>
+<img src="docs/logo.png" width=30%   align="right"/>
 
 # Crack! -  storage, networking & consensus for decentralized p2p mmo
 
@@ -14,7 +14,7 @@ This library implements SQL storage, decentralized p2p networking and consensus,
 <img src="docs/wikipedia.png" width=99%/>
 
 
-<img src="docs/intro.jpg" width=30%  style="float:right"/>
+<img src="docs/intro.jpg" width=30%  align="right"/>
 
 ## decentralized p2p mmo extension
 
@@ -38,7 +38,7 @@ To aid in following such a noble pursuit, we present Crack! - a **shared resourc
 Crack users ("users", for short) use only one package configured in different ways to obtain access to the crack features including:
 
 
-<img src="docs/readme.png" width=45% style="float:right"/>
+<img src="docs/readme.png" width=45% align="right"/>
 
 - api management
   - declare & implement business logic functions (async api provided)
