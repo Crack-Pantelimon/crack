@@ -135,7 +135,7 @@ fn on_message(
 
             if &data.msg_type == "ping" {
                 let client_version = data.msg_content;
-                if &client_version == &version.clone() {
+                if &client_version == &version.clone().as_bytes().to_vec() {
                     tracing::info!("PING: SAME VERSION. WELCOME NEW TAB.");
                 } else {
                     tracing::info!("PING: DIFFERENT VERSION. MUST SEPPUKKU NOW.");
@@ -143,8 +143,9 @@ fn on_message(
                 }
 
                 let data2 = WorkerMessage {
+                    msg_id: 0,
                     msg_type: "pong".to_string(),
-                    msg_content: version,
+                    msg_content: version.as_bytes().to_vec(),
                 };
                 let data2 = serde_wasm_bindgen::to_value(&data2).expect("serialize");
 

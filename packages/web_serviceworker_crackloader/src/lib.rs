@@ -294,7 +294,7 @@ async fn _try_ping(version: String) -> Result<WorkerPipe, JsValue> {
 
         if &data.msg_type == "pong" {
             let server_version = &data.msg_content;
-            if server_version != &version2 {
+            if server_version != &version2.as_bytes().to_vec() {
                 tracing::warn!("==>> SERVER VERSION DIFFER! UPDATE! PLZ SEPPUKKU!");
                 match reg.update() {
                     Ok(p) => {
@@ -328,8 +328,9 @@ async fn _try_ping(version: String) -> Result<WorkerPipe, JsValue> {
     // post message
 
     let ping = WorkerMessage {
+        msg_id: 0,
         msg_type: "ping".to_string(),
-        msg_content: version.clone(),
+        msg_content: version.clone().as_bytes().to_vec(),
     };
     tracing::info!("_try_ping post message: {:?}", &ping);
     worker.post_message(&serde_wasm_bindgen::to_value(&ping)?)?;

@@ -28,13 +28,14 @@ mod test {
 
         f.req_tx
             .send(WorkerMessage {
+                msg_id: 0,
                 msg_type: "ping".to_string(),
-                msg_content: "abcd".to_string(),
+                msg_content: "abcd".to_string().as_bytes().to_vec(),
             })
             .await?;
         let t = f.resp_rx.recv().await.unwrap();
         assert!(t.msg_type == "pong");
-        assert!(t.msg_content == "abcd");
+        assert!(t.msg_content == "abcd".as_bytes().to_vec());
         Ok(())
     }
 }

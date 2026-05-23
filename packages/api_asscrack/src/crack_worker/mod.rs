@@ -5,8 +5,9 @@ pub struct WorkerPipe {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
 pub struct WorkerMessage {
+    pub msg_id: u64,
     pub msg_type: String,
-    pub msg_content: String,
+    pub msg_content: Vec<u8>,
 }
 
 #[async_trait::async_trait(?Send)]
