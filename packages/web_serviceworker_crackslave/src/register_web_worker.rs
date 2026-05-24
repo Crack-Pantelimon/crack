@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
-use api_asscrack::crack_worker::WorkerMessage;
+use api_asscrack::{_crack_utils::sleep_ms, crack_worker::WorkerMessage};
 use api_asscrack::crack_worker::api_worker::ApiImplMapping;
 use wasm_bindgen::JsValue;
+use wasm_bindgen_futures::spawn_local;
+
 
 #[derive(thiserror::Error, Debug)]
 pub enum ServiceWorkerError {
@@ -48,7 +50,7 @@ pub(crate) fn do_worker_registration(mapping: Arc<ApiImplMapping>) -> std::resul
         on_activate.forget();
         on_message.forget();
 
-        wasm_bindgen_futures::spawn_local(async move {
+        spawn_local(async move {
             match worker_loop().await {
                 Ok(_) => {
                     tracing::error!("WORKER EXITED!1");
@@ -162,7 +164,7 @@ fn on_message(
                 tracing::info!("Got App Message, type = {}({})", data.msg_type, data.msg_id);
                 let mapping = mapping.clone();
 
-                wasm_bindgen_futures::spawn_local(async move {
+                spawn_local(async move {
                     let request = data.clone();
                     let mapping = mapping.clone();
                     let response =
@@ -186,7 +188,7 @@ fn on_message(
 fn seppukku(_global: web_sys::ServiceWorkerRegistration) {
     let _w = _global.update();
     match _w {
-        Ok(p) => wasm_bindgen_futures::spawn_local(async move {
+        Ok(p) => spawn_local(async move {
             tracing::info!("SEPPUKKU SENDING UPDATE RESULT: {:?}", p.await);
         }),
         Err(e) => {
@@ -197,10 +199,9 @@ fn seppukku(_global: web_sys::ServiceWorkerRegistration) {
 
 #[tracing::instrument()]
 async fn worker_loop() -> anyhow::Result<()> {
-    use gloo_timers::future::TimeoutFuture;
     let mut i = 3000;
     loop {
-        TimeoutFuture::new(i).await;
+        sleep_ms(i).await;
         i *= 2;
         match worker_iteration().await {
             Ok(_v) => {
@@ -216,15 +217,12 @@ async fn worker_loop() -> anyhow::Result<()> {
 async fn worker_iteration() -> anyhow::Result<()> {
     tracing::info!(
         "worker_iteration crack smoker init 2. timestamp = {}",
-        get_timestamp_now_ms()
+        api_asscrack::_crack_utils::get_timestamp_now_ms()
     );
 
     Ok(())
 }
 
-pub fn get_timestamp_now_ms() -> i64 {
-    chrono::offset::Utc::now().timestamp_millis()
-}
 
 fn get_version(_global: ServiceWorkerGlobalScope) -> Option<String> {
     // let global = js_sys::global();

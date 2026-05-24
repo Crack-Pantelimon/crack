@@ -31,7 +31,7 @@ members = [
     "packages/web_serviceworker_crackslave",
     "crack_demo2",
     "packages/api_asscrack",
-    "packages/thread_crackworker",
+    "packages/thread_crackworker", "packages/_crack_utils",
 ]
 resolver = "2"
 
