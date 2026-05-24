@@ -8,7 +8,7 @@ const HEADER_SVG: Asset = asset!("/assets/header.svg");
 
 #[used]
 static WORKER_JS: Asset = asset!(
-    "/assets/pkg_web_serviceworker/web_serviceworker_crackslave.js",
+    "/assets/pkg_web_serviceworker/web_worker.js",
     AssetOptions::js()
         .with_minify(false)
         .with_hash_suffix(false)
@@ -54,7 +54,6 @@ async fn get_crack() -> anyhow::Result<ApiClient> {
 #[component]
 fn App() -> Element {
     tracing::info!("App()");
-    // let script_wasm = String::from_utf8_lossy( include_bytes!("../assets/pkg_web_serviceworker/web_serviceworker_crackslave.js")).to_string();
     // let script_launch = String::from_utf8_lossy( include_bytes!("../assets/scripts/index.js")).to_string();
 
     let web_worker = use_resource(move || async move { get_crack().await });
