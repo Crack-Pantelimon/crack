@@ -1,0 +1,17 @@
+[package]
+name = "web_worker"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+
+
+[lib]
+crate-type = ["cdylib"]
+
+
+[dependencies]
+crack = {path="../../", features=["web_serviceworker_worker"]}
+
+[lints]
+workspace = true

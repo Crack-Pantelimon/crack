@@ -3,7 +3,7 @@ asset_dir = "public2"
 [web.app]
 
 # HTML title tag content
-title = "crack_demo2"
+title = "web_frontned"
 
 # include `assets` in web platform
 [web.resource]

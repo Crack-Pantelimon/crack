@@ -1,5 +1,5 @@
 [package]
-name = "crack_demo2"
+name = "web_frontend"
 version = "0.1.0"
 authors = ["johnny-smitherson <127537716+johnny-smitherson@users.noreply.github.com>"]
 edition = "2021"
@@ -8,8 +8,10 @@ edition = "2021"
 
 [dependencies]
 dioxus = { version = "0.7.9", features = [] }
-crack = {path="../"}
-web_serviceworker_crackloader={path="../packages/web_serviceworker_crackloader"}
+# crack = {path="../"}
+
+crack = {path="../../", features=["web_serviceworker_loader"]}
+# web_serviceworker_crackloader={path="../packages/web_serviceworker_crackloader"}
 anyhow.workspace=true
 
 

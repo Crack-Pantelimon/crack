@@ -1,6 +1,6 @@
 use crack::api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing};
 use dioxus::{logger::tracing, prelude::*};
-use web_serviceworker_crackloader::WebWorkerFactory;
+use crack::web_serviceworker_loader::WebWorkerFactory;
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -13,11 +13,6 @@ static WORKER_JS: Asset = asset!(
         .with_minify(false)
         .with_hash_suffix(false)
 );
-// #[used]
-// static INDEX_JS : Asset = asset!(
-//     "/assets/scripts/index.js",
-//     AssetOptions::js().with_minify(false).with_hash_suffix(false)
-// );
 
 #[used]
 static SCRIPT_FOLDER: Asset = asset!(
@@ -31,39 +26,11 @@ static WORKER_FOLDER: Asset = asset!(
     AssetOptions::folder().with_hash_suffix(false)
 );
 
-// #[cfg(target_family = "wasm")]
-// unsafe extern "C" {
-//     fn __wasm_call_ctors();
-// }
-//  use scattered_collect::{gather, scatter, slice::ScatteredSlice};
-
-// #[gather]
-// static SLICE_PLUGINS: ScatteredSlice<&'static str>;
-
-// #[scatter(SLICE_PLUGINS)]
-// const _: &'static str = "json";
-
-// #[scatter(SLICE_PLUGINS)]
-// const _: &'static str = "yaml";
-
-// fn scattered_test2() {
-
-//     assert_eq!(SLICE_PLUGINS.len(), 2);
-//     assert!(SLICE_PLUGINS.contains(&"json"));
-// }
-
 fn main() {
-    //     #[cfg(target_family = "wasm")]
-    // unsafe {
-    //     __wasm_call_ctors();
-    // }
-
     dioxus::launch(App);
 }
 
 async fn get_crack() -> anyhow::Result<ApiClient> {
-    // scattered_test2();
-
     tracing::info!("Get Crack!");
     let opt = WebWorkerFactory {
         worker_url: "/assets/scripts/worker.js".to_string(),
@@ -102,27 +69,8 @@ fn App() -> Element {
             document::Link { rel: "icon", href: FAVICON }
             document::Link { rel: "stylesheet", href: MAIN_CSS }
 
-            // document::Script {"type": "module", src:format!("{WORKER_FOLDER}/web_serviceworker_crackslave.js")}
-            // document::Script {"type": "module", src:WORKER_JS}
-            // document::Script {"type": "module", src:INDEX_JS}
-            // document::Script {"type": "module", src:"/public/pkg_web_serviceworker/web_serviceworker_crackslave.js"}
-            // document::Script {"type": "module", src:"/public/scripts/index.js"}
-
-            // document::Script {"type": "module", src:format!("{SCRIPT_FOLDER}/index.js")}
-    //      {script_wasm}
-            // document::Script {
-            //     "
-
-
-            //     {script_launch}
-            //     "
-            // }
-
             Hero {}
             {web_worker_status}
-            // pre {
-            //     "{worker():#?}"
-            // }
 
         }
 }
@@ -132,24 +80,6 @@ pub fn Hero() -> Element {
     tracing::info!("Hero()");
 
     let mut i = use_signal(|| 0);
-    // // let mut _loader_state = use_signal(|| None);
-    // use_effect(move || {
-    //     tracing::info!("CRACK DEMO!");
-    //     dioxus::logger::tracing::error!("EFFECT()");
-    //     crack::storage_crackhouse::init();
-
-    //     let _ = spawn(async move {
-    //         tracing::info!("CRACKLOADER!");
-    //         let _loader = web_serviceworker_crackloader::register_service_worker(
-    //             format!("{WORKER_FOLDER}/web_serviceworker_crackslave.js"),
-    //             "classic".to_string(),
-    //             "/".to_string(),
-    //         )
-    //         .await;
-    //     dioxus::logger::tracing::error!("RESULT: {:#?}", _loader);
-    //         // _loader_state.set(Some(_loader));
-    //     });
-    // });
 
     rsx! {
         div {

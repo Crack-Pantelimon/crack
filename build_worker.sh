@@ -7,18 +7,20 @@ set -ex
 #   packages/web_serviceworker_crackslave \
 #   --no-opt --no-typescript --profile dev --help
 
-# rm -rf crack_demo2/assets/pkg_web_serviceworker
-cargo build --package web_serviceworker_crackslave --target wasm32-unknown-unknown
+# rm -rf $OUT_DIR
+cargo build --package web_worker --target wasm32-unknown-unknown
+export WASM_FILE="target/wasm32-unknown-unknown/debug/web_worker.wasm"
+export OUT_DIR="crack_demo/web_frontend/assets/pkg_web_serviceworker"
 wasm-bindgen \
    --keep-debug --debug --keep-lld-exports \
    --target no-modules  --no-typescript \
-   --out-dir crack_demo2/assets/pkg_web_serviceworker \
-   ./target/wasm32-unknown-unknown/debug/web_serviceworker_crackslave.wasm
-md5sum ./target/wasm32-unknown-unknown/debug/web_serviceworker_crackslave.wasm | cut -f1 -d' ' > crack_demo2/assets/pkg_web_serviceworker/md5.txt
-echo "//#region: crack"                                                                      >> crack_demo2/assets/pkg_web_serviceworker/web_serviceworker_crackslave.js
-echo "let __wasm_script_md5 =   '$(cat crack_demo2/assets/pkg_web_serviceworker/md5.txt)';"  >> crack_demo2/assets/pkg_web_serviceworker/web_serviceworker_crackslave.js
+   --out-dir "$OUT_DIR" \
+   "$WASM_FILE"
+md5sum "$WASM_FILE" | cut -f1 -d' ' > "$OUT_DIR/md5.txt"
+echo "//#region: crack"                                                                      >> $OUT_DIR/web_serviceworker_crackslave.js
+echo "let __wasm_script_md5 =   '$(cat $OUT_DIR/md5.txt)';"  >> $OUT_DIR/web_serviceworker_crackslave.js
 
 
-sed -i "s/let __wasm_worker_md5 = .*/let __wasm_worker_md5 = \"$(cat crack_demo2/assets/pkg_web_serviceworker/md5.txt)\";  /" crack_demo2/assets/scripts/worker.js
+sed -i "s/let __wasm_worker_md5 = .*/let __wasm_worker_md5 = \"$(cat $OUT_DIR/md5.txt)\";  /" crack_demo/web_frontend/assets/scripts/worker.js
 
 

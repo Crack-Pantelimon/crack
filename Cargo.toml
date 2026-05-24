@@ -10,6 +10,13 @@ workspace = true
 [package.authors]
 workspace = true
 
+[features]
+default = []
+web_serviceworker_worker = ["dep:web_serviceworker_crackslave"]
+web_serviceworker_loader = ["dep:web_serviceworker_crackloader"]
+native_thread_worker = ["dep:thread_crackworker"]
+
+
 [dependencies.consensus_crackhead]
 path = "./packages/consensus_crackhead"
 
@@ -22,6 +29,18 @@ path = "./packages/storage_crackhouse"
 [dependencies.api_asscrack]
 path = "./packages/api_asscrack"
 
+[dependencies.web_serviceworker_crackloader]
+path = "./packages/web_serviceworker_crackloader"
+optional = true
+
+[dependencies.web_serviceworker_crackslave]
+path = "./packages/web_serviceworker_crackslave"
+optional = true
+
+[dependencies.thread_crackworker]
+path = "./packages/thread_crackworker"
+optional = true
+
 [workspace]
 members = [
     "packages/consensus_crackhead",
@@ -29,9 +48,14 @@ members = [
     "packages/storage_crackhouse",
     "packages/web_serviceworker_crackloader",
     "packages/web_serviceworker_crackslave",
-    "crack_demo2",
+
     "packages/api_asscrack",
-    "packages/thread_crackworker", "packages/_crack_utils",
+    "packages/thread_crackworker",
+    "packages/_crack_utils",
+    
+    "crack_demo/web_worker",
+    "crack_demo/thread_worker",
+    "crack_demo/web_frontend",
 ]
 resolver = "2"
 

@@ -1,0 +1,11 @@
+[package]
+name = "thread_worker"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+crack = {path="../../", features=["native_thread_worker"]}
+
+[lints]
+workspace = true
