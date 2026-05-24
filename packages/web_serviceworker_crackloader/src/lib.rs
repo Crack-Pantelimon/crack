@@ -114,7 +114,10 @@ async fn register_service_worker(
     console::log_2(&"Got URL: ".into(), &(url.clone().into()));
 
     let mut opts = RegistrationOptions::new();
+    
+    #[allow(deprecated)]
     opts.scope(&worker_scope);
+    #[allow(deprecated)]
     opts.type_(worker_type.as_str());
 
     console::log_2(

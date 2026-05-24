@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crack::api_asscrack::{api::{api_client::ApiClient, api_worker_declarations::{WorkerApiGroup2, WorkerPing}}, crack_worker::{WorkerLoaderFactory, api_worker::make_api_mapping}};
+use crack::{api_asscrack::{api::{api_client::ApiClient, api_worker_declarations::{WorkerApiGroup2, WorkerPing}}, crack_worker::{WorkerLoaderFactory, api_worker::make_api_mapping}}, storage_crackhouse::api::StorageCrackhouseApiGroup};
 use crack::native_thread_worker::ThreadWorkerFactory;
 use crack::api_asscrack::anyhow;
 use crack::native_thread_worker::tokio;
@@ -17,9 +17,10 @@ async fn main() -> anyhow::Result<()> {
 
         let _f = ThreadWorkerFactory{impl_mapping: make_api_mapping(vec![
             Arc::new(WorkerApiGroup2),
+            Arc::new(StorageCrackhouseApiGroup),
         ])}.load_worker().await?;
 
-    let c = ApiClient::new(_f).await;
+    let c = ApiClient::new(_f);
     c.call::<WorkerPing>(()).await?;
 
     Ok(())

@@ -28,6 +28,7 @@ pub trait ApiMethodDecl {
         let b = Self::NAME;
         format!("{a}.{b}")
     }
+    #[allow(clippy::type_complexity)]
     fn wrap_impl(
         _func: fn(
             Self::Arg,
@@ -48,7 +49,7 @@ pub trait ApiMethodDecl {
                 Ok(o) => o,
                 Err(e) => {
                     return WorkerMessage {
-                        msg_id: msg_id,
+                        msg_id,
                         msg_type: "error_deserialize_arg".to_string(),
                         msg_content: format!("{e:#?}").as_bytes().to_vec(),
                     };
@@ -62,7 +63,7 @@ pub trait ApiMethodDecl {
                 Ok(m) => m,
                 Err(e) => {
                     return WorkerMessage {
-                        msg_id: msg_id,
+                        msg_id,
                         msg_type: "error_serialize_ret".to_string(),
                         msg_content: format!("{e:#?}").as_bytes().to_vec(),
                     };

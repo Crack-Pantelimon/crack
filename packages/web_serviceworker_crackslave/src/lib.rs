@@ -7,7 +7,7 @@ use std::sync::Arc;
 use api_asscrack::{_crack_utils::sleep_ms, crack_worker::WorkerMessage};
 use api_asscrack::crack_worker::api_worker::ApiImplMapping;
 use wasm_bindgen::JsValue;
-use wasm_bindgen_futures::spawn_local;
+pub use wasm_bindgen_futures::spawn_local;
 
 
 #[derive(thiserror::Error, Debug)]

@@ -85,7 +85,7 @@ pub fn make_api_mapping(groups: Vec<Arc<dyn ApiGroupImpls>>) -> Arc<ApiImplMappi
 // }
 
 pub async fn compute_response_message(_request: WorkerMessage, mapping: Arc<ApiImplMapping>) -> WorkerMessage {
-    let key = (&_request.msg_type).clone();
+    let key = _request.msg_type.clone();
     let (Some(_fn_info), Some(fn_impl)) = (mapping.info_fns.get(&key), mapping.impl_fns.get(&key))
     else {
         return WorkerMessage {
@@ -94,16 +94,14 @@ pub async fn compute_response_message(_request: WorkerMessage, mapping: Arc<ApiI
             msg_content: vec![],
         };
     };
-    let resp = (fn_impl.func)(_request);
-    let resp = resp.await;
-    resp
+    (fn_impl.func)(_request).await
 }
 
 
 fn _get_infos2(grps: Vec<Arc<dyn ApiGroupImpls>>) -> Vec<ApiMethodInfo> {
     let mut v = vec![];
     for grp in grps {
-        let mut v2 = grp.method_infos().into_iter().cloned().collect();
+        let mut v2 = grp.method_infos().to_vec();
         v.append(&mut v2);
     }
     v
@@ -112,7 +110,7 @@ fn _get_infos2(grps: Vec<Arc<dyn ApiGroupImpls>>) -> Vec<ApiMethodInfo> {
 fn _get_impls2(grps: Vec<Arc<dyn ApiGroupImpls>>) -> Vec<ApiMethodImpl> {
     let mut v = vec![];
     for grp in grps {
-        let mut v2 = grp.method_impls().into_iter().cloned().collect();
+        let mut v2 = grp.method_impls().to_vec();
         v.append(&mut v2);
     }
     v

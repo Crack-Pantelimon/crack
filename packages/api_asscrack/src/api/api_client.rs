@@ -43,7 +43,7 @@ async fn client_thread(_memory: Arc<tokio::sync::Mutex<ApiClientMemory>>, mut rx
 }
 
 impl ApiClient {
-    pub async fn new(pipe: WorkerPipe) -> Self {
+    pub fn new(pipe: WorkerPipe) -> Self {
         let _memory = Arc::new(tokio::sync::Mutex::new(ApiClientMemory{map:HashMap::new()}));
         let _memory2 = _memory.clone();
         Self {

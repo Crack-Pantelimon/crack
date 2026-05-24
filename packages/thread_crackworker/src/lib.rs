@@ -90,7 +90,7 @@ use api_asscrack::{api::api_worker_declarations::WorkerApiGroup2, crack_worker::
             Arc::new(WorkerApiGroup2),
             Arc::new(TestApiGroup),
         ])}.load_worker().await?;
-        let c = api_asscrack::api::api_client::ApiClient::new(f).await;
+        let c = api_asscrack::api::api_client::ApiClient::new(f);
 
         let _r = c
             .call::<api_asscrack::api::api_worker_declarations::WorkerPing>(())

@@ -1,4 +1,4 @@
-use crack::api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing};
+use crack::{api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing}, storage_crackhouse::api::{CreatePost, ShowPosts}};
 use dioxus::{logger::tracing, prelude::*};
 use crack::web_serviceworker_loader::WebWorkerFactory;
 
@@ -44,10 +44,19 @@ async fn get_crack() -> anyhow::Result<ApiClient> {
     let _active = opt.load_worker().await?;
     tracing::info!("Got Pipe. Getting client ....");
 
-    let c = ApiClient::new(_active).await;
+    let c = ApiClient::new(_active);
     tracing::info!("Client OK. Sending Api PING...");
     let _r = c.call::<WorkerPing>(()).await?;
     tracing::info!("Client OK. Crack Connected!");
+
+    let _r = c.call::<CreatePost>(("Test".to_string(), "test".to_string())).await?;
+    tracing::info!("Create Post: {_r}");
+
+    let _r = c.call::<ShowPosts>(()).await?;
+    tracing::info!("Show Posts: {_r:#?}");
+
+    
+
     Ok(c)
 }
 
