@@ -10,49 +10,32 @@ use wasm_bindgen::JsValue;
 pub use wasm_bindgen_futures::spawn_local;
 
 
-#[derive(thiserror::Error, Debug)]
-pub enum ServiceWorkerError {
-    #[error("not in a service worker")]
-    NotInServiceWorker,
-}
-
-impl From<ServiceWorkerError> for JsValue {
-    fn from(e: ServiceWorkerError) -> Self {
-        JsValue::from_str(&e.to_string())
-    }
-}
-
 use wasm_bindgen::prelude::*;
-use web_sys::{ServiceWorkerGlobalScope, console};
+use web_sys::{SharedWorkerGlobalScope, console};
 
-pub fn do_worker_registration(mapping: Arc<ApiImplMapping>) -> std::result::Result<(), JsValue> {
+pub fn web_worker_registration(mapping: Arc<ApiImplMapping>) -> std::result::Result<(), JsValue> {
     let global = js_sys::global();
     tracing::info!("global!! {:#?}", &global);
 
-    if let Ok(true) = js_sys::Reflect::has(&global, &JsValue::from_str("ServiceWorkerGlobalScope"))
+    if let Ok(true) = js_sys::Reflect::has(&global, &JsValue::from_str("SharedWorkerGlobalScope"))
     {
-        console::log_1(&JsValue::from_str("in service worker V3"));
-        // we're in a service worker, so we can cast the global to a ServiceWorkerGlobalScope
-        let global: ServiceWorkerGlobalScope = global.unchecked_into::<ServiceWorkerGlobalScope>();
+        console::log_1(&JsValue::from_str("in shared worker V4"));
+        // cast the global to a SharedWorkerGlobalScope
+        let global: SharedWorkerGlobalScope = global.unchecked_into::<SharedWorkerGlobalScope>();
 
         let version = get_version(global.clone()).unwrap_or_default();
         tracing::info!("version  =  '{}'", &version);
 
-        // Force immediate activation
-        let on_install = on_install(&global)?;
-        let on_activate = on_activate(&global)?;
-        global.set_oninstall(Some(on_install.as_ref().unchecked_ref()));
-        global.set_onactivate(Some(on_activate.as_ref().unchecked_ref()));
+        let on_error = on_error(&global, version.clone())?;
+        global.set_onerror(Some(on_error.as_ref().unchecked_ref()));
+        // Register the connect handler
+        let on_connect = on_connect(&global, version.clone(), mapping)?;
+        global.set_onconnect(Some(on_connect.as_ref().unchecked_ref()));
 
-        // register all the other callbacks
-        let on_message = on_message(&global, version, mapping)?;
-        global.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+        // Ensure that the closures are not dropped
+        on_connect.forget();
+        on_error.forget();
 
-        // Ensure that the closures are not dropped before the service worker is terminated
-        // This is technically a memory leak, but I'm not sure that it matters in this case
-        on_install.forget();
-        on_activate.forget();
-        on_message.forget();
 
         spawn_local(async move {
             match worker_loop().await {
@@ -65,140 +48,106 @@ pub fn do_worker_registration(mapping: Arc<ApiImplMapping>) -> std::result::Resu
             }
         });
     } else {
-        console::log_1(&JsValue::from_str("not in service worker"));
-        return Err(ServiceWorkerError::NotInServiceWorker.into());
+        console::log_1(&JsValue::from_str("not in shared worker"));
+        return Err("not in shared worker".into());
     }
 
     Ok(())
 }
 
-fn on_install(
-    global: &ServiceWorkerGlobalScope,
-) -> std::result::Result<Closure<dyn FnMut(web_sys::ExtendableEvent)>, JsValue> {
-    console::log_1(&JsValue::from_str("serviceworker on_install()"));
-
-    let skip_waiting = global.skip_waiting()?;
-    Ok(Closure::wrap(
-        Box::new(move |event: web_sys::ExtendableEvent| {
-            tracing::info!("on_install event: {event:?}");
-            event.wait_until(&skip_waiting).unwrap();
-        }) as Box<dyn FnMut(_)>,
-    ))
+fn on_error(
+    _global: &SharedWorkerGlobalScope,
+    _version: String,
+) -> std::result::Result<Closure<dyn FnMut(web_sys::ErrorEvent)>, JsValue> {
+    tracing::info!("shared worker on_error() registration");
+     Ok(Closure::wrap(
+        Box::new(move |event: web_sys::ErrorEvent| {
+            tracing::error!("shared worker error: {:#?}", event);
+    })))
 }
 
-fn on_activate(
-    global: &ServiceWorkerGlobalScope,
-) -> std::result::Result<Closure<dyn FnMut(web_sys::ExtendableEvent)>, JsValue> {
-    console::log_1(&JsValue::from_str("serviceworker on_activate()"));
-
-    let clients = global.clients();
-    Ok(Closure::wrap(
-        Box::new(move |event: web_sys::ExtendableEvent| {
-            tracing::info!("on_activate event: {event:?}");
-
-            event.wait_until(&clients.claim()).unwrap();
-        }) as Box<dyn FnMut(_)>,
-    ))
-}
-
-/// Displays a message in the console when a message is received from the client
-fn on_message(
-    _global: &ServiceWorkerGlobalScope,
+fn on_connect(
+    _global: &SharedWorkerGlobalScope,
     version: String,
-    mapping:  Arc<ApiImplMapping>,
-) -> std::result::Result<Closure<dyn FnMut(web_sys::ExtendableMessageEvent)>, JsValue> {
-    let reg = _global.registration();
-
-    // let clients = _global.clients();
-    console::log_1(&JsValue::from_str("serviceworker on_message()"));
+    mapping: Arc<ApiImplMapping>,
+) -> std::result::Result<Closure<dyn FnMut(web_sys::MessageEvent)>, JsValue> {
+    console::log_1(&JsValue::from_str("shared worker on_connect() registration"));
     let mapping = mapping.clone();
     Ok(Closure::wrap(
-        Box::new(move |event: web_sys::ExtendableMessageEvent| {
-            // let event_source = event.source();
+        Box::new(move |event: web_sys::MessageEvent| {
             let version = version.clone();
-            let reg = reg.clone();
-
-            let Some(source) = event.source() else {
-                tracing::info!("on_message event source: {:?}", event.source());
-                tracing::warn!("cannot get event source. drop message!");
+            let ports = event.ports();
+            if ports.length() == 0 {
+                tracing::warn!("onconnect event has no ports!");
                 return;
-            };
-            let value: &JsValue = source.as_ref();
-            let client = web_sys::WindowClient::from(value.clone());
-            tracing::info!("on_message event source: {:#?}", source);
-            // let window_client = &web_sys::WindowClient::from(source)) else {
-            // tracing::warn!("cannot fetch window client. drop message!");
-            // return;
-            // };
-            let data = &event.data();
-            let data = match serde_wasm_bindgen::from_value::<WorkerMessage>(data.clone()) {
-                Ok(data) => data,
-                Err(e) => {
-                    tracing::error!("deserialization error on message: {e:?}");
-                    return;
-                }
-            };
+            }
+            let port = ports.get(0).unchecked_into::<web_sys::MessagePort>();
+            port.start();
 
-            tracing::info!("on_message data: {:#?}", data);
+            let port_clone = port.clone();
+            let mapping = mapping.clone();
 
-            if &data.msg_type == "ping" {
-                let client_version = data.msg_content;
-                if &client_version == &version.clone().as_bytes().to_vec() {
-                    tracing::info!("PING: SAME VERSION. WELCOME NEW TAB.");
-                } else {
-                    tracing::info!("PING: DIFFERENT VERSION. MUST SEPPUKKU NOW.");
-                    seppukku(reg);
-                }
-
-                tracing::info!("Create message type=pong and version={}", version);
-                let data2 = WorkerMessage {
-                    msg_id: 0,
-                    msg_type: "pong".to_string(),
-                    msg_content: version.as_bytes().to_vec(),
-                };
-                let data2 = serde_wasm_bindgen::to_value(&data2).expect("serialize");
-
-                match client.post_message(&data2) {
-                    Ok(_i) => {}
+            let on_message = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
+                let port_clone = port_clone.clone();
+                let version = version.clone();
+                let data = event.data();
+                let data = match serde_wasm_bindgen::from_value::<WorkerMessage>(data.clone()) {
+                    Ok(data) => data,
                     Err(e) => {
-                        tracing::warn!("CANNOT POST MESSAGE TO CLIENT! {:#?}", e);
+                        tracing::error!("deserialization error on message: {e:?}");
+                        return;
                     }
-                }
-            } else {
-                tracing::info!("Got App Message, type = {}({})", data.msg_type, data.msg_id);
-                let mapping = mapping.clone();
+                };
 
-                spawn_local(async move {
-                    let request = data.clone();
-                    let mapping = mapping.clone();
-                    let response =
-                        api_asscrack::crack_worker::api_worker::compute_response_message(request, mapping)
-                            .await;
-                    let response = serde_wasm_bindgen::to_value(&response).expect("serialize");
-                    match client.post_message(&response) {
+                tracing::info!("on_message data: {:#?}", data);
+
+                if &data.msg_type == "ping" {
+                    let client_version = data.msg_content;
+                    if &client_version == &version.clone().as_bytes().to_vec() {
+                        tracing::info!("PING: SAME VERSION. WELCOME NEW TAB.");
+                    } else {
+                        tracing::info!("PING: DIFFERENT VERSION.");
+                    }
+
+                    tracing::info!("Create message type=pong and version={}", version);
+                    let data2 = WorkerMessage {
+                        msg_id: 0,
+                        msg_type: "pong".to_string(),
+                        msg_content: version.as_bytes().to_vec(),
+                    };
+                    let data2 = serde_wasm_bindgen::to_value(&data2).expect("serialize");
+
+                    match port_clone.post_message(&data2) {
                         Ok(_i) => {}
                         Err(e) => {
                             tracing::warn!("CANNOT POST MESSAGE TO CLIENT! {:#?}", e);
                         }
-                    };
-                });
-            }
+                    }
+                } else {
+                    tracing::info!("Got App Message, type = {}({})", data.msg_type, data.msg_id);
+                    let mapping = mapping.clone();
 
-            // let client = clients.get(.)
-        }) as Box<dyn FnMut(_)>,
+                    spawn_local(async move {
+                        let request = data.clone();
+                        let mapping = mapping.clone();
+                        let response =
+                            api_asscrack::crack_worker::api_worker::compute_response_message(request, mapping)
+                                .await;
+                        let response = serde_wasm_bindgen::to_value(&response).expect("serialize");
+                        match port_clone.post_message(&response) {
+                            Ok(_i) => {}
+                            Err(e) => {
+                                tracing::warn!("CANNOT POST MESSAGE TO CLIENT! {:#?}", e);
+                            }
+                        };
+                    });
+                }
+            }) as Box<dyn FnMut(web_sys::MessageEvent)>);
+
+            port.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
+            on_message.forget();
+        }) as Box<dyn FnMut(web_sys::MessageEvent)>,
     ))
-}
-
-fn seppukku(_global: web_sys::ServiceWorkerRegistration) {
-    let _w = _global.update();
-    match _w {
-        Ok(p) => spawn_local(async move {
-            tracing::info!("SEPPUKKU SENDING UPDATE RESULT: {:?}", p.await);
-        }),
-        Err(e) => {
-            tracing::error!("FAILED TO SEPPUKKU! {e:#?}");
-        }
-    }
 }
 
 #[tracing::instrument()]
@@ -228,7 +177,7 @@ async fn worker_iteration() -> anyhow::Result<()> {
 }
 
 
-fn get_version(_global: ServiceWorkerGlobalScope) -> Option<String> {
+fn get_version(_global: SharedWorkerGlobalScope) -> Option<String> {
     // let global = js_sys::global();
 
     const KEY: &str = "__wasm_worker_md5";

@@ -8,7 +8,7 @@ use crack::web_serviceworker_worker::{self, spawn_local};
 use web_serviceworker_worker::wasm_bindgen::prelude::*;
 use web_serviceworker_worker::wasm_bindgen;
 use web_serviceworker_worker::dioxus_logger;
-use web_serviceworker_worker::do_worker_registration;
+use web_serviceworker_worker::web_worker_registration;
 use dioxus_logger::tracing;
 use tracing::Level;
 
@@ -22,8 +22,11 @@ fn init_worker() -> std::result::Result<(), JsValue> {
 
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         crack::storage_crackhouse::install_relaxed_idb().await;
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        crack::storage_crackhouse::install_opfs_sahpool().await;
+        
 
-        let _r = do_worker_registration(make_api_mapping(vec![
+        let _r = web_worker_registration(make_api_mapping(vec![
             Arc::new(StorageCrackhouseApiGroup),
             Arc::new(WorkerApiGroup2),
         ]));

@@ -31,11 +31,11 @@ features = [
     "Node",
     "Window",
     "RegistrationOptions",
-    "ServiceWorkerGlobalScope",
-    "ServiceWorkerRegistration",
-    "ServiceWorkerState",
-    "ServiceWorker",
-    "ServiceWorkerContainer",
+    "SharedWorkerGlobalScope",
+    "SharedWorker",
+    # "ServiceWorkerState",
+    # "ServiceWorker",
+    # "ServiceWorkerContainer",
     "Url",
     "WindowClient",
 
@@ -43,7 +43,8 @@ features = [
   'HtmlElement',
   'HtmlInputElement',
   'MessageEvent',
-  'Worker', "Storage",
+  'MessagePort',
+  'Worker', "Storage", "ErrorEvent"
 ]
 
 
