@@ -24,7 +24,7 @@ impl WorkerLoaderFactory for WebWorkerFactory {
             version,
         } = self.clone();
 
-        tracing::info!("loading shared worker version = {}", version);
+        tracing::info!("loading dedicated worker version = {}", version);
         let _active = ping(worker_url, worker_type, version).await;
         let _active = _active.map_err(|e| anyhow::anyhow!(format!("{e:#?}")));
 
@@ -47,31 +47,37 @@ async fn ping(worker_url: String, worker_type: String, version: String) -> Resul
     let window = web_sys::window().expect("no global `window` exists");
     sleep(&window, 100).await?;
     tracing::info!("starting ping!");
-    const N: i32 = 10;
-    for _i in 1..=N {
-        tracing::info!("try ping {} / {}", _i, N);
-        let _r = _try_ping(worker_url.clone(), worker_type.clone(), version.clone()).await;
-        if _i == N {
-            return Ok(_r?);
-        }
-        match _r {
-            Ok(p) => {
-                return Ok(p);
-            }
-            Err(e) => {
-                tracing::error!("failed to ping webserver: {:#?}", e);
-            }
-        }
-        sleep(&window, 1000).await?;
+    let item = _try_ping(worker_url.clone(), worker_type.clone(), version.clone()).await;
+
+    if item.is_err() {
+        tracing::info!("Failed to load dedicated worker.");
     }
 
-    // refresh the page
-    let window = web_sys::window().expect("no global `window` exists");
-    let location = window.location();
-    tracing::error!("WILL REFRESH PAGE NOW.");
-    location.reload()?;
 
-    Err("failed to ping shared worker!".into())
+    item
+    //     tracing::info!("try ping {} / {}", _i, N);
+    //     let _r = ;
+    //     if _i == N {
+    //         return Ok(_r?);
+    //     }
+    //     match _r {
+    //         Ok(p) => {
+    //             return Ok(p);
+    //         }
+    //         Err(e) => {
+    //             tracing::error!("failed to ping webserver: {:#?}", e);
+    //         }
+    //     }
+    //     sleep(&window, 1000).await?;
+    // }
+
+    // // refresh the page
+    // let window = web_sys::window().expect("no global `window` exists");
+    // let location = window.location();
+    // tracing::error!("WILL REFRESH PAGE NOW.");
+    // location.reload()?;
+
+    // Err("failed to ping shared worker!".into())
 }
 
 async fn _try_ping(worker_url: String, worker_type: String, version: String) -> Result<WorkerPipe, JsValue> {
@@ -82,7 +88,7 @@ async fn _try_ping(worker_url: String, worker_type: String, version: String) -> 
     let url = web_sys::Url::new_with_base(&worker_url, &location_href)?;
     let url_str = url.to_string().as_string().unwrap();
 
-    console::log_2(&"Got SharedWorker URL: ".into(), &(url_str.clone().into()));
+    console::log_2(&"Got DedicatedWorker URL: ".into(), &(url_str.clone().into()));
 
     let options = web_sys::WorkerOptions::new();
     if worker_type == "module" {
@@ -90,10 +96,7 @@ async fn _try_ping(worker_url: String, worker_type: String, version: String) -> 
     } else {
         options.set_type(web_sys::WorkerType::Classic);
     }
-    let worker = web_sys::SharedWorker::new_with_worker_options(&url_str, &options)?;
-
-    let port = worker.port();
-    port.start();
+    let port = web_sys::Worker::new_with_options(&url_str, &options)?;
 
     let (req_tx, mut req_rx) = tokio::sync::mpsc::channel::<WorkerMessage>(1024);
     let (resp_tx, resp_rx) = tokio::sync::mpsc::channel(1024);
@@ -165,19 +168,36 @@ async fn _try_ping(worker_url: String, worker_type: String, version: String) -> 
         msg_type: "ping".to_string(),
         msg_content: version.clone().as_bytes().to_vec(),
     };
-    port.post_message(&serde_wasm_bindgen::to_value(&ping)?)?;
 
-    // wait for response
-    tracing::info!("waiting for response from worker...");
-    let _o = n0_future::time::timeout(std::time::Duration::from_millis(333), one_rx.recv());
-    let _o = _o.await;
-    let _o_is_ok = _o.ok().flatten().is_some();
 
-    if !_o_is_ok {
-        tracing::error!("pingpong fail.");
-        return Err("pingpong fail!".into());
+    const N: i32 = 10;
+    let mut _ok = false;
+    for _i in 1..=N {
+
+
+        port.post_message(&serde_wasm_bindgen::to_value(&ping)?)?;
+
+        // wait for response
+        tracing::info!("waiting for response from worker...");
+        let _o = n0_future::time::timeout(
+            std::time::Duration::from_millis(333), 
+            one_rx.recv());
+        let _o = _o.await;
+        let _o_is_ok = _o.ok().flatten().is_some();
+
+        if _o_is_ok {
+            tracing::info!("Pingpong Ok.");
+            _ok = true;
+            break;
+        } else {
+            tracing::error!("pingpong fail.");
+            continue;
+        } 
     }
-    tracing::info!("Ok. starting worker dispatching...");
+    if !_ok {
+        tracing::error!("failed to  start dedicated worker!");
+        return Err("failed to start dedicated worker!".into());
+    }
 
     let port_clone = port.clone();
     wasm_bindgen_futures::spawn_local(async move {

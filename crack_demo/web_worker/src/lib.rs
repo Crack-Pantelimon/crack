@@ -20,8 +20,8 @@ fn init_worker() -> std::result::Result<(), JsValue> {
 
     spawn_local(async move {
 
-        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-        crack::storage_crackhouse::install_relaxed_idb().await;
+        // #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        // crack::storage_crackhouse::install_relaxed_idb().await;
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         crack::storage_crackhouse::install_opfs_sahpool().await;
         

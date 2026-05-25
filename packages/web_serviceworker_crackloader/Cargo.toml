@@ -39,7 +39,7 @@ features = [
     # "ServiceWorker",
     # "ServiceWorkerContainer",
     "Url",
-    "SharedWorker",
+    "Worker",
     "WorkerOptions",
     "WorkerType",
     "MessagePort",
