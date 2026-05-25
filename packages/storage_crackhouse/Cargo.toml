@@ -13,7 +13,9 @@ _crack_utils = {path="../_crack_utils"}
 anyhow.workspace = true
 
 
-# rusqlite = { version = "0.39.0", features = ["bundled"] }
+rusqlite = { version = "0.38.0", features = ["bundled", "serde_json", "chrono"] }
+serde_json = "1"
+sea-orm-sync = {version = "=2.0.0-rc.38", features = ["rusqlite"]}
 
 
 diesel = { version = "2.3.2",  features = ["sqlite", "returning_clauses_for_sqlite_3_35"] }

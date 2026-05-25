@@ -1,4 +1,4 @@
-use crack::{api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing}, storage_crackhouse::api::{CreatePost, ShowPosts}};
+use crack::{api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing}, storage_crackhouse::api::{CreatePost, ExecuteSQL, RusquliteTest, ShowPosts}};
 use dioxus::{logger::tracing, prelude::*};
 use crack::web_serviceworker_loader::WebWorkerFactory;
 
@@ -55,6 +55,10 @@ async fn get_crack() -> anyhow::Result<ApiClient> {
     let _r = c.call::<ShowPosts>(()).await?;
     tracing::info!("Show Posts: {_r:#?}");
 
+    
+    c.call::<RusquliteTest>(()).await?;
+    let _r = c.call::<ExecuteSQL>("SELECT 1 + 1 FROM PERSON".to_string()).await?;
+    tracing::info!("{}", _r);
     
 
     Ok(c)
