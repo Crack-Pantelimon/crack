@@ -55,8 +55,8 @@ async fn get_crack() -> anyhow::Result<ApiClient> {
 
     // c.call::<RusquliteTest>(()).await?;
     // let _r = c
-        // .call::<ExecuteSQL>("SELECT 1 + 1 FROM PERSON".to_string())
-        // .await?;
+    // .call::<ExecuteSQL>("SELECT 1 + 1 FROM PERSON".to_string())
+    // .await?;
     // tracing::info!("{}", _r);
 
     Ok(c)
@@ -74,21 +74,24 @@ fn App() -> Element {
         Some(Ok(_v)) => rsx! {"OK"},
     };
 
-    let web_sql_editor =  match web_worker.read().as_ref() {
+    let web_sql_editor = match web_worker.read().as_ref() {
         Some(Ok(client)) => {
             let _client: Signal<ApiClient> = use_signal(move || client.clone());
-            rsx!{
+            rsx! {
                 ShowSQLEditor{
                     _client: _client
                 }
             }
-        },
-        _ => rsx!{
-            
         }
+        _ => rsx! {},
     };
 
     rsx! {
+        document::Script {
+            src:asset!("/assets/scripts/v2/crack2-client.js",  AssetOptions::js()
+        .with_minify(false)
+        .with_hash_suffix(false)), "type": "module",
+        }
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
 
@@ -109,27 +112,25 @@ pub fn ShowSQLEditor(_client: Signal<ApiClient>) -> Element {
     let mut result_txt2 = use_signal(|| "".to_string());
     let mut sql_txt = use_signal(|| "".to_string());
 
-    let coro = use_coroutine(move |mut rx: UnboundedReceiver<String>| {
-        async move {
-            while let Ok(sql) = rx.recv().await {
-                let _r = _client.read().clone().call::<ExecuteSQL>(sql.clone()).await;
-                let _r = match _r {
-                    Ok(s) => s,
-                    Err(e) => format!("{e:?}")
-                };
-                result_txt.set(_r);
+    let coro = use_coroutine(move |mut rx: UnboundedReceiver<String>| async move {
+        while let Ok(sql) = rx.recv().await {
+            let _r = _client.read().clone().call::<ExecuteSQL>(sql.clone()).await;
+            let _r = match _r {
+                Ok(s) => s,
+                Err(e) => format!("{e:?}"),
+            };
+            result_txt.set(_r);
 
-                let _r = _client.read().clone().call::<ExecuteSQL2>(sql).await;
-                let _r = match _r {
-                    Ok(s) => s,
-                    Err(e) => format!("{e:?}")
-                };
-                result_txt2.set(_r);
-            }
-            tracing::error!("coro exit.");
+            let _r = _client.read().clone().call::<ExecuteSQL2>(sql).await;
+            let _r = match _r {
+                Ok(s) => s,
+                Err(e) => format!("{e:?}"),
+            };
+            result_txt2.set(_r);
         }
+        tracing::error!("coro exit.");
     });
-    
+
     rsx! {
         h4 {"QUERY"}
         textarea {
