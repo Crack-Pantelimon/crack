@@ -16,24 +16,25 @@ pub struct ApiClient {
 }
 
 struct ApiClientMemory {
-    map: HashMap<u32, MessageLater>
+    map: HashMap<u32, MessageLater>,
 }
 
 pub struct MessageLater {
     reply_to: tokio::sync::oneshot::Sender<WorkerMessage>,
 }
 
-async fn client_thread(_memory: Arc<tokio::sync::Mutex<ApiClientMemory>>, mut rx_pipe: tokio::sync::mpsc::Receiver<WorkerMessage>) -> anyhow::Result<()> {
+async fn client_thread(
+    _memory: Arc<tokio::sync::Mutex<ApiClientMemory>>,
+    mut rx_pipe: tokio::sync::mpsc::Receiver<WorkerMessage>,
+) -> anyhow::Result<()> {
     while let Some(ret) = rx_pipe.recv().await {
         let ret_id = ret.msg_id;
 
-        let Some(connect) = ({
-            _memory.lock().await.map.remove(&ret_id)
-        }) else {
+        let Some(connect) = ({ _memory.lock().await.map.remove(&ret_id) }) else {
             tracing::warn!("got a message back but no known ID, id={}", ret_id);
             continue;
         };
-        let _r  = connect.reply_to.send(ret);
+        let _r = connect.reply_to.send(ret);
         if let Err(_e) = _r {
             tracing::info!("Failed to send back worker message: id={}", _e.msg_id);
             continue;
@@ -44,13 +45,18 @@ async fn client_thread(_memory: Arc<tokio::sync::Mutex<ApiClientMemory>>, mut rx
 
 impl ApiClient {
     pub fn new(pipe: WorkerPipe) -> Self {
-        let _memory = Arc::new(tokio::sync::Mutex::new(ApiClientMemory{map:HashMap::new()}));
+        let _memory = Arc::new(tokio::sync::Mutex::new(ApiClientMemory {
+            map: HashMap::new(),
+        }));
         let _memory2 = _memory.clone();
         Self {
             tx: Arc::new(pipe.req_tx),
             // rx: Arc::new(tokio::sync::Mutex::new(pipe.resp_rx)),
-            _thread: Arc::new(n0_future::task::spawn(client_thread(_memory2, pipe.resp_rx))),
-            _memory
+            _thread: Arc::new(n0_future::task::spawn(client_thread(
+                _memory2,
+                pipe.resp_rx,
+            ))),
+            _memory,
         }
     }
 
@@ -68,7 +74,7 @@ impl ApiClient {
 
         let _ins = {
             let _memory = &mut self._memory.lock().await.map;
-            
+
             _memory.insert(req_id, MessageLater { reply_to: one_tx })
         };
         self.tx.send(msg).await?;

@@ -1,5 +1,7 @@
 use api_asscrack::{
-    _crack_utils::n0_future, anyhow, crack_worker::{WorkerLoaderFactory, WorkerMessage, WorkerPipe}
+    _crack_utils::n0_future,
+    anyhow,
+    crack_worker::{WorkerLoaderFactory, WorkerMessage, WorkerPipe},
 };
 use js_sys::Promise;
 use wasm_bindgen::prelude::*;
@@ -43,7 +45,11 @@ async fn sleep(window: &web_sys::Window, ms: i32) -> Result<(), JsValue> {
     Ok(())
 }
 
-async fn ping(worker_url: String, worker_type: String, version: String) -> Result<WorkerPipe, JsValue> {
+async fn ping(
+    worker_url: String,
+    worker_type: String,
+    version: String,
+) -> Result<WorkerPipe, JsValue> {
     let window = web_sys::window().expect("no global `window` exists");
     sleep(&window, 100).await?;
     tracing::info!("starting ping!");
@@ -52,7 +58,6 @@ async fn ping(worker_url: String, worker_type: String, version: String) -> Resul
     if item.is_err() {
         tracing::info!("Failed to load dedicated worker.");
     }
-
 
     item
     //     tracing::info!("try ping {} / {}", _i, N);
@@ -80,7 +85,11 @@ async fn ping(worker_url: String, worker_type: String, version: String) -> Resul
     // Err("failed to ping shared worker!".into())
 }
 
-async fn _try_ping(worker_url: String, worker_type: String, version: String) -> Result<WorkerPipe, JsValue> {
+async fn _try_ping(
+    worker_url: String,
+    worker_type: String,
+    version: String,
+) -> Result<WorkerPipe, JsValue> {
     let window = web_sys::window().expect("no global `window` exists");
     let location = window.location();
 
@@ -88,7 +97,10 @@ async fn _try_ping(worker_url: String, worker_type: String, version: String) -> 
     let url = web_sys::Url::new_with_base(&worker_url, &location_href)?;
     let url_str = url.to_string().as_string().unwrap();
 
-    console::log_2(&"Got DedicatedWorker URL: ".into(), &(url_str.clone().into()));
+    console::log_2(
+        &"Got DedicatedWorker URL: ".into(),
+        &(url_str.clone().into()),
+    );
 
     let options = web_sys::WorkerOptions::new();
     if worker_type == "module" {
@@ -120,14 +132,14 @@ async fn _try_ping(worker_url: String, worker_type: String, version: String) -> 
             let server_version = &data.msg_content;
             if server_version != &version2.as_bytes().to_vec() {
                 tracing::warn!("==>> SERVER VERSION DIFFER! UPDATE! PLZ REFRESH!");
-                wasm_bindgen_futures::spawn_local(async move {
-                    let window = web_sys::window().expect("no global `window` exists");
-                    let _ = sleep(&window, 500).await;
-                    let window = web_sys::window().expect("no global `window` exists");
-                    tracing::info!("REFRESHING PAGE NOW!");
-                    let location = window.location();
-                    let _ = location.reload();
-                });
+                // wasm_bindgen_futures::spawn_local(async move {
+                //     let window = web_sys::window().expect("no global `window` exists");
+                //     let _ = sleep(&window, 500).await;
+                //     let window = web_sys::window().expect("no global `window` exists");
+                //     tracing::info!("REFRESHING PAGE NOW!");
+                //     let location = window.location();
+                //     let _ = location.reload();
+                // });
             } else {
                 tracing::info!("SERVER VERSION OK.");
                 wasm_bindgen_futures::spawn_local(async move {
@@ -169,19 +181,14 @@ async fn _try_ping(worker_url: String, worker_type: String, version: String) -> 
         msg_content: version.clone().as_bytes().to_vec(),
     };
 
-
     const N: i32 = 10;
     let mut _ok = false;
     for _i in 1..=N {
-
-
         port.post_message(&serde_wasm_bindgen::to_value(&ping)?)?;
 
         // wait for response
         tracing::info!("waiting for response from worker...");
-        let _o = n0_future::time::timeout(
-            std::time::Duration::from_millis(333), 
-            one_rx.recv());
+        let _o = n0_future::time::timeout(std::time::Duration::from_millis(333), one_rx.recv());
         let _o = _o.await;
         let _o_is_ok = _o.ok().flatten().is_some();
 
@@ -192,7 +199,7 @@ async fn _try_ping(worker_url: String, worker_type: String, version: String) -> 
         } else {
             tracing::error!("pingpong fail.");
             continue;
-        } 
+        }
     }
     if !_ok {
         tracing::error!("failed to  start dedicated worker!");
@@ -203,14 +210,12 @@ async fn _try_ping(worker_url: String, worker_type: String, version: String) -> 
     wasm_bindgen_futures::spawn_local(async move {
         while let Some(req) = req_rx.recv().await {
             match &serde_wasm_bindgen::to_value(&req) {
-                Ok(o) => {
-                    match port_clone.post_message(o) {
-                        Ok(_o) => {}
-                        Err(e) => {
-                            tracing::error!("port.post_message() error: {e:#?}");
-                        }
+                Ok(o) => match port_clone.post_message(o) {
+                    Ok(_o) => {}
+                    Err(e) => {
+                        tracing::error!("port.post_message() error: {e:#?}");
                     }
-                }
+                },
                 Err(e) => {
                     tracing::error!("to_value() error: {e:#?}");
                 }

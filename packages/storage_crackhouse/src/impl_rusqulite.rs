@@ -8,7 +8,6 @@ struct Person {
 }
 
 pub fn connect() -> Result<Connection> {
-
     // ON WASM
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     const FILE: &str = "file:/assets/scripts/post.db?vfs=opfs-sahpool";
@@ -20,11 +19,9 @@ pub fn connect() -> Result<Connection> {
     Connection::open(FILE)
 }
 
-
 pub fn run_test_person() -> Result<()> {
-
-        let conn = connect()?;
-        tracing::info!("CREATE TABLE");
+    let conn = connect()?;
+    tracing::info!("CREATE TABLE");
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS person (
@@ -54,7 +51,11 @@ pub fn run_test_person() -> Result<()> {
     })?;
 
     for person in person_iter {
-        tracing::info!("Found person {}: {:?}", person.as_ref().unwrap().id, person.as_ref().unwrap());
+        tracing::info!(
+            "Found person {}: {:?}",
+            person.as_ref().unwrap().id,
+            person.as_ref().unwrap()
+        );
     }
     Ok(())
 }

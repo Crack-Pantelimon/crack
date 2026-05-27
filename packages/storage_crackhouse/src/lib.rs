@@ -1,19 +1,19 @@
 pub mod api;
-
-
 pub mod models;
-pub mod schema;
 pub mod impl_rusqulite;
+pub mod basic;
 
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub async fn install_opfs_sahpool() -> anyhow::Result<()>{
+pub async fn install_opfs_sahpool() -> anyhow::Result<()> {
     tracing::info!("install_opfs_sahpool() ...");
     use sqlite_wasm_vfs::sahpool::{OpfsSAHPoolCfg, install};
     install::<sqlite_wasm_rs::WasmOsCallback>(&OpfsSAHPoolCfg::default(), false)
-        .await.map_err(|e| {
+        .await
+        .map_err(|e| {
             tracing::error!("install_opfs_sahpool(): {e:?}");
-            anyhow::anyhow!("install_opfs_sahpool(): {e:?}")})?;
+            anyhow::anyhow!("install_opfs_sahpool(): {e:?}")
+        })?;
     Ok(())
 }
 
@@ -25,8 +25,7 @@ pub async fn install_relaxed_idb() -> anyhow::Result<()> {
         .await
         .map_err(|e| {
             tracing::error!(" install_relaxed_idb(): {e:?}");
-            anyhow::anyhow!(" install_relaxed_idb(): {e:?}")})?;
+            anyhow::anyhow!(" install_relaxed_idb(): {e:?}")
+        })?;
     Ok(())
 }
-
-

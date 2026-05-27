@@ -1,14 +1,12 @@
-pub extern crate wasm_bindgen;
 pub extern crate dioxus_logger;
-
+pub extern crate wasm_bindgen;
 
 use std::sync::Arc;
 
-use api_asscrack::{_crack_utils::sleep_ms, crack_worker::WorkerMessage};
 use api_asscrack::crack_worker::api_worker::ApiImplMapping;
+use api_asscrack::{_crack_utils::sleep_ms, crack_worker::WorkerMessage};
 use wasm_bindgen::JsValue;
 pub use wasm_bindgen_futures::spawn_local;
-
 
 use wasm_bindgen::prelude::*;
 use web_sys::{DedicatedWorkerGlobalScope, console};
@@ -17,11 +15,13 @@ pub fn web_worker_registration(mapping: Arc<ApiImplMapping>) -> std::result::Res
     let global = js_sys::global();
     tracing::info!("global!! {:#?}", &global);
 
-    if let Ok(true) = js_sys::Reflect::has(&global, &JsValue::from_str("DedicatedWorkerGlobalScope"))
+    if let Ok(true) =
+        js_sys::Reflect::has(&global, &JsValue::from_str("DedicatedWorkerGlobalScope"))
     {
         console::log_1(&JsValue::from_str("in dedicated worker V4"));
         // cast the global to a DedicatedWorkerGlobalScope
-        let global: DedicatedWorkerGlobalScope = global.unchecked_into::<DedicatedWorkerGlobalScope>();
+        let global: DedicatedWorkerGlobalScope =
+            global.unchecked_into::<DedicatedWorkerGlobalScope>();
 
         let version = get_version(global.clone()).unwrap_or_default();
         tracing::info!("version  =  '{}'", &version);
@@ -35,7 +35,6 @@ pub fn web_worker_registration(mapping: Arc<ApiImplMapping>) -> std::result::Res
         // Ensure that the closures are not dropped
         on_message.forget();
         on_error.forget();
-
 
         spawn_local(async move {
             match worker_loop().await {
@@ -60,10 +59,11 @@ fn on_error(
     _version: String,
 ) -> std::result::Result<Closure<dyn FnMut(web_sys::ErrorEvent)>, JsValue> {
     tracing::info!("dedicated worker on_error() registration");
-     Ok(Closure::wrap(
-        Box::new(move |event: web_sys::ErrorEvent| {
+    Ok(Closure::wrap(Box::new(
+        move |event: web_sys::ErrorEvent| {
             tracing::error!("dedicated worker error: {:#?}", event);
-    })))
+        },
+    )))
 }
 
 fn on_message(
@@ -71,7 +71,9 @@ fn on_message(
     version: String,
     mapping: Arc<ApiImplMapping>,
 ) -> std::result::Result<Closure<dyn FnMut(web_sys::MessageEvent)>, JsValue> {
-    console::log_1(&JsValue::from_str("dedicated worker on_message() registration"));
+    console::log_1(&JsValue::from_str(
+        "dedicated worker on_message() registration",
+    ));
     let global_clone = global.clone();
     let mapping = mapping.clone();
     Ok(Closure::wrap(
@@ -119,8 +121,10 @@ fn on_message(
                     let request = data.clone();
                     let mapping = mapping.clone();
                     let response =
-                        api_asscrack::crack_worker::api_worker::compute_response_message(request, mapping)
-                            .await;
+                        api_asscrack::crack_worker::api_worker::compute_response_message(
+                            request, mapping,
+                        )
+                        .await;
                     let response = serde_wasm_bindgen::to_value(&response).expect("serialize");
                     match global_clone.post_message(&response) {
                         Ok(_i) => {}
@@ -159,7 +163,6 @@ async fn worker_iteration() -> anyhow::Result<()> {
 
     Ok(())
 }
-
 
 fn get_version(_global: DedicatedWorkerGlobalScope) -> Option<String> {
     // let global = js_sys::global();

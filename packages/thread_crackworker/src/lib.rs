@@ -1,16 +1,17 @@
+pub extern crate dioxus_logger;
 pub extern crate tokio;
 pub extern crate tracing;
-pub extern crate dioxus_logger;
-
 
 use std::sync::Arc;
 
-use api_asscrack::crack_worker::{WorkerLoaderFactory, WorkerMessage, WorkerPipe, api_worker::ApiImplMapping};
+use api_asscrack::crack_worker::{
+    WorkerLoaderFactory, WorkerMessage, WorkerPipe, api_worker::ApiImplMapping,
+};
 
 // Called when the wasm module is instantiated
 
 pub struct ThreadWorkerFactory {
-    pub impl_mapping:  Arc<ApiImplMapping>
+    pub impl_mapping: Arc<ApiImplMapping>,
 }
 
 #[api_asscrack::async_trait::async_trait(?Send)]
@@ -23,7 +24,7 @@ impl WorkerLoaderFactory for ThreadWorkerFactory {
     }
 }
 
-async fn init_thread(mapping:  Arc<ApiImplMapping>) -> anyhow::Result<WorkerPipe> {
+async fn init_thread(mapping: Arc<ApiImplMapping>) -> anyhow::Result<WorkerPipe> {
     let (req_tx, mut req_rx) = tokio::sync::mpsc::channel::<WorkerMessage>(1024);
     let (resp_tx, resp_rx) = tokio::sync::mpsc::channel(1024);
 
@@ -38,7 +39,8 @@ async fn init_thread(mapping:  Arc<ApiImplMapping>) -> anyhow::Result<WorkerPipe
                     new.msg_type = "pong".to_string();
                     new
                 } else {
-                    api_asscrack::crack_worker::api_worker::compute_response_message(req, mapping).await
+                    api_asscrack::crack_worker::api_worker::compute_response_message(req, mapping)
+                        .await
                 };
                 let m = resp_tx.send(resp).await;
                 match m {
@@ -54,20 +56,25 @@ async fn init_thread(mapping:  Arc<ApiImplMapping>) -> anyhow::Result<WorkerPipe
     Ok(WorkerPipe { req_tx, resp_rx })
 }
 
-
 mod test {
     #![allow(unused)]
     use std::sync::Arc;
 
-use api_asscrack::{api::api_worker_declarations::WorkerApiGroup2, crack_worker::api_worker::make_api_mapping, declare_api_group2, implement_api_group2};
+    use api_asscrack::{
+        api::api_worker_declarations::WorkerApiGroup2, crack_worker::api_worker::make_api_mapping,
+        declare_api_group2, implement_api_group2,
+    };
 
     #[tokio::test]
     async fn test_api_rx_tx_ping() -> anyhow::Result<()> {
-        use api_asscrack::crack_worker::{WorkerLoaderFactory, WorkerMessage};
         use crate::ThreadWorkerFactory;
+        use api_asscrack::crack_worker::{WorkerLoaderFactory, WorkerMessage};
 
-        let mut f = ThreadWorkerFactory{impl_mapping: make_api_mapping(vec![
-        ])}.load_worker().await?;
+        let mut f = ThreadWorkerFactory {
+            impl_mapping: make_api_mapping(vec![]),
+        }
+        .load_worker()
+        .await?;
 
         f.req_tx
             .send(WorkerMessage {
@@ -84,12 +91,13 @@ use api_asscrack::{api::api_worker_declarations::WorkerApiGroup2, crack_worker::
 
     #[tokio::test]
     async fn test_api_ping_fn() -> anyhow::Result<()> {
-        use api_asscrack::crack_worker::WorkerLoaderFactory;
         use crate::ThreadWorkerFactory;
-        let f = ThreadWorkerFactory{impl_mapping: make_api_mapping(vec![
-            Arc::new(WorkerApiGroup2),
-            Arc::new(TestApiGroup),
-        ])}.load_worker().await?;
+        use api_asscrack::crack_worker::WorkerLoaderFactory;
+        let f = ThreadWorkerFactory {
+            impl_mapping: make_api_mapping(vec![Arc::new(WorkerApiGroup2), Arc::new(TestApiGroup)]),
+        }
+        .load_worker()
+        .await?;
         let c = api_asscrack::api::api_client::ApiClient::new(f);
 
         let _r = c
@@ -109,8 +117,8 @@ use api_asscrack::{api::api_worker_declarations::WorkerApiGroup2, crack_worker::
     }
 
     mod __impl {
+        use super::{TestApiGroup, TestPing};
         use api_asscrack::implement_api_group2;
-        use super::{TestApiGroup,TestPing};
 
         implement_api_group2! {
             TestApiGroup,

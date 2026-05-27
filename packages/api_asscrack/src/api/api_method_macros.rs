@@ -112,7 +112,6 @@ impl ApiMethodInfo {
     }
 }
 
-
 #[macro_export]
 macro_rules! declare_api_method_before2 {
     ($grp:tt, $name:tt, $arg:ty, $ret:ty) => {

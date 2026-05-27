@@ -1,6 +1,10 @@
-use crack::{api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing}, storage_crackhouse::api::{CreatePost, ExecuteSQL, RusquliteTest, ShowPosts}};
-use dioxus::{logger::tracing, prelude::*};
+use crack::storage_crackhouse::api::ExecuteSQL2;
 use crack::web_serviceworker_loader::WebWorkerFactory;
+use crack::{
+    api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing},
+    storage_crackhouse::api::{ExecuteSQL, RusquliteTest},
+};
+use dioxus::{logger::tracing, prelude::*};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -49,17 +53,11 @@ async fn get_crack() -> anyhow::Result<ApiClient> {
     let _r = c.call::<WorkerPing>(()).await?;
     tracing::info!("Client OK. Crack Connected!");
 
-    let _r = c.call::<CreatePost>(("Test".to_string(), "test".to_string())).await?;
-    tracing::info!("Create Post: {_r}");
-
-    let _r = c.call::<ShowPosts>(()).await?;
-    tracing::info!("Show Posts: {_r:#?}");
-
-    
-    c.call::<RusquliteTest>(()).await?;
-    let _r = c.call::<ExecuteSQL>("SELECT 1 + 1 FROM PERSON".to_string()).await?;
-    tracing::info!("{}", _r);
-    
+    // c.call::<RusquliteTest>(()).await?;
+    // let _r = c
+        // .call::<ExecuteSQL>("SELECT 1 + 1 FROM PERSON".to_string())
+        // .await?;
+    // tracing::info!("{}", _r);
 
     Ok(c)
 }
@@ -67,7 +65,6 @@ async fn get_crack() -> anyhow::Result<ApiClient> {
 #[component]
 fn App() -> Element {
     tracing::info!("App()");
-    // let script_launch = String::from_utf8_lossy( include_bytes!("../assets/scripts/index.js")).to_string();
 
     let web_worker = use_resource(move || async move { get_crack().await });
 
@@ -77,14 +74,91 @@ fn App() -> Element {
         Some(Ok(_v)) => rsx! {"OK"},
     };
 
-    rsx! {
-            document::Link { rel: "icon", href: FAVICON }
-            document::Link { rel: "stylesheet", href: MAIN_CSS }
+    let web_sql_editor =  match web_worker.read().as_ref() {
+        Some(Ok(client)) => {
+            let _client: Signal<ApiClient> = use_signal(move || client.clone());
+            rsx!{
+                ShowSQLEditor{
+                    _client: _client
+                }
+            }
+        },
+        _ => rsx!{
+            
+        }
+    };
 
-            Hero {}
-            {web_worker_status}
+    rsx! {
+        document::Link { rel: "icon", href: FAVICON }
+        document::Link { rel: "stylesheet", href: MAIN_CSS }
+
+        br{}
+        Hero {}
+        br{}
+        {web_worker_status}
+
+        br{}
+
+        {web_sql_editor}
+    }
+}
+
+#[component]
+pub fn ShowSQLEditor(_client: Signal<ApiClient>) -> Element {
+    let mut result_txt = use_signal(|| "".to_string());
+    let mut result_txt2 = use_signal(|| "".to_string());
+    let mut sql_txt = use_signal(|| "".to_string());
+
+    let coro = use_coroutine(move |mut rx: UnboundedReceiver<String>| {
+        async move {
+            while let Ok(sql) = rx.recv().await {
+                let _r = _client.read().clone().call::<ExecuteSQL>(sql.clone()).await;
+                let _r = match _r {
+                    Ok(s) => s,
+                    Err(e) => format!("{e:?}")
+                };
+                result_txt.set(_r);
+
+                let _r = _client.read().clone().call::<ExecuteSQL2>(sql).await;
+                let _r = match _r {
+                    Ok(s) => s,
+                    Err(e) => format!("{e:?}")
+                };
+                result_txt2.set(_r);
+            }
+            tracing::error!("coro exit.");
+        }
+    });
+    
+    rsx! {
+        h4 {"QUERY"}
+        textarea {
+            onchange: move |_d: Event<FormData>| {
+                let d = _d.data().value();
+                sql_txt.set(d);
+            }
+        }
+        h5 {"SEND"}
+        button {
+            onclick: move |_| {
+                coro.send(sql_txt.read().clone());
+
+            },
+            "SEND SQL"
 
         }
+        h4 {"RESULTS1"}
+        pre {
+            style: "text-wrap: wrap;",
+            {result_txt}
+        }
+        h4 {"RESULTS2"}
+        pre {
+            style: "text-wrap: wrap;",
+            {result_txt2}
+        }
+
+    }
 }
 
 #[component]
@@ -96,7 +170,6 @@ pub fn Hero() -> Element {
     rsx! {
         div {
             id: "hero",
-            img { src: HEADER_SVG, id: "header" }
             div { id: "links",
                 button {
                     onclick: move |_| {
