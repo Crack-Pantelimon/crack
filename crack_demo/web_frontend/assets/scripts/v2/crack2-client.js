@@ -270,9 +270,9 @@ export function init_workers2() {
             }
             sharedWorker.port.postMessage({ type: 'SHUTDOWN_OK' });
         } else if (data.type === 'forwarded_reply') {
-            console.log('[Client] Received reply payload from Shared Worker:', data.payload);
+            console.log('[Client] Received reply payload from Shared Worker:', data.payload, 'is_error:', data.is_error);
             if (typeof onMessageCallback === 'function') {
-                onMessageCallback(data.payload);
+                onMessageCallback(data.payload, data.is_error);
             }
         }
     });

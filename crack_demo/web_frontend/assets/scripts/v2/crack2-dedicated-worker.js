@@ -47,7 +47,8 @@ self.onmessage = (event) => {
       return;
     }
 
-    bridgedPort.addEventListener('message', (bridgeEvent) => {
+    // Set the listener to be async to handle the async computePayloadReply promise
+    bridgedPort.addEventListener('message', async (bridgeEvent) => {
       const bridgeData = bridgeEvent.data;
       if (!bridgeData) return;
 
@@ -56,16 +57,27 @@ self.onmessage = (event) => {
       if (bridgeData.type === 'execute') {
         const originalPayload = bridgeData.payload;
 
-        // Perform payload modification (prepend "reply: " to all string fields)
-        const modifiedPayload = computePayloadReply(originalPayload);
+        try {
+          // Perform asynchronous payload modification (prepend "reply: " to all string fields)
+          const modifiedPayload = await computePayloadReply(originalPayload);
 
-        console.log('[DedicatedWorker] Finished processing. Sending reply back:', modifiedPayload);
+          console.log('[DedicatedWorker] Finished processing. Sending reply back:', modifiedPayload);
 
-        bridgedPort.postMessage({
-          type: 'execute_reply',
-          clientId: bridgeData.clientId,
-          payload: modifiedPayload
-        });
+          bridgedPort.postMessage({
+            type: 'execute_reply',
+            clientId: bridgeData.clientId,
+            is_error: false,
+            payload: modifiedPayload
+          });
+        } catch (err) {
+          console.error('[DedicatedWorker] Error during computePayloadReply:', err);
+          bridgedPort.postMessage({
+            type: 'execute_reply',
+            clientId: bridgeData.clientId,
+            is_error: true,
+            payload: { is_error: true, error: err.message || 'Processing error' }
+          });
+        }
       }
     });
 
@@ -89,11 +101,12 @@ function initDedicatedWorker() {
 /**
  * Deeply traverses the payload object and prepends "reply: " to every string field.
  * Handles objects, arrays, and primitive strings.
+ * Now is an asynchronous function returning a Promise.
  * 
  * @param {any} payload The original message payload
- * @returns {any} The modified message payload
+ * @returns {Promise<any>} The modified message payload
  */
-function computePayloadReply(payload) {
+async function computePayloadReply(payload) {
   // If payload is a direct string, return it modified
   if (typeof payload === 'string') {
     return "reply: " + payload;

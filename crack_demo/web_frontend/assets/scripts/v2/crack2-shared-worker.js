@@ -84,6 +84,7 @@ self.onconnect = (event) => {
           if (targetPort) {
             targetPort.postMessage({
               type: 'forwarded_reply',
+              is_error: dbData.is_error,
               payload: dbData.payload
             });
           } else {
