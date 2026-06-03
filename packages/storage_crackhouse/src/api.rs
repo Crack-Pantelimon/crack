@@ -25,7 +25,6 @@ implement_api_group2! {
 pub async fn rusqulite_test(_t: ()) -> anyhow::Result<()> {
     let _x = crate::impl_rusqulite::run_test_person()?;
 
-
     let _y = crate::basic::demo_main_seaorm()?;
 
     Ok(())

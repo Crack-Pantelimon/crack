@@ -38,8 +38,7 @@ async fn main() -> anyhow::Result<()> {
 
     // c.call::<RusquliteTest>(()).await?;
     // c.call::<ExecuteSQL>("SELECT 1 + 1 FROM PERSON".to_string())
-        // .await?;
-
+    // .await?;
 
     tracing::info!("\n\n====================\n\n WRITE SQL: >>> ");
     while let Ok(sql) = std::io::read_to_string(std::io::stdin()) {
@@ -47,13 +46,13 @@ async fn main() -> anyhow::Result<()> {
         let ret2 = c.call::<ExecuteSQL2>(sql.clone()).await;
 
         let ret = match ret {
-            Ok(r)=>r,
-            Err(e) => format!("{e:#?}")
+            Ok(r) => r,
+            Err(e) => format!("{e:#?}"),
         };
 
         let ret2 = match ret2 {
-            Ok(r)=>r,
-            Err(e) => format!("{e:#?}")
+            Ok(r) => r,
+            Err(e) => format!("{e:#?}"),
         };
         tracing::info!("===========\n\n{ret}\n\n================\n\n{ret2}\n\n==============");
     }

@@ -7128,6 +7128,7 @@ dependencies = [
  "serde",
  "serde-wasm-bindgen",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",

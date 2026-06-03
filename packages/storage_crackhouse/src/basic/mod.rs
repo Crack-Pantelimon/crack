@@ -1,7 +1,11 @@
+use std::{
+    cell::OnceCell,
+    sync::{Arc, LazyLock, Mutex, Once, OnceLock},
+};
 
-use std::{cell::OnceCell, sync::{Arc, LazyLock, Mutex, Once, OnceLock}};
-
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, sea_query::backend};
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, sea_query::backend,
+};
 
 mod entity;
 mod mutation;
@@ -80,10 +84,9 @@ INSERT INTO `cake_filling` (`cake_id`, `filling_id`) VALUES
 ";
 
 fn db_conn() -> anyhow::Result<DatabaseConnection> {
-
     // ON WASM
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-    const FILE: &str = "sqlite:file:/assets/scripts/post2.db?vfs=opfs-sahpool"; 
+    const FILE: &str = "sqlite:file:/assets/scripts/post2.db?vfs=opfs-sahpool";
 
     // ON NON-WASM
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -92,9 +95,7 @@ fn db_conn() -> anyhow::Result<DatabaseConnection> {
     // let rs = rusqlite::Connection::open(FILE)?;
 
     tracing::info!("opening db : {FILE}");
-    let db = Database::connect(
-        FILE,
-    )?;
+    let db = Database::connect(FILE)?;
 
     static MIGRATE_ONCE: Once = Once::new();
     MIGRATE_ONCE.call_once(|| {
@@ -120,17 +121,18 @@ static DB_LOCK: std::sync::OnceLock<anyhow::Result<DatabaseConnection>> = OnceLo
 // static MIGRATE_ONCE: tokio::sync::OnceCell<Arc<DatabaseConnection>> = tokio::sync::OnceCell::new();
 
 pub fn connect_sqlite_db() -> anyhow::Result<&'static DatabaseConnection> {
-    let t: &'static DatabaseConnection = DB_LOCK.get_or_init(db_conn).as_ref().map_err(|e| anyhow::anyhow!("{e:#?}"))?;
+    let t: &'static DatabaseConnection = DB_LOCK
+        .get_or_init(db_conn)
+        .as_ref()
+        .map_err(|e| anyhow::anyhow!("{e:#?}"))?;
     // DB_LOCK.as_ref().map_err(|e| anyhow::anyhow!("{e:?}"))
     Ok(t)
 }
 
 pub fn demo_main_seaorm() -> anyhow::Result<()> {
-
     tracing::info!("Running: demo_main_seaorm()");
 
-    let db =  connect_sqlite_db()?;
-
+    let db = connect_sqlite_db()?;
 
     tracing::info!("DB SYNC CREATE TABLES ETC ALL OK.");
 
@@ -138,7 +140,6 @@ pub fn demo_main_seaorm() -> anyhow::Result<()> {
 
     let _r = db.execute_unprepared(DEMO_SQL);
     tracing::info!("EXECUTE SQL: {:#?}", _r);
-    
 
     tracing::info!("===== =====\n");
 
@@ -151,13 +152,10 @@ pub fn demo_main_seaorm() -> anyhow::Result<()> {
     Ok(())
 }
 
-
 pub fn execute_sql2(sql: String) -> anyhow::Result<String> {
+    let db = connect_sqlite_db()?;
 
-    let db =  connect_sqlite_db()?;
-
-    let _r = db.query_all_raw(
-        Statement::from_string(DbBackend::Sqlite, &sql))?;
+    let _r = db.query_all_raw(Statement::from_string(DbBackend::Sqlite, &sql))?;
     tracing::info!("EXECUTE SQL: {:#?}", _r);
 
     let mut x = "".into();
@@ -167,10 +165,8 @@ pub fn execute_sql2(sql: String) -> anyhow::Result<String> {
             let cols = cols.join(" | ");
             x += cols.as_str();
             x += "\n===============================";
-
         }
         let txt = format!("{r:?}\n");
-
 
         x += txt.as_str();
     }

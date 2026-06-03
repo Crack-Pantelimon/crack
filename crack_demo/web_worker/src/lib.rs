@@ -5,6 +5,7 @@ use crack::api_asscrack::{
 };
 use crack::storage_crackhouse::api::StorageCrackhouseApiGroup;
 use crack::web_serviceworker_worker::{self, spawn_local};
+pub use crack::web_serviceworker_worker::{_js_compute_payload_reply, _js_init_dedicated_worker};
 
 use dioxus_logger::tracing;
 use tracing::Level;
@@ -16,28 +17,34 @@ use web_serviceworker_worker::web_worker_registration;
 #[wasm_bindgen(start)]
 fn init_worker() -> std::result::Result<(), JsValue> {
     dioxus_logger::init(Level::INFO).expect("logger failed to init");
-    tracing::info!("tracing...");
+    tracing::info!("Web Worker : init_worker()...");
 
     spawn_local(async move {
+
+        tracing::info!("Web Worker : spawned...");
         // #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         // crack::storage_crackhouse::install_relaxed_idb().await;
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         {
+
+            tracing::error!("install_opfs_sahpool() ... ");
             let t = crack::storage_crackhouse::install_opfs_sahpool().await;
-            tracing::error!("install_opfs_sahpool() = {:?}", t);
+            tracing::error!("install_opfs_sahpool() = {:#?}", t);
             t.unwrap()
         }
 
+
+        tracing::info!("Web Worker : web_worker_registration()...");
         let _r = web_worker_registration(make_api_mapping(vec![
             Arc::new(StorageCrackhouseApiGroup),
             Arc::new(WorkerApiGroup2),
-        ]));
+        ])).await;
         match _r {
             Err(e) => {
-                tracing::error!("worker registration ERROR! {:#?}. WORKER IS DEAD", e);
+                tracing::error!("web_worker_registration ERROR! {:#?}. WORKER IS DEAD", e);
             }
             _ => {
-                tracing::info!("init_worker() finished! WORKER IS RUNNING!!!");
+                tracing::info!("init_worker / web_worker_registration() finished! WORKER IS RUNNING!!!");
             }
         }
     });

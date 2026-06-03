@@ -96,10 +96,8 @@ fn find_one_to_one(db: &DbConn) -> Result<(), DbErr> {
 fn find_one_to_many(db: &DbConn) -> Result<(), DbErr> {
     print!("find cakes with fruits: ");
 
-    let cakes_with_fruits: Vec<(cake::Model, Vec<fruit::Model>)> = Cake::find()
-        .find_with_related(fruit::Entity)
-        .all(db)
-        ?;
+    let cakes_with_fruits: Vec<(cake::Model, Vec<fruit::Model>)> =
+        Cake::find().find_with_related(fruit::Entity).all(db)?;
 
     tracing::info!("with loader: ");
     let cakes: Vec<cake::Model> = Cake::find().all(db)?;
@@ -128,9 +126,8 @@ fn find_one(db: &DbConn) -> Result<(), DbErr> {
 
     let cheese: Option<cake::Model> = Cake::find_by_id(1).one(db)?;
     let Some(cheese) = cheese else {
-        return Err(DbErr::Custom("not find".into()))
+        return Err(DbErr::Custom("not find".into()));
     };
-
 
     tracing::info!("");
     tracing::info!("{cheese:?}");
@@ -190,8 +187,7 @@ fn find_many_to_many(db: &DbConn) -> Result<(), DbErr> {
 
     tracing::info!("with loader: ");
     let cakes: Vec<cake::Model> = Cake::find().all(db)?;
-    let fillings: Vec<Vec<filling::Model>> =
-        cakes.load_many_to_many(Filling, CakeFilling, db)?;
+    let fillings: Vec<Vec<filling::Model>> = cakes.load_many_to_many(Filling, CakeFilling, db)?;
 
     tracing::info!("");
     for (left, right) in cakes_with_fillings
@@ -264,16 +260,9 @@ fn find_all_json(db: &DbConn) -> Result<(), DbErr> {
 fn find_together_json(db: &DbConn) -> Result<(), DbErr> {
     print!("find cakes and fruits: ");
 
-    let cakes_fruits = Cake::find()
-        .find_also_related(Fruit)
-        .into_json()
-        .all(db)
-        ?;
+    let cakes_fruits = Cake::find().find_also_related(Fruit).into_json().all(db)?;
 
-    tracing::info!(
-        "\n{:?}\n",
-        serde_json::to_string_pretty(&cakes_fruits)
-    );
+    tracing::info!("\n{:?}\n", serde_json::to_string_pretty(&cakes_fruits));
 
     Ok(())
 }
@@ -288,8 +277,7 @@ fn count_fruits_by_cake_json(db: &DbConn) -> Result<(), DbErr> {
         .column_as(fruit::Column::Id.count(), "num_of_fruits")
         .group_by(cake::Column::Name)
         .into_json()
-        .all(db)
-        ?;
+        .all(db)?;
 
     tracing::info!("\n{:?}\n", serde_json::to_string_pretty(&count));
 
