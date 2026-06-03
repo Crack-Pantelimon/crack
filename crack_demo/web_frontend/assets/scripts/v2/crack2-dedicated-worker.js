@@ -7,6 +7,9 @@ console.log("FUNCTIONS FETCHED FROM wasm_bindgen = ", wasm_bindgen);
 console.log("FUNCTION initDedicatedWorker = ", initDedicatedWorker);
 console.log("FUNCTION computePayloadReply = ", computePayloadReply);
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function init_wasm_bindgen() {
     console.log('[DedicatedWorker] wasm_bindgen 2');
@@ -38,7 +41,9 @@ async function init_wasm_bindgen() {
           console.info('[DedicatedWorker] initDedicatedWorker() DONE - OK');
           self.postMessage({ type: 'init_result', success: true });
         } catch (err) {
+          await sleep(16);
           console.error('[DedicatedWorker] Custom initialization error caught:', err.message);
+
           self.postMessage({ type: 'init_result', success: false, error: err.message });
         }
         return;
