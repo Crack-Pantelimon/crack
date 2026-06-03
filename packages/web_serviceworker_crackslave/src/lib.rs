@@ -5,9 +5,8 @@ pub use wasm_bindgen_futures::spawn_local;
 
 use std::sync::{Arc, OnceLock};
 
+use api_asscrack::crack_worker::WorkerMessage;
 use api_asscrack::crack_worker::api_worker::ApiImplMapping;
-use api_asscrack::{crack_worker::WorkerMessage};
-
 
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 

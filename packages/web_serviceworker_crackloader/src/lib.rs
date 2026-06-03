@@ -31,7 +31,6 @@ impl WorkerLoaderFactory for WebWorkerFactory {
 
 /// Creates a JS promise that resolves after the given number of milliseconds and awaits it
 async fn sleep(ms: i32) -> Result<(), JsValue> {
-
     let window = web_sys::window().expect("no window?");
 
     let promise = Promise::new(&mut |resolve, _reject| {
