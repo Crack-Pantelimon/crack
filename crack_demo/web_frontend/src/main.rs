@@ -62,29 +62,98 @@ async fn get_crack() -> anyhow::Result<ApiClient> {
     Ok(c)
 }
 
+
+
+async fn get_crack2() -> anyhow::Result<()> {
+    let window = web_sys::window().context("no window?")?;
+    use crack::api_asscrack::_crack_utils::sleep_ms;
+
+    let mut found = false;
+    for i in 0..20 {
+        if  window.has_own_property(&(&"init_workers2".to_string()).into()) {
+            tracing::info!("found item!");
+            found = true;
+            break;
+        }
+        sleep_ms(150).await;
+        tracing::info!("retry {i}... ");
+    }
+
+    if !found {
+        tracing::error!("did not find startup fm.");
+        anyhow::bail!("did not fidn startup fn.")
+    }
+
+    let js_handles = init_workers2();
+    tracing::info!("set onmessage.");
+
+    let closure = move |message| {
+        tracing::info!("GOT MESSAGE BCK! {message:?}");
+    };
+    let closure = Closure::new(Box::new(closure) as Box<dyn FnMut(JsValue)>);
+    let closure = closure.into_js_value();
+
+    js_handles.set_onmessage(closure);
+    tracing::info!("Sending message");
+    js_handles.send_message(&"penis 2".to_string().into());
+
+
+    Ok(())
+}
+use wasm_bindgen::prelude::*;
+
+// #[wasm_bindgen]
+// extern "C" {
+
+//     fn init_workers2() -> WorkerHandles;
+
+
+
+// }
+
+
+    // #[wasm_bindgen]
+    // #[derive(Debug)]
+    // struct WorkerHandles;
+
+    // #[wasm_bindgen]
+    // impl WorkerHandles {
+    //     fn set_onmessage(&self, item: JsValue);
+    //     fn send_message(&self, item: JsValue);
+
+    // }
+
+
 #[component]
 fn App() -> Element {
     tracing::info!("App()");
 
-    let web_worker = use_resource(move || async move { get_crack().await });
 
-    let web_worker_status = match web_worker.read().as_ref() {
-        None => rsx! {h1{"Loading..."}},
-        Some(Err(e)) => rsx! {pre{"Error: {e:#?}"}},
-        Some(Ok(_v)) => rsx! {"OK"},
-    };
+    let web_worker2 = use_resource(move || async move { get_crack2().await });
+    let web_worker2 = web_worker2.read();
+    let web_worker2 = web_worker2.as_ref();
 
-    let web_sql_editor = match web_worker.read().as_ref() {
-        Some(Ok(client)) => {
-            let _client: Signal<ApiClient> = use_signal(move || client.clone());
-            rsx! {
-                ShowSQLEditor{
-                    _client: _client
-                }
-            }
-        }
-        _ => rsx! {},
-    };
+
+
+    // let web_worker = use_resource(move || async move { get_crack().await });
+
+    // let web_worker_status = match web_worker.read().as_ref() {
+    //     None => rsx! {h1{"Loading..."}},
+    //     Some(Err(e)) => rsx! {pre{"Error: {e:#?}"}},
+    //     Some(Ok(_v)) => rsx! {"OK"},
+    // };
+
+    // let web_sql_editor = match web_worker.read().as_ref() {
+    //     Some(Ok(client)) => {
+    //         let _client: Signal<ApiClient> = use_signal(move || client.clone());
+    //         rsx! {
+    //             ShowSQLEditor{
+    //                 _client: _client
+    //             }
+    //         }
+    //     }
+    //     _ => rsx! {},
+    // };
 
     rsx! {
         document::Script {
@@ -98,11 +167,13 @@ fn App() -> Element {
         br{}
         Hero {}
         br{}
-        {web_worker_status}
 
         br{}
 
-        {web_sql_editor}
+
+        pre {
+            "{web_worker2:#?}"
+        }
     }
 }
 

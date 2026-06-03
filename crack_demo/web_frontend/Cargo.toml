@@ -13,6 +13,8 @@ dioxus = { version = "0.7.9", features = [] }
 crack = {path="../../", features=["web_serviceworker_loader"]}
 # web_serviceworker_crackloader={path="../packages/web_serviceworker_crackloader"}
 anyhow.workspace=true
+web-sys = "0.3.98"
+wasm-bindgen = "0.2.121"
 
 
 [features]

@@ -5,4 +5,4 @@ set -ex
 
 export RUST_LOG=info
 
-dx serve --keep-names  --package web_frontend
+dx serve --keep-names  --package web_frontend "$@"
