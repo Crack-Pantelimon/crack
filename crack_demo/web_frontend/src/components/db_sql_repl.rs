@@ -1,7 +1,10 @@
 use crack::storage_crackhouse::api::ExecuteSQL2;
 use dioxus::prelude::*;
 
-use crate::{components::display_table::{DefaultTableRenderer, DisplayTable}, crack::use_crack};
+use crate::{
+    components::display_table::{DefaultTableRenderer, DisplayTable},
+    crack::use_crack,
+};
 
 #[component]
 pub fn SqlRepl() -> Element {
@@ -9,22 +12,20 @@ pub fn SqlRepl() -> Element {
     let mut result = use_signal(|| None);
     let mut error = use_signal(String::new);
 
-    let c = use_coroutine(move |mut r| {
-        async move {
-            while let Ok(sql) = r.recv().await {
-                let api = use_crack();
-                result.set(None);
-                error.set(String::new());
-                
-                let r = api.call::<ExecuteSQL2>(sql).await;
+    let c = use_coroutine(move |mut r| async move {
+        while let Ok(sql) = r.recv().await {
+            let api = use_crack();
+            result.set(None);
+            error.set(String::new());
 
-                match r {
-                    Ok(r) => {
-                        result.set(Some(r));
-                    }
-                    Err(e) => {
-                        error.set(format!("{e:?}"));
-                    }
+            let r = api.call::<ExecuteSQL2>(sql).await;
+
+            match r {
+                Ok(r) => {
+                    result.set(Some(r));
+                }
+                Err(e) => {
+                    error.set(format!("{e:?}"));
                 }
             }
         }

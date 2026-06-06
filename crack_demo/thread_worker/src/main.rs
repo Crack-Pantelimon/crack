@@ -14,7 +14,7 @@ use crack::{
         },
         crack_worker::{WorkerLoaderFactory, api_worker::make_api_mapping},
     },
-    storage_crackhouse::api::{ExecuteSQL, RusquliteTest, StorageCrackhouseApiGroup},
+    storage_crackhouse::api::{ExecuteSQL, StorageCrackhouseApiGroup},
 };
 
 #[tokio::main]
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         };
 
         let ret2 = match ret2 {
-            Ok(r) => format!("{:#?}",r),
+            Ok(r) => format!("{:#?}", r),
             Err(e) => format!("{e:#?}"),
         };
         tracing::info!("===========\n\n{ret}\n\n================\n\n{ret2}\n\n==============");

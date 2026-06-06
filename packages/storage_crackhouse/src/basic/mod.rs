@@ -81,11 +81,22 @@ pub fn demo_main_seaorm() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn execute_sql2(sql: String) -> anyhow::Result<SqlResultSet> {
+pub fn execute_sql2(sql: String, params: Vec<DbValue>) -> anyhow::Result<SqlResultSet> {
     let db = connect_sqlite_db()?;
     tracing::info!("EXECUTE SQL CODE: {}", &sql);
 
-    let _r = db.query_all_raw(Statement::from_string(DbBackend::Sqlite, &sql))?;
+    let params2 = params.into_iter().map(|x| match x {
+        DbValue::Null => sea_query::Value::BigInt(None).as_null(),
+        DbValue::Integer(v) => sea_query::Value::BigInt(Some(v)),
+        DbValue::Real(v) => sea_query::Value::Double(Some(v)),
+        DbValue::Text(v) => sea_query::Value::String(Some(v)),
+        DbValue::Blob(v) => sea_query::Value::Bytes(Some(v)),
+    });
+    let _r = db.query_all_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        &sql,
+        params2,
+    ))?;
     tracing::info!("EXECUTE SQL RESULT: {:#?}", _r);
 
     let mut x = SqlResultSet {

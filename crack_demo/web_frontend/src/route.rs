@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 #[derive(Clone, Debug, PartialEq, Routable)]
 pub enum Route {
     #[route("/")]
-    HomePage,
+    SqlQuery,
 
     #[route("/tables/:table")]
     TableViewPage { table: String },

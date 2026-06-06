@@ -285,8 +285,6 @@ fn count_fruits_by_cake_json(db: &DbConn) -> Result<(), DbErr> {
 }
 
 fn find_all_stream(db: &DbConn) -> Result<(), DbErr> {
-    use std::time::Duration;
-
     tracing::info!("find all cakes paginated: ");
     let mut cake_paginator = cake::Entity::find().paginate(db, 3);
     while let Some(cake_res) = cake_paginator.fetch_and_next()? {
