@@ -91,16 +91,16 @@ inherits = "dev"
 
 [profile.desktop-dev]
 opt-level = 1
-debug = 2
+debug = 0
 inherits = "dev"
 
 [profile.desktop-dev.package."*"]
 opt-level = 3
-debug = 2
+debug = 0
 
 [profile.dev]
 opt-level = 1
-debug = 1
+debug = 0
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3
@@ -126,5 +126,9 @@ inherits = "dev"
 
 [profile.wasm-dev]
 opt-level = 1
-debug = 1
+debug = 0
 inherits = "dev"
+
+[profile.wasm-dev.package."*"]
+opt-level = 3
+debug = 0

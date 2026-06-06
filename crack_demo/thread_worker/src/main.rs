@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         };
 
         let ret2 = match ret2 {
-            Ok(r) => r,
+            Ok(r) => format!("{:#?}",r),
             Err(e) => format!("{e:#?}"),
         };
         tracing::info!("===========\n\n{ret}\n\n================\n\n{ret2}\n\n==============");

@@ -3,11 +3,13 @@ use _crack_utils::sleep_ms;
 use api_asscrack::declare_api_group2;
 use api_asscrack::implement_api_group2;
 
+use crate::basic::SqlResultSet;
+
 declare_api_group2! {
     StorageCrackhouseApiGroup,
     [
         (ExecuteSQL, String, String),
-        (ExecuteSQL2, String, String),
+        (ExecuteSQL2, String, SqlResultSet),
         (RusquliteTest, (), ()),
     ]
 }
@@ -33,6 +35,6 @@ pub async fn rusqulite_test(_t: ()) -> anyhow::Result<()> {
 pub async fn execute_sql(sql: String) -> anyhow::Result<String> {
     crate::impl_rusqulite::sql_inject(sql)
 }
-pub async fn execute_sql2(sql: String) -> anyhow::Result<String> {
+pub async fn execute_sql2(sql: String) -> anyhow::Result<SqlResultSet> {
     crate::basic::execute_sql2(sql)
 }

@@ -1,12 +1,8 @@
-use std::{
-    cell::OnceCell,
-    sync::{Arc, LazyLock, Mutex, Once, OnceLock},
-};
+use std::sync::{Once, OnceLock};
 
-use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement, sea_query::backend,
-};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
 
+mod demo_sql;
 mod entity;
 mod mutation;
 mod query;
@@ -14,74 +10,7 @@ mod query;
 use entity::*;
 use mutation::*;
 use query::*;
-
-const DEMO_SQL: &str = "
-
-DROP TABLE IF EXISTS `cake`;
-
-CREATE TABLE `cake` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`)
-);
-
-INSERT INTO `cake` (`id`, `name`) VALUES
-	(1, 'New York Cheese'),
-	(2, 'Chocolate Forest');
-
-DROP TABLE IF EXISTS `fruit`;
-
-CREATE TABLE `fruit` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  `cake_id` int DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `fk-fruit-cake` FOREIGN KEY (`cake_id`) REFERENCES `cake` (`id`)
-);
-
-INSERT INTO `fruit` (`id`, `name`, `cake_id`) VALUES
-  (1, 'Blueberry', 1),
-  (2, 'Raspberry', 1),
-  (3, 'Strawberry', 2);
-
-INSERT INTO `fruit` (`name`, `cake_id`) VALUES
-  ('Apple', NULL),
-  ('Banana', NULL),
-  ('Cherry', NULL),
-  ('Lemon', NULL),
-  ('Orange', NULL),
-  ('Pineapple', NULL);
-
-DROP TABLE IF EXISTS `filling`;
-
-CREATE TABLE `filling` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(255) NOT NULL,
-  PRIMARY KEY (`id`)
-);
-
-INSERT INTO `filling` (`id`, `name`) VALUES
-  (1, 'Vanilla'),
-  (2, 'Lemon'),
-  (3, 'Mango');
-
-DROP TABLE IF EXISTS `cake_filling`;
-
-CREATE TABLE `cake_filling` (
-  `cake_id` int NOT NULL,
-  `filling_id` int NOT NULL,
-  PRIMARY KEY (`cake_id`, `filling_id`),
-  CONSTRAINT `fk-cake_filling-cake` FOREIGN KEY (`cake_id`) REFERENCES `cake` (`id`),
-  CONSTRAINT `fk-cake_filling-filling` FOREIGN KEY (`filling_id`) REFERENCES `filling` (`id`)
-);
-
-INSERT INTO `cake_filling` (`cake_id`, `filling_id`) VALUES
-  (1, 1),
-  (1, 2),
-  (2, 2),
-  (2, 3);
-
-";
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 fn db_conn() -> anyhow::Result<DatabaseConnection> {
     // ON WASM
@@ -138,7 +67,7 @@ pub fn demo_main_seaorm() -> anyhow::Result<()> {
 
     tracing::info!("{db:?}\n");
 
-    let _r = db.execute_unprepared(DEMO_SQL);
+    let _r = db.execute_unprepared(demo_sql::DEMO_SQL);
     tracing::info!("EXECUTE SQL: {:#?}", _r);
 
     tracing::info!("===== =====\n");
@@ -152,24 +81,97 @@ pub fn demo_main_seaorm() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn execute_sql2(sql: String) -> anyhow::Result<String> {
+pub fn execute_sql2(sql: String) -> anyhow::Result<SqlResultSet> {
     let db = connect_sqlite_db()?;
+    tracing::info!("EXECUTE SQL CODE: {}", &sql);
 
     let _r = db.query_all_raw(Statement::from_string(DbBackend::Sqlite, &sql))?;
-    tracing::info!("EXECUTE SQL: {:#?}", _r);
+    tracing::info!("EXECUTE SQL RESULT: {:#?}", _r);
 
-    let mut x = "".into();
-    for (i, r) in _r.iter().enumerate() {
-        if i == 0 {
-            let cols = r.column_names();
-            let cols = cols.join(" | ");
-            x += cols.as_str();
-            x += "\n===============================";
+    let mut x = SqlResultSet {
+        column_names: vec![],
+        rows: vec![],
+    };
+
+    for (_i, r) in _r.iter().enumerate() {
+        tracing::info!("deserialize row {_i}");
+        if x.column_names.is_empty() {
+            x.column_names = r.column_names();
+            tracing::info!("column names = {:?}", &x.column_names);
         }
-        let txt = format!("{r:?}\n");
+        let mut column_vals = vec![];
+        for (j, _col) in x.column_names.iter().enumerate() {
+            tracing::info!("column index {j} {_col}");
+            let val = _get_query_value(r, j);
+            tracing::info!("column index {j} {_col} = {val:?}");
 
-        x += txt.as_str();
+            column_vals.push(val);
+        }
+        x.rows.push(SqlResultRow { cols: column_vals })
     }
 
     Ok(x)
+}
+
+fn _get_query_value(r: &sea_orm::QueryResult, j: usize) -> DbValue {
+    if let Ok(r) = r.try_get_by_index::<i64>(j) {
+        return DbValue::Integer(r);
+    };
+
+    if let Ok(r) = r.try_get_by_index::<f64>(j) {
+        return DbValue::Real(r);
+    };
+
+    if let Ok(r) = r.try_get_by_index::<String>(j) {
+        return DbValue::Text(r);
+    };
+
+    if let Ok(r) = r.try_get_by_index::<Vec<u8>>(j) {
+        return DbValue::Blob(r);
+    };
+
+    DbValue::Null
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct SqlResultSet {
+    pub column_names: Vec<String>,
+    pub rows: Vec<SqlResultRow>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct SqlResultRow {
+    pub cols: Vec<DbValue>,
+}
+
+// impl SqlResultSet {
+//     pub fn deserialize<T: DeserializeOwned>(&self) -> anyhow::Result<Vec<T>> {
+//         let mut objs = vec![];
+//         for row in self.rows.iter() {
+//             let mut obj = serde_json::map::Map::new();
+//             for ((_j, col), value) in self.column_names.iter().enumerate().zip(row.cols.iter()) {
+//                 obj.insert(col.to_string(), value.clone());
+//             }
+//             let val = serde_json::Value::Object(obj);
+//             objs.push(val);
+//         }
+//         let objs = serde_json::Value::Array(objs);
+
+//         let t = serde_json::from_value(objs)?;
+//         Ok(t)
+//     }
+// }
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum DbValue {
+    /// The value is a `NULL` value.
+    Null,
+    /// The value is a signed integer.
+    Integer(i64),
+    /// The value is a floating point number.
+    Real(f64),
+    /// The value is a text string.
+    Text(String),
+    /// The value is a blob of data
+    Blob(Vec<u8>),
 }
