@@ -307,16 +307,16 @@ macro_rules! declare_model_group {
                     }
                 }
                 impl $crate::models::ModelSerial for $struct_name {
-                    fn from_values(values: Vec<DbValue>) -> anyhow::Result<Self> {
+                    fn from_values(values: Vec<$crate::types::DbValue>) -> anyhow::Result<Self> {
                         let mut i = values.into_iter();
                         let r = Self {
                             $(
-                               $col_name: DbValue::fold_option(i.next()).try_into()?,
+                               $col_name: $crate::types::DbValue::fold_option(i.next()).try_into()?,
                             )*
                         };
                         Ok(r)
                     }
-                    fn to_values(&self) -> Vec<DbValue> {
+                    fn to_values(&self) -> Vec<$crate::types::DbValue> {
                         let mut v = vec![];
                         $(
                             v.push(self.$col_name.clone().into());
@@ -330,23 +330,59 @@ macro_rules! declare_model_group {
     }
 }
 
-declare_model_group! {
-    ModelGroup1,
+#[allow(unused_imports, unused, dead_code)]
+mod test {
+
+    use std::sync::Arc;
+
+    use crate::{
+        impl_rusqulite::sql_query,
+        models::{ModelGroup, ModelSerial, run_migrate_tables},
+    };
+
+    declare_model_group! {
+        ModelGroup1,
 
 
-    #[db_table(pk(id1, id2))]
-    pub struct Table1 {
-        pub id1: i64,
-        pub id2: String,
-        pub val3: Option<String>,
-        pub val4: Option<f64>,
-        pub val5: Option<Vec<u8>>,
+        #[db_table(pk(id1, id2))]
+        pub struct Table1 {
+            pub id1: i64,
+            pub id2: String,
+            pub val3: Option<String>,
+            pub val4: Option<f64>,
+            pub val5: Option<Vec<u8>>,
+        }
+
+
+        #[db_table(pk(a))]
+        pub struct Table2 {
+            pub a: i64,
+        }
     }
 
+    #[tokio::test]
+    async fn test_migrate() -> anyhow::Result<()> {
+        let _r = run_migrate_tables(vec![Arc::new(ModelGroup1) as Arc<dyn ModelGroup>].into_iter())
+            .await?;
 
-    #[db_table(pk(a))]
-    pub struct Table2 {
-        pub a: i64,
+        let t1 = Table1 {
+            id1: 1,
+            id2: "2".into(),
+            val3: Some("3".into()),
+            val4: Some(3.14),
+            val5: None,
+        };
+
+        let t1_create_1 = t1.sql_for_insert_row_or_ignore();
+        let t1_create_2 = t1.sql_for_upsert_row();
+        let t1_delete = t1.sql_for_delete_row();
+
+        let _r = sql_query(t1_create_1).await?;
+        let _r = sql_query(t1_create_2.clone()).await?;
+        let _r = sql_query(t1_delete).await?;
+        let _r = sql_query(t1_create_2).await?;
+
+        Ok(())
     }
 }
 
