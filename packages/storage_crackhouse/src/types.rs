@@ -6,6 +6,25 @@ pub struct SQLAndParams {
     pub params: Vec<DbValue>,
 }
 
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum DbValueType {
+Null, Integer, Real, Text, Blob
+}
+
+impl DbValueType {
+
+pub fn to_sql_str(&self) -> &'static str {
+    match self {
+        Self::Null => "NULL",
+        Self::Integer => "Integer",
+        Self::Real => "Real",
+        Self::Text => "Text",
+        Self::Blob => "Blob",
+    }
+}
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DbValue {
     /// The value is a `NULL` value.
