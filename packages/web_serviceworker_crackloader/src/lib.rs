@@ -42,6 +42,7 @@ async fn sleep(ms: i32) -> Result<(), JsValue> {
     Ok(())
 }
 
+#[allow(deprecated)]
 async fn get_js_worker() -> anyhow::Result<WorkerHandlesJs> {
     let window = web_sys::window().context("no window?")?;
     use api_asscrack::_crack_utils::sleep_ms;
