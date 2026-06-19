@@ -35,6 +35,8 @@ pub fn App() -> Element {
     tracing::info!("App()");
 
     rsx! {
+        Title {"Crack!"}
+        document::Script { src: asset!("/assets/scripts/storage.js") }
         document::Script {
             src: asset!(
                 "/assets/scripts/v2/crack2-client.js",
