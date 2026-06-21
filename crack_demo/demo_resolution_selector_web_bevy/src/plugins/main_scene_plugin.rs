@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 
 use bevy::{
-    camera::Hdr,
+    // camera::Hdr,
     color::palettes::css::ORANGE_RED,
     core_pipeline::tonemapping::Tonemapping,
     math::FloatPow,
-    post_process::bloom::Bloom,
+    //  post_process::bloom::Bloom,
 };
 use rand::{RngExt, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -15,10 +15,7 @@ pub struct MainScenePlugin;
 impl Plugin for MainScenePlugin {
     fn build(&self, app: &mut App) {
         info!("loading: MainScenePlugin...");
-        crate::ui_egui::web_set_loading_status(
-            true,
-            "Loading MainScenePlugin...",
-        );
+        crate::ui_egui::web_set_loading_status(true, "Loading MainScenePlugin...");
         app.add_systems(Startup, generate_bodies)
             .add_systems(FixedUpdate, (interact_bodies, integrate))
             .add_systems(Update, look_at_star);
@@ -108,9 +105,7 @@ fn generate_bodies(
     commands
         .spawn((
             BodyBundle {
-                mesh: Mesh3d(
-                    meshes.add(Sphere::new(1.0).mesh().ico(5).unwrap()),
-                ),
+                mesh: Mesh3d(meshes.add(Sphere::new(1.0).mesh().ico(5).unwrap())),
                 material: MeshMaterial3d(materials.add(StandardMaterial {
                     base_color: ORANGE_RED.into(),
                     emissive: LinearRgba::from(ORANGE_RED) * 2.,
@@ -136,22 +131,23 @@ fn generate_bodies(
             clear_color: Color::BLACK.into(),
             ..default()
         },
-        Hdr,
+        // Hdr,
         Camera3d::default(),
         Tonemapping::None,
-        Bloom {
-            intensity: 0.2,
-            ..default()
-        },
+        // Bloom {
+        //     intensity: 0.2,
+        //     ..default()
+        // },
     ));
 }
 
-fn interact_bodies(
-    mut query: Query<(&Mass, &GlobalTransform, &mut Acceleration)>,
-) {
+fn interact_bodies(mut query: Query<(&Mass, &GlobalTransform, &mut Acceleration)>) {
     let mut iter = query.iter_combinations_mut();
     while let Some(
-        [(Mass(m1), transform1, mut acc1), (Mass(m2), transform2, mut acc2)],
+        [
+            (Mass(m1), transform1, mut acc1),
+            (Mass(m2), transform2, mut acc2),
+        ],
     ) = iter.fetch_next()
     {
         let delta = transform2.translation() - transform1.translation();
@@ -164,17 +160,13 @@ fn interact_bodies(
     }
 }
 
-fn integrate(
-    time: Res<Time>,
-    mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPos)>,
-) {
+fn integrate(time: Res<Time>, mut query: Query<(&mut Acceleration, &mut Transform, &mut LastPos)>) {
     let dt_sq = time.delta_secs() * time.delta_secs();
     for (mut acceleration, mut transform, mut last_pos) in &mut query {
         // verlet integration
         // x(t+dt) = 2x(t) - x(t-dt) + a(t)dt^2 + O(dt^4)
 
-        let new_pos =
-            transform.translation * 2.0 - last_pos.0 + acceleration.0 * dt_sq;
+        let new_pos = transform.translation * 2.0 - last_pos.0 + acceleration.0 * dt_sq;
         acceleration.0 = Vec3::ZERO;
         last_pos.0 = transform.translation;
         transform.translation = new_pos;

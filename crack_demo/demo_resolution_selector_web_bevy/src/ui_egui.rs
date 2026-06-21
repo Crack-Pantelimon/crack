@@ -10,7 +10,7 @@ impl Plugin for UiEguiPlugin {
         web_set_loading_status(true, "Loading UiEguiPlugin...");
         app.add_plugins(EguiPlugin::default())
             .init_resource::<UiState>()
-            .add_systems(Update, ui_example_system)
+            .add_systems(EguiPrimaryContextPass, ui_example_system)
             .add_systems(Update, update_web_loading_status);
         info!("done loading: UiEguiPlugin");
     }

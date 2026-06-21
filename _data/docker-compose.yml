@@ -9,8 +9,9 @@ services:
         read_only: true
       - ./:/data:ro
     ports:
-      - 127.0.0.1:8081:8081
+      - 127.0.0.1:19739:1973
     network_mode: host
+    restart: always
 
 # networks:
 #   default:
