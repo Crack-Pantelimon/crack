@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use bevy::{diagnostic::FrameCount, prelude::*};
 
 use bevy_egui::*;
@@ -133,7 +134,7 @@ fn ui_example_system(
                 ui.allocate_space(egui::Vec2::new(1.0, 10.0));
                 ui.add(egui::Label::new(res_txt));
 
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |_ui| {
                     // ui.add(egui::Hyperlink::from_label_and_url(
                     //     "powered by egui",
                     //     "https://github.com/emilk/egui/",
