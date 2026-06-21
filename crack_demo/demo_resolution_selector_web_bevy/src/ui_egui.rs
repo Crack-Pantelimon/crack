@@ -21,6 +21,7 @@ struct UiState {
     resolution: i32,
     ui_scale: i32,
     smooth: bool,
+    show_settings: bool,
 }
 impl Default for UiState {
     fn default() -> Self {
@@ -28,15 +29,14 @@ impl Default for UiState {
             resolution: 75,
             ui_scale: 125,
             smooth: true,
+            show_settings: false,
         }
     }
 }
 
 impl UiState {
     fn get_scale_factor_override(&self) -> Option<f32> {
-        Some(
-            self.ui_scale as f32 / 100.0 * self.resolution as f32 / 100.0 * 1.6,
-        )
+        Some(self.ui_scale as f32 / 100.0 * self.resolution as f32 / 100.0 * 1.6)
     }
 }
 
@@ -80,73 +80,91 @@ fn ui_example_system(
         (window.resolution.physical_size().x as f32 / (ui_state.resolution as f32 / 100.0)).round(),
         (window.resolution.physical_size().y as f32 / (ui_state.resolution as f32 / 100.0)).round(),
     );
-    let res_txt = format!("Physical: {}\nLogical: {}\nScreen: {}", phys_res, log_res,original_screen_res);
+    let res_txt = format!(
+        "Physical: {}\nLogical: {}\nScreen: {}",
+        phys_res, log_res, original_screen_res
+    );
 
-    egui::SidePanel::left("side_panel")
-        .default_width(200.0)
-        .show(ctx, |ui| {
-            ui.heading("Graphics Settings");
-            ui.allocate_space(egui::Vec2::new(1.0, 10.0));
+    if ui_state.show_settings {
+        egui::SidePanel::left("side_panel")
+            .default_width(200.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Graphics Settings");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.small_button("×").clicked() {
+                            ui_state.show_settings = false;
+                        }
+                    });
+                });
+                ui.allocate_space(egui::Vec2::new(1.0, 10.0));
 
-            ui.add(
-                egui::Slider::new(&mut ui_state.resolution, 25..=100)
-                    .text("Resolution")
-                    .suffix("%")
-                    .step_by(5.0)
-                    .clamping(egui::SliderClamping::Always),
-            );
-            if ui.button("Resolution +").clicked() {
-                ui_state.resolution += 5;
-            }
-            if ui.button("Resolution -").clicked() {
-                ui_state.resolution -= 5;
-            }
-
-            ui.allocate_space(egui::Vec2::new(1.0, 10.0));
-
-            ui.add(
-                egui::Slider::new(&mut ui_state.ui_scale, 75..=250)
-                    .text("UI Scale")
-                    .suffix("%")
-                    .step_by(5.0)
-                    .clamping(egui::SliderClamping::Always),
-            );
-            if ui.button("UI Scale +").clicked() {
-                ui_state.ui_scale += 5;
-            }
-            if ui.button("UI Scale -").clicked() {
-                ui_state.ui_scale -= 5;
-            }
-            ui.allocate_space(egui::Vec2::new(1.0, 10.0));
-            ui.add(egui::Checkbox::new(&mut ui_state.smooth, "Smooth"));
-            ui.allocate_space(egui::Vec2::new(1.0, 10.0));
-            ui.add(egui::Label::new(res_txt));
-
-            if *ui_state != old_ui_state {
-                // set the resolution in the object
-                web_set_resolution(ui_state.resolution);
-                window.resolution.set_scale_factor_override(
-                    ui_state.get_scale_factor_override(),
+                ui.add(
+                    egui::Slider::new(&mut ui_state.resolution, 25..=100)
+                        .text("Resolution")
+                        .suffix("%")
+                        .step_by(5.0)
+                        .clamping(egui::SliderClamping::Always),
                 );
-                web_fit_canvas_to_parent(ui_state.smooth);
-                *fit_again = 3;
-            }
+                if ui.button("Resolution +").clicked() {
+                    ui_state.resolution += 5;
+                }
+                if ui.button("Resolution -").clicked() {
+                    ui_state.resolution -= 5;
+                }
 
-            ui.with_layout(
-                egui::Layout::bottom_up(egui::Align::Center),
-                |ui| {
-                    ui.add(egui::Hyperlink::from_label_and_url(
-                        "powered by egui",
-                        "https://github.com/emilk/egui/",
-                    ));
-                },
-            );
-        });
+                ui.allocate_space(egui::Vec2::new(1.0, 10.0));
+
+                ui.add(
+                    egui::Slider::new(&mut ui_state.ui_scale, 75..=250)
+                        .text("UI Scale")
+                        .suffix("%")
+                        .step_by(5.0)
+                        .clamping(egui::SliderClamping::Always),
+                );
+                if ui.button("UI Scale +").clicked() {
+                    ui_state.ui_scale += 5;
+                }
+                if ui.button("UI Scale -").clicked() {
+                    ui_state.ui_scale -= 5;
+                }
+                ui.allocate_space(egui::Vec2::new(1.0, 10.0));
+                ui.add(egui::Checkbox::new(&mut ui_state.smooth, "Smooth"));
+                ui.allocate_space(egui::Vec2::new(1.0, 10.0));
+                ui.add(egui::Label::new(res_txt));
+
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                    // ui.add(egui::Hyperlink::from_label_and_url(
+                    //     "powered by egui",
+                    //     "https://github.com/emilk/egui/",
+                    // ));
+                });
+            });
+    }
+
+    if ui_state.resolution != old_ui_state.resolution
+        || ui_state.ui_scale != old_ui_state.ui_scale
+        || ui_state.smooth != old_ui_state.smooth
+    {
+        // set the resolution in the object
+        web_set_resolution(ui_state.resolution);
+        window
+            .resolution
+            .set_scale_factor_override(ui_state.get_scale_factor_override());
+        web_fit_canvas_to_parent(ui_state.smooth);
+        *fit_again = 3;
+    }
 
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         // The top panel is often a good place for a menu bar:
         egui::menu::bar(ui, |ui| {
-            egui::menu::menu_button(ui, "Menu", |ui| {
+            egui::menu::menu_button(ui, "Options", |ui| {
+                if ui.button("Graphics").clicked() {
+                    ui_state.show_settings = !ui_state.show_settings;
+                    ui.close();
+                }
+            });
+            egui::menu::menu_button(ui, "Help", |ui| {
                 if ui.button("Crash").clicked() {
                     std::process::exit(0);
                 }
@@ -160,8 +178,7 @@ fn web_set_resolution(_res: i32) {
     {
         let document = web_sys::window().unwrap().document().unwrap();
 
-        let canvas_parent_element =
-            document.get_element_by_id("canvas-parent").unwrap();
+        let canvas_parent_element = document.get_element_by_id("canvas-parent").unwrap();
 
         canvas_parent_element
             .set_attribute("style", &format!("--resolution: {};", _res))
@@ -174,8 +191,8 @@ fn web_fit_canvas_to_parent(_smooth: bool) {
     {
         let document = web_sys::window().unwrap().document().unwrap();
 
-        use web_sys::wasm_bindgen::JsCast;
         use web_sys::HtmlCanvasElement;
+        use web_sys::wasm_bindgen::JsCast;
 
         let canvas_element: HtmlCanvasElement = document
             .get_element_by_id("the-canvas")
@@ -210,16 +227,15 @@ pub fn web_set_loading_status(_show: bool, _message: &str) {
             "web_set_loading_status(show: {}, message: {})",
             _show, _message
         );
-        use web_sys::wasm_bindgen::JsCast;
         use web_sys::HtmlDivElement;
+        use web_sys::wasm_bindgen::JsCast;
 
         let document = web_sys::window().unwrap().document().unwrap();
         let loading_screen: HtmlDivElement = document
             .get_element_by_id("loading-screen")
             .unwrap()
             .unchecked_into();
-        let loading_screen_text =
-            document.get_element_by_id("loading-screen-text").unwrap();
+        let loading_screen_text = document.get_element_by_id("loading-screen-text").unwrap();
         let style = loading_screen.style();
         if _show {
             style.set_property("display", "flex").unwrap();
