@@ -48,12 +48,24 @@ fn ui_example_system(
     mut fit_again: Local<i32>,
     mut initialized: Local<bool>,
     time: Res<Time>,
-    mut fps_accum: Local<f32>,
+    mut fps: Local<f32>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         tracing::error!("no ctx in ui_example_system");
         return;
     };
+
+    // --- FPS (EMA over ~30 frames) ---
+    let dt = time.delta_secs();
+    if dt > 0.0 {
+        let instant_fps = 1.0 / dt;
+        if *fps == 0.0 {
+            *fps = instant_fps;
+        } else {
+            // exponential moving average, alpha ≈ 1/30
+            *fps = *fps * (29.0 / 30.0) + instant_fps * (1.0 / 30.0);
+        }
+    }
     if !*initialized {
         *initialized = true;
         web_set_resolution(ui_state.resolution);
@@ -174,6 +186,20 @@ fn ui_example_system(
             });
         });
     });
+
+    // --- FPS overlay (top-right corner) ---
+    let screen_rect = ctx.screen_rect();
+    egui::Area::new(egui::Id::new("fps_overlay"))
+        .fixed_pos(egui::pos2(screen_rect.max.x - 160.0, 8.0))
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            ui.label(
+                egui::RichText::new(format!("FPS: {:.0}", *fps))
+                    .color(egui::Color32::from_rgb(0, 220, 80))
+                    .size(28.0)
+                    .strong(),
+            );
+        });
 }
 
 fn web_set_resolution(_res: i32) {
