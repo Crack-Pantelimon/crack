@@ -25,7 +25,10 @@ impl Plugin for MainScenePlugin {
                 }),
             )
             .add_systems(EguiPrimaryContextPass, tree_navigator_ui)
-            .add_systems(Update, (check_and_parse_parquet, draw_tree_bboxes, sync_node_models));
+            .add_systems(
+                Update,
+                (check_and_parse_parquet, draw_tree_bboxes, sync_node_models),
+            );
         info!("done loading: MainScenePlugin");
     }
 }
@@ -306,7 +309,10 @@ fn check_and_parse_parquet(
             let mut path_to_meshes: HashMap<String, Vec<String>> = HashMap::new();
             for mesh in nodes.values() {
                 let path = get_octant_path(&mesh.name);
-                path_to_meshes.entry(path).or_default().push(mesh.name.clone());
+                path_to_meshes
+                    .entry(path)
+                    .or_default()
+                    .push(mesh.name.clone());
             }
 
             // establish parents and children maps from octant path
@@ -345,11 +351,11 @@ fn check_and_parse_parquet(
                 }
             }
 
-            // Filter to roots with min name length (dropping outliers with a longer name)
-            if !roots.is_empty() {
-                let min_len = roots.iter().map(|r| r.len()).min().unwrap_or(0);
-                roots.retain(|r| r.len() == min_len);
-            }
+            // // Filter to roots with min name length (dropping outliers with a longer name)
+            // if !roots.is_empty() {
+            //     let min_len = roots.iter().map(|r| r.len()).min().unwrap_or(0);
+            //     roots.retain(|r| r.len() == min_len);
+            // }
 
             info!("Found {} root nodes after filtering.", roots.len());
 
@@ -519,7 +525,7 @@ fn tree_navigator_ui(mut contexts: EguiContexts, mut data_res: ResMut<Data3DReso
     if let Some(name) = node_to_expand {
         // remove the expanded item from the rendered list
         data_res.rendered_nodes.remove(&name);
-        
+
         let child_names: Vec<String> = if let Some(node_children) = data_res.children.get(&name) {
             node_children.values().cloned().collect()
         } else {
@@ -558,7 +564,7 @@ fn sync_node_models(
                 if let Some(ref filename) = node.filename {
                     let glb_url = format!("{}/3d_data/{}", crate::config::DATA_BASE_URL, filename);
                     let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
-                    
+
                     commands.spawn((
                         WorldAssetRoot(asset_server.load(asset_path)),
                         Transform::from_xyz(0.0, 0.0, 0.0),
