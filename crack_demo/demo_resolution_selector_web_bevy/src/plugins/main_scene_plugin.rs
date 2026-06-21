@@ -254,10 +254,10 @@ fn parse_tree_nodes(bytes: &[u8]) -> Vec<TreeNode> {
             level,
             minx,
             maxx,
-            miny,
-            maxy,
-            minz,
-            maxz,
+            miny: minz,
+            maxy: maxz,
+            minz: -maxy,
+            maxz: -miny,
             octant_path,
             filename,
             vertex_count,
@@ -565,6 +565,10 @@ fn sync_node_models(
                         RenderedNodeModel {
                             node_name: node_name.clone(),
                         },
+                        avian3d::prelude::RigidBody::Static,
+                        avian3d::prelude::ColliderConstructorHierarchy::new(
+                            avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
+                        ),
                     ));
                 }
             }

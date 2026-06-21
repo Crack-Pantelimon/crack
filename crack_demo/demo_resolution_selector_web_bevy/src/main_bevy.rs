@@ -60,6 +60,7 @@ pub fn main_bevy() {
         .add_plugins(crate::ui_egui::UiEguiPlugin)
         .add_plugins(crate::plugins::main_scene_plugin::MainScenePlugin)
         .add_plugins(crate::plugins::camera_controls::CameraControlsPlugin)
+        .add_plugins(crate::plugins::physics_plugin::PhysicsPlugin)
         .insert_resource(ClearColor(Color::BLACK))
         .add_systems(Update, log_dt)
         .run();
