@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use crate::plugins::main_scene_plugin::Data3DResource;
+use crate::plugins::map_plugin::Data3DResource;
 
 pub struct CameraControlsPlugin;
 

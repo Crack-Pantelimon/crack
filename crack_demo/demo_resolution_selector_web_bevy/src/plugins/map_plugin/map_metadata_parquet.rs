@@ -1,0 +1,380 @@
+use bevy::asset::{Asset, AssetLoader, LoadContext, io::Reader};
+use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::prelude::*;
+use bevy::reflect::TypePath;
+use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
+use bytes::Bytes;
+use parquet::file::reader::{FileReader, SerializedFileReader};
+use parquet::record::Field;
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+
+use crate::plugins::map_plugin::{BBox, Data3DResource, MapTreeNode};
+
+#[derive(Resource)]
+pub struct ParquetHandles {
+    nodes: Handle<ParquetAsset>,
+}
+
+pub fn init_parquet_handles(mut commands: Commands, asset_server: Res<AssetServer>) {
+    // Load parquet assets from HTTP URL
+    let nodes_url = format!(
+        "{}/3d_data/tree_nodes.parquet",
+        crate::config::DATA_BASE_URL
+    );
+
+    info!("Loading nodes from: {}", nodes_url);
+
+    let nodes_handle = asset_server.load(nodes_url);
+
+    commands.insert_resource(ParquetHandles {
+        nodes: nodes_handle,
+    });
+}
+
+#[derive(Asset, TypePath, Debug, Clone)]
+pub struct ParquetAsset {
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Default, TypePath)]
+pub struct ParquetAssetLoader;
+
+impl AssetLoader for ParquetAssetLoader {
+    type Asset = ParquetAsset;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &Self::Settings,
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<Self::Asset, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        Ok(ParquetAsset { bytes })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["parquet"]
+    }
+}
+
+fn get_string(field: Field) -> Option<String> {
+    match field {
+        Field::Str(s) => Some(s),
+        _ => None,
+    }
+}
+
+fn get_int(field: Field) -> Option<i64> {
+    match field {
+        Field::Int(v) => Some(v as i64),
+        Field::Long(v) => Some(v),
+        Field::UInt(v) => Some(v as i64),
+        Field::ULong(v) => Some(v as i64),
+        Field::Short(v) => Some(v as i64),
+        Field::UShort(v) => Some(v as i64),
+        Field::Byte(v) => Some(v as i64),
+        Field::UByte(v) => Some(v as i64),
+        _ => None,
+    }
+}
+
+fn get_float(field: Field) -> Option<f32> {
+    match field {
+        Field::Float(v) => Some(v),
+        Field::Double(v) => Some(v as f32),
+        _ => None,
+    }
+}
+
+fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeNode> {
+    let bytes_data = Bytes::copy_from_slice(bytes);
+    let reader = match SerializedFileReader::new(bytes_data) {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to initialize SerializedFileReader: {:?}", e);
+            return Vec::new();
+        }
+    };
+    let mut nodes = Vec::new();
+    let row_iter = match reader.get_row_iter(None) {
+        Ok(it) => it,
+        Err(e) => {
+            error!("Failed to get row iterator: {:?}", e);
+            return Vec::new();
+        }
+    };
+
+    for row in row_iter {
+        let row = match row {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Error reading node row: {:?}", e);
+                continue;
+            }
+        };
+        let mut name = String::new();
+        let mut type_ = String::new();
+        let mut level = None;
+        let mut minx = 0.0;
+        let mut maxx = 0.0;
+        let mut miny = 0.0;
+        let mut maxy = 0.0;
+        let mut minz = 0.0;
+        let mut maxz = 0.0;
+        let mut octant_path = String::new();
+        let mut filename = None;
+        let mut vertex_count = None;
+
+        for (col_name, field) in row.into_columns() {
+            match col_name.as_str() {
+                "name" => {
+                    name = get_string(field).unwrap_or_default();
+                }
+                "type" => {
+                    type_ = get_string(field).unwrap_or_default();
+                }
+                "level" => {
+                    level = get_int(field).map(|v| v as i32);
+                }
+                "minx" => {
+                    minx = get_float(field).unwrap_or(0.0);
+                }
+                "maxx" => {
+                    maxx = get_float(field).unwrap_or(0.0);
+                }
+                "miny" => {
+                    miny = get_float(field).unwrap_or(0.0);
+                }
+                "maxy" => {
+                    maxy = get_float(field).unwrap_or(0.0);
+                }
+                "minz" => {
+                    minz = get_float(field).unwrap_or(0.0);
+                }
+                "maxz" => {
+                    maxz = get_float(field).unwrap_or(0.0);
+                }
+                "octant_path" => {
+                    octant_path = get_string(field).unwrap_or_default();
+                }
+                "filename" => {
+                    filename = get_string(field);
+                }
+                "vertex_count" => {
+                    vertex_count = get_int(field);
+                }
+                _ => {}
+            }
+        }
+
+        nodes.push(MapTreeNode {
+            name,
+            r#type: type_,
+            level,
+            octant_path,
+            filename,
+            vertex_count,
+            bbox: BBox {
+                min: Vec3::new(minx, minz, -miny),
+                max: Vec3::new(maxx, maxz, -maxy),
+            },
+        });
+    }
+    nodes
+}
+
+fn get_octant_path(name: &str) -> String {
+    if let Some(idx) = name.rfind('_') {
+        name[..idx].to_string()
+    } else {
+        name.to_string()
+    }
+}
+
+pub fn check_and_parse_parquet(
+    mut commands: Commands,
+    handles: Option<Res<ParquetHandles>>,
+    mut parquet_assets: ResMut<Assets<ParquetAsset>>,
+    mut data_res: ResMut<Data3DResource>,
+    mut camera_query: Query<&mut Transform, With<Camera>>,
+) {
+    if data_res.parsed {
+        return;
+    }
+
+    let Some(handles) = handles else {
+        return;
+    };
+    if parquet_assets.get(&handles.nodes).is_none() {
+        return;
+    }
+    info!("Nodes parquet file loaded! Parsing...");
+
+    let nodes_asset = parquet_assets.remove(&handles.nodes).unwrap();
+    let mut parsed_nodes = parse_tree_nodes(&nodes_asset.bytes);
+    parsed_nodes.sort_by(|a, b| a.name.cmp(&b.name));
+
+    info!("Parsed {} raw nodes.", parsed_nodes.len());
+
+    let mut nodes = BTreeMap::new();
+    for node in parsed_nodes {
+        // skip non-mesh nodes
+        if node.r#type == "mesh" {
+            nodes.insert(node.name.clone(), node);
+        }
+    }
+
+    // group mesh names by octant_path
+    let mut path_to_meshes: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for mesh in nodes.values() {
+        let path = get_octant_path(&mesh.name);
+        path_to_meshes
+            .entry(path)
+            .or_default()
+            .push(mesh.name.clone());
+    }
+    // Sort to ensure absolute stability
+    for list in path_to_meshes.values_mut() {
+        list.sort();
+    }
+
+    // establish parents and children maps from octant path
+    let mut children: BTreeMap<String, BTreeMap<char, String>> = BTreeMap::new();
+    let mut parents: BTreeMap<String, String> = BTreeMap::new();
+
+    for mesh in nodes.values() {
+        let path = get_octant_path(&mesh.name);
+        if !path.is_empty() {
+            let parent_path = path[..path.len() - 1].to_string();
+            if let Some(parent_meshes) = path_to_meshes.get(&parent_path) {
+                for parent_name in parent_meshes {
+                    parents.insert(mesh.name.clone(), parent_name.clone());
+
+                    let mut char_key = path.chars().last().unwrap_or(' ');
+                    let parent_children = children.entry(parent_name.clone()).or_default();
+                    if parent_children.contains_key(&char_key) {
+                        for c in "01234567abcdefghijklmnopqrstuvwxyz".chars() {
+                            if !parent_children.contains_key(&c) {
+                                char_key = c;
+                                break;
+                            }
+                        }
+                    }
+                    parent_children.insert(char_key, mesh.name.clone());
+                }
+            }
+        }
+    }
+
+    // Find roots (meshes in our nodes map that have no parent in parents map)
+    let mut roots = Vec::new();
+    for node_name in nodes.keys() {
+        if !parents.contains_key(node_name) {
+            roots.push(node_name.clone());
+        }
+    }
+    roots.sort();
+
+    info!("Found {} root nodes after filtering.", roots.len());
+
+    // Traverse and calculate depth (roots level = 0, child = parent + 1)
+    let mut queue = Vec::new();
+    for root in &roots {
+        queue.push((root.clone(), 0));
+    }
+    while let Some((node_name, depth)) = queue.pop() {
+        if let Some(node) = nodes.get_mut(&node_name) {
+            node.level = Some(depth);
+        }
+        if let Some(node_children) = children.get(&node_name) {
+            for child_name in node_children.values() {
+                queue.push((child_name.clone(), depth + 1));
+            }
+        }
+    }
+
+    // originally keep all roots in rendered_nodes
+    let mut rendered_nodes = BTreeSet::new();
+    for root in &roots {
+        rendered_nodes.insert(root.clone());
+    }
+
+    if !nodes.is_empty() {
+        let mut min_x = f32::INFINITY;
+        let mut max_x = -f32::INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = -f32::INFINITY;
+        let mut min_z = f32::INFINITY;
+        let mut max_z = -f32::INFINITY;
+
+        for node in nodes.values() {
+            min_x = min_x.min(node.bbox.min.x).min(node.bbox.max.x);
+            max_x = max_x.max(node.bbox.min.x).max(node.bbox.max.x);
+            min_y = min_y.min(node.bbox.min.y).min(node.bbox.max.y);
+            max_y = max_y.max(node.bbox.min.y).max(node.bbox.max.y);
+            min_z = min_z.min(node.bbox.min.z).min(node.bbox.max.z);
+            max_z = max_z.max(node.bbox.min.z).max(node.bbox.max.z);
+        }
+
+        let bbox = BBox {
+            min: Vec3::new(min_x, min_y, min_z),
+            max: Vec3::new(max_x, max_y, max_z),
+        };
+
+        info!("Computed entire scene bbox: {:?}", bbox);
+
+        let middle = (bbox.min + bbox.max) / 2.0;
+        let size = bbox.max - bbox.min;
+        let offset_y = size.y.max(10.0) * 1.2;
+        let camera_pos = Vec3::new(bbox.max.x, bbox.max.y + offset_y, bbox.max.z);
+
+        info!("Placing camera at {:?} looking at {:?}", camera_pos, middle);
+        for mut cam_transform in &mut camera_query {
+            *cam_transform = Transform::from_translation(camera_pos).looking_at(middle, Vec3::Y);
+        }
+
+        data_res.bbox = Some(bbox);
+    }
+
+    let mut node_distances = BTreeMap::new();
+    let mut node_min_distances = BTreeMap::new();
+    for (name, node) in &nodes {
+        let cx = 0.0f32.clamp(
+            node.bbox.min.x.min(node.bbox.max.x),
+            node.bbox.min.x.max(node.bbox.max.x),
+        );
+        let cy = 0.0f32.clamp(
+            node.bbox.min.y.min(node.bbox.max.y),
+            node.bbox.min.y.max(node.bbox.max.y),
+        );
+        let cz = 0.0f32.clamp(
+            node.bbox.min.z.min(node.bbox.max.z),
+            node.bbox.min.z.max(node.bbox.max.z),
+        );
+        let dist = Vec3::new(cx, cy, cz).length();
+        node_distances.insert(name.clone(), vec![dist]);
+        node_min_distances.insert(name.clone(), dist);
+    }
+
+    let budget = roots.len() as u32;
+    data_res.nodes = nodes;
+    data_res.children = children;
+    data_res.parents = parents;
+    data_res.rendered_nodes = rendered_nodes;
+    data_res.selected_node = None;
+    data_res.roots = roots;
+    data_res.lod_budget = budget;
+    let timeout = 0.1 + rand::random::<f32>() * 0.1;
+    data_res.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
+    data_res.last_reference_points = vec![Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY)];
+    data_res.last_lod_budget = 0;
+    data_res.node_distances = node_distances;
+    data_res.node_min_distances = node_min_distances;
+    data_res.parsed = true;
+
+    commands.remove_resource::<ParquetHandles>();
+}
