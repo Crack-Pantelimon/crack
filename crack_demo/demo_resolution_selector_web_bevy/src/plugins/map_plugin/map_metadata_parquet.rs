@@ -6,7 +6,9 @@ use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::record::Field;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::plugins::map_plugin::{BBox, MapLODState, MapTileAssetId, MapTree, MapTreeAssetInfo, MapTreeNodePath, MapTreeNodeInfo};
+use crate::plugins::map_plugin::{
+    BBox, MapLODState, MapTileAssetId, MapTree, MapTreeAssetInfo, MapTreeNodeInfo, MapTreeNodePath,
+};
 
 #[derive(Resource)]
 pub struct ParquetHandles {
@@ -172,7 +174,7 @@ fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeAssetInfo> {
             name: MapTileAssetId(name),
             r#type: type_,
             level,
-            octant_path,
+            _octant_path: octant_path,
             filename,
             vertex_count,
             bbox: BBox {
@@ -183,7 +185,6 @@ fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeAssetInfo> {
     }
     nodes
 }
-
 
 pub fn check_and_parse_parquet(
     mut commands: Commands,
@@ -228,11 +229,14 @@ pub fn check_and_parse_parquet(
             node_info.bbox.min = node_info.bbox.min.min(asset.bbox.min);
             node_info.bbox.max = node_info.bbox.max.max(asset.bbox.max);
         } else {
-            nodes.insert(path.clone(), MapTreeNodeInfo {
-                path: path.clone(),
-                assets: vec![asset.name.clone()],
-                bbox: asset.bbox,
-            });
+            nodes.insert(
+                path.clone(),
+                MapTreeNodeInfo {
+                    path: path.clone(),
+                    assets: vec![asset.name.clone()],
+                    bbox: asset.bbox,
+                },
+            );
         }
     }
 
@@ -244,7 +248,10 @@ pub fn check_and_parse_parquet(
         if let Some(parent_path) = path.get_parent() {
             if nodes.contains_key(&parent_path) {
                 parents.insert(path.clone(), parent_path.clone());
-                children.entry(parent_path).or_default().insert(path.clone());
+                children
+                    .entry(parent_path)
+                    .or_default()
+                    .insert(path.clone());
             }
         }
     }
@@ -317,15 +324,19 @@ pub fn check_and_parse_parquet(
     }
 
     data_res.assets = assets;
-    data_res.nodes = nodes;
+    data_res.all_nodes = nodes;
     data_res.children = children;
     data_res.parents = parents;
     data_res.parsed = true;
     data_res.roots = roots.clone();
 
     lod_state.selected_node = None;
-    let budget = roots.len() as u32;
-    lod_state.lod_budget = budget;
+    let budget = roots
+        .iter()
+        .map(|i| data_res.all_nodes.get(i).unwrap().assets.len())
+        .sum::<usize>()
+        + 200;
+    lod_state.lod_budget = budget as u32;
     let timeout = 0.1 + rand::random::<f32>() * 0.1;
     lod_state.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
 

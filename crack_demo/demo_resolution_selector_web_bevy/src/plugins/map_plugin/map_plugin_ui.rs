@@ -1,7 +1,9 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
-use crate::plugins::map_plugin::{MapLODState, MapTree, MapTreeNodeInfo, MapTreeNodePath, map_lod::TreeMapTile};
+use crate::plugins::map_plugin::{
+    MapLODState, MapTree, MapTreeNodeInfo, MapTreeNodePath, map_lod::TreeMapTile,
+};
 
 pub fn draw_tree_bboxes(
     mut gizmos: Gizmos,
@@ -19,7 +21,7 @@ pub fn draw_tree_bboxes(
     for tile in tiles_query.iter() {
         let node_path = &tile.node_path;
         if drawn.insert(node_path.clone()) {
-            if let Some(node) = data_res.nodes.get(node_path) {
+            if let Some(node) = data_res.all_nodes.get(node_path) {
                 let is_selected = lod_state.selected_node.as_ref() == Some(&node_path.0);
                 let color = if is_selected {
                     Color::srgba(1.0, 0.0, 0.0, 0.3) // Red if selected
@@ -119,7 +121,7 @@ pub fn tree_navigator_ui(
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             for node_path in rendered_paths {
-                if let Some(node) = data_res.nodes.get(&node_path) {
+                if let Some(node) = data_res.all_nodes.get(&node_path) {
                     let is_selected = lod_state.selected_node.as_ref() == Some(&node_path.0);
                     let label_text = format!(
                         "Path: {} | Assets: {} | BBox: {:?}",

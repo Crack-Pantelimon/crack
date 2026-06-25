@@ -7,7 +7,8 @@ use bevy_egui::EguiPrimaryContextPass;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::plugins::map_plugin::map_lod::{
-    do_merge_requests, do_split_requests, recompute_lod_mark_changes, spawn_root_map_tiles,
+    TileSwapRequests, do_merge_requests, do_split_requests, recompute_lod_mark_changes,
+    spawn_root_map_tiles, start_tile_swap_requests,
 };
 use crate::plugins::map_plugin::map_metadata_parquet::{
     ParquetAsset, ParquetAssetLoader, check_and_parse_parquet, init_parquet_handles,
@@ -26,6 +27,7 @@ impl Plugin for MapPlugin {
             .init_asset_loader::<ParquetAssetLoader>()
             .init_resource::<MapTree>()
             .init_resource::<MapLODState>()
+            .init_resource::<TileSwapRequests>()
             .add_systems(Startup, init_parquet_handles)
             .add_systems(EguiPrimaryContextPass, tree_navigator_ui)
             .add_systems(
@@ -39,8 +41,9 @@ impl Plugin for MapPlugin {
                     recompute_lod_mark_changes,
                 ),
             )
-            .add_systems(PreUpdate, do_split_requests)
-            .add_systems(PostUpdate, do_merge_requests);
+            .add_systems(PostUpdate, (start_tile_swap_requests,))
+            .add_systems(PreUpdate, (do_split_requests,))
+            .add_systems(First, (do_merge_requests,));
         info!("done loading: MapPlugin");
     }
 }
@@ -51,7 +54,7 @@ pub struct MapTreeAssetInfo {
     pub r#type: String,
     pub level: Option<i32>,
     pub bbox: BBox,
-    pub octant_path: MapTreeNodePath,
+    pub _octant_path: MapTreeNodePath,
     pub filename: Option<String>,
     pub vertex_count: Option<i64>,
 }
@@ -65,17 +68,14 @@ pub struct BBox {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MapTileAssetId(String);
 impl MapTileAssetId {
-    
-pub fn get_octant_path(&self) -> MapTreeNodePath {
-    if let Some(idx) = self.0.rfind('_') {
-        MapTreeNodePath(self.0[..idx].to_string())
-    } else {
-        MapTreeNodePath(self.0.to_string())
+    pub fn get_octant_path(&self) -> MapTreeNodePath {
+        if let Some(idx) = self.0.rfind('_') {
+            MapTreeNodePath(self.0[..idx].to_string())
+        } else {
+            MapTreeNodePath(self.0.to_string())
+        }
     }
 }
-}
-
-
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MapTreeNodePath(pub String);
@@ -88,9 +88,9 @@ impl MapTreeNodePath {
         s.pop();
         Some(MapTreeNodePath(s))
     }
-    pub fn is_empty(&self) -> bool {
-        return self.0.is_empty();
-    }
+    // pub fn is_empty(&self) -> bool {
+    //     return self.0.is_empty();
+    // }
 }
 
 #[derive(Clone, Debug)]
@@ -100,13 +100,11 @@ pub struct MapTreeNodeInfo {
     pub bbox: BBox,
 }
 
-
 #[derive(Resource, Default, Debug)]
 pub struct MapTree {
     pub assets: BTreeMap<MapTileAssetId, MapTreeAssetInfo>,
 
-
-    pub nodes: BTreeMap<MapTreeNodePath, MapTreeNodeInfo>,
+    pub all_nodes: BTreeMap<MapTreeNodePath, MapTreeNodeInfo>,
     pub children: BTreeMap<MapTreeNodePath, BTreeSet<MapTreeNodePath>>,
     pub parents: BTreeMap<MapTreeNodePath, MapTreeNodePath>,
     pub bbox: BBox,

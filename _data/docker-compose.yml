@@ -8,8 +8,9 @@ services:
         target: /etc/nginx/conf.d/default.conf
         read_only: true
       - ./:/data:ro
+      - ../crack_demo/demo_resolution_selector_web_bevy/dist:/dist:ro
     ports:
-      - 127.0.0.1:19739:1973
+      - 127.0.0.1:1973:1973
     network_mode: host
     restart: always
 
