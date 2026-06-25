@@ -1,15 +1,12 @@
 use bevy::asset::{Asset, AssetLoader, LoadContext, io::Reader};
-use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
 use bevy::reflect::TypePath;
-use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
-use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use bytes::Bytes;
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::record::Field;
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::plugins::map_plugin::{BBox, Data3DResource, MapTreeNode};
+use crate::plugins::map_plugin::{BBox, MapLODState, MapTileAssetId, MapTree, MapTreeAssetInfo, MapTreeNodePath};
 
 #[derive(Resource)]
 pub struct ParquetHandles {
@@ -90,7 +87,7 @@ fn get_float(field: Field) -> Option<f32> {
     }
 }
 
-fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeNode> {
+fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeAssetInfo> {
     let bytes_data = Bytes::copy_from_slice(bytes);
     let reader = match SerializedFileReader::new(bytes_data) {
         Ok(r) => r,
@@ -125,7 +122,7 @@ fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeNode> {
         let mut maxy = 0.0;
         let mut minz = 0.0;
         let mut maxz = 0.0;
-        let mut octant_path = String::new();
+        let mut octant_path = MapTreeNodePath(String::new());
         let mut filename = None;
         let mut vertex_count = None;
 
@@ -159,7 +156,7 @@ fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeNode> {
                     maxz = get_float(field).unwrap_or(0.0);
                 }
                 "octant_path" => {
-                    octant_path = get_string(field).unwrap_or_default();
+                    octant_path.0 = get_string(field).unwrap_or_default();
                 }
                 "filename" => {
                     filename = get_string(field);
@@ -171,8 +168,8 @@ fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeNode> {
             }
         }
 
-        nodes.push(MapTreeNode {
-            name,
+        nodes.push(MapTreeAssetInfo {
+            name: MapTileAssetId(name),
             r#type: type_,
             level,
             octant_path,
@@ -187,19 +184,13 @@ fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeNode> {
     nodes
 }
 
-fn get_octant_path(name: &str) -> String {
-    if let Some(idx) = name.rfind('_') {
-        name[..idx].to_string()
-    } else {
-        name.to_string()
-    }
-}
 
 pub fn check_and_parse_parquet(
     mut commands: Commands,
     handles: Option<Res<ParquetHandles>>,
     mut parquet_assets: ResMut<Assets<ParquetAsset>>,
-    mut data_res: ResMut<Data3DResource>,
+    mut data_res: ResMut<MapTree>,
+    mut lod_state: ResMut<MapLODState>,
     mut camera_query: Query<&mut Transform, With<Camera>>,
 ) {
     if data_res.parsed {
@@ -229,9 +220,9 @@ pub fn check_and_parse_parquet(
     }
 
     // group mesh names by octant_path
-    let mut path_to_meshes: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut path_to_meshes: BTreeMap<_, Vec<_>> = BTreeMap::new();
     for mesh in nodes.values() {
-        let path = get_octant_path(&mesh.name);
+        let path = mesh.name.get_octant_path();
         path_to_meshes
             .entry(path)
             .or_default()
@@ -247,9 +238,8 @@ pub fn check_and_parse_parquet(
     let mut parents: BTreeMap<String, String> = BTreeMap::new();
 
     for mesh in nodes.values() {
-        let path = get_octant_path(&mesh.name);
-        if !path.is_empty() {
-            let parent_path = path[..path.len() - 1].to_string();
+        let path = mesh.name.get_octant_path();
+        if let parent_path = path.get_parent() {
             if let Some(parent_meshes) = path_to_meshes.get(&parent_path) {
                 for parent_name in parent_meshes {
                     parents.insert(mesh.name.clone(), parent_name.clone());
@@ -271,13 +261,12 @@ pub fn check_and_parse_parquet(
     }
 
     // Find roots (meshes in our nodes map that have no parent in parents map)
-    let mut roots = Vec::new();
+    let mut roots = BTreeSet::new();
     for node_name in nodes.keys() {
         if !parents.contains_key(node_name) {
-            roots.push(node_name.clone());
+            roots.insert(node_name.clone());
         }
     }
-    roots.sort();
 
     info!("Found {} root nodes after filtering.", roots.len());
 
@@ -295,12 +284,6 @@ pub fn check_and_parse_parquet(
                 queue.push((child_name.clone(), depth + 1));
             }
         }
-    }
-
-    // originally keep all roots in rendered_nodes
-    let mut rendered_nodes = BTreeSet::new();
-    for root in &roots {
-        rendered_nodes.insert(root.clone());
     }
 
     if !nodes.is_empty() {
@@ -337,44 +320,51 @@ pub fn check_and_parse_parquet(
             *cam_transform = Transform::from_translation(camera_pos).looking_at(middle, Vec3::Y);
         }
 
-        data_res.bbox = Some(bbox);
+        data_res.bbox = bbox;
     }
 
-    let mut node_distances = BTreeMap::new();
-    let mut node_min_distances = BTreeMap::new();
-    for (name, node) in &nodes {
-        let cx = 0.0f32.clamp(
-            node.bbox.min.x.min(node.bbox.max.x),
-            node.bbox.min.x.max(node.bbox.max.x),
-        );
-        let cy = 0.0f32.clamp(
-            node.bbox.min.y.min(node.bbox.max.y),
-            node.bbox.min.y.max(node.bbox.max.y),
-        );
-        let cz = 0.0f32.clamp(
-            node.bbox.min.z.min(node.bbox.max.z),
-            node.bbox.min.z.max(node.bbox.max.z),
-        );
-        let dist = Vec3::new(cx, cy, cz).length();
-        node_distances.insert(name.clone(), vec![dist]);
-        node_min_distances.insert(name.clone(), dist);
-    }
-
-    let budget = roots.len() as u32;
-    data_res.nodes = nodes;
+    data_res.raw_nodes = nodes.clone();
     data_res.children = children;
     data_res.parents = parents;
-    data_res.rendered_nodes = rendered_nodes;
-    data_res.selected_node = None;
-    data_res.roots = roots;
-    data_res.lod_budget = budget;
-    let timeout = 0.1 + rand::random::<f32>() * 0.1;
-    data_res.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
-    data_res.last_reference_points = vec![Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY)];
-    data_res.last_lod_budget = 0;
-    data_res.node_distances = node_distances;
-    data_res.node_min_distances = node_min_distances;
     data_res.parsed = true;
+    data_res.roots = roots.clone();
+
+    // originally keep all roots in rendered_nodes
+    let mut rendered_nodes = BTreeSet::new();
+    for root in &roots {
+        rendered_nodes.insert(root.clone());
+    }
+
+    // let mut node_distances = BTreeMap::new();
+    // let mut node_min_distances = BTreeMap::new();
+    // for (name, node) in &nodes {
+    //     let cx = 0.0f32.clamp(
+    //         node.bbox.min.x.min(node.bbox.max.x),
+    //         node.bbox.min.x.max(node.bbox.max.x),
+    //     );
+    //     let cy = 0.0f32.clamp(
+    //         node.bbox.min.y.min(node.bbox.max.y),
+    //         node.bbox.min.y.max(node.bbox.max.y),
+    //     );
+    //     let cz = 0.0f32.clamp(
+    //         node.bbox.min.z.min(node.bbox.max.z),
+    //         node.bbox.min.z.max(node.bbox.max.z),
+    //     );
+    //     let dist = Vec3::new(cx, cy, cz).length();
+    //     node_distances.insert(name.clone(), vec![dist]);
+    //     node_min_distances.insert(name.clone(), dist);
+    // }
+
+    // lod_state.rendered_nodes = rendered_nodes;
+    lod_state.selected_node = None;
+    let budget = roots.len() as u32;
+    lod_state.lod_budget = budget;
+    let timeout = 0.1 + rand::random::<f32>() * 0.1;
+    lod_state.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
+    // lod_state.last_reference_points = vec![Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY)];
+    // lod_state.last_lod_budget = 0;
+    // lod_state.node_distances = node_distances;
+    // lod_state.node_min_distances = node_min_distances;
 
     commands.remove_resource::<ParquetHandles>();
 }

@@ -1,29 +1,25 @@
-use bevy::asset::{Asset, AssetLoader, LoadContext, io::Reader};
-use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
-use bevy::reflect::TypePath;
-use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
-use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
-use bytes::Bytes;
-use parquet::file::reader::{FileReader, SerializedFileReader};
-use parquet::record::Field;
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+use bevy_egui::{EguiContexts, egui};
 
-use crate::plugins::map_plugin::{Data3DResource, MapTreeNode};
+use crate::plugins::map_plugin::{MapLODState, MapTree, MapTreeAssetInfo, map_lod::TreeMapTile};
 
-
-
-pub fn draw_tree_bboxes(mut gizmos: Gizmos, data_res: Res<Data3DResource>) {
+pub fn draw_tree_bboxes(
+    mut gizmos: Gizmos,
+    data_res: Res<MapTree>,
+    lod_state: Res<MapLODState>,
+    tiles_query: Query<&TreeMapTile>,
+) {
     if !data_res.parsed {
         return;
     }
 
-    for node_name in &data_res.rendered_nodes {
-        if let Some(node) = data_res.nodes.get(node_name) {
-            let is_selected = data_res.selected_node.as_ref() == Some(node_name);
+    for tile in tiles_query.iter() {
+        let node_name = tile.node_name.clone();
+        if let Some(node) = data_res.raw_nodes.get(&node_name) {
+            let is_selected = lod_state.selected_node.as_ref() == Some(&node_name);
             let color = if is_selected {
                 Color::srgba(1.0, 0.0, 0.0, 0.3) // Red if selected
-            } else if data_res.parents.get(node_name).is_none() {
+            } else if data_res.parents.get(&node_name).is_none() {
                 Color::srgba(0.0, 1.0, 0.0, 0.3) // Green for root
             } else {
                 Color::srgba(0.0, 0.5, 1.0, 0.3) // Blue for others
@@ -33,7 +29,7 @@ pub fn draw_tree_bboxes(mut gizmos: Gizmos, data_res: Res<Data3DResource>) {
     }
 }
 
-fn draw_node_bbox(gizmos: &mut Gizmos, node: &MapTreeNode, color: Color) {
+fn draw_node_bbox(gizmos: &mut Gizmos, node: &MapTreeAssetInfo, color: Color) {
     let center = Vec3::new(
         (node.bbox.min.x + node.bbox.max.x) / 2.0,
         (node.bbox.min.y + node.bbox.max.y) / 2.0,
@@ -48,7 +44,12 @@ fn draw_node_bbox(gizmos: &mut Gizmos, node: &MapTreeNode, color: Color) {
     gizmos.primitive_3d(&cuboid, Isometry3d::from_translation(center), color);
 }
 
-pub fn tree_navigator_ui(mut contexts: EguiContexts, mut data_res: ResMut<Data3DResource>) {
+pub fn tree_navigator_ui(
+    mut contexts: EguiContexts,
+    mut data_res: ResMut<MapTree>,
+    mut lod_state: ResMut<MapLODState>,
+    tiles_query: Query<&TreeMapTile>,
+) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
@@ -62,27 +63,27 @@ pub fn tree_navigator_ui(mut contexts: EguiContexts, mut data_res: ResMut<Data3D
     egui::Window::new("LOD Configuration & Tree Navigator").show(ctx, |ui| {
         // Slider for budget: roots.len() to 1000
         let min_budget = data_res.roots.len() as u32;
-        let mut budget = data_res.lod_budget;
+        let mut budget = lod_state.lod_budget;
         ui.horizontal(|ui| {
             ui.label("Budget:");
             ui.add(egui::Slider::new(&mut budget, min_budget..=1000).text(""));
         });
-        if budget != data_res.lod_budget {
-            data_res.lod_budget = budget;
+        if budget != lod_state.lod_budget {
+            lod_state.lod_budget = budget;
         }
 
-        // Show total object count including parents
-        let total_objects = data_res.loaded_scenes.len();
-        ui.label(format!(
-            "Total Objects (including parents): {}",
-            total_objects
-        ));
+        // // Show total object count including parents
+        // let total_objects = lod_state.loaded_scenes.len();
+        // ui.label(format!(
+        //     "Total Objects (including parents): {}",
+        //     total_objects
+        // ));
 
         ui.separator();
 
         ui.heading("Reference Points");
         let mut to_remove = None;
-        for (i, pt) in data_res.reference_points.iter().enumerate() {
+        for (i, pt) in lod_state.reference_points.iter().enumerate() {
             ui.horizontal(|ui| {
                 ui.label(format!("Pt {}: ({:.1}, {:.1}, {:.1})", i, pt.x, pt.y, pt.z));
                 if ui.button("Remove").clicked() {
@@ -91,18 +92,21 @@ pub fn tree_navigator_ui(mut contexts: EguiContexts, mut data_res: ResMut<Data3D
             });
         }
         if let Some(idx) = to_remove {
-            data_res.reference_points.remove(idx);
+            lod_state.reference_points.remove(idx);
         }
 
         ui.separator();
         ui.heading("Tree Navigator");
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let rendered_names: Vec<String> = data_res.rendered_nodes.iter().cloned().collect();
+            let rendered_names: Vec<String> = tiles_query
+                .iter()
+                .map(|tile| tile.node_name.clone())
+                .collect();
 
             for node_name in rendered_names {
-                if let Some(node) = data_res.nodes.get(&node_name) {
-                    let is_selected = data_res.selected_node.as_ref() == Some(&node_name);
+                if let Some(node) = data_res.raw_nodes.get(&node_name) {
+                    let is_selected = lod_state.selected_node.as_ref() == Some(&node_name);
                     let label_text = format!(
                         "Name: {} | Type: {} | Level: {:?} | Vertices: {:?}",
                         node.name,
@@ -127,16 +131,14 @@ pub fn tree_navigator_ui(mut contexts: EguiContexts, mut data_res: ResMut<Data3D
     });
 
     if node_to_deselect {
-        data_res.selected_node = None;
+        lod_state.selected_node = None;
     } else if let Some(name) = node_to_select {
-        data_res.selected_node = Some(name);
+        lod_state.selected_node = Some(name);
     }
 }
 
-
-
 pub fn handle_click_raycast(
-    mut data_res: ResMut<Data3DResource>,
+    mut lod_state: ResMut<MapLODState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     window_query: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
@@ -167,7 +169,7 @@ pub fn handle_click_raycast(
                     &avian3d::prelude::SpatialQueryFilter::default(),
                 ) {
                     let hit_point = ray.origin + *ray.direction * hit.distance;
-                    data_res.reference_points.push(hit_point);
+                    lod_state.reference_points.push(hit_point);
                     info!("Added reference point at {:?}", hit_point);
                 }
             }
@@ -177,7 +179,8 @@ pub fn handle_click_raycast(
 
 pub fn draw_reference_points_gizmos(
     mut gizmos: Gizmos,
-    data_res: Res<Data3DResource>,
+    data_res: Res<MapTree>,
+    lod_state: Res<MapLODState>,
     camera_query: Query<&Transform, With<Camera>>,
 ) {
     if !data_res.parsed {
@@ -188,7 +191,7 @@ pub fn draw_reference_points_gizmos(
     };
     let camera_pos = camera_transform.translation;
 
-    for pt in &data_res.reference_points {
+    for pt in &lod_state.reference_points {
         let dist = camera_pos.distance(*pt);
         let radius = dist * 0.02; // 2% of the distance
         let sphere = Sphere::new(radius);

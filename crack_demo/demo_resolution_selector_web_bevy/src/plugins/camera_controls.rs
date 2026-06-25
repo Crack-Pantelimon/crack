@@ -1,5 +1,5 @@
+use crate::plugins::map_plugin::MapTree;
 use bevy::prelude::*;
-use crate::plugins::map_plugin::Data3DResource;
 
 pub struct CameraControlsPlugin;
 
@@ -12,13 +12,10 @@ impl Plugin for CameraControlsPlugin {
 fn camera_movement_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    data_res: Res<Data3DResource>,
+    data_res: Res<MapTree>,
     mut camera_query: Query<&mut Transform, With<Camera>>,
 ) {
-    let middle = match data_res.bbox {
-        Some(bbox) => (bbox.min + bbox.max) / 2.0,
-        None => Vec3::ZERO,
-    };
+    let middle = (data_res.bbox.min + data_res.bbox.max) / 2.0;
 
     for mut transform in &mut camera_query {
         let current_pos = transform.translation;
@@ -29,7 +26,7 @@ fn camera_movement_system(
 
         // WASDQE movement - speed proportional to distance to middle point
         let move_speed = distance.max(0.1) * time.delta_secs() * 1.5;
-        
+
         let forward = transform.forward();
         let right = transform.right();
         let up = transform.up();
@@ -73,7 +70,8 @@ fn camera_movement_system(
         desired_pos = middle + new_to_camera;
 
         // Desired rotation looking at middle
-        let desired_transform = Transform::from_translation(desired_pos).looking_at(middle, Vec3::Y);
+        let desired_transform =
+            Transform::from_translation(desired_pos).looking_at(middle, Vec3::Y);
 
         // Apply smoothing: new_camera_transform = (old_camera_transform + desired_transform) / 2.0
         transform.translation = (transform.translation + desired_transform.translation) / 2.0;
