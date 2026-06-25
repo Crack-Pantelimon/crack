@@ -3,7 +3,6 @@ mod map_metadata_parquet;
 mod map_plugin_ui;
 
 use bevy::prelude::*;
-use bevy::world_serialization::WorldAsset;
 use bevy_egui::EguiPrimaryContextPass;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -107,11 +106,11 @@ pub struct MapTree {
     pub assets: BTreeMap<MapTileAssetId, MapTreeAssetInfo>,
 
 
-    // pub nodes: BTreeMap<MapTreeNodePath, MapTreeNodeInfo>,
+    pub nodes: BTreeMap<MapTreeNodePath, MapTreeNodeInfo>,
     pub children: BTreeMap<MapTreeNodePath, BTreeSet<MapTreeNodePath>>,
     pub parents: BTreeMap<MapTreeNodePath, MapTreeNodePath>,
     pub bbox: BBox,
-    pub roots: BTreeSet<String>,
+    pub roots: BTreeSet<MapTreeNodePath>,
     pub parsed: bool,
 }
 

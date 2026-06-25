@@ -1,48 +1,62 @@
-use crate::plugins::map_plugin::{BBox, MapLODState, MapTree, MapTreeAssetInfo};
+use crate::plugins::map_plugin::{BBox, MapLODState, MapTree, MapTreeNodePath, MapTileAssetId};
 use _crack_utils::get_timestamp_now_ms;
 use bevy::prelude::*;
-use bevy::world_serialization::WorldAssetRoot;
+use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use bevy_egui::egui::emath::OrderedFloat;
 use std::collections::BTreeMap;
 use std::collections::{BTreeSet, BinaryHeap};
 
 #[derive(Component)]
 pub struct TreeMapTile {
-    pub node_name: String,
+    pub node_path: MapTreeNodePath,
+    pub asset_id: MapTileAssetId,
 }
 
-fn get_tile_handle(
+fn get_node_assets_and_handles(
     data_res: &Res<MapTree>,
     asset_server: &Res<AssetServer>,
-    node_name: &str,
-) -> Handle<WorldAsset> {
-    let Some(node) = data_res.raw_nodes.get(node_name) else {
-        tracing::warn!("Node {} not found in data_res.nodes", node_name);
-        return Handle::default();
+    node_path: &MapTreeNodePath,
+) -> Vec<(MapTileAssetId, Handle<WorldAsset>)> {
+    let Some(node) = data_res.nodes.get(node_path) else {
+        tracing::warn!("Node {:?} not found in data_res.nodes", node_path);
+        return Vec::new();
     };
-    let Some(ref filename) = node.filename else {
-        tracing::warn!("Node {} has no filename", node_name);
-        return Handle::default();
-    };
+    let mut assets_and_handles = Vec::new();
+    for asset_id in &node.assets {
+        let Some(asset_info) = data_res.assets.get(asset_id) else {
+            continue;
+        };
+        let Some(ref filename) = asset_info.filename else {
+            continue;
+        };
 
-    let glb_url = format!("{}/3d_data/{}", crate::config::DATA_BASE_URL, filename);
-    let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
-    asset_server.load(asset_path)
+        let glb_url = format!("{}/3d_data/{}", crate::config::DATA_BASE_URL, filename);
+        let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
+        assets_and_handles.push((asset_id.clone(), asset_server.load(asset_path)));
+    }
+    assets_and_handles
 }
 
-fn spawn_tile_bundle(commands: &mut Commands, handle: &Handle<WorldAsset>, node_name: &str) {
-    tracing::info!("spawn_tile_bundle({:?})", node_name);
-    commands.spawn((
-        WorldAssetRoot(handle.clone()),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-        TreeMapTile {
-            node_name: node_name.to_string(),
-        },
-        avian3d::prelude::RigidBody::Static,
-        avian3d::prelude::ColliderConstructorHierarchy::new(
-            avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
-        ),
-    ));
+fn spawn_node_tiles(
+    commands: &mut Commands,
+    assets: &[(MapTileAssetId, Handle<WorldAsset>)],
+    node_path: &MapTreeNodePath,
+) {
+    tracing::info!("spawn_node_tiles({:?}, assets count: {})", node_path, assets.len());
+    for (asset_id, handle) in assets {
+        commands.spawn((
+            WorldAssetRoot(handle.clone()),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            TreeMapTile {
+                node_path: node_path.clone(),
+                asset_id: asset_id.clone(),
+            },
+            avian3d::prelude::RigidBody::Static,
+            avian3d::prelude::ColliderConstructorHierarchy::new(
+                avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
+            ),
+        ));
+    }
 }
 
 pub fn spawn_root_map_tiles(
@@ -56,9 +70,9 @@ pub fn spawn_root_map_tiles(
     if !data_res.parsed {
         return;
     }
-    for node_name in data_res.roots.iter() {
-        let handle = get_tile_handle(&data_res, &asset_server, node_name);
-        spawn_tile_bundle(&mut commands, &handle, node_name);
+    for node_path in data_res.roots.iter() {
+        let assets_and_handles = get_node_assets_and_handles(&data_res, &asset_server, node_path);
+        spawn_node_tiles(&mut commands, &assets_and_handles, node_path);
     }
 }
 
@@ -81,14 +95,14 @@ fn compute_distance_to_aabb(bbox: &BBox, p: Vec3) -> f32 {
 
 #[derive(Component, Debug)]
 pub struct TileShouldMerge {
-    pub drop_children: Vec<String>,
-    pub load_parent: (String, Handle<WorldAsset>),
+    pub drop_children: Vec<MapTreeNodePath>,
+    pub load_parent: (MapTreeNodePath, Vec<(MapTileAssetId, Handle<WorldAsset>)>),
 }
 
 #[derive(Component, Debug)]
 pub struct TileShouldSplit {
-    pub load_children: Vec<(String, Handle<WorldAsset>)>,
-    pub drop_parent: String,
+    pub load_children: Vec<(MapTreeNodePath, Vec<(MapTileAssetId, Handle<WorldAsset>)>)>,
+    pub drop_parent: MapTreeNodePath,
 }
 
 pub fn recompute_lod_mark_changes(
@@ -98,19 +112,19 @@ pub fn recompute_lod_mark_changes(
     q_merge: Query<&TileShouldMerge>,
     q_split: Query<&TileShouldSplit>,
     q_nodes: Query<(&TreeMapTile, Entity)>,
-    mut last: Local<Option<(BTreeSet<String>, Vec<Vec3>, u32)>>,
+    mut last: Local<Option<(BTreeSet<MapTreeNodePath>, Vec<Vec3>, u32)>>,
     asset_server: Res<AssetServer>,
 ) {
     if !q_merge.is_empty() || !q_split.is_empty() {
         return;
     }
-    if data_res.raw_nodes.is_empty() || lod_state.reference_points.is_empty() || q_nodes.is_empty() {
+    if data_res.nodes.is_empty() || lod_state.reference_points.is_empty() || q_nodes.is_empty() {
         return;
     }
     let t0 = get_timestamp_now_ms();
     let nodes = q_nodes
         .iter()
-        .map(|x| x.0.node_name.clone())
+        .map(|x| x.0.node_path.clone())
         .collect::<BTreeSet<_>>();
 
     let budget = lod_state.lod_budget;
@@ -133,21 +147,19 @@ pub fn recompute_lod_mark_changes(
         budget
     );
 
-    // let data_res2 = data_res.clone();
-    let tile_bbox = |node_name: &str| {
-        let Some(node) = data_res.raw_nodes.get(node_name) else {
-            tracing::warn!("Cannot find tile {}", node_name);
+    let tile_bbox = |node_path: &MapTreeNodePath| {
+        let Some(node) = data_res.nodes.get(node_path) else {
+            tracing::warn!("Cannot find tile {:?}", node_path);
             return BBox::default();
         };
         node.bbox
     };
     let mut score_cache = BTreeMap::new();
-    let mut tile_score = |node_name: &str| {
-        if let Some(cached) = score_cache.get(node_name) {
+    let mut tile_score = |node_path: &MapTreeNodePath| {
+        if let Some(cached) = score_cache.get(node_path) {
             return *cached;
         }
-        let bbox = tile_bbox(node_name);
-        // let center = (bbox.min + bbox.max) / 2.0;
+        let bbox = tile_bbox(node_path);
         let bbox_diagonal = bbox.min.distance(bbox.max).clamp(0.00001, 100000.0);
         let mut distance = f32::INFINITY;
         for point in lod_state.reference_points.iter() {
@@ -155,55 +167,59 @@ pub fn recompute_lod_mark_changes(
         }
         // negative, so it's max-score
         let score = -distance / bbox_diagonal;
-        score_cache.insert(node_name.to_string(), score);
+        score_cache.insert(node_path.clone(), score);
         score
     };
 
-    // get parent of all the nodes
-    // let mut parents = BTreeSet::new();
-    // for n in nodes.iter() {
-    //     if let Some(p) = data_res.parents.get(n) {
-    //         parents.insert(p.clone());
-    //     } else {
-    //         parents.insert(n.clone());
-    //     }
-    // }
     let parents = data_res.roots.clone();
     tracing::info!("restarting tree from {} parents", parents.len());
 
     // put all parents into the max-heap
     let mut heap = BinaryHeap::new();
 
+    let mut current_budget = 0;
+    for p in parents.iter() {
+        if let Some(node) = data_res.nodes.get(p) {
+            current_budget += node.assets.len();
+        }
+    }
+
     let mut proposed_nodes = parents.clone();
     for p in parents.iter() {
         heap.push((OrderedFloat(tile_score(&p)), p.clone()));
     }
-    tracing::info!("starting with {} items in heap", heap.len());
+    tracing::info!("starting with {} items in heap, current budget: {}", heap.len(), current_budget);
     let mut proposed_splits = vec![];
-    while proposed_nodes.len() < budget as usize {
-        let Some((_score, node_name)) = heap.pop() else {
-            break;
-        };
-
-        let children = data_res.children.get(&node_name);
+    while let Some((_score, node_path)) = heap.pop() {
+        let children = data_res.children.get(&node_path);
         let children = match children {
-            Some(c) => c.values().cloned().collect(),
-            None => vec![],
+            Some(c) => c.clone(),
+            None => BTreeSet::new(),
         };
 
         if !children.is_empty() {
-            proposed_nodes.remove(&node_name);
-            proposed_splits.push(node_name.clone());
-            for c in children {
-                heap.push((OrderedFloat(tile_score(&c)), c.clone()));
-                proposed_nodes.insert(c.clone());
+            let parent_cost = data_res.nodes.get(&node_path).map(|n| n.assets.len()).unwrap_or(0);
+            let mut children_cost = 0;
+            for child_path in &children {
+                children_cost += data_res.nodes.get(child_path).map(|n| n.assets.len()).unwrap_or(0);
+            }
+            let new_budget = current_budget - parent_cost + children_cost;
+            if new_budget <= budget as usize {
+                proposed_nodes.remove(&node_path);
+                proposed_splits.push(node_path.clone());
+                current_budget = new_budget;
+                for c in children {
+                    heap.push((OrderedFloat(tile_score(&c)), c.clone()));
+                    proposed_nodes.insert(c.clone());
+                }
             }
         }
     }
 
     tracing::info!(
-        "After iterating heap, there are {} proposed nodes and {} proposed splits",
+        "After iterating heap, there are {} proposed nodes (budget used: {}) and {} proposed splits",
         proposed_nodes.len(),
+        current_budget,
         proposed_splits.len()
     );
 
@@ -215,12 +231,14 @@ pub fn recompute_lod_mark_changes(
         }
     }
 
-    // the list of parents that didn't split is the merge request we need to make.
+    // A merge is needed for any proposed node that is not currently spawned,
+    // but has descendants that are currently spawned.
     let mut merge_requests = vec![];
-    for item in parents.iter() {
-        if data_res.parents.contains_key(item) {
-            if !proposed_splits.contains(item) {
-                merge_requests.push(item.clone());
+    for proposed in &proposed_nodes {
+        if !nodes.contains(proposed) {
+            let has_spawned_descendants = nodes.iter().any(|n| n.0.starts_with(&proposed.0) && n.0 != proposed.0);
+            if has_spawned_descendants {
+                merge_requests.push(proposed.clone());
             }
         }
     }
@@ -230,11 +248,11 @@ pub fn recompute_lod_mark_changes(
         let children: Vec<_> = data_res
             .children
             .get(&split)
-            .map(|x| x.values().cloned().collect())
+            .map(|x| x.iter().cloned().collect())
             .unwrap_or_default();
         let children = children
             .iter()
-            .map(|x| (x.clone(), get_tile_handle(&data_res, &asset_server, &x)))
+            .map(|x| (x.clone(), get_node_assets_and_handles(&data_res, &asset_server, &x)))
             .collect::<Vec<_>>();
 
         commands.spawn(TileShouldSplit {
@@ -245,22 +263,17 @@ pub fn recompute_lod_mark_changes(
 
     tracing::info!("Requesting merge on {} items", merge_requests.len());
     for merge in merge_requests {
-        let children_names: Vec<String> = data_res
-            .children
-            .get(&merge)
-            .map(|x| x.values().cloned().collect())
-            .unwrap_or_default();
+        let drop_children = nodes
+            .iter()
+            .filter(|n| n.0.starts_with(&merge.0) && n.0 != merge.0)
+            .cloned()
+            .collect::<Vec<_>>();
 
-        let mut drop_children = Vec::new();
-        for child_name in children_names {
-            drop_children.push(child_name);
-        }
-
-        let parent_handle = get_tile_handle(&data_res, &asset_server, &merge);
+        let parent_handles = get_node_assets_and_handles(&data_res, &asset_server, &merge);
 
         commands.spawn(TileShouldMerge {
             drop_children,
-            load_parent: (merge, parent_handle),
+            load_parent: (merge, parent_handles),
         });
     }
 
@@ -269,10 +282,8 @@ pub fn recompute_lod_mark_changes(
     tracing::info!("recompute_lod_mark_changes took {} ms", dt);
 }
 
-
 const SPLIT_PER_FRAME: usize = 1;
 const MERGE_PER_FRAME: usize = 1;
-
 
 pub fn do_split_requests(
     mut commands: Commands,
@@ -282,18 +293,20 @@ pub fn do_split_requests(
 ) {
     let mut split_finished = vec![];
 
-    let entity_map = q_nodes
-        .iter()
-        .map(|x| (x.0.node_name.clone(), x.1))
-        .collect::<BTreeMap<String, Entity>>();
+    let mut entity_map: BTreeMap<MapTreeNodePath, Vec<Entity>> = BTreeMap::new();
+    for (tile, ent) in q_nodes.iter() {
+        entity_map.entry(tile.node_path.clone()).or_default().push(ent);
+    }
 
     let mut k = 0;
     for (split_req, _req_ent) in q_split.iter() {
         let assets_ready = split_req.load_children.iter().all(|x| {
-            matches!(
-                asset_server.get_load_state(&x.1),
-                Some(bevy::asset::LoadState::Loaded)
-            )
+            x.1.iter().all(|(_, handle)| {
+                matches!(
+                    asset_server.get_load_state(handle),
+                    Some(bevy::asset::LoadState::Loaded)
+                )
+            })
         });
 
         if assets_ready {
@@ -308,9 +321,11 @@ pub fn do_split_requests(
         let asset_errors = split_req
             .load_children
             .iter()
-            .filter_map(|x| match asset_server.get_load_state(&x.1) {
-                Some(bevy::asset::LoadState::Failed(_e)) => Some(_e),
-                _ => None,
+            .flat_map(|x| {
+                x.1.iter().filter_map(|(_, handle)| match asset_server.get_load_state(handle) {
+                    Some(bevy::asset::LoadState::Failed(_e)) => Some(_e),
+                    _ => None,
+                })
             })
             .collect::<Vec<_>>();
         if !asset_errors.is_empty() {
@@ -324,18 +339,20 @@ pub fn do_split_requests(
         }
     }
     for split_req in split_finished {
-        if let Some(split_entity) = entity_map.get(&split_req.drop_parent) {
-            commands.entity(*split_entity).despawn();
+        if let Some(split_entities) = entity_map.get(&split_req.drop_parent) {
+            for entity in split_entities {
+                commands.entity(*entity).despawn();
+            }
         } else {
-                tracing::warn!(
-                    "Split: Did not find parent entity to despawn: {:?}",
-                    split_req.drop_parent
-                );
+            tracing::warn!(
+                "Split: Did not find parent entity to despawn: {:?}",
+                split_req.drop_parent
+            );
         }
         let xxx : Vec<_>= split_req.load_children.iter().map(|x| x.0.clone()).collect();
         tracing::info!("XXX Split: {:?} -> {:?}", split_req.drop_parent, xxx);
-        for (child_name, child_handle) in split_req.load_children.iter() {
-            spawn_tile_bundle(&mut commands, child_handle, child_name);
+        for (child_path, child_assets) in split_req.load_children.iter() {
+            spawn_node_tiles(&mut commands, child_assets, child_path);
         }
     }
 }
@@ -348,17 +365,19 @@ pub fn do_merge_requests(
 ) {
     let mut merge_finished = vec![];
 
-    let entity_map = q_nodes
-        .iter()
-        .map(|x| (x.0.node_name.clone(), x.1))
-        .collect::<BTreeMap<String, Entity>>();
+    let mut entity_map: BTreeMap<MapTreeNodePath, Vec<Entity>> = BTreeMap::new();
+    for (tile, ent) in q_nodes.iter() {
+        entity_map.entry(tile.node_path.clone()).or_default().push(ent);
+    }
 
-        let mut k = 0;
+    let mut k = 0;
     for (merge_req, req_ent) in q_merge.iter() {
-        let parent_ready = matches!(
-            asset_server.get_load_state(&merge_req.load_parent.1),
-            Some(bevy::asset::LoadState::Loaded)
-        );
+        let parent_ready = merge_req.load_parent.1.iter().all(|(_, handle)| {
+            matches!(
+                asset_server.get_load_state(handle),
+                Some(bevy::asset::LoadState::Loaded)
+            )
+        });
         if parent_ready {
             merge_finished.push(merge_req);
             commands.entity(req_ent).despawn();
@@ -367,10 +386,13 @@ pub fn do_merge_requests(
                 break;
             }
         }
-        if let Some(error) = match asset_server.get_load_state(&merge_req.load_parent.1) {
-            Some(bevy::asset::LoadState::Failed(error)) => Some(error),
-            _ => None,
-        } {
+        let asset_errors = merge_req.load_parent.1.iter().filter_map(|(_, handle)| {
+            match asset_server.get_load_state(handle) {
+                Some(bevy::asset::LoadState::Failed(error)) => Some(error),
+                _ => None,
+            }
+        }).collect::<Vec<_>>();
+        for error in asset_errors {
             tracing::error!(
                 "Got Asset Loading error on Map Tile Merge! {:?} {:?}",
                 merge_req,
@@ -379,18 +401,20 @@ pub fn do_merge_requests(
         }
     }
     for merge_req in merge_finished {
-        for child_name in merge_req.drop_children.iter() {
-            if let Some(child_entity) = entity_map.get(child_name) {
-                commands.entity(*child_entity).despawn();
+        for child_path in merge_req.drop_children.iter() {
+            if let Some(child_entities) = entity_map.get(child_path) {
+                for entity in child_entities {
+                    commands.entity(*entity).despawn();
+                }
             } else {
                 tracing::warn!(
                     "Merge: Did not find child entity to despawn: {:?}",
-                    child_name
+                    child_path
                 );
             }
         }
         tracing::info!("XXX Merge: {:?} -> {:?}", merge_req.drop_children, merge_req.load_parent.0);
-        spawn_tile_bundle(
+        spawn_node_tiles(
             &mut commands,
             &merge_req.load_parent.1,
             &merge_req.load_parent.0,
