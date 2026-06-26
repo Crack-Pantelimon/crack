@@ -271,17 +271,30 @@ pub fn recompute_lod_mark_changes(
 
     // A merge is needed for any proposed node that is not currently spawned,
     // but has descendants that are currently spawned.
-    let mut merge_requests = vec![];
+    let mut merge_requests =  BTreeSet::new();
     for proposed in &proposed_nodes {
         if !nodes.contains(proposed) {
             let has_spawned_descendants = nodes
                 .iter()
                 .any(|n| n.0.starts_with(&proposed.0) && n.0 != proposed.0);
             if has_spawned_descendants {
-                merge_requests.push(proposed.clone());
+                merge_requests.insert(proposed.clone());
             }
         }
     }
+    // merges need to only add the base ancestor, so if for any two merges we have Some(a) = b.get_parent() then we remove b.
+    let mut _rem = vec![];
+    for a in merge_requests.iter() {
+        for b in merge_requests.iter() {
+            if Some(a.clone()) == b.get_parent() {
+                _rem.push(b.clone());
+            }
+        }
+    }
+    for b in _rem {
+        merge_requests.remove(&b);
+    }
+    tracing::info!("{} split requests / {} merge reuqests.", split_requests.len(), merge_requests.len());
 
     res_tiles.split_requests = split_requests.into_iter().collect();
     res_tiles.merge_requests = merge_requests.into_iter().collect();
@@ -303,8 +316,8 @@ pub fn start_tile_swap_requests(
         return;
     }
 
-    const PARALLEL_SPLIT_FETCH: i32 = 4;
-    const PARALLEL_MERGE_FETCH: i32 = 8;
+    const PARALLEL_SPLIT_FETCH: i32 = 3;
+    const PARALLEL_MERGE_FETCH: i32 = 3;
     let current_splits = q_split.iter().len() as i32;
     let current_merges = q_merge.iter().len() as i32;
     let mut split_budget = PARALLEL_SPLIT_FETCH - current_splits;
@@ -503,18 +516,22 @@ pub fn do_merge_requests(
             );
         }
     }
+    let mut drop_children_1 = BTreeSet::new();
     for merge_req in merge_finished {
         for child_path in merge_req.drop_children.iter() {
-            if let Some(child_entities) = entity_map.get(child_path) {
-                for entity in child_entities {
-                    commands.entity(*entity).despawn();
-                }
-            } else {
-                tracing::warn!(
-                    "Merge: Did not find child entity to despawn: {:?}",
-                    child_path
-                );
-            }
+            drop_children_1.insert(child_path);
+            
+            // let descendant_paths = q_nodes.iter().map(|x| x.0.clone());
+            // if let Some(child_entities) = entity_map.get(child_path) {
+            //     for entity in child_entities {
+            //         commands.entity(*entity).despawn();
+            //     }
+            // } else {
+            //     tracing::warn!(
+            //         "Merge: Did not find child entity to despawn: {:?}",
+            //         child_path
+            //     );
+            // }
         }
         // tracing::info!(
         //     "XXX Merge: {:?} -> {:?}",
@@ -526,5 +543,17 @@ pub fn do_merge_requests(
             &merge_req.load_parent.1,
             &merge_req.load_parent.0,
         );
+    }
+    let mut drop_children2 = BTreeSet::new();
+    for drop in drop_children_1 {
+        for (node, node_ent) in q_nodes.iter() {
+            
+            if node.node_path.0.starts_with(&drop.0) {
+                drop_children2.insert(node_ent);
+            }
+        }
+    }
+    for drop in drop_children2 {
+        commands.entity(drop).despawn();
     }
 }
