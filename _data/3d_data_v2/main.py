@@ -148,50 +148,18 @@ def main():
     root_epoch = planetoid.root_node_metadata.epoch
     logger.info(f"Root epoch: {root_epoch}")
 
-    # 2. Compute optimal level dynamically by searching the actual octree
-    target_count = TARGET_GRID * TARGET_GRID
-    estimated_level = compute_best_level(bbox, TARGET_GRID)
-    logger.info(f"Mathematically estimated optimal level: {estimated_level}")
+    # 2. Compute target level (designated small tile size)
+    target_level = compute_best_level(bbox, TARGET_GRID)
+    logger.info(f"Target LOD level (designated small tile size): {target_level}")
 
-    level = 16  # default fallback
     octant_paths = []
-    closest_diff = float("inf")
-
-    logger.info(
-        f"Dynamically searching octree levels to find best detail closest to {target_count} tiles..."
-    )
-    level_tiles_map = {}
-    # Search levels 13 to 18
-    for lvl in range(13, 19):
+    # Fetch all intersecting tiles with a depth >= 10 until we reach target_level
+    for lvl in range(10, target_level + 1):
         tiles = find_tiles_in_bbox(bbox, lvl, root_epoch)
-        level_tiles_map[lvl] = tiles
-        diff = abs(len(tiles) - target_count)
-        logger.info(
-            f"Level {lvl}: found {len(tiles)} tiles (diff to {target_count}: {diff})"
-        )
-        if diff < closest_diff:
-            closest_diff = diff
-            level = lvl
+        octant_paths.extend(tiles)
+        logger.info(f"Level {lvl}: found {len(tiles)} intersecting tiles")
 
-        if lvl >= estimated_level:
-            logger.info(
-                f"Reached estimated optimal level {estimated_level}. Stopping search."
-            )
-            break
-
-    if GET_ALL_COARSER_LEVELS:
-        # Get all levels of detail smaller than (coarser than or equal to) the optimal level
-        levels_to_download = [
-            lvl for lvl in sorted(level_tiles_map.keys()) if lvl <= level
-        ]
-        for lvl in levels_to_download:
-            octant_paths.extend(level_tiles_map[lvl])
-        logger.info(
-            f"Selected levels: {levels_to_download} (total {len(octant_paths)} tiles)"
-        )
-    else:
-        octant_paths = level_tiles_map[level]
-        logger.info(f"Selected optimal level: {level} with {len(octant_paths)} tiles")
+    logger.info(f"Total tiles selected across all levels: {len(octant_paths)}")
 
     # 3. Compute reference point (ECEF offset)
     logger.info("Computing reference point from bounding box center...")
@@ -317,7 +285,7 @@ def main():
     write_manifest(
         tiles=tiles_metadata,
         bbox=bbox_dict,
-        level=level,
+        level=target_level,
         reference_point=ref_point.tolist(),
         output_dir=OUTPUT_DIR,
     )
@@ -326,7 +294,7 @@ def main():
     logger.info("=" * 60)
     logger.info(f"DONE! Exported {len(tiles_metadata)} tiles to {OUTPUT_DIR}/")
     logger.info(f"  Skipped: {skipped}, Failed: {failed}")
-    logger.info(f"  Octree level: {level}")
+    logger.info(f"  Octree level: {target_level}")
     logger.info(f"  Manifest: {OUTPUT_DIR}/manifest.json")
     logger.info("=" * 60)
 

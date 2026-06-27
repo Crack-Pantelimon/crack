@@ -380,7 +380,8 @@ def main():
         # 9. Create Blender Mesh
         mesh_name = f"mesh_{mesh_idx}"
         mesh_data = bpy.data.meshes.new(name=mesh_name)
-        obj = bpy.data.objects.new(name=f"obj_{mesh_idx}", object_data=mesh_data)
+        file_id = os.path.splitext(os.path.basename(out_blend_path))[0]
+        obj = bpy.data.objects.new(name=file_id, object_data=mesh_data)
         bpy.context.collection.objects.link(obj)
 
         faces = raw_indices.reshape(-1, 3).tolist()
