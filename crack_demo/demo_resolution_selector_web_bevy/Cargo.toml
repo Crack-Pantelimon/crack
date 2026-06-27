@@ -38,6 +38,7 @@ features = [
     "HtmlCanvasElement",
     "CssStyleDeclaration",
     "HtmlDivElement",
+    "Storage",
 ]
 
 [features]

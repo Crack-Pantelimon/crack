@@ -41,10 +41,11 @@ pub fn spawn_car_system(
                 WorldAssetRoot(car_handle),
                 Transform::from_translation(spawn_point + Vec3::new(0.0, 1.5, 0.0)),
                 RigidBody::Dynamic,
-                Collider::cuboid(2.0, 1.2, 4.5),
+                Collider::sphere(0.8),
+                LockedAxes::ROTATION_LOCKED,
                 LinearVelocity::default(),
                 AngularVelocity::default(),
-                Friction::new(0.3),
+                Friction::new(0.1),
                 Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
                 LinearDamping(0.2),
                 AngularDamping(1.0),
@@ -74,18 +75,16 @@ pub fn drive_car_system(
     let reverse_acceleration = 15.0;
     let braking = 35.0;
     let steer_speed = 2.5;
-    let lateral_damping = 10.0;
-    let stabilization_strength = 5.0;
+    let lateral_damping = 8.0;
 
-    // Ground raycast check
+    // Ground raycast check (sphere radius is 0.8)
     let origin = transform.translation;
     let direction = Dir3::NEG_Y;
-    let max_distance = 2.5; // distance from center of car downward
+    let max_distance = 1.2; // distance from center of car downward
     
     let filter = SpatialQueryFilter::from_excluded_entities([car_entity]);
     
     let mut grounded = false;
-    let mut ground_y = 0.0;
     let mut ground_normal = Vec3::Y;
 
     if let Some(hit) = spatial_query.cast_ray(
@@ -95,22 +94,21 @@ pub fn drive_car_system(
         true,
         &filter,
     ) {
-        grounded = true;
-        ground_y = origin.y - hit.distance;
-        ground_normal = hit.normal;
+        if hit.distance <= 1.0 {
+            grounded = true;
+            ground_normal = hit.normal;
+        }
     }
 
-    if grounded {
-        // 1. Height snapping / hover lerp
-        let hover_height = 0.8;
-        let target_y = ground_y + hover_height;
-        transform.translation.y = transform.translation.y + (target_y - transform.translation.y) * 15.0 * delta;
+    // Extract current yaw to orient steering properly
+    let (_, mut yaw, _) = transform.rotation.to_euler(EulerRot::YXZ);
 
-        // 2. Project existing velocity to slope tangent plane
+    if grounded {
+        // 1. Project existing velocity to slope tangent plane
         let velocity_on_slope = linear_velocity.0 - ground_normal * linear_velocity.0.dot(ground_normal);
         linear_velocity.0 = velocity_on_slope;
 
-        // 3. Acceleration / braking input
+        // 2. Acceleration / braking input
         let forward_dir = transform.forward();
         let right_dir = transform.right();
         let current_speed = linear_velocity.dot(*forward_dir);
@@ -130,7 +128,7 @@ pub fn drive_car_system(
         }
         linear_velocity.0 += target_accel * delta;
 
-        // 4. Steer input (modifies yaw, then aligns to terrain normal)
+        // 3. Steer input (modifies yaw, then aligns to terrain normal)
         let mut steer_input = 0.0;
         if keyboard.pressed(KeyCode::KeyA) {
             steer_input += 1.0;
@@ -143,9 +141,6 @@ pub fn drive_car_system(
         let turn_factor = (speed / 2.0).min(1.0);
         let direction_sign = if current_speed < 0.0 { -1.0 } else { 1.0 };
         let yaw_change = steer_input * steer_speed * turn_factor * direction_sign * delta;
-
-        // Extract current yaw and adjust
-        let (_, mut yaw, _) = transform.rotation.to_euler(EulerRot::YXZ);
         yaw += yaw_change;
 
         // Construct slope-aligned orientation
@@ -153,9 +148,9 @@ pub fn drive_car_system(
         let align_quat = Quat::from_rotation_arc(Vec3::Y, ground_normal);
         let target_rotation = align_quat * yaw_quat;
         
-        transform.rotation = transform.rotation.slerp(target_rotation, 15.0 * delta);
+        transform.rotation = transform.rotation.slerp(target_rotation, 10.0 * delta);
 
-        // 5. Lateral grip damping
+        // 4. Lateral grip damping (keeps vehicle on track)
         let lateral_speed = linear_velocity.dot(*right_dir);
         let damped_lateral_speed = lateral_speed * (1.0 - lateral_damping * delta).max(0.0);
         let forward_speed = linear_velocity.dot(*forward_dir);
@@ -166,14 +161,13 @@ pub fn drive_car_system(
         // Zero out physical angular velocity to avoid physics engine conflicts
         angular_velocity.0 = Vec3::ZERO;
     } else {
-        // Air stabilization
-        let current_up = transform.up();
-        let torque = current_up.cross(Vec3::Y) * stabilization_strength;
-        angular_velocity.0 += torque * delta;
+        // Air state: standard physics gravity applies
+        // Smoothly slerp rotation back to upright orientation (roll/pitch -> 0)
+        let target_rotation = Quat::from_rotation_y(yaw);
+        transform.rotation = transform.rotation.slerp(target_rotation, 5.0 * delta);
 
-        // Damp pitch and roll
-        angular_velocity.x *= (1.0 - 5.0 * delta).max(0.0);
-        angular_velocity.z *= (1.0 - 5.0 * delta).max(0.0);
+        // Slow down spinning/tumbling in the air
+        angular_velocity.0 = Vec3::ZERO;
     }
 }
 
