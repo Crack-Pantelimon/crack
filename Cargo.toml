@@ -41,6 +41,14 @@ optional = true
 path = "./packages/thread_crackworker"
 optional = true
 
+[dev-dependencies]
+demo_resolution_selector_web_bevy = { path = "crack_demo/demo_resolution_selector_web_bevy" }
+bevy = { version = "0.19.0", features = ["bevy_asset"] }
+serde = { version = "1", features = ["derive"] }
+storage_crackhouse = { path = "packages/storage_crackhouse" }
+rusqlite = { version = "0.38.0", features = ["bundled"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
 [workspace]
 members = [
     "packages/consensus_crackhead",

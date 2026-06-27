@@ -1,4 +1,4 @@
 pub mod config;
 pub mod main_bevy;
-pub(crate) mod plugins;
+pub mod plugins;
 pub(crate) mod ui_egui;

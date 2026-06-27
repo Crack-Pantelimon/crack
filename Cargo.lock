@@ -3079,10 +3079,15 @@ name = "crack"
 version = "0.1.0"
 dependencies = [
  "api_asscrack",
+ "bevy",
  "consensus_crackhead",
+ "demo_resolution_selector_web_bevy",
  "net_crackpipe",
+ "rusqlite",
+ "serde",
  "storage_crackhouse",
  "thread_crackworker",
+ "tokio",
  "web_serviceworker_crackloader",
  "web_serviceworker_crackslave",
 ]
@@ -3315,6 +3320,9 @@ dependencies = [
  "parquet",
  "rand 0.10.1",
  "rand_chacha 0.10.0",
+ "serde",
+ "serde_json",
+ "storage_crackhouse",
  "tracing",
  "web-sys",
 ]
