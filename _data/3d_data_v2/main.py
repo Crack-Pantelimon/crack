@@ -62,7 +62,7 @@ def render_tile_via_blender(glb_path: Path, jpg_path: Path, ref_point: np.ndarra
 # Configuration
 BBOX_FILE = "data_in/zone-bbox.txt"
 OUTPUT_DIR = "data_out"
-TARGET_GRID = 3  # aim for roughly 3x3 tiles
+TARGET_GRID = 4  # aim for roughly 3x3 tiles
 REQUEST_DELAY = 0.1  # seconds between node downloads
 GET_ALL_COARSER_LEVELS = True  # If True, download all levels of detail smaller than (coarser than or equal to) the 3x3 optimal level
 
