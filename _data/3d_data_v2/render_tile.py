@@ -63,7 +63,10 @@ def render_glb(glb_path, out_jpg_path, ref_point=None):
     if ref_point is not None:
         ref_norm = np.linalg.norm(ref_point)
         if ref_norm > 0:
-            up_vec = ref_point / ref_norm
+            up_vec_raw = ref_point / ref_norm
+            # Convert up_vec from ECEF/GLTF space to Blender Z-up space
+            # GLTF to Blender rotation is -90 degrees around X: (x, y, z) -> (x, -z, y)
+            up_vec = np.array([up_vec_raw[0], -up_vec_raw[2], up_vec_raw[1]])
 
     # Place camera directly above the mesh along the Up unit vector
     cam_object.location = (
