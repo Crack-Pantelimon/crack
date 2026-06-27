@@ -52,51 +52,13 @@ def build_glb(
         if len(dm.positions) == 0 or len(dm.indices) == 0:
             continue
 
-        # Offset and rotate positions/normals to local ENU tangent plane
+        # Offset positions to local ECEF space (translated by reference_point)
         positions = dm.positions.copy()
-        normals = dm.normals.copy()
         if reference_point is not None:
             positions -= reference_point
-            
-            ref_x, ref_y, ref_z = reference_point
-            ref_len = np.linalg.norm(reference_point)
-            if ref_len > 0:
-                # Up vector
-                u_x = ref_x / ref_len
-                u_y = ref_y / ref_len
-                u_z = ref_z / ref_len
-                
-                # East vector
-                east_len = np.sqrt(ref_x**2 + ref_y**2)
-                if east_len > 0:
-                    e_x = -ref_y / east_len
-                    e_y = ref_x / east_len
-                    e_z = 0.0
-                else:
-                    e_x = 1.0
-                    e_y = 0.0
-                    e_z = 0.0
-                
-                # North vector (U x E)
-                n_x = u_y * e_z - u_z * e_y
-                n_y = u_z * e_x - u_x * e_z
-                n_z = u_x * e_y - u_y * e_x
-                
-                # Rotate from ECEF to local tangent plane in GLTF convention (Y-up):
-                # Row 0 (X) = East
-                # Row 1 (Y) = Up
-                # Row 2 (Z) = South (-North)
-                R = np.array([
-                    [e_x, e_y, e_z],
-                    [u_x, u_y, u_z],
-                    [-n_x, -n_y, -n_z]
-                ], dtype=np.float64)
-                
-                positions = positions @ R.T
-                normals = normals @ R.T
 
         positions_f32 = positions.astype(np.float32)
-        normals_f32 = normals.astype(np.float32)
+        normals_f32 = dm.normals.astype(np.float32)
         uvs_f32 = dm.uvs.astype(np.float32)
 
         # Determine index type

@@ -3,7 +3,7 @@ import sys
 import math
 import numpy as np
 
-def render_glb(glb_path, out_jpg_path):
+def render_glb(glb_path, out_jpg_path, ref_point=None):
     # Reset scene
     bpy.ops.wm.read_factory_settings(use_empty=True)
     
@@ -58,11 +58,18 @@ def render_glb(glb_path, out_jpg_path):
     fov = cam_data.angle
     distance = max_dim / (2.0 * math.tan(fov / 2.0)) * 1.5
     
-    # Place camera directly above the mesh
+    # Compute camera positioning unit vector (default to [0, 0, 1] if ref_point is not set)
+    up_vec = np.array([0.0, 0.0, 1.0])
+    if ref_point is not None:
+        ref_norm = np.linalg.norm(ref_point)
+        if ref_norm > 0:
+            up_vec = ref_point / ref_norm
+
+    # Place camera directly above the mesh along the Up unit vector
     cam_object.location = (
-        center[0],
-        center[1],
-        center[2] + distance
+        center[0] + distance * up_vec[0],
+        center[1] + distance * up_vec[1],
+        center[2] + distance * up_vec[2]
     )
     
     # Point camera to center
@@ -117,7 +124,14 @@ if __name__ == "__main__":
         args = []
         
     if len(args) < 2:
-        print("Usage: blender -b -P render_tile.py -- <glb_path> <out_jpg_path>")
+        print("Usage: blender -b -P render_tile.py -- <glb_path> <out_jpg_path> [<ref_x> <ref_y> <ref_z>]")
         sys.exit(1)
         
-    render_glb(args[0], args[1])
+    ref_point = None
+    if len(args) >= 5:
+        try:
+            ref_point = np.array([float(args[2]), float(args[3]), float(args[4])])
+        except Exception:
+            pass
+
+    render_glb(args[0], args[1], ref_point)

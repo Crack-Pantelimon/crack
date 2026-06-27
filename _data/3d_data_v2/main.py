@@ -37,9 +37,20 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-def render_tile_via_blender(glb_path: Path, jpg_path: Path):
+def render_tile_via_blender(glb_path: Path, jpg_path: Path, ref_point: np.ndarray):
     """Render a GLB file using Blender script in Cycles CPU mode."""
-    cmd = ["blender", "-b", "-P", "render_tile.py", "--", str(glb_path), str(jpg_path)]
+    cmd = [
+        "blender",
+        "-b",
+        "-P",
+        "render_tile.py",
+        "--",
+        str(glb_path),
+        str(jpg_path),
+        str(ref_point[0]),
+        str(ref_point[1]),
+        str(ref_point[2]),
+    ]
     try:
         subprocess.run(
             cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -237,7 +248,7 @@ def main():
             # Render GLB tile using Blender for preview/diagnostics
             glb_path = Path(OUTPUT_DIR) / f"{octant_path}.glb"
             jpg_path = Path(OUTPUT_DIR) / f"{octant_path}.jpg"
-            render_tile_via_blender(glb_path, jpg_path)
+            render_tile_via_blender(glb_path, jpg_path, ref_point)
 
             total_verts = tile_meta["vertex_count"]
             total_tris = tile_meta["triangle_count"]
