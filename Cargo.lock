@@ -3315,6 +3315,7 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "bytes",
+ "futures",
  "getrandom 0.4.3",
  "log",
  "parquet",

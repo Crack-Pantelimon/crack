@@ -15,9 +15,12 @@ impl Plugin for MissionPlugin {
            .add_systems(Startup, (config::load_missions_config, db::load_mission_progress).chain())
            .add_systems(Update, (
                trigger::check_mission_triggers,
-               ui::draw_mission_triggers,
                db::save_mission_progress_system,
-           ))
-           .add_systems(bevy_egui::EguiPrimaryContextPass, ui::render_mission_hud);
+           ));
+
+        if !app.world().contains_resource::<state::HeadlessMode>() {
+            app.add_systems(Update, ui::draw_mission_triggers)
+               .add_systems(bevy_egui::EguiPrimaryContextPass, ui::render_mission_hud);
+        }
     }
 }

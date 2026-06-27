@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use demo_resolution_selector_web_bevy::plugins::mission_plugin::{
     MissionPlugin,
-    state::{MissionState, MissionStatus},
+    state::{MissionState, MissionStatus, HeadlessMode},
     config::{MissionList, Mission},
     trigger::CarMarker,
 };
@@ -9,6 +9,7 @@ use demo_resolution_selector_web_bevy::plugins::mission_plugin::{
 fn setup_test_app() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins);
+    app.insert_resource(HeadlessMode);
     app.add_plugins(MissionPlugin);
     app
 }
@@ -72,7 +73,7 @@ async fn test_trigger_and_state_machine_flow() {
     
     // Move player to destination of Mission 1: [-2411.763, 516.621, 2029.887]
     let end_pos = Vec3::new(-2411.763, 516.621, 2029.887);
-    let mut player_query = app.world_mut().query_mut::<&mut Transform>();
+    let mut player_query = app.world_mut().query::<&mut Transform>();
     for mut transform in player_query.iter_mut(app.world_mut()) {
         transform.translation = end_pos;
     }

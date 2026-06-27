@@ -1,0 +1,1288 @@
+[
+  {
+    "id": 1,
+    "title": "Taximetria pe GPL",
+    "client": "Nico",
+    "prerequisites": [],
+    "start_coords": [
+      -262.965,
+      517.524,
+      1412.29
+    ],
+    "end_coords": [
+      -2411.763,
+      516.621,
+      2029.887
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Ia clienții din stația de la Cora Pantelimon.",
+      "Du-i la destinație în siguranță.",
+      "Răspunde la apelul telefonic de la Nico."
+    ],
+    "dialogues": [
+      "- Client 1 (pensionar): 'Băi băiatule, pe vremea mea biletul de tramvai era 50 de bani, tu-mi ceri 20 de lei până la Delfinului?!'",
+      "- Nico: 'Relu, lasă clienții ăia amărâți. Avem o problemă la barul lui Sandu. Mișcă-te!'"
+    ],
+    "reward_cash": 100,
+    "reward_respect": 10
+  },
+  {
+    "id": 2,
+    "title": "Recuperare de Noapte",
+    "client": "Nico",
+    "prerequisites": [
+      1
+    ],
+    "start_coords": [
+      -304.469,
+      517.728,
+      1581.725
+    ],
+    "end_coords": [
+      -2528.054,
+      513.752,
+      1894.011
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la barul lui nea Sandu în Pantelimon.",
+      "Intimidează-l pe Sandu pentru a plăti datoria de 2000 EUR.",
+      "Ascunde corpul agresorului în portbagaj.",
+      "Aruncă corpul în Lacul Pantelimon."
+    ],
+    "dialogues": [
+      "- Sandu: 'N-am banii, băi Relule! Spune-i Căpitanului că-i dau săptămâna viitoare!'",
+      "- Relu: 'Căpitanu' nu așteaptă. Iar eu nu-mi bat gura degeaba.'"
+    ],
+    "reward_cash": 300,
+    "reward_respect": 0
+  },
+  {
+    "id": 3,
+    "title": "O Escortă de Protejat",
+    "client": "Nico",
+    "prerequisites": [
+      2
+    ],
+    "start_coords": [
+      -372.611,
+      515.423,
+      1743.503
+    ],
+    "end_coords": [
+      -2621.312,
+      512.03,
+      1743.503
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la hotelul 'Lebăda' din Pantelimon.",
+      "Asigură paza fetelor Căpitanului.",
+      "Elimină bodyguarzii clanului rival din Ferentari."
+    ],
+    "dialogues": [
+      "- Nico: 'Vezi că băieții ăia de la Ferentari au cam trecut granița. Du-te și arată-le unde le e locul.'",
+      "- Relu: 'Se rezolvă. Fără zgomot.'"
+    ],
+    "reward_cash": 400,
+    "reward_respect": 0
+  },
+  {
+    "id": 4,
+    "title": "Băiatul Șefului",
+    "client": "Căpitanu'",
+    "prerequisites": [
+      3
+    ],
+    "start_coords": [
+      -465.869,
+      512.73,
+      1894.011
+    ],
+    "end_coords": [
+      -2689.455,
+      513.039,
+      1581.725
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la restaurantul Căpitanului.",
+      "Ia-l pe Teddy în mașină.",
+      "Mergi la șantierul de lângă Șoseaua Fundeni.",
+      "Asistă la colectarea banilor și protejează-l pe Teddy."
+    ],
+    "dialogues": [
+      "- Căpitanu': 'Fă-l bărbat, Relule. E prea moale. Ascultă rock în loc să se ocupe de afaceri.'",
+      "- Teddy: 'Nu sunt moale, tată...'",
+      "- Relu: 'Urcă în mașină, puștiule.'"
+    ],
+    "reward_cash": 200,
+    "reward_respect": 20
+  },
+  {
+    "id": 5,
+    "title": "Doi la Preț de Unul",
+    "client": "Căpitanu'",
+    "prerequisites": [
+      4
+    ],
+    "start_coords": [
+      -582.16,
+      512.123,
+      2029.887
+    ],
+    "end_coords": [
+      -2730.958,
+      515.851,
+      1412.29
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Ia-l pe Teddy de la sala de box.",
+      "Mergi la Piața Obor.",
+      "Recuperează taxa de la tarabagiii de flori.",
+      "Scapă de gaborii care patrulează zona."
+    ],
+    "dialogues": [
+      "- Teddy: 'Relu, vin gaborii! Ce facem?'",
+      "- Relu: 'Calm. Urcă în mașină și ține-te bine de mâner.'"
+    ],
+    "reward_cash": 500,
+    "reward_respect": 0
+  },
+  {
+    "id": 6,
+    "title": "Fiorul Dragostei",
+    "client": "Teddy",
+    "prerequisites": [
+      5
+    ],
+    "start_coords": [
+      -718.887,
+      514.162,
+      2148.096
+    ],
+    "end_coords": [
+      -2744.897,
+      517.881,
+      1238.984
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Du-l pe Teddy să cumpere flori din Obor.",
+      "Condu-l la întâlnirea cu Magda în Parcul Cosmos.",
+      "Apără-l pe Teddy de golanii din parc."
+    ],
+    "dialogues": [
+      "- Teddy: 'Relu, te rog nu-i spune tatălui meu. O să creadă că sunt un fraier.'",
+      "- Relu: 'Nu-i spun. Dar ai grijă de tine.'"
+    ],
+    "reward_cash": 300,
+    "reward_respect": 0
+  },
+  {
+    "id": 7,
+    "title": "Suspiciuni de Soție",
+    "client": "Gina",
+    "prerequisites": [
+      6
+    ],
+    "start_coords": [
+      -872.994,
+      516.971,
+      2245.996
+    ],
+    "end_coords": [
+      -2730.958,
+      517.262,
+      1065.679
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Du-te acasă la Gina.",
+      "Mergi la magazinul Cora Pantelimon.",
+      "Urmărește-l pe Sabin (fratele Ginei) care te spionează.",
+      "Dezactivează mașina lui Sabin fără să fii văzut."
+    ],
+    "dialogues": [
+      "- Gina: 'De unde miroși așa, Relule? Iar ai reparat mașina vreunei dudui?'",
+      "- Relu: 'E de la odorizantul de taxi, Gina. Lasă-mă în pace.'"
+    ],
+    "reward_cash": 150,
+    "reward_respect": 0
+  },
+  {
+    "id": 8,
+    "title": "Afaceri de Familie",
+    "client": "Nico",
+    "prerequisites": [
+      7
+    ],
+    "start_coords": [
+      -1041.04,
+      517.968,
+      2321.401
+    ],
+    "end_coords": [
+      -2689.455,
+      514.563,
+      896.244
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la depozitul de la Granitul.",
+      "Prelucrează transportul de țigări de contrabandă.",
+      "Snopeste-l în bătaie pe Sabin la colțul blocului."
+    ],
+    "dialogues": [
+      "- Nico: 'Marfa asta de contrabandă trebuie să ajungă în Obor până dimineață. Fără greșeli.'",
+      "- Sabin: 'Au! Cine ești, mă? Nu da! Moare mama!'"
+    ],
+    "reward_cash": 600,
+    "reward_respect": 0
+  },
+  {
+    "id": 9,
+    "title": "Doctorul vine la Bloc",
+    "client": "Căpitanu'",
+    "prerequisites": [
+      8
+    ],
+    "start_coords": [
+      -1219.27,
+      516.236,
+      2372.627
+    ],
+    "end_coords": [
+      -2621.312,
+      512.267,
+      734.466
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la sala de box a lui Relu.",
+      "Curăță sala de arme și droguri ascunse.",
+      "Întâmpină-l pe 'Doctorul' și arată-i respect."
+    ],
+    "dialogues": [
+      "- Căpitanu': 'Vine Doctorul, Relule. Dacă găsește ceva în neregulă, ne curăță pe toți.'",
+      "- Doctorul: 'Interesant loc ai aici, Relu. Sper că ești la fel de curat pe cât pari.'"
+    ],
+    "reward_cash": 800,
+    "reward_respect": 0
+  },
+  {
+    "id": 10,
+    "title": "Acasă la Relu",
+    "client": "Gina",
+    "prerequisites": [
+      9
+    ],
+    "start_coords": [
+      -1403.703,
+      513.368,
+      2398.53
+    ],
+    "end_coords": [
+      -2528.054,
+      512.483,
+      583.958
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Intră în apartamentul lui Relu.",
+      "Confruntă-te cu Gina și Sabin cel bătut.",
+      "Adună-ți lucrurile personale.",
+      "Mergi la safehouse-ul lui Nea Puiu."
+    ],
+    "dialogues": [
+      "- Gina: 'Pleacă! Nu vreau să te mai văd în casa mea! Ești un monstru, Relule! Uită-te ce i-ai făcut lui Sabin!'",
+      "- Relu: 'Gina, nu-i ceea ce crezi...'",
+      "- Gina: 'Ieși!'"
+    ],
+    "reward_cash": 0,
+    "reward_respect": 0
+  },
+  {
+    "id": 11,
+    "title": "Probleme la Școală",
+    "client": "Gina",
+    "prerequisites": [
+      10
+    ],
+    "start_coords": [
+      -1590.22,
+      512.0,
+      2398.53
+    ],
+    "end_coords": [
+      -2411.763,
+      515.013,
+      448.082
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la școala generală din Pantelimon.",
+      "Întâlnește-te cu Gina și diriginta lui Chuckie.",
+      "Urmărește-l pe tatăl agresorului lui Chuckie.",
+      "Intimidează-l pe polițist în trafic."
+    ],
+    "dialogues": [
+      "- Diriginta: 'Codrin (Chuckie) este agresiv, dar și celălalt băiat îl provoacă. Tatăl lui e inspector de poliție...'",
+      "- Relu (către polițist): 'Dacă mai plânge băiatul meu o singură dată, Loganul ăsta galben o să treacă peste mașina ta. Ai înțeles?'"
+    ],
+    "reward_cash": 100,
+    "reward_respect": 10
+  },
+  {
+    "id": 12,
+    "title": "Nemulțumirea Căpitanului",
+    "client": "Căpitanu'",
+    "prerequisites": [
+      11
+    ],
+    "start_coords": [
+      -1774.653,
+      513.39,
+      2372.627
+    ],
+    "end_coords": [
+      -2275.037,
+      517.532,
+      329.873
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la biroul Căpitanului.",
+      "Interceptă camionul cu marfă pe Centura București.",
+      "Elimină paza camionului.",
+      "Condu camionul la depozitul din Pantelimon."
+    ],
+    "dialogues": [
+      "- Căpitanu': 'Marfa aia valorează 50 de mii de euro. O vreau în depozit în 2 ore, altfel te îngrop eu pe tine!'",
+      "- Relu: 'O rezolv. Pregătește oamenii să descarce.'"
+    ],
+    "reward_cash": 700,
+    "reward_respect": 0
+  },
+  {
+    "id": 13,
+    "title": "Încolțit",
+    "client": "Nico",
+    "prerequisites": [
+      12
+    ],
+    "start_coords": [
+      -1952.884,
+      516.261,
+      2321.401
+    ],
+    "end_coords": [
+      -2120.929,
+      517.722,
+      231.973
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Furișează-te în secția de poliție locală.",
+      "Șterge înregistrările video de pe server.",
+      "Evită camerele și patrulele de poliție."
+    ],
+    "dialogues": [
+      "- Nico: 'Gaborii au filmări cu mașina ta la lac. Dacă nu le ștergi acum, ești istorie.'",
+      "- Relu: 'Intru prin spate. Ține-mă la curent pe stație.'"
+    ],
+    "reward_cash": 500,
+    "reward_respect": 0
+  },
+  {
+    "id": 14,
+    "title": "Secrete de Familie",
+    "client": "Teddy",
+    "prerequisites": [
+      13
+    ],
+    "start_coords": [
+      -2120.929,
+      517.972,
+      2245.996
+    ],
+    "end_coords": [
+      -1952.884,
+      515.41,
+      156.568
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Întâlnește-te cu Teddy la cafenea.",
+      "Ascultă vestea despre sarcina Magdei.",
+      "Mergi la întâlnirea cu Căpitanu' la terasă.",
+      "Respinge atacul ambuscadă al rivalilor."
+    ],
+    "dialogues": [
+      "- Teddy: 'Relu... Magda e însărcinată. Te rog nu mă omorî.'",
+      "- Căpitanu': 'Ce naiba zici acolo, mă?! Nepot de recuperator?!'",
+      "- Relu: 'Atenție! La pământ! Trag ăștia!'"
+    ],
+    "reward_cash": 300,
+    "reward_respect": 0
+  },
+  {
+    "id": 15,
+    "title": "Trădarea",
+    "client": "Nea Puiu",
+    "prerequisites": [
+      14
+    ],
+    "start_coords": [
+      -2275.037,
+      516.951,
+      2148.096
+    ],
+    "end_coords": [
+      -1774.653,
+      512.721,
+      105.342
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Urmărește-o pe Nico fără să fii detectat.",
+      "Filmează întâlnirea ei secretă cu Emilian.",
+      "Scapă din zona de întâlnire fără alertă."
+    ],
+    "dialogues": [
+      "- Nea Puiu: 'Fata aia, Nico... se învârte cu cine nu trebuie, Relule. O miroase a gabor de la o poștă.'",
+      "- Nico: 'Ți-am dat ce doreai, Emilian. Acum lasă-mă în pace!'"
+    ],
+    "reward_cash": 400,
+    "reward_respect": 0
+  },
+  {
+    "id": 16,
+    "title": "Punct și de la Capăt",
+    "client": "Toma",
+    "prerequisites": [
+      15
+    ],
+    "start_coords": [
+      -2411.763,
+      514.136,
+      2029.887
+    ],
+    "end_coords": [
+      -1590.22,
+      512.127,
+      79.439
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la întâlnirea secretă cu Toma la Constanța.",
+      "Fă pactul secret pentru eliminarea Căpitanului.",
+      "Întoarce-te în Pantelimon și apără-te de oamenii Căpitanului."
+    ],
+    "dialogues": [
+      "- Toma: 'Căpitanu' e de domeniul trecutului, Relu. E prea zgomotos și prost. Tu ești băiat deștept. Îl curățăm și preiei tu.'",
+      "- Relu: 'Să moară Căpitanu'.'"
+    ],
+    "reward_cash": 1000,
+    "reward_respect": 0
+  },
+  {
+    "id": 17,
+    "title": "Nuntă cu Scântei",
+    "client": "Teddy",
+    "prerequisites": [
+      16
+    ],
+    "start_coords": [
+      -2528.054,
+      512.116,
+      1894.011
+    ],
+    "end_coords": [
+      -1403.703,
+      514.175,
+      79.439
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la restaurantul unde are loc nunta lui Teddy cu Magda.",
+      "Verifică invitații la intrare și confiscă armele.",
+      "Oprește scandalul dintre interlopii din Constanța și cei din Pantelimon."
+    ],
+    "dialogues": [
+      "- Căpitanu': 'Băi Relule, cuscrii tăi de la Constanța cam strâmbă din nas la mâncarea noastră. Spune-le să se potolească!'",
+      "- Relu: 'Nu strică nimeni nunta fetei mele. Cine mai scoate un cuțit, pleacă de aici cu picioarele înainte.'"
+    ],
+    "reward_cash": 500,
+    "reward_respect": 0
+  },
+  {
+    "id": 18,
+    "title": "Cadoul Căpitanului",
+    "client": "Căpitanu'",
+    "prerequisites": [
+      17
+    ],
+    "start_coords": [
+      -2621.312,
+      512.747,
+      1743.503
+    ],
+    "end_coords": [
+      -1219.27,
+      516.981,
+      105.342
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la casa primită cadou de tineri în sectorul 2.",
+      "Elimină ocupanții ilegali trimiși de o bandă rivală.",
+      "Asigură perimetrul pentru mutare."
+    ],
+    "dialogues": [
+      "- Teddy: 'Tatăl meu ne-a dat casa asta, dar băieții ăștia zic că e a lor. Relu, ce facem?'",
+      "- Relu: 'Ce știm mai bine. Scoate bâta.'"
+    ],
+    "reward_cash": 400,
+    "reward_respect": 0
+  },
+  {
+    "id": 19,
+    "title": "Inspectorul Psihopat",
+    "client": "Emilian",
+    "prerequisites": [
+      18
+    ],
+    "start_coords": [
+      -2689.455,
+      515.45,
+      1581.725
+    ],
+    "end_coords": [
+      -1041.04,
+      517.966,
+      156.568
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Răspunde la telefonul lui Emilian.",
+      "Mergi la locul de întâlnire de sub podul Grant.",
+      "Plantează pachetul de cocaină în mașina senatorului.",
+      "Sună la 112 anonim."
+    ],
+    "dialogues": [
+      "- Emilian: 'Relu, ești o umbră în buzunarul meu. Faci ce spun eu, sau soția ta află unde ai îngropat cadavrul ăla.'",
+      "- Relu: 'Ce vrei să fac?'",
+      "- Emilian: 'O mică surpriză pentru un domn senator...'"
+    ],
+    "reward_cash": 300,
+    "reward_respect": 0
+  },
+  {
+    "id": 20,
+    "title": "Spălare de Bani",
+    "client": "Nico",
+    "prerequisites": [
+      19
+    ],
+    "start_coords": [
+      -2730.958,
+      517.739,
+      1412.29
+    ],
+    "end_coords": [
+      -872.994,
+      516.224,
+      231.973
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la spălătoria auto a clanului din Pantelimon.",
+      "Colectează încasările fictive.",
+      "Transportă banii la firma de amanet din Obor.",
+      "Elimină hoții care încearcă să te jefuiască pe drum."
+    ],
+    "dialogues": [
+      "- Nico: 'Banii ăștia trebuie spălați repede. Ai grijă, Nicu a aflat de traseu.'",
+      "- Relu: 'Să încerce doar să se apropie de mașină.'"
+    ],
+    "reward_cash": 800,
+    "reward_respect": 0
+  },
+  {
+    "id": 21,
+    "title": "Umbra lui Nea Puiu",
+    "client": "Nea Puiu",
+    "prerequisites": [
+      20
+    ],
+    "start_coords": [
+      -2744.897,
+      517.51,
+      1238.984
+    ],
+    "end_coords": [
+      -718.887,
+      513.357,
+      329.873
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la garajul lui Nea Puiu.",
+      "Găsește-l pe Nea Puiu care a plecat paranoic prin cartier.",
+      "Salvează-l de gaborii care vor să-l legitimeze.",
+      "Du-l la o casă conspirativă din afara Bucureștiului."
+    ],
+    "dialogues": [
+      "- Nea Puiu: 'Vin după noi, Relule! Gaborul ăla cu ochi de sticlă știe tot! Trebuie să-i curățăm pe toți!'",
+      "- Relu: 'Nea Puiu, potolește-te. Urcă în mașină, mergem la aer curat.'"
+    ],
+    "reward_cash": 200,
+    "reward_respect": 0
+  },
+  {
+    "id": 22,
+    "title": "Transport de Constanța",
+    "client": "Toma",
+    "prerequisites": [
+      21
+    ],
+    "start_coords": [
+      -2730.958,
+      514.973,
+      1065.679
+    ],
+    "end_coords": [
+      -582.16,
+      512.0,
+      448.082
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi pe autostrada A2 (Autostrada Soarelui).",
+      "Întâlnește camionul cu marfă de la Constanța.",
+      "Apără transportul de oamenii lui Nicu.",
+      "Escortează camionul la depozitul din București."
+    ],
+    "dialogues": [
+      "- Toma: 'Transportul ăsta e testul tău, Relu. Dacă marfa nu ajunge, înțelegerea noastră pică.'",
+      "- Relu: 'O să ajungă. Punct.'"
+    ],
+    "reward_cash": 1000,
+    "reward_respect": 0
+  },
+  {
+    "id": 23,
+    "title": "Jocul Dublu al lui Nico",
+    "client": "Nico",
+    "prerequisites": [
+      22
+    ],
+    "start_coords": [
+      -2689.455,
+      512.461,
+      896.244
+    ],
+    "end_coords": [
+      -465.869,
+      513.402,
+      583.958
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Întâlnește-te cu Nico la un hotel de tranzit.",
+      "Află că Emilian vrea să o omoare.",
+      "Obține pașaportul fals de la falsificatorul din Colentina.",
+      "Predă pașaportul lui Nico și ajută-o să fugă."
+    ],
+    "dialogues": [
+      "- Nico: 'Relu, Emilian e nebun! O să mă omoare! Trebuie să plec din țară acum!'",
+      "- Falsificator: 'Băiatu', pașaportul ăsta costă dublu acum că e grabă.'",
+      "- Relu (punându-i pistolul la tâmplă): 'Plătesc cu plumb dacă nu mi-l dai acum.'"
+    ],
+    "reward_cash": 600,
+    "reward_respect": 0
+  },
+  {
+    "id": 24,
+    "title": "Răzbunarea lui Nicu",
+    "client": "Căpitanu'",
+    "prerequisites": [
+      23
+    ],
+    "start_coords": [
+      -2621.312,
+      512.283,
+      734.466
+    ],
+    "end_coords": [
+      -372.611,
+      516.273,
+      734.466
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi de urgență la sala de box a lui Relu.",
+      "Apără sala de asaltul oamenilor lui Nicu.",
+      "Elimină toți atacatorii și securizează zona."
+    ],
+    "dialogues": [
+      "- Nicu (mesaj audio): 'Relule, ai crezut că ești șmecher cu Constanța ta? Îți dărâm tot cartierul, spaniolule!'",
+      "- Relu: 'Ne vedem la sală, Nicu. Adu mulți oameni.'"
+    ],
+    "reward_cash": 800,
+    "reward_respect": 0
+  },
+  {
+    "id": 25,
+    "title": "Capcana",
+    "client": "Emilian",
+    "prerequisites": [
+      24
+    ],
+    "start_coords": [
+      -2528.054,
+      514.603,
+      583.958
+    ],
+    "end_coords": [
+      -304.469,
+      517.974,
+      896.244
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la întâlnirea aranjată de Emilian la un bloc turn.",
+      "Realizează că este o capcană și că ești înconjurat de mascați.",
+      "Evadează din clădire folosind acoperișurile și ghenele de gunoi."
+    ],
+    "dialogues": [
+      "- Emilian: 'Sfârșitul jocului, Relu! De data asta nu mai scapi!'",
+      "- Relu: 'Niciodată să nu spui niciodată, gaborule.'"
+    ],
+    "reward_cash": 0,
+    "reward_respect": 0
+  },
+  {
+    "id": 26,
+    "title": "Pactul",
+    "client": "Nicu",
+    "prerequisites": [
+      25
+    ],
+    "start_coords": [
+      -2411.763,
+      517.288,
+      448.082
+    ],
+    "end_coords": [
+      -262.965,
+      516.941,
+      1065.679
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la întâlnirea secretă cu Nicu la un depozit de fier vechi.",
+      "Negociază trădarea Căpitanului.",
+      "Elimină bodyguarzii Căpitanului care te-au spionat."
+    ],
+    "dialogues": [
+      "- Nicu: 'Hai să terminăm cu moșul ăsta de Căpitanu'. Tu îți vezi de treabă, eu preiau sectorul. Ce zici?'",
+      "- Relu: 'Dacă se atinge cineva de familia mea, vă curăț pe toți. Accept pactul.'"
+    ],
+    "reward_cash": 1000,
+    "reward_respect": 0
+  },
+  {
+    "id": 27,
+    "title": "Confruntarea Finală",
+    "client": "Gina",
+    "prerequisites": [
+      26
+    ],
+    "start_coords": [
+      -2275.037,
+      517.869,
+      329.873
+    ],
+    "end_coords": [
+      -249.027,
+      514.124,
+      1238.984
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi de urgență la apartamentul lui Relu.",
+      "Apără apartamentul de asaltul oamenilor lui Nicu (care au trădat pactul).",
+      "Du-i pe Gina și Chuckie într-un loc sigur."
+    ],
+    "dialogues": [
+      "- Gina: 'Relu! Trag în noi! Ajutor!'",
+      "- Relu: 'Gina, Chuckie, sub pat! Acum!'",
+      "- Relu (încărcând AK-47): 'V-ați luat de cine nu trebuie, gunoaielor!'"
+    ],
+    "reward_cash": 500,
+    "reward_respect": 0
+  },
+  {
+    "id": 28,
+    "title": "Sânge pe Zăpadă",
+    "client": "Toma",
+    "prerequisites": [
+      27
+    ],
+    "start_coords": [
+      -2120.929,
+      515.813,
+      231.973
+    ],
+    "end_coords": [
+      -262.965,
+      512.112,
+      1412.29
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la hangarul abandonat de lângă Lacul Pantelimon.",
+      "Elimină-l pe Nicu și garda sa de corp.",
+      "Evită atacul de sniper al oamenilor lui Emilian."
+    ],
+    "dialogues": [
+      "- Nicu: 'Relu, te rog... îți dau toți banii din Spania...'",
+      "- Relu: 'Ai atins ușa casei mele. Să-i spui lui Nea Puiu că-mi pare rău.' (Trage)",
+      "- Emilian (prin stație): 'O să plângi mult timp de acum încolo, Relu...'"
+    ],
+    "reward_cash": 1500,
+    "reward_respect": 0
+  },
+  {
+    "id": 29,
+    "title": "Noua Ordine",
+    "client": "Toma",
+    "prerequisites": [
+      28
+    ],
+    "start_coords": [
+      -1952.884,
+      513.009,
+      156.568
+    ],
+    "end_coords": [
+      -304.469,
+      512.756,
+      1581.725
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la terasa Căpitanului (care acum este condusă de Teddy).",
+      "Organizează noii oameni din Pantelimon.",
+      "Recuperează taxa de la cluburile din sectorul 2."
+    ],
+    "dialogues": [
+      "- Teddy: 'Relu, unii patroni zic că nu mă respectă pe mine. Că sunt doar băiatul Căpitanului.'",
+      "- Relu: 'O să ne respecte după ce le spargem barurile. Hai să le facem o vizită.'"
+    ],
+    "reward_cash": 1000,
+    "reward_respect": 0
+  },
+  {
+    "id": 30,
+    "title": "Presiunea Gaborilor",
+    "client": "Teddy",
+    "prerequisites": [
+      29
+    ],
+    "start_coords": [
+      -1774.653,
+      512.036,
+      105.342
+    ],
+    "end_coords": [
+      -372.611,
+      515.463,
+      1743.503
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la sediul poliției din sectorul 2.",
+      "Întâlnește-te cu polițistul corupt Sabău.",
+      "Livrează geanta cu mită de 20.000 EUR.",
+      "Elimină agenții secreți care monitorizează tranzacția."
+    ],
+    "dialogues": [
+      "- Sabău: 'Emilian e nebun, băieți. Nu mai pot să-l țin în frâu mult timp. Riscul e mare, mă costă mai mult.'",
+      "- Relu: 'Banii sunt aici. Ai grijă să nu vedem gabori pe stradă diseară.'"
+    ],
+    "reward_cash": 800,
+    "reward_respect": 0
+  },
+  {
+    "id": 31,
+    "title": "Magazinul de Electrocasnice",
+    "client": "Teddy",
+    "prerequisites": [
+      30
+    ],
+    "start_coords": [
+      -1590.22,
+      513.788,
+      79.439
+    ],
+    "end_coords": [
+      -465.869,
+      517.744,
+      1894.011
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Deschide noul magazin de electrocasnice (front de spălare bani).",
+      "Alungă recuperatorii din sectorul 3 care cer taxă de protecție.",
+      "Intimidează-l pe liderul lor."
+    ],
+    "dialogues": [
+      "- Teddy: 'Vin băieții din sectorul 3 să ne ceară taxă. Pe teritoriul nostru!'",
+      "- Relu: 'Hai să le arătăm niște oferte speciale la mașinile de spălat.'"
+    ],
+    "reward_cash": 600,
+    "reward_respect": 30
+  },
+  {
+    "id": 32,
+    "title": "Dispariția lui Nico",
+    "client": "Nico",
+    "prerequisites": [
+      31
+    ],
+    "start_coords": [
+      -1403.703,
+      516.654,
+      79.439
+    ],
+    "end_coords": [
+      -582.16,
+      517.503,
+      2029.887
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la ultimul semnal al telefonului lui Nico pe DN1.",
+      "Infiltrează-te în motelul suspect.",
+      "Elimină gărzile de corp ale lui Emilian.",
+      "Eliberează-o pe Nico din subsol."
+    ],
+    "dialogues": [
+      "- Nico (mesaj slab): 'Relu... ajutor... e subsolul de la...'",
+      "- Relu: 'Rezistă, Nico. Vin acum.'"
+    ],
+    "reward_cash": 800,
+    "reward_respect": 0
+  },
+  {
+    "id": 33,
+    "title": "Avertismentul lui Toma",
+    "client": "Toma",
+    "prerequisites": [
+      32
+    ],
+    "start_coords": [
+      -1219.27,
+      518.0,
+      105.342
+    ],
+    "end_coords": [
+      -718.887,
+      514.96,
+      2148.096
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la întâlnirea cu oamenii lui Toma în portul Constanța.",
+      "Află că Toma este nemulțumit de pierderile provocate de Emilian.",
+      "Elimină dealerii concurenți din stațiunea Mamaia."
+    ],
+    "dialogues": [
+      "- Toma: 'Bucureștiul tău îmi aduce numai probleme, Relu. Rezolvă dealerii ăia sau vin eu personal și curăț tot, inclusiv pe tine.'",
+      "- Relu: 'Consideră-i rezolvați.'"
+    ],
+    "reward_cash": 1200,
+    "reward_respect": 0
+  },
+  {
+    "id": 34,
+    "title": "Trădătorul",
+    "client": "Teddy",
+    "prerequisites": [
+      33
+    ],
+    "start_coords": [
+      -1041.04,
+      516.587,
+      156.568
+    ],
+    "end_coords": [
+      -872.994,
+      512.454,
+      2245.996
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Identifică trădătorul din interiorul clanului.",
+      "Urmărește-l pe trădător prin cartier.",
+      "Răpește-l și du-l în subsolul unui bloc.",
+      "Interroghează-l pentru a afla ce i-a spus lui Emilian."
+    ],
+    "dialogues": [
+      "- Trădător: 'Nu i-am spus nimic important, jur! Emilian m-a bătut, n-am avut de ales!'",
+      "- Relu: 'Alegerea o faci acum: îmi spui tot sau nu mai pleci de aici pe picioare.'"
+    ],
+    "reward_cash": 700,
+    "reward_respect": 0
+  },
+  {
+    "id": 35,
+    "title": "O Vizită la Constanța",
+    "client": "Toma",
+    "prerequisites": [
+      34
+    ],
+    "start_coords": [
+      -872.994,
+      513.715,
+      231.973
+    ],
+    "end_coords": [
+      -1041.04,
+      512.289,
+      2321.401
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la Constanța la vila lui Toma.",
+      "Acceptă misiunea de asasinat asupra șefului vămii portuare.",
+      "Infiltrează-te în zona restricționată a portului.",
+      "Elimină ținta cu o armă cu lunetă de pe o macara."
+    ],
+    "dialogues": [
+      "- Toma: 'Vameșul ăsta crede că e cinstit. Arată-i că cinstea se plătește cu viața în portul meu.'",
+      "- Relu: 'Sunt pe macara. Ținta e în vizor. Tragi-mi aer în piept. (Foc)'"
+    ],
+    "reward_cash": 1500,
+    "reward_respect": 0
+  },
+  {
+    "id": 36,
+    "title": "Întoarcerea Acasă",
+    "client": "Relu",
+    "prerequisites": [
+      35
+    ],
+    "start_coords": [
+      -718.887,
+      512.025,
+      329.873
+    ],
+    "end_coords": [
+      -1219.27,
+      514.616,
+      2372.627
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Condu pe drumul de întoarcere spre București.",
+      "Supraviețuiește ambuscadei de pe DN3A.",
+      "Luptă-te cu mercenarii prin lanul de porumb.",
+      "Găsește un vehicul funcțional și întoarce-te în Pantelimon."
+    ],
+    "dialogues": [
+      "- Mercenar: 'Găsiți-l! E rănit, nu poate fi departe! Toma vrea capul lui!'",
+      "- Relu (în șoaptă, în porumb): 'Toma... ai făcut cea mai mare greșeală din viața ta.'"
+    ],
+    "reward_cash": 0,
+    "reward_respect": 0
+  },
+  {
+    "id": 37,
+    "title": "Obsesia lui Emilian",
+    "client": "Gina",
+    "prerequisites": [
+      36
+    ],
+    "start_coords": [
+      -582.16,
+      513.069,
+      448.082
+    ],
+    "end_coords": [
+      -1403.703,
+      517.296,
+      2398.53
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Răspunde la apelul plin de panică al Ginei.",
+      "Mergi la fosta fabrică de sticlă din Pantelimon.",
+      "Elimină capcanele explozive ale lui Emilian.",
+      "Salvează-l pe Chuckie din mâinile lui Emilian."
+    ],
+    "dialogues": [
+      "- Gina: 'Relu! Emilian l-a luat pe Chuckie din fața blocului! A zis că dacă nu vii la fabrica de sticlă, îl omoară!'",
+      "- Emilian (prin difuzor): 'Timpul trece, Relu! Ai 5 minute să-ți salvezi băiatul!'"
+    ],
+    "reward_cash": 500,
+    "reward_respect": 0
+  },
+  {
+    "id": 38,
+    "title": "Ochi pentru Ochi",
+    "client": "Relu",
+    "prerequisites": [
+      37
+    ],
+    "start_coords": [
+      -465.869,
+      515.889,
+      583.958
+    ],
+    "end_coords": [
+      -1590.22,
+      517.865,
+      2398.53
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Urmărește-l pe Emilian care încearcă să fugă cu o mașină de poliție.",
+      "Provoacă un accident mașinii sale pe Șoseaua Pantelimon.",
+      "Execută-l pe Emilian într-o confruntare directă."
+    ],
+    "dialogues": [
+      "- Emilian (plângând și râzând): 'Nu mă poți ucide, Relu... sunt legea...'",
+      "- Relu: 'Aici, în Pantelimon, legea o scriu eu cu barosul.' (Trage un glonț în cap)"
+    ],
+    "reward_cash": 1000,
+    "reward_respect": 0
+  },
+  {
+    "id": 39,
+    "title": "Tăierea Legăturilor",
+    "client": "Relu",
+    "prerequisites": [
+      38
+    ],
+    "start_coords": [
+      -372.611,
+      517.891,
+      734.466
+    ],
+    "end_coords": [
+      -1774.653,
+      515.8,
+      2372.627
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la Otopeni Airport.",
+      "Escortează-i pe Gina, Magda, Teddy și Chuckie.",
+      "Respinge asaltul trupelor lui Toma la terminalul plecări.",
+      "Asigură-te că familia se îmbarcă în avionul spre Spania."
+    ],
+    "dialogues": [
+      "- Gina: 'Relu, tu nu vii cu noi?'",
+      "- Relu: 'Mai am o treabă de terminat la Constanța, Gina. Aveți grijă de voi în Spania. O să vin și eu.'"
+    ],
+    "reward_cash": 500,
+    "reward_respect": 0
+  },
+  {
+    "id": 40,
+    "title": "Prăbușirea Imperiului",
+    "client": "Nico",
+    "prerequisites": [
+      39
+    ],
+    "start_coords": [
+      -304.469,
+      517.235,
+      896.244
+    ],
+    "end_coords": [
+      -1952.884,
+      512.999,
+      2321.401
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la depozitul principal din Pantelimon.",
+      "Apără depozitul de asaltul total al mafiei din Constanța.",
+      "Elimină blindatele trimise de Toma."
+    ],
+    "dialogues": [
+      "- Nico: 'Relu, vin peste noi cu tot ce au! Dacă pică depozitul ăsta, am terminat-o!'",
+      "- Relu: 'Pregătește lansatorul de rachete. O să fie măcel.'"
+    ],
+    "reward_cash": 1000,
+    "reward_respect": 0
+  },
+  {
+    "id": 41,
+    "title": "Răfuiala de la Constanța",
+    "client": "Relu",
+    "prerequisites": [
+      40
+    ],
+    "start_coords": [
+      -262.965,
+      514.524,
+      1065.679
+    ],
+    "end_coords": [
+      -2120.929,
+      512.038,
+      2245.996
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi la Constanța.",
+      "Asaltează vila luxoasă a lui Toma pe plaja din Năvodari.",
+      "Elimină armata privată a lui Toma.",
+      "Execută-l pe Toma în biroul său."
+    ],
+    "dialogues": [
+      "- Toma: 'Relu... nu poți distruge ce am construit eu... sunt prea mulți oameni în spatele meu...'",
+      "- Relu: 'Oamenii tăi sunt morți în grădină, Toma. Acum e rândul tău.' (Trage o rafală de minigun)"
+    ],
+    "reward_cash": 2000,
+    "reward_respect": 0
+  },
+  {
+    "id": 42,
+    "title": "Umbre în Pantelimon",
+    "client": "Niciunul (Misiune Finală)",
+    "prerequisites": [
+      41
+    ],
+    "start_coords": [
+      -249.027,
+      512.25,
+      1238.984
+    ],
+    "end_coords": [
+      -2275.037,
+      513.8,
+      2148.096
+    ],
+    "radius": 10.0,
+    "objectives": [
+      "Mergi în parcarea de la Cora Pantelimon.",
+      "Urcă în Loganul galben.",
+      "Așteaptă ultimul pasager."
+    ],
+    "dialogues": [
+      "- Pasager: 'Salut, șefu'. Mergem până în Ferentari?'",
+      "- Relu (privind în oglinda retrovizoare): 'Mergem oriunde vrei tu, prietene. Avem timp.'"
+    ],
+    "reward_cash": 0,
+    "reward_respect": 0
+  }
+]

@@ -95,7 +95,7 @@ pub fn render_mission_hud(
                         }
                     }
                     if ui.button("Teleport to Destination").clicked() {
-                        if let Ok(mut transform) = car_query.get_single_mut() {
+                        if let Ok(mut transform) = car_query.single_mut() {
                             transform.translation = Vec3::from(mission.end_coords);
                         }
                     }
@@ -121,7 +121,7 @@ pub fn render_mission_hud(
                     ui.horizontal(|ui| {
                         ui.label(format!("- {}", mission.title));
                         if ui.button("Teleport to Start").clicked() {
-                            if let Ok(mut transform) = car_query.get_single_mut() {
+                            if let Ok(mut transform) = car_query.single_mut() {
                                 transform.translation = Vec3::from(mission.start_coords);
                             }
                         }

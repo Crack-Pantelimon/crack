@@ -13,6 +13,9 @@ pub enum MissionStatus {
     Failed,
 }
 
+#[derive(Resource, Debug, Clone, Copy, Default)]
+pub struct HeadlessMode;
+
 #[derive(Resource, Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MissionState {
     pub current_mission: Option<u32>,

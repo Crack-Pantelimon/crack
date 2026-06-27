@@ -11,7 +11,7 @@ pub fn check_mission_triggers(
     mission_list: Res<MissionList>,
     mut mission_state: ResMut<MissionState>,
 ) {
-    let car_transform = match car_query.get_single() {
+    let car_transform = match car_query.single() {
         Ok(t) => t,
         Err(_) => return,
     };
