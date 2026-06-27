@@ -273,6 +273,9 @@ class NodeInfo:
         self.imagery_epoch = imagery_epoch
 
 
+import threading
+_bulk_lock = threading.Lock()
+
 # Cache for bulk metadata to avoid redundant downloads
 _bulk_cache: dict[str, BulkIndex] = {}
 
@@ -280,13 +283,14 @@ _bulk_cache: dict[str, BulkIndex] = {}
 def _get_bulk(path: str, epoch: int) -> BulkIndex:
     """Fetch and cache a BulkIndex."""
     cache_key = f"{path}:{epoch}"
-    if cache_key in _bulk_cache:
-        return _bulk_cache[cache_key]
+    with _bulk_lock:
+        if cache_key in _bulk_cache:
+            return _bulk_cache[cache_key]
 
-    bulk = fetch_bulk_metadata(path, epoch)
-    idx = BulkIndex(bulk, path)
-    _bulk_cache[cache_key] = idx
-    return idx
+        bulk = fetch_bulk_metadata(path, epoch)
+        idx = BulkIndex(bulk, path)
+        _bulk_cache[cache_key] = idx
+        return idx
 
 
 def resolve_node(octant_path: str, root_epoch: int) -> NodeInfo | None:

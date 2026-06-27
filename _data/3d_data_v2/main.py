@@ -12,6 +12,7 @@ import logging
 import numpy as np
 from pathlib import Path
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from octree import (
     parse_bbox,
@@ -62,7 +63,7 @@ def render_tile_via_blender(blend_path: Path, jpg_path: Path, ref_point: np.ndar
 # Configuration
 BBOX_FILE = "data_in/zone-bbox.txt"
 OUTPUT_DIR = "data_out"
-TARGET_GRID = 4  # aim for roughly 3x3 tiles
+TARGET_GRID = 32  # aim for roughly 3x3 tiles
 REQUEST_DELAY = 0.1  # seconds between node downloads
 GET_ALL_COARSER_LEVELS = True  # If True, download all levels of detail smaller than (coarser than or equal to) the 3x3 optimal level
 
@@ -76,7 +77,8 @@ def save_tile(
     """
     Return metadata for the manifest.
     """
-    filename = f"{octant_path}.blend"
+    depth = len(octant_path)
+    filename = f"{depth}/{octant_path}.blend"
     filepath = Path(output_dir) / filename
 
     # Compute stats
@@ -204,94 +206,109 @@ def main():
     # 4. Ensure output directory exists
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # 5. Download and export each tile
+    # 5. Download and export each tile using a thread pool of 6 workers
     tiles_metadata = []
     failed = 0
     skipped = 0
 
-    for i, octant_path in enumerate(octant_paths):
-        progress = f"[{i + 1}/{len(octant_paths)}]"
+    octant_paths_set = set(octant_paths)
+
+    def process_tile(octant_path: str, index: int) -> dict | None:
+        progress = f"[{index + 1}/{len(octant_paths)}]"
 
         # Resolve node through bulk metadata tree
         node_info = resolve_node(octant_path, root_epoch)
         if node_info is None:
             logger.debug(f"{progress} Skipped {octant_path} (no data)")
-            skipped += 1
-            continue
+            return None
 
-        try:
-            # Download node data
-            logger.info(f"{progress} Downloading {octant_path}...")
-            node_data = download_node(node_info)
+        # Download node data
+        logger.info(f"{progress} Downloading {octant_path}...")
+        node_data = download_node(node_info)
 
-            # Decode meshes
-            masked_octants = set()
-            for o in range(8):
-                child_path = octant_path + str(o)
-                if child_path in octant_paths:
-                    masked_octants.add(o)
+        # Decode meshes
+        masked_octants = set()
+        for o in range(8):
+            child_path = octant_path + str(o)
+            if child_path in octant_paths_set:
+                masked_octants.add(o)
 
-            decoded_meshes = decode_node(node_data, masked_octants)
-            if not decoded_meshes:
-                logger.warning(f"{progress} No meshes in {octant_path}")
-                skipped += 1
-                continue
+        decoded_meshes = decode_node(node_data, masked_octants)
+        if not decoded_meshes:
+            logger.warning(f"{progress} No meshes in {octant_path}")
+            return None
 
-            # Construct NodeData URL path for cache resolution
-            url_path = f"NodeData/pb=!1m2!1s{node_info.path}!2u{node_info.epoch}!2e{node_info.texture_format}"
-            if node_info.imagery_epoch is not None:
-                url_path += f"!3u{node_info.imagery_epoch}"
-            url_path += "!4b0"
-            sha1 = hashlib.sha1(url_path.encode("utf-8")).hexdigest()
-            json_path = Path("data_cache") / "json_decoded" / "NodeData" / sha1[:2] / f"{sha1}.json"
-            blend_path = Path(OUTPUT_DIR) / f"{octant_path}.blend"
+        depth = len(octant_path)
+        blend_path = Path(OUTPUT_DIR) / str(depth) / f"{octant_path}.blend"
+        jpg_path = Path(OUTPUT_DIR) / str(depth) / f"{octant_path}.jpg"
 
-            # Build Blend using Blender script
-            cmd = [
-                "blender",
-                "-b",
-                "-P",
-                "build_blend.py",
-                "--",
-                str(json_path),
-                str(blend_path),
-                str(ref_point[0]),
-                str(ref_point[1]),
-                str(ref_point[2]),
-                ",".join(map(str, masked_octants))
-            ]
-            subprocess.run(cmd, check=True)
+        # Ensure parent directories exist
+        blend_path.parent.mkdir(parents=True, exist_ok=True)
+        jpg_path.parent.mkdir(parents=True, exist_ok=True)
 
-            if not blend_path.exists():
-                logger.warning(f"{progress} blend was not generated for {octant_path}")
-                skipped += 1
-                continue
+        # Construct NodeData URL path for cache resolution
+        url_path = f"NodeData/pb=!1m2!1s{node_info.path}!2u{node_info.epoch}!2e{node_info.texture_format}"
+        if node_info.imagery_epoch is not None:
+            url_path += f"!3u{node_info.imagery_epoch}"
+        url_path += "!4b0"
+        sha1 = hashlib.sha1(url_path.encode("utf-8")).hexdigest()
+        json_path = Path("data_cache") / "json_decoded" / "NodeData" / sha1[:2] / f"{sha1}.json"
 
-            # Save tile and collect metadata
-            tile_meta = save_tile(
-                octant_path, node_data, decoded_meshes, OUTPUT_DIR
-            )
-            tiles_metadata.append(tile_meta)
+        # Build Blend using Blender script
+        cmd = [
+            "blender",
+            "-b",
+            "-P",
+            "build_blend.py",
+            "--",
+            str(json_path),
+            str(blend_path),
+            str(ref_point[0]),
+            str(ref_point[1]),
+            str(ref_point[2]),
+            ",".join(map(str, masked_octants))
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            # Render Blend tile using Blender for preview/diagnostics
-            jpg_path = Path(OUTPUT_DIR) / f"{octant_path}.jpg"
-            render_tile_via_blender(blend_path, jpg_path, ref_point)
+        if not blend_path.exists():
+            logger.warning(f"{progress} blend was not generated for {octant_path}")
+            return None
 
-            total_verts = tile_meta["vertex_count"]
-            total_tris = tile_meta["triangle_count"]
-            size_kb = tile_meta["file_size_bytes"] / 1024
-            logger.info(
-                f"{progress} Saved {octant_path}.blend and rendered preview "
-                f"({tile_meta['mesh_count']} meshes, {total_verts} verts, {total_tris} tris, {size_kb:.1f} KB)"
-            )
+        # Save tile and collect metadata
+        tile_meta = save_tile(
+            octant_path, node_data, decoded_meshes, OUTPUT_DIR
+        )
 
-        except Exception as e:
-            logger.error(f"{progress} Failed {octant_path}: {e}")
-            failed += 1
+        # Render Blend tile using Blender for preview/diagnostics
+        render_tile_via_blender(blend_path, jpg_path, ref_point)
 
-        # Rate limiting
-        if i < len(octant_paths) - 1:
-            time.sleep(REQUEST_DELAY)
+        total_verts = tile_meta["vertex_count"]
+        total_tris = tile_meta["triangle_count"]
+        size_kb = tile_meta["file_size_bytes"] / 1024
+        logger.info(
+            f"{progress} Saved {octant_path}.blend and rendered preview "
+            f"({tile_meta['mesh_count']} meshes, {total_verts} verts, {total_tris} tris, {size_kb:.1f} KB)"
+        )
+        return tile_meta
+
+    logger.info("Starting download and export using 6 parallel workers...")
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {
+            executor.submit(process_tile, path, idx): path
+            for idx, path in enumerate(octant_paths)
+        }
+
+        for future in as_completed(futures):
+            path = futures[future]
+            try:
+                result = future.result()
+                if result is not None:
+                    tiles_metadata.append(result)
+                else:
+                    skipped += 1
+            except Exception as e:
+                logger.error(f"Task for {path} raised an exception: {e}")
+                failed += 1
 
     # 6. Write manifest
     bbox_dict = {
