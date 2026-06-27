@@ -38,8 +38,18 @@ def render_glb(glb_path, out_jpg_path):
         
     print(f"Bounding Box: min={bbox_min}, max={bbox_max}, center={center}, size={size}")
     
+    # Calculate diagonal, far plane, near plane
+    diagonal = np.linalg.norm(bbox_max - bbox_min)
+    if diagonal == 0:
+        diagonal = 1.0
+    far_plane = 3.0 * diagonal
+    near_plane = 0.01 * far_plane
+
     # Place camera pointing at the center
     cam_data = bpy.data.cameras.new(name="Camera")
+    cam_data.clip_start = near_plane
+    cam_data.clip_end = far_plane
+    
     cam_object = bpy.data.objects.new(name="Camera", object_data=cam_data)
     bpy.context.collection.objects.link(cam_object)
     bpy.context.scene.camera = cam_object
@@ -48,11 +58,11 @@ def render_glb(glb_path, out_jpg_path):
     fov = cam_data.angle
     distance = max_dim / (2.0 * math.tan(fov / 2.0)) * 1.5
     
-    # Place camera at an angle
+    # Place camera directly above the mesh
     cam_object.location = (
-        center[0] + distance * 0.6,
-        center[1] - distance * 0.8,
-        center[2] + distance * 0.6
+        center[0],
+        center[1],
+        center[2] + distance
     )
     
     # Point camera to center

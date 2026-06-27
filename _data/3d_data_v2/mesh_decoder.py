@@ -404,7 +404,7 @@ def decode_node(node_data: pb.NodeData) -> list[DecodedMesh]:
             uv_offset = (mesh_pb.uv_offset_and_scale[0], mesh_pb.uv_offset_and_scale[1])
             uv_scale = (mesh_pb.uv_offset_and_scale[2], mesh_pb.uv_offset_and_scale[3])
         else:
-            uv_offset = (0.5, 0.5 - 1.0 / v_mod if v_mod > 0 else 0.5)
+            uv_offset = (0.5, 0.5 - v_mod if v_mod > 0 else 0.5)
             uv_scale = (1.0 / u_mod if u_mod > 0 else 1.0, -1.0 / v_mod if v_mod > 0 else -1.0)
 
         uvs_float = np.zeros((vertex_count, 2), dtype=np.float32)

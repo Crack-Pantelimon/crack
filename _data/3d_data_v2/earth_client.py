@@ -34,6 +34,18 @@ def _fetch_raw(url_path: str, max_retries: int = 5, base_delay: float = 1.0) -> 
     """
     Fetch raw bytes from the Google Earth endpoint with retry logic.
     """
+    import hashlib
+    from pathlib import Path
+
+    object_type = url_path.split("/")[0]
+    sha1 = hashlib.sha1(url_path.encode("utf-8")).hexdigest()
+
+    cache_dir = Path("data_cache") / "raw_fetch" / object_type / sha1[:2]
+    cache_file = cache_dir / f"{sha1}.bytes"
+
+    if cache_file.exists():
+        return cache_file.read_bytes()
+
     url = BASE_URL + url_path
     headers = {
         "User-Agent": config.USER_AGENT,
@@ -46,7 +58,15 @@ def _fetch_raw(url_path: str, max_retries: int = 5, base_delay: float = 1.0) -> 
                 proxies=dict(http=SOCKS_PROXY, https=SOCKS_PROXY,),
             )
             if resp.status_code == 200:
-                return resp.content
+                content = resp.content
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                temp_file = cache_file.with_suffix(".tmp")
+                try:
+                    temp_file.write_bytes(content)
+                    temp_file.rename(cache_file)
+                except Exception as e:
+                    logger.warning(f"Failed to write cache for {url_path}: {e}")
+                return content
             logger.warning(f"HTTP {resp.status_code} for {url} (attempt {attempt}/{max_retries})")
         except requests.RequestException as e:
             logger.warning(f"Request error for {url}: {e} (attempt {attempt}/{max_retries})")

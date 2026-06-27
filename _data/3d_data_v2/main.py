@@ -13,8 +13,19 @@ import numpy as np
 from pathlib import Path
 import subprocess
 
-from octree import parse_bbox, compute_best_level, enumerate_octants_in_bbox, tile_grid_dimensions, octant_path_to_bbox
-from earth_client import fetch_planetoid_metadata, resolve_node, download_node, find_tiles_in_bbox
+from octree import (
+    parse_bbox,
+    compute_best_level,
+    enumerate_octants_in_bbox,
+    tile_grid_dimensions,
+    octant_path_to_bbox,
+)
+from earth_client import (
+    fetch_planetoid_metadata,
+    resolve_node,
+    download_node,
+    find_tiles_in_bbox,
+)
 from mesh_decoder import decode_node
 from glb_builder import build_glb
 from manifest import write_manifest
@@ -28,17 +39,11 @@ logger = logging.getLogger("main")
 
 def render_tile_via_blender(glb_path: Path, jpg_path: Path):
     """Render a GLB file using Blender script in Cycles CPU mode."""
-    cmd = [
-        "blender",
-        "-b",
-        "-P",
-        "render_tile.py",
-        "--",
-        str(glb_path),
-        str(jpg_path)
-    ]
+    cmd = ["blender", "-b", "-P", "render_tile.py", "--", str(glb_path), str(jpg_path)]
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     except Exception as e:
         logger.warning(f"Blender rendering failed for {glb_path.name}: {e}")
 
@@ -46,8 +51,9 @@ def render_tile_via_blender(glb_path: Path, jpg_path: Path):
 # Configuration
 BBOX_FILE = "data_in/zone-bbox.txt"
 OUTPUT_DIR = "data_out"
-TARGET_GRID = 8  # aim for roughly 8×8 tiles
+TARGET_GRID = 3  # aim for roughly 3x3 tiles
 REQUEST_DELAY = 0.1  # seconds between node downloads
+GET_ALL_COARSER_LEVELS = True  # If True, download all levels of detail smaller than (coarser than or equal to) the 3x3 optimal level
 
 
 def save_tile(
@@ -133,27 +139,55 @@ def main():
 
     # 2. Compute optimal level dynamically by searching the actual octree
     target_count = TARGET_GRID * TARGET_GRID
+    estimated_level = compute_best_level(bbox, TARGET_GRID)
+    logger.info(f"Mathematically estimated optimal level: {estimated_level}")
+
     level = 16  # default fallback
     octant_paths = []
     closest_diff = float("inf")
 
-    logger.info(f"Dynamically searching octree levels to find best detail closest to {target_count} tiles...")
+    logger.info(
+        f"Dynamically searching octree levels to find best detail closest to {target_count} tiles..."
+    )
+    level_tiles_map = {}
     # Search levels 13 to 18
     for lvl in range(13, 19):
         tiles = find_tiles_in_bbox(bbox, lvl, root_epoch)
+        level_tiles_map[lvl] = tiles
         diff = abs(len(tiles) - target_count)
-        logger.info(f"Level {lvl}: found {len(tiles)} tiles (diff to {target_count}: {diff})")
+        logger.info(
+            f"Level {lvl}: found {len(tiles)} tiles (diff to {target_count}: {diff})"
+        )
         if diff < closest_diff:
             closest_diff = diff
             level = lvl
-            octant_paths = tiles
 
-    logger.info(f"Selected optimal level: {level} with {len(octant_paths)} tiles")
+        if lvl >= estimated_level:
+            logger.info(
+                f"Reached estimated optimal level {estimated_level}. Stopping search."
+            )
+            break
+
+    if GET_ALL_COARSER_LEVELS:
+        # Get all levels of detail smaller than (coarser than or equal to) the optimal level
+        levels_to_download = [
+            lvl for lvl in sorted(level_tiles_map.keys()) if lvl <= level
+        ]
+        for lvl in levels_to_download:
+            octant_paths.extend(level_tiles_map[lvl])
+        logger.info(
+            f"Selected levels: {levels_to_download} (total {len(octant_paths)} tiles)"
+        )
+    else:
+        octant_paths = level_tiles_map[level]
+        logger.info(f"Selected optimal level: {level} with {len(octant_paths)} tiles")
 
     # 3. Compute reference point (ECEF offset)
     logger.info("Computing reference point from first tile...")
     ref_point = compute_reference_point(octant_paths, root_epoch)
-    logger.info(f"Reference point (ECEF): [{ref_point[0]:.1f}, {ref_point[1]:.1f}, {ref_point[2]:.1f}]")
+    logger.info(
+        f"Reference point (ECEF): [{ref_point[0]:.1f}, {ref_point[1]:.1f}, {ref_point[2]:.1f}]"
+    )
 
     # 4. Ensure output directory exists
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -164,7 +198,7 @@ def main():
     skipped = 0
 
     for i, octant_path in enumerate(octant_paths):
-        progress = f"[{i+1}/{len(octant_paths)}]"
+        progress = f"[{i + 1}/{len(octant_paths)}]"
 
         # Resolve node through bulk metadata tree
         node_info = resolve_node(octant_path, root_epoch)
@@ -186,14 +220,18 @@ def main():
                 continue
 
             # Build GLB
-            glb_bytes = build_glb(decoded_meshes, octant_path, reference_point=ref_point)
+            glb_bytes = build_glb(
+                decoded_meshes, octant_path, reference_point=ref_point
+            )
             if not glb_bytes:
                 logger.warning(f"{progress} Empty GLB for {octant_path}")
                 skipped += 1
                 continue
 
             # Save tile and collect metadata
-            tile_meta = save_tile(glb_bytes, octant_path, node_data, decoded_meshes, OUTPUT_DIR)
+            tile_meta = save_tile(
+                glb_bytes, octant_path, node_data, decoded_meshes, OUTPUT_DIR
+            )
             tiles_metadata.append(tile_meta)
 
             # Render GLB tile using Blender for preview/diagnostics
