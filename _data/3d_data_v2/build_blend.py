@@ -279,27 +279,16 @@ def get_enu_rotation_matrix(ref_point: np.ndarray) -> np.ndarray:
     R = np.stack([e, n, u], axis=0)
     return R
 
-def main():
-    try:
-        args_idx = sys.argv.index("--")
-        args = sys.argv[args_idx + 1:]
-    except ValueError:
-        args = []
+def clear_scene():
+    """Wipe the current scene so the next node imports into a clean slate."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
 
-    if len(args) < 5:
-        print("Usage: blender -b -P build_blend.py -- <json_path> <out_blend_path> <ref_x> <ref_y> <ref_z>")
-        sys.exit(1)
 
-    json_path = args[0]
-    out_blend_path = args[1]
-    ref_point = np.array([float(args[2]), float(args[3]), float(args[4])])
-
+def build_one(json_path: str, out_blend_path: str, ref_point: np.ndarray):
+    """Build a single node's .blend + .glb from its decoded NodeData JSON cache."""
     # Load JSON data
     with open(json_path, "r", encoding="utf-8") as f:
         node_data = json.load(f)
-
-    # Reset Blender scene
-    bpy.ops.wm.read_factory_settings(use_empty=True)
 
     meshes_list = node_data.get("meshes", [])
     ma = node_data.get("matrix_globe_from_mesh", [])
@@ -439,7 +428,7 @@ def main():
     # Save to blend file
     os.makedirs(os.path.dirname(out_blend_path), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(out_blend_path))
-    
+
     # Export to GLB
     out_glb_path = os.path.splitext(out_blend_path)[0] + ".glb"
     bpy.ops.export_scene.gltf(
@@ -449,7 +438,46 @@ def main():
     )
     assert os.path.exists(out_glb_path), f"GLB export produced no file: {out_glb_path}"
 
-    print(f"Successfully saved blend file to {out_blend_path} and exported to {out_glb_path}")
+
+def main():
+    """Process a batch of nodes described by a single JSON file in one Blender run."""
+    try:
+        args_idx = sys.argv.index("--")
+        args = sys.argv[args_idx + 1:]
+    except ValueError:
+        args = []
+
+    if len(args) < 1:
+        print("Usage: blender -b -P build_blend.py -- <batch_json_path>")
+        sys.exit(1)
+
+    batch_path = args[0]
+    with open(batch_path, "r", encoding="utf-8") as f:
+        batch = json.load(f)
+
+    ref_point = np.array(batch["ref_point"], dtype=np.float64)
+    nodes = batch.get("nodes", [])
+
+    built = 0
+    failed = 0
+    for node in nodes:
+        octant = node.get("octant_path", "?")
+        # Delete everything from the scene before building the next node.
+        clear_scene()
+        try:
+            build_one(node["json_path"], node["blend_path"], ref_point)
+            built += 1
+            print(f"BUILD_OK {octant}")
+        except Exception as e:
+            failed += 1
+            print(f"BUILD_FAIL {octant}: {e}")
+
+    print(f"Batch complete: {built} built, {failed} failed (of {len(nodes)})")
+
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"FATAL build_blend batch error: {e}")
+        sys.exit(1)

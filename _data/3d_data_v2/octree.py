@@ -177,7 +177,7 @@ def octant_path_to_bbox(path: str) -> BBox:
     return box
 
 
-def compute_best_level(bbox: BBox, target_grid: int = 8) -> int:
+def compute_best_level(bbox: BBox, target_grid: int = 8, max_level: int = 24) -> int:
     """
     Compute the octree level that gives approximately target_grid x target_grid tiles
     covering the bounding box.
@@ -186,6 +186,10 @@ def compute_best_level(bbox: BBox, target_grid: int = 8) -> int:
       lat_span = 90 / 2^(L-2) degrees
       lon_span = 90 / 2^(L-2) degrees
     (The first 2 chars each halve 180° into 90° quadrants)
+
+    `max_level` caps the result. Google Earth's photogrammetry octree typically
+    bottoms out around level 20-22 (the tree traversal naturally stops at leaf
+    nodes), so the cap mostly guards against pathologically tiny bounding boxes.
     """
     lat_span = bbox.lat_span
     lon_span = bbox.lon_span
@@ -202,7 +206,7 @@ def compute_best_level(bbox: BBox, target_grid: int = 8) -> int:
     level = round((lat_level + lon_level) / 2.0)
 
     # Clamp to reasonable range
-    level = max(4, min(level, 20))
+    level = max(4, min(level, max_level))
 
     return level
 

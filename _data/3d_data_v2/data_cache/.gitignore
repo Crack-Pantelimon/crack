@@ -1,2 +1,3 @@
 *.bytes
 json_decoded/
+*.tmp

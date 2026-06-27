@@ -1,11 +1,13 @@
 import bpy
 import sys
+import json
 import math
 import numpy as np
 import os
 
 def render_blend(blend_path, out_jpg_path, ref_point=None):
-    # Load the blend file
+    # Load the blend file. Opening a .blend fully replaces the current scene,
+    # which doubles as clearing the previous node before rendering the next one.
     try:
         bpy.ops.wm.open_mainfile(filepath=os.path.abspath(blend_path))
     except Exception as e:
@@ -110,22 +112,43 @@ def render_blend(blend_path, out_jpg_path, ref_point=None):
     bpy.ops.render.render(write_still=True)
     print(f"Rendered {blend_path} to {out_jpg_path}")
 
-if __name__ == "__main__":
+def main():
+    """Render a batch of nodes described by a single JSON file in one Blender run."""
     try:
         args_idx = sys.argv.index("--")
         args = sys.argv[args_idx + 1:]
     except ValueError:
         args = []
-        
-    if len(args) < 2:
-        print("Usage: blender -b -P render_tile.py -- <blend_path> <out_jpg_path> [<ref_x> <ref_y> <ref_z>]")
-        sys.exit(1)
-        
-    ref_point = None
-    if len(args) >= 5:
-        try:
-            ref_point = np.array([float(args[2]), float(args[3]), float(args[4])])
-        except Exception:
-            pass
 
-    render_blend(args[0], args[1], ref_point)
+    if len(args) < 1:
+        print("Usage: blender -b -P render_tile.py -- <batch_json_path>")
+        sys.exit(1)
+
+    batch_path = args[0]
+    with open(batch_path, "r", encoding="utf-8") as f:
+        batch = json.load(f)
+
+    ref_point = np.array(batch["ref_point"]) if batch.get("ref_point") else None
+    nodes = batch.get("nodes", [])
+
+    rendered = 0
+    failed = 0
+    for node in nodes:
+        octant = node.get("octant_path", "?")
+        try:
+            render_blend(node["blend_path"], node["jpg_path"], ref_point)
+            rendered += 1
+            print(f"RENDER_OK {octant}")
+        except Exception as e:
+            failed += 1
+            print(f"RENDER_FAIL {octant}: {e}")
+
+    print(f"Render batch complete: {rendered} rendered, {failed} failed (of {len(nodes)})")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print(f"FATAL render_tile batch error: {e}")
+        sys.exit(1)

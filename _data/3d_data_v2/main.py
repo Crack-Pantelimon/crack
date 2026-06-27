@@ -10,9 +10,11 @@ This script does NOT write a manifest. Run `rebuild_manifest.py` afterwards to
 
 import os
 import time
+import json
 import math
 import queue
 import logging
+import tempfile
 import threading
 import numpy as np
 from pathlib import Path
@@ -38,49 +40,35 @@ logging.basicConfig(
 logger = logging.getLogger("main")
 
 
-def run_blender_script(script: str, script_args: list[str]):
+def run_blender_batch(script: str, batch_json_path: str) -> str:
     """
-    Run a Blender -P script and fail loudly on script-level errors.
+    Run a Blender -P script over a whole batch (single process) and return its output.
 
-    Blender returns exit code 0 even when the embedded Python script raises, so a
-    non-zero return code is not enough to detect failure. We capture the combined
-    output and treat any Python traceback / Blender error as a hard failure.
+    Each batched Blender script tolerates per-node failures internally (it keeps
+    going and reports them), so here we only treat a hard crash (non-zero return
+    code, i.e. Blender itself died/segfaulted) as fatal. Per-node success is
+    verified by the caller via on-disk artifact freshness checks.
     """
-    cmd = ["blender", "-b", "-P", script, "--", *script_args]
+    cmd = ["blender", "-b", "-P", script, "--", batch_json_path]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     output = (proc.stdout or "") + (proc.stderr or "")
-    if proc.returncode != 0 or "Traceback (most recent call last)" in output or "\nError: " in output:
+    if proc.returncode != 0:
         raise RuntimeError(
-            f"Blender script {script} failed (returncode={proc.returncode}).\n"
+            f"Blender script {script} crashed (returncode={proc.returncode}).\n"
             f"---- blender output ----\n{output.strip()}\n------------------------"
         )
-
-
-def render_tile_via_blender(blend_path: Path, jpg_path: Path, ref_point: np.ndarray):
-    """Render a blend file using Blender script in Cycles CPU mode."""
-    try:
-        run_blender_script(
-            "render_tile.py",
-            [
-                str(blend_path),
-                str(jpg_path),
-                str(ref_point[0]),
-                str(ref_point[1]),
-                str(ref_point[2]),
-            ],
-        )
-    except Exception as e:
-        logger.warning(f"Blender rendering failed for {blend_path.name}: {e}")
+    return output
 
 
 # Configuration
 BBOX_FILE = "data_in/zone-bbox.txt"
 OUTPUT_DIR = "data_out"
-TARGET_GRID = 512  # aim for roughly 3x3 tiles
+TARGET_GRID = 256  # aim for roughly 3x3 tiles
 REQUEST_DELAY = 0.01  # seconds between node downloads
 GET_ALL_COARSER_LEVELS = True  # If True, download all levels of detail smaller than (coarser than or equal to) the 3x3 optimal level
 NETWORK_WORKERS = 100  # threads fetching + caching node data from the network
 BLENDER_WORKERS = 7  # threads running the Blender build/render subprocesses
+BLENDER_BATCH_SIZE = 32  # nodes handled per single Blender process (amortizes startup cost)
 
 
 def compute_reference_point(bbox) -> np.ndarray:
@@ -217,42 +205,81 @@ def main():
             "triangle_count": sum(len(m.indices) // 3 for m in decoded_meshes),
         }
 
-    def process_item(item: dict):
-        """Blender stage: build .blend/.glb, verify freshness, render preview."""
-        progress = item["progress"]
-        octant_path = item["octant_path"]
-        blend_path = item["blend_path"]
-        glb_path = item["glb_path"]
-        jpg_path = item["jpg_path"]
-
-        # Build Blend (and GLB) using Blender script.
-        build_start = time.time()
-        run_blender_script(
-            "build_blend.py",
-            [
-                str(item["json_path"]),
-                str(blend_path),
-                str(ref_point[0]),
-                str(ref_point[1]),
-                str(ref_point[2]),
+    def process_batch(batch: list[dict]):
+        """
+        Blender stage for a whole batch of nodes in two single Blender runs:
+        one build_blend.py run (→ .blend + .glb) and one render_tile.py run (→ .jpg).
+        The batch spec is handed to Blender through a single temp JSON file.
+        """
+        ref_list = [float(ref_point[0]), float(ref_point[1]), float(ref_point[2])]
+        spec = {
+            "ref_point": ref_list,
+            "nodes": [
+                {
+                    "octant_path": it["octant_path"],
+                    "json_path": str(it["json_path"]),
+                    "blend_path": str(it["blend_path"]),
+                    "glb_path": str(it["glb_path"]),
+                    "jpg_path": str(it["jpg_path"]),
+                }
+                for it in batch
             ],
-        )
+        }
 
-        # Require freshly written artifacts; a stale pre-existing file must not pass.
-        for artifact in (blend_path, glb_path):
-            if not artifact.exists() or artifact.stat().st_mtime < build_start:
-                logger.warning(f"{progress} {artifact.name} was not (re)generated for {octant_path}")
-                bump("skipped")
+        build_start = time.time()
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".json", prefix="blender_batch_", delete=True
+        ) as tf:
+            json.dump(spec, tf)
+            tf.flush()
+
+            # 1. Build .blend + .glb for the whole batch in one Blender process.
+            try:
+                run_blender_batch("build_blend.py", tf.name)
+            except Exception as e:
+                logger.error(f"build_blend batch crashed ({len(batch)} nodes): {e}")
+                for _ in batch:
+                    bump("failed")
                 return
 
-        # Render Blend tile using Blender for preview/diagnostics
-        render_tile_via_blender(blend_path, jpg_path, ref_point)
+            # 2. Verify each node produced fresh artifacts.
+            built = []
+            for it in batch:
+                fresh = all(
+                    p.exists() and p.stat().st_mtime >= build_start
+                    for p in (it["blend_path"], it["glb_path"])
+                )
+                if fresh:
+                    built.append(it)
+                    bump("exported")
+                    logger.info(
+                        f"{it['progress']} Saved {it['octant_path']}.blend/.glb "
+                        f"({it['mesh_count']} meshes, {it['vertex_count']} verts, "
+                        f"{it['triangle_count']} tris)"
+                    )
+                else:
+                    bump("skipped")
+                    logger.warning(
+                        f"{it['progress']} {it['octant_path']} was not (re)generated by build_blend"
+                    )
 
-        logger.info(
-            f"{progress} Saved {octant_path}.blend/.glb and rendered preview "
-            f"({item['mesh_count']} meshes, {item['vertex_count']} verts, {item['triangle_count']} tris)"
-        )
-        bump("exported")
+            # 3. Render previews for everything that built (best-effort, non-fatal).
+            if built:
+                render_spec = {"ref_point": ref_list, "nodes": [
+                    {"octant_path": it["octant_path"],
+                     "blend_path": str(it["blend_path"]),
+                     "jpg_path": str(it["jpg_path"])}
+                    for it in built
+                ]}
+                with tempfile.NamedTemporaryFile(
+                    "w", suffix=".json", prefix="render_batch_", delete=True
+                ) as rtf:
+                    json.dump(render_spec, rtf)
+                    rtf.flush()
+                    try:
+                        run_blender_batch("render_tile.py", rtf.name)
+                    except Exception as e:
+                        logger.warning(f"render_tile batch failed ({len(built)} nodes): {e}")
 
     def network_worker():
         while True:
@@ -273,20 +300,34 @@ def main():
 
     def blender_worker():
         while True:
-            item = process_q.get()
-            try:
-                if item is None:  # sentinel: no more Blender work
-                    return
+            # Block for the first item, then greedily drain up to a full batch so a
+            # single Blender process can handle many nodes at once.
+            first = process_q.get()
+            if first is None:  # sentinel: no more Blender work
+                return
+            batch = [first]
+            while len(batch) < BLENDER_BATCH_SIZE:
                 try:
-                    process_item(item)
-                except Exception as e:
-                    logger.error(f"Blender stage for {item['octant_path']} raised an exception: {e}")
+                    nxt = process_q.get_nowait()
+                except queue.Empty:
+                    break
+                if nxt is None:
+                    # Hand the shutdown sentinel back so another worker (or our next
+                    # loop) can observe it, then stop accumulating.
+                    process_q.put(None)
+                    break
+                batch.append(nxt)
+
+            try:
+                process_batch(batch)
+            except Exception as e:
+                logger.error(f"Blender batch of {len(batch)} nodes raised: {e}")
+                for _ in batch:
                     bump("failed")
-            finally:
-                process_q.task_done()
 
     logger.info(
-        f"Starting pipeline: {NETWORK_WORKERS} network workers → {BLENDER_WORKERS} Blender workers..."
+        f"Starting pipeline: {NETWORK_WORKERS} network workers → "
+        f"{BLENDER_WORKERS} Blender workers (batch size {BLENDER_BATCH_SIZE})..."
     )
     net_threads = [
         threading.Thread(target=network_worker, name=f"net-{i}", daemon=True)
