@@ -28,7 +28,7 @@ from earth_client import (
     fetch_planetoid_metadata,
     resolve_node,
     download_node,
-    find_tiles_in_bbox,
+    find_tiles_in_bbox_levels,
 )
 from mesh_decoder import decode_node
 import hashlib
@@ -111,9 +111,12 @@ def main():
     logger.info(f"Target LOD level (designated small tile size): {target_level}")
 
     octant_paths = []
-    # Fetch all intersecting tiles with a depth >= 10 until we reach target_level
+    # Enumerate all intersecting tiles for levels 10..target_level in a single
+    # breadth-first pass (parallelized bulk fetches), instead of one full
+    # re-traversal per level.
+    level_tiles = find_tiles_in_bbox_levels(bbox, 10, target_level, root_epoch)
     for lvl in range(10, target_level + 1):
-        tiles = find_tiles_in_bbox(bbox, lvl, root_epoch)
+        tiles = level_tiles.get(lvl, [])
         octant_paths.extend(tiles)
         logger.info(f"Level {lvl}: found {len(tiles)} intersecting tiles")
 

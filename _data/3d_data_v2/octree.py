@@ -177,6 +177,35 @@ def octant_path_to_bbox(path: str) -> BBox:
     return box
 
 
+def child_bbox(box: BBox, digit: int) -> BBox:
+    """
+    Compute the bounding box of a single child octant (digit 0-7) of `box`.
+
+    This is the per-step equivalent of `octant_path_to_bbox`, letting a traversal
+    subdivide incrementally (O(1)) instead of re-parsing the full path each time.
+    """
+    lat_bit = (digit >> 1) & 1  # bit 1
+    lon_bit = digit & 1  # bit 0
+
+    mid_lat = (box.north + box.south) / 2.0
+    mid_lon = (box.west + box.east) / 2.0
+
+    if lat_bit == 0:
+        north, south = mid_lat, box.south
+    else:
+        north, south = box.north, mid_lat
+
+    # Skip the lon subdivision at the poles (mirrors octant_path_to_bbox).
+    if north == 90 or south == -90:
+        west, east = box.west, box.east
+    elif lon_bit == 0:
+        west, east = box.west, mid_lon
+    else:
+        west, east = mid_lon, box.east
+
+    return BBox(north=north, south=south, west=west, east=east)
+
+
 def compute_best_level(bbox: BBox, target_grid: int = 8, max_level: int = 24) -> int:
     """
     Compute the octree level that gives approximately target_grid x target_grid tiles

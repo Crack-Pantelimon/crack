@@ -11,6 +11,7 @@ import logging
 import requests
 import hashlib
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from google.protobuf.message import DecodeError
 from google.protobuf.json_format import MessageToJson
 
@@ -68,6 +69,7 @@ def _fetch_raw(url_path: str, max_retries: int = 5, base_delay: float = 1.0) -> 
         return cache_file.read_bytes()
 
     url = BASE_URL + url_path
+    logger.info("Fetching " + url)
     headers = {
         "User-Agent": config.USER_AGENT,
         "Referer": config.REFERER,
@@ -281,16 +283,29 @@ _bulk_cache: dict[str, BulkIndex] = {}
 
 
 def _get_bulk(path: str, epoch: int) -> BulkIndex:
-    """Fetch and cache a BulkIndex."""
+    """
+    Fetch and cache a BulkIndex.
+
+    The network fetch happens OUTSIDE the lock (double-checked caching) so that
+    many bulks can be fetched concurrently. Two threads racing on the same key may
+    both fetch (rare, and the raw bytes are disk-cached anyway); we keep whichever
+    instance lands in the cache first.
+    """
     cache_key = f"{path}:{epoch}"
     with _bulk_lock:
-        if cache_key in _bulk_cache:
-            return _bulk_cache[cache_key]
-
-        bulk = fetch_bulk_metadata(path, epoch)
-        idx = BulkIndex(bulk, path)
-        _bulk_cache[cache_key] = idx
+        idx = _bulk_cache.get(cache_key)
+    if idx is not None:
         return idx
+
+    bulk = fetch_bulk_metadata(path, epoch)
+    idx = BulkIndex(bulk, path)
+
+    with _bulk_lock:
+        existing = _bulk_cache.get(cache_key)
+        if existing is not None:
+            return existing
+        _bulk_cache[cache_key] = idx
+    return idx
 
 
 def resolve_node(octant_path: str, root_epoch: int) -> NodeInfo | None:
@@ -437,6 +452,126 @@ def find_tiles_in_bbox(bbox, target_level: int, root_epoch: int) -> list[str]:
         r_box = octant_path_to_bbox(r)
         if overlap(r_box, bbox):
             traverse(r, r_box)
+
+    return results
+
+
+# Number of concurrent BulkMetadata fetches during multi-level enumeration.
+BULK_FETCH_WORKERS = 100
+
+
+def find_tiles_in_bbox_levels(
+    bbox,
+    min_level: int,
+    max_level: int,
+    root_epoch: int,
+    bulk_fetch_workers: int = BULK_FETCH_WORKERS,
+) -> dict[int, list[str]]:
+    """
+    Enumerate all non-empty tiles overlapping `bbox` for every level in
+    [min_level, max_level], in a single breadth-first pass.
+
+    This is far faster than calling find_tiles_in_bbox once per level because:
+      * the bulk-metadata context is carried down the tree, so each node costs a
+        single dict lookup instead of re-walking from the root;
+      * child bounding boxes are subdivided incrementally (octree.child_bbox);
+      * at each BFS frontier, all child BulkMetadata blobs that need to be fetched
+        are downloaded concurrently. Crossing a bulk boundary (every 4 octree
+        levels, e.g. level 17 and 21) otherwise triggers thousands of *serial*
+        network requests, which is what made deep levels appear to hang.
+
+    A node enters the result for its level when it exists and is not flagged
+    NODATA; the tree is only descended through existing, non-leaf nodes (matching
+    the semantics of find_tiles_in_bbox).
+    """
+    from octree import octant_path_to_bbox, child_bbox
+
+    def overlap(box1, box2):
+        return not (
+            box1.south > box2.north or
+            box1.north < box2.south or
+            box1.east < box2.west or
+            box1.west > box2.east
+        )
+
+    results: dict[int, list[str]] = {lvl: [] for lvl in range(min_level, max_level + 1)}
+
+    def record(path: str, flags: int):
+        level = len(path)
+        if min_level <= level <= max_level and not (flags & FLAG_NODATA):
+            results[level].append(path)
+
+    try:
+        root_bulk = _get_bulk("", root_epoch)
+    except Exception as e:
+        logger.warning(f"Failed to fetch root bulk: {e}")
+        return results
+
+    # Frontier entries: (path, box, bulk_idx, bulk_len). bulk_len is the absolute
+    # path length covered by bulk_idx, so the relative lookup key is path[bulk_len:].
+    frontier: list[tuple] = []
+    roots = ["02", "03", "12", "13", "20", "21", "30", "31"]
+    for r in roots:
+        r_box = octant_path_to_bbox(r)
+        if not overlap(r_box, bbox):
+            continue
+        entry = root_bulk.get_node(r)
+        if entry is None:
+            continue
+        _, flags = entry
+        record(r, flags)
+        if len(r) < max_level and not (flags & FLAG_LEAF):
+            frontier.append((r, r_box, root_bulk, 0))
+
+    current_level = 2
+    while frontier and current_level < max_level:
+        # Step 1: parents sitting on a bulk boundary (relative path length 4) need
+        # their child bulk fetched. Do all of those fetches in parallel.
+        boundary_parents = [p for p in frontier if len(p[0]) - p[3] == 4]
+        child_bulk_by_path: dict[str, BulkIndex] = {}
+
+        if boundary_parents:
+            def _prefetch(parent):
+                path, _box, bulk_idx, bulk_len = parent
+                rel = path[bulk_len:]
+                epoch = bulk_idx.get_bulk_epoch(rel)
+                try:
+                    return path, _get_bulk(path, epoch)
+                except Exception as e:
+                    logger.debug(f"Failed to fetch child bulk at '{path}': {e}")
+                    return path, None
+
+            workers = max(1, min(bulk_fetch_workers, len(boundary_parents)))
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                for path, child_bulk in ex.map(_prefetch, boundary_parents):
+                    child_bulk_by_path[path] = child_bulk
+
+        # Step 2: expand every parent into its (in-bbox) children.
+        next_frontier: list[tuple] = []
+        for path, box, bulk_idx, bulk_len in frontier:
+            if len(path) - bulk_len == 4:
+                child_bulk = child_bulk_by_path.get(path)
+                if child_bulk is None:
+                    continue
+                cbi, cbl = child_bulk, len(path)
+            else:
+                cbi, cbl = bulk_idx, bulk_len
+
+            for d in range(8):
+                child_path = path + str(d)
+                cbox = child_bbox(box, d)
+                if not overlap(cbox, bbox):
+                    continue
+                entry = cbi.get_node(child_path[cbl:])
+                if entry is None:
+                    continue
+                _, flags = entry
+                record(child_path, flags)
+                if len(child_path) < max_level and not (flags & FLAG_LEAF):
+                    next_frontier.append((child_path, cbox, cbi, cbl))
+
+        frontier = next_frontier
+        current_level += 1
 
     return results
 
