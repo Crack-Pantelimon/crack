@@ -71,7 +71,7 @@ def build_row(glb_path: str) -> dict:
     stats = get_glb_stats(glb_path)
 
     file_size_bytes = p.stat().st_size
-    jpg_path = p.with_suffix(".jpg")
+    # jpg_path = p.with_suffix(".jpg")
     xyz_min = stats["xyz_min"]
     xyz_max = stats["xyz_max"]
 
@@ -79,7 +79,7 @@ def build_row(glb_path: str) -> dict:
         "octant_path": octant_path,
         "depth": depth,
         "glb_path": str(p),
-        "jpg_path": str(jpg_path) if jpg_path.exists() else "",
+        # "jpg_path": str(jpg_path) if jpg_path.exists() else "",
         "file_size_bytes": int(file_size_bytes),
         "vertex_count": int(stats["vertex_count"]),
         "triangle_count": int(stats["triangle_count"]),

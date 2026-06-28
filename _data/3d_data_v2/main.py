@@ -155,10 +155,10 @@ def main():
         progress = f"[{index + 1}/{total}]"
         depth = len(octant_path)
         glb_path = Path(OUTPUT_DIR) / str(depth) / f"{octant_path}.glb"
-        jpg_path = Path(OUTPUT_DIR) / str(depth) / f"{octant_path}.jpg"
+        # jpg_path = Path(OUTPUT_DIR) / str(depth) / f"{octant_path}.jpg"
 
         # Reentrancy: if this entry already has both its GLB and JPG, skip it.
-        if glb_path.exists() and jpg_path.exists():
+        if glb_path.exists():
             logger.info(f"{progress} Skipping {octant_path} (glb + jpg already present)")
             bump("skipped")
             return None
@@ -186,7 +186,7 @@ def main():
 
         # Ensure parent directories exist
         blend_path.parent.mkdir(parents=True, exist_ok=True)
-        jpg_path.parent.mkdir(parents=True, exist_ok=True)
+        # jpg_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Construct NodeData URL path for cache resolution (consumed by build_blend.py)
         url_path = f"NodeData/pb=!1m2!1s{node_info.path}!2u{node_info.epoch}!2e{node_info.texture_format}"
@@ -202,7 +202,7 @@ def main():
             "json_path": json_path,
             "blend_path": blend_path,
             "glb_path": glb_path,
-            "jpg_path": jpg_path,
+            # "jpg_path": jpg_path,
             "mesh_count": len(decoded_meshes),
             "vertex_count": sum(len(m.positions) for m in decoded_meshes),
             "triangle_count": sum(len(m.indices) // 3 for m in decoded_meshes),
@@ -223,7 +223,7 @@ def main():
                     "json_path": str(it["json_path"]),
                     "blend_path": str(it["blend_path"]),
                     "glb_path": str(it["glb_path"]),
-                    "jpg_path": str(it["jpg_path"]),
+                    # "jpg_path": str(it["jpg_path"]),
                 }
                 for it in batch
             ],
@@ -267,22 +267,22 @@ def main():
                     )
 
             # 3. Render previews for everything that built (best-effort, non-fatal).
-            if built:
-                render_spec = {"ref_point": ref_list, "nodes": [
-                    {"octant_path": it["octant_path"],
-                     "blend_path": str(it["blend_path"]),
-                     "jpg_path": str(it["jpg_path"])}
-                    for it in built
-                ]}
-                with tempfile.NamedTemporaryFile(
-                    "w", suffix=".json", prefix="render_batch_", delete=True
-                ) as rtf:
-                    json.dump(render_spec, rtf)
-                    rtf.flush()
-                    try:
-                        run_blender_batch("render_tile.py", rtf.name)
-                    except Exception as e:
-                        logger.warning(f"render_tile batch failed ({len(built)} nodes): {e}")
+            # if built:
+            #     render_spec = {"ref_point": ref_list, "nodes": [
+            #         {"octant_path": it["octant_path"],
+            #          "blend_path": str(it["blend_path"]),
+            #          "jpg_path": str(it["jpg_path"])}
+            #         for it in built
+            #     ]}
+            #     with tempfile.NamedTemporaryFile(
+            #         "w", suffix=".json", prefix="render_batch_", delete=True
+            #     ) as rtf:
+            #         json.dump(render_spec, rtf)
+            #         rtf.flush()
+            #         try:
+            #             run_blender_batch("render_tile.py", rtf.name)
+            #         except Exception as e:
+            #             logger.warning(f"render_tile batch failed ({len(built)} nodes): {e}")
 
     def network_worker():
         while True:
