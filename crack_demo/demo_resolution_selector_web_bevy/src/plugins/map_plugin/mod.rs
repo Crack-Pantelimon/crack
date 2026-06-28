@@ -1,6 +1,7 @@
 mod map_lod;
 mod map_metadata_parquet;
 mod map_plugin_ui;
+pub mod map_material_edit;
 
 use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
@@ -28,6 +29,7 @@ impl Plugin for MapPlugin {
             .init_resource::<MapTree>()
             .init_resource::<MapLODState>()
             .init_resource::<TileSwapRequests>()
+            .add_plugins(map_material_edit::MapMaterialEditPlugin)
             .add_systems(Startup, init_parquet_handles)
             .add_systems(EguiPrimaryContextPass, tree_navigator_ui)
             .add_systems(

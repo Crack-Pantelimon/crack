@@ -55,6 +55,16 @@ fn setup_camera_and_load(mut commands: Commands, asset_server: Res<AssetServer>)
             ..default()
         },
     ));
+
+    // Spawn a weak directional light pointing at a 45-degree angle to all axes
+    commands.spawn((
+        DirectionalLight {
+            illuminance: 2000.0,
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_xyz(100.0, 100.0, 100.0).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
 }
 
 fn convert_and_apply_skybox(

@@ -55,6 +55,7 @@ fn ui_example_system(
     mut initialized: Local<bool>,
     time: Res<Time>,
     mut fps: Local<f32>,
+    mut edit_state: Option<ResMut<crate::plugins::map_plugin::map_material_edit::MapMaterialEditState>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         tracing::error!("no ctx in ui_example_system");
@@ -188,16 +189,20 @@ fn ui_example_system(
                     ui.close();
                 }
             });
-            egui::menu::menu_button(ui, "GeoJson Database", |ui| {
-                if ui.button("View").clicked() {
-                    ui_state.show_geojson_database = !ui_state.show_geojson_database;
-                    ui.close();
-                }
-            });
             egui::menu::menu_button(ui, "Debug", |ui| {
                 if ui.button("Lod Configurator & Tree Navigator").clicked() {
                     ui_state.show_lod_configurator = !ui_state.show_lod_configurator;
                     ui.close();
+                }
+                if ui.button("GeoJson Database").clicked() {
+                    ui_state.show_geojson_database = !ui_state.show_geojson_database;
+                    ui.close();
+                }
+                if let Some(ref mut state) = edit_state {
+                    if ui.button("Map Material & Lighting Editor").clicked() {
+                        state.show_window = !state.show_window;
+                        ui.close();
+                    }
                 }
             });
             egui::menu::menu_button(ui, "Help", |ui| {
