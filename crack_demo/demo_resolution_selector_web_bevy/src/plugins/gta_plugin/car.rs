@@ -108,7 +108,7 @@ pub fn drive_car_system(
         let velocity_on_slope = linear_velocity.0 - ground_normal * linear_velocity.0.dot(ground_normal);
         linear_velocity.0 = velocity_on_slope;
 
-        // 2. Acceleration / braking input
+        // 2. Acceleration / braking / strafe input
         let forward_dir = transform.forward();
         let right_dir = transform.right();
         let current_speed = linear_velocity.dot(*forward_dir);
@@ -126,17 +126,20 @@ pub fn drive_car_system(
                 target_accel -= *forward_dir * reverse_acceleration;
             }
         }
-        linear_velocity.0 += target_accel * delta;
 
-        // 3. Steer input (modifies yaw, then aligns to terrain normal)
-        let mut steer_input = 0.0;
+        // Sideways strafe with A/D (instead of steering)
+        let lateral_accel = 20.0;
         if keyboard.pressed(KeyCode::KeyA) {
-            steer_input += 1.0;
+            target_accel -= *right_dir * lateral_accel;
         }
         if keyboard.pressed(KeyCode::KeyD) {
-            steer_input -= 1.0;
+            target_accel += *right_dir * lateral_accel;
         }
+        
+        linear_velocity.0 += target_accel * delta;
 
+        // 3. Keep orientation fixed or slope-aligned (no steering inputs modify yaw)
+        let steer_input = 0.0;
         let speed = linear_velocity.length();
         let turn_factor = (speed / 2.0).min(1.0);
         let direction_sign = if current_speed < 0.0 { -1.0 } else { 1.0 };
@@ -150,12 +153,16 @@ pub fn drive_car_system(
         
         transform.rotation = transform.rotation.slerp(target_rotation, 10.0 * delta);
 
-        // 4. Lateral grip damping (keeps vehicle on track)
+        // 4. Lateral grip damping (keeps vehicle on track, disabled if actively strafing)
         let lateral_speed = linear_velocity.dot(*right_dir);
-        let damped_lateral_speed = lateral_speed * (1.0 - lateral_damping * delta).max(0.0);
+        let damped_lateral_speed = if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::KeyD) {
+            lateral_speed
+        } else {
+            lateral_speed * (1.0 - lateral_damping * delta).max(0.0)
+        };
         let forward_speed = linear_velocity.dot(*forward_dir);
         let new_vel = *forward_dir * forward_speed + *right_dir * damped_lateral_speed;
-        
+
         linear_velocity.0 = new_vel - ground_normal * new_vel.dot(ground_normal);
 
         // Zero out physical angular velocity to avoid physics engine conflicts

@@ -41,44 +41,44 @@ fn setup_camera_and_load(mut commands: Commands, asset_server: Res<AssetServer>)
     // Load and spawn custom assets next to each other
     let base_url = crate::config::DATA_BASE_URL;
 
-    // 1. Kebab Shop
+    // 1. Kebab Shop (Height = 3.0m, shift up by 1.5m)
     let handle_kebab = asset_server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(format!("{}/blender_generated/kebab_shop/kebab_shop.glb", base_url)));
     commands.spawn((
         bevy::world_serialization::WorldAssetRoot(handle_kebab),
-        Transform::from_translation(Vec3::new(-1050.0, 3360.5, -20110.0)),
+        Transform::from_translation(Vec3::new(-1050.0, 3362.0, -20110.0)),
         avian3d::prelude::RigidBody::Static,
         avian3d::prelude::ColliderConstructorHierarchy::new(
             avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
         ),
     ));
 
-    // 2. Superbet Shop
+    // 2. Superbet Shop (Height = 3.0m, shift up by 1.5m)
     let handle_superbet = asset_server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(format!("{}/blender_generated/superbet_shop/superbet_shop.glb", base_url)));
     commands.spawn((
         bevy::world_serialization::WorldAssetRoot(handle_superbet),
-        Transform::from_translation(Vec3::new(-1050.0, 3360.5, -20130.0)),
+        Transform::from_translation(Vec3::new(-1050.0, 3362.0, -20130.0)),
         avian3d::prelude::RigidBody::Static,
         avian3d::prelude::ColliderConstructorHierarchy::new(
             avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
         ),
     ));
 
-    // 3. Terasa Obor
+    // 3. Terasa Obor (Height = 3.5m, shift up by 1.75m)
     let handle_obor = asset_server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(format!("{}/blender_generated/terasa_obor/terasa_obor.glb", base_url)));
     commands.spawn((
         bevy::world_serialization::WorldAssetRoot(handle_obor),
-        Transform::from_translation(Vec3::new(-1070.0, 3360.5, -20110.0)),
+        Transform::from_translation(Vec3::new(-1070.0, 3362.25, -20110.0)),
         avian3d::prelude::RigidBody::Static,
         avian3d::prelude::ColliderConstructorHierarchy::new(
             avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
         ),
     ));
 
-    // 4. Bus 335
+    // 4. Bus 335 (Height = 3.2m, shift up by 1.6m)
     let handle_bus = asset_server.load(bevy::gltf::GltfAssetLabel::Scene(0).from_asset(format!("{}/blender_generated/bus_335/bus_335.glb", base_url)));
     commands.spawn((
         bevy::world_serialization::WorldAssetRoot(handle_bus),
-        Transform::from_translation(Vec3::new(-1070.0, 3360.5, -20130.0)),
+        Transform::from_translation(Vec3::new(-1070.0, 3362.1, -20130.0)),
         avian3d::prelude::RigidBody::Static,
         avian3d::prelude::ColliderConstructorHierarchy::new(
             avian3d::prelude::ColliderConstructor::TrimeshFromMesh,

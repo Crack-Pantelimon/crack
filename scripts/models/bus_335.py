@@ -222,12 +222,12 @@ def generate_bus(texture_path, output_dir):
         if abs(normal.x) > 0.9: # Side faces (X+ or X-)
             # Map Y (length) to U, Z (height) to V
             # U goes from 0 (at Y=-6.0) to 1 (at Y=6.0)
-            # V goes from 0 (at Z=0.1) to 1 (at Z=2.9)
+            # V goes from 0 (at Z=-1.4) to 1 (at Z=1.4)
             for li in loop_indices:
                 v_idx = bus_body.data.loops[li].vertex_index
                 v = bus_body.data.vertices[v_idx]
                 u = (v.co.y + 6.0) / 12.0
-                v_uv = (v.co.z - 0.1) / 2.8
+                v_uv = (v.co.z + 1.4) / 2.8
                 # Flip U on the left side to keep text running forward-to-back on both sides
                 if normal.x < 0:
                     u = 1.0 - u
@@ -239,7 +239,7 @@ def generate_bus(texture_path, output_dir):
                 v_idx = bus_body.data.loops[li].vertex_index
                 v = bus_body.data.vertices[v_idx]
                 u = (v.co.x + 1.25) / 2.5
-                v_uv = (v.co.z - 0.1) / 2.8
+                v_uv = (v.co.z + 1.4) / 2.8
                 uv_layer[li].uv = (u, v_uv)
                 
         elif normal.y < -0.9: # Back face (Y-)
@@ -248,7 +248,7 @@ def generate_bus(texture_path, output_dir):
                 v_idx = bus_body.data.loops[li].vertex_index
                 v = bus_body.data.vertices[v_idx]
                 u = 1.0 - (v.co.x + 1.25) / 2.5
-                v_uv = (v.co.z - 0.1) / 2.8
+                v_uv = (v.co.z + 1.4) / 2.8
                 uv_layer[li].uv = (u, v_uv)
                 
         else: # Top / Bottom faces (Z+ or Z-)

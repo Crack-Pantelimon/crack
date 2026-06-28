@@ -99,7 +99,8 @@ pub fn camera_follow_system(
     };
 
     // Auto-align camera behind the car if moving and arrow keys are not pressed
-    if !arrow_pressed && spawn_state.timer.is_none() {
+    let is_moving_input = keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::KeyD);
+    if !arrow_pressed && spawn_state.timer.is_none() && is_moving_input {
         if let Ok(car_transform) = car_query.single() {
             let forward = car_transform.forward();
             let forward_xz = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
