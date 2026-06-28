@@ -1,5 +1,8 @@
 use crate::plugins::map_plugin::MapTree;
 use bevy::prelude::*;
+use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy_egui::EguiContexts;
+use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 
 pub struct CameraControlsPlugin;
 
@@ -13,68 +16,108 @@ fn camera_movement_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     data_res: Res<MapTree>,
+    spatial_query: SpatialQuery,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    mut mouse_motion: MessageReader<MouseMotion>,
+    mut mouse_wheel: MessageReader<MouseWheel>,
     mut camera_query: Query<&mut Transform, With<Camera>>,
+    mut contexts: EguiContexts,
 ) {
-    let middle = (data_res.bbox.min + data_res.bbox.max) / 2.0;
+    if !data_res.parsed {
+        return;
+    }
 
-    for mut transform in &mut camera_query {
-        let current_pos = transform.translation;
-        let to_camera = current_pos - middle;
-        let distance = to_camera.length();
+    let Some(mut transform) = camera_query.iter_mut().next() else {
+        return;
+    };
 
-        let mut desired_pos = current_pos;
+    // Check if Egui wants input (skip rotation/keyboard if user interacts with UI)
+    let egui_focused = if let Ok(ctx) = contexts.ctx_mut() {
+        ctx.egui_wants_pointer_input() || ctx.is_pointer_over_egui()
+    } else {
+        false
+    };
 
-        // WASDQE movement - speed proportional to distance to middle point
-        let move_speed = distance.max(0.1) * time.delta_secs() * 1.5;
+    // 1. Mouse Drag Rotation
+    if !egui_focused && mouse_button.pressed(MouseButton::Left) {
+        let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
+        let sensitivity = 0.003;
+        for event in mouse_motion.read() {
+            yaw -= event.delta.x * sensitivity;
+            pitch -= event.delta.y * sensitivity;
+        }
+        pitch = pitch.clamp(-89.9f32.to_radians(), 89.9f32.to_radians());
+        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+    } else {
+        // Drain events to prevent build-up
+        for _ in mouse_motion.read() {}
+    }
 
-        let forward = transform.forward();
-        let right = transform.right();
-        let up = transform.up();
+    // 2. Height Above Ground calculation
+    let ray_dir = Dir3::NEG_Y;
+    let height = if let Some(hit) = spatial_query.cast_ray(
+        transform.translation,
+        ray_dir,
+        10000.0,
+        true,
+        &SpatialQueryFilter::default(),
+    ) {
+        hit.distance
+    } else {
+        // Fallback: height above bbox min or a sensible default
+        (transform.translation.y - data_res.bbox.min.y).max(1.0)
+    };
+
+    // Speed proportional to height
+    let speed = (height * 1.0).clamp(5.0, 500.0);
+
+    // 3. Movement input (only if egui is not focused)
+    if !egui_focused {
+        // Forward/Backward (no vertical component)
+        let mut forward = *transform.forward();
+        forward.y = 0.0;
+        let forward = forward.normalize_or_zero();
+
+        // Left/Right (no vertical component)
+        let mut right = *transform.right();
+        right.y = 0.0;
+        let right = right.normalize_or_zero();
 
         if keyboard.pressed(KeyCode::KeyW) {
-            desired_pos += *forward * move_speed;
+            transform.translation += forward * speed * time.delta_secs();
         }
         if keyboard.pressed(KeyCode::KeyS) {
-            desired_pos -= *forward * move_speed;
+            transform.translation -= forward * speed * time.delta_secs();
         }
         if keyboard.pressed(KeyCode::KeyA) {
-            desired_pos -= *right * move_speed;
+            transform.translation -= right * speed * time.delta_secs();
         }
         if keyboard.pressed(KeyCode::KeyD) {
-            desired_pos += *right * move_speed;
-        }
-        if keyboard.pressed(KeyCode::KeyQ) {
-            desired_pos += *up * move_speed;
-        }
-        if keyboard.pressed(KeyCode::KeyE) {
-            desired_pos -= *up * move_speed;
+            transform.translation += right * speed * time.delta_secs();
         }
 
-        // Arrow rotations around the middle point
-        let mut new_to_camera = desired_pos - middle;
-        let rot_speed = time.delta_secs() * 2.0;
-
-        if keyboard.pressed(KeyCode::ArrowLeft) {
-            new_to_camera = Quat::from_rotation_y(rot_speed) * new_to_camera;
+        // Up/Down keyboard movement
+        let mut vertical = 0.0;
+        if keyboard.pressed(KeyCode::Space) || keyboard.pressed(KeyCode::KeyE) {
+            vertical += 1.0;
         }
-        if keyboard.pressed(KeyCode::ArrowRight) {
-            new_to_camera = Quat::from_rotation_y(-rot_speed) * new_to_camera;
+        if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::KeyQ) {
+            vertical -= 1.0;
         }
-        if keyboard.pressed(KeyCode::ArrowUp) {
-            new_to_camera = Quat::from_axis_angle(*right, rot_speed) * new_to_camera;
+        transform.translation.y += vertical * speed * time.delta_secs();
+    }
+
+    // 4. Mouse wheel vertical movement (scrolling always works if not on egui)
+    if !egui_focused {
+        let mut scroll_y = 0.0;
+        for event in mouse_wheel.read() {
+            scroll_y += event.y;
         }
-        if keyboard.pressed(KeyCode::ArrowDown) {
-            new_to_camera = Quat::from_axis_angle(*right, -rot_speed) * new_to_camera;
+        if scroll_y != 0.0 {
+            transform.translation.y += scroll_y * speed * 0.05;
         }
-
-        desired_pos = middle + new_to_camera;
-
-        // Desired rotation looking at middle
-        let desired_transform =
-            Transform::from_translation(desired_pos).looking_at(middle, Vec3::Y);
-
-        // Apply smoothing: new_camera_transform = (old_camera_transform + desired_transform) / 2.0
-        transform.translation = (transform.translation + desired_transform.translation) / 2.0;
-        transform.rotation = transform.rotation.slerp(desired_transform.rotation, 0.5);
+    } else {
+        // Drain events to prevent build-up
+        for _ in mouse_wheel.read() {}
     }
 }

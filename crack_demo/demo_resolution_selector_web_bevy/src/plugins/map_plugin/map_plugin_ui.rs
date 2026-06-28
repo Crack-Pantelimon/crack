@@ -167,7 +167,7 @@ pub fn handle_click_raycast(
         return;
     }
 
-    if mouse_button.just_pressed(MouseButton::Left) {
+    if mouse_button.just_pressed(MouseButton::Right) {
         let Ok(window) = window_query.single() else {
             return;
         };

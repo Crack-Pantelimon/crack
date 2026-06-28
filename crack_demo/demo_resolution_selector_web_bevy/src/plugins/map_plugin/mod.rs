@@ -49,14 +49,15 @@ impl Plugin for MapPlugin {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct MapTreeAssetInfo {
     pub name: MapTileAssetId,
-    pub r#type: String,
     pub level: Option<i32>,
     pub bbox: BBox,
     pub _octant_path: MapTreeNodePath,
-    pub filename: Option<String>,
+    pub glb_path: Option<String>,
     pub vertex_count: Option<i64>,
+    pub mesh_count: Option<i64>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -66,14 +67,10 @@ pub struct BBox {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MapTileAssetId(String);
+pub struct MapTileAssetId(pub String);
 impl MapTileAssetId {
     pub fn get_octant_path(&self) -> MapTreeNodePath {
-        if let Some(idx) = self.0.rfind('_') {
-            MapTreeNodePath(self.0[..idx].to_string())
-        } else {
-            MapTreeNodePath(self.0.to_string())
-        }
+        MapTreeNodePath(self.0.clone())
     }
 }
 

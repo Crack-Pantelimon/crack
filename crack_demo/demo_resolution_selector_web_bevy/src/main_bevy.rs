@@ -59,7 +59,7 @@ pub fn main_bevy() {
         })
         .add_plugins(crate::ui_egui::UiEguiPlugin)
         .add_plugins(crate::plugins::main_scene_plugin::MainScenePlugin)
-        .add_plugins(crate::plugins::gta_plugin::GtaPlugin)
+        .add_plugins(crate::plugins::camera_controls::CameraControlsPlugin)
         .add_plugins(crate::plugins::physics_plugin::PhysicsPlugin)
         .add_plugins(crate::plugins::map_plugin::MapPlugin)
         .insert_resource(ClearColor(Color::BLACK))

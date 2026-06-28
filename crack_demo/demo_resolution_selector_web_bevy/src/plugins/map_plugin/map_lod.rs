@@ -26,11 +26,11 @@ fn get_node_assets_and_handles(
         let Some(asset_info) = data_res.assets.get(asset_id) else {
             continue;
         };
-        let Some(ref filename) = asset_info.filename else {
+        let Some(ref glb_path) = asset_info.glb_path else {
             continue;
         };
 
-        let glb_url = format!("{}/3d_data/{}", crate::config::DATA_BASE_URL, filename);
+        let glb_url = format!("{}/3d_data_v2/{}", crate::config::DATA_BASE_URL, glb_path);
         let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
         assets_and_handles.push((asset_id.clone(), asset_server.load(asset_path)));
     }

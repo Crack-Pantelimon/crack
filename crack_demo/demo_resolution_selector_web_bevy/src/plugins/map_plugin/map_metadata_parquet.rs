@@ -18,7 +18,7 @@ pub struct ParquetHandles {
 pub fn init_parquet_handles(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Load parquet assets from HTTP URL
     let nodes_url = format!(
-        "{}/3d_data/tree_nodes.parquet",
+        "{}/3d_data_v2/data_out/manifest.parquet",
         crate::config::DATA_BASE_URL
     );
 
@@ -115,71 +115,71 @@ fn parse_tree_nodes(bytes: &[u8]) -> Vec<MapTreeAssetInfo> {
                 continue;
             }
         };
-        let mut name = String::new();
-        let mut type_ = String::new();
         let mut level = None;
-        let mut minx = 0.0;
-        let mut maxx = 0.0;
-        let mut miny = 0.0;
-        let mut maxy = 0.0;
-        let mut minz = 0.0;
-        let mut maxz = 0.0;
+        let mut x_min = 0.0;
+        let mut x_max = 0.0;
+        let mut y_min = 0.0;
+        let mut y_max = 0.0;
+        let mut z_min = 0.0;
+        let mut z_max = 0.0;
         let mut octant_path = MapTreeNodePath(String::new());
-        let mut filename = None;
+        let mut glb_path = None;
         let mut vertex_count = None;
+        let mut mesh_count = None;
 
         for (col_name, field) in row.into_columns() {
             match col_name.as_str() {
-                "name" => {
-                    name = get_string(field).unwrap_or_default();
-                }
-                "type" => {
-                    type_ = get_string(field).unwrap_or_default();
-                }
-                "level" => {
+                "depth" => {
                     level = get_int(field).map(|v| v as i32);
                 }
-                "minx" => {
-                    minx = get_float(field).unwrap_or(0.0);
+                "x_min" => {
+                    x_min = get_float(field).unwrap_or(0.0);
                 }
-                "maxx" => {
-                    maxx = get_float(field).unwrap_or(0.0);
+                "x_max" => {
+                    x_max = get_float(field).unwrap_or(0.0);
                 }
-                "miny" => {
-                    miny = get_float(field).unwrap_or(0.0);
+                "y_min" => {
+                    y_min = get_float(field).unwrap_or(0.0);
                 }
-                "maxy" => {
-                    maxy = get_float(field).unwrap_or(0.0);
+                "y_max" => {
+                    y_max = get_float(field).unwrap_or(0.0);
                 }
-                "minz" => {
-                    minz = get_float(field).unwrap_or(0.0);
+                "z_min" => {
+                    z_min = get_float(field).unwrap_or(0.0);
                 }
-                "maxz" => {
-                    maxz = get_float(field).unwrap_or(0.0);
+                "z_max" => {
+                    z_max = get_float(field).unwrap_or(0.0);
                 }
                 "octant_path" => {
                     octant_path.0 = get_string(field).unwrap_or_default();
                 }
-                "filename" => {
-                    filename = get_string(field);
+                "glb_path" => {
+                    glb_path = get_string(field);
                 }
                 "vertex_count" => {
                     vertex_count = get_int(field);
+                }
+                "mesh_count" => {
+                    mesh_count = get_int(field);
                 }
                 _ => {}
             }
         }
 
+        let name = MapTileAssetId(octant_path.0.clone());
+
         nodes.push(MapTreeAssetInfo {
-            name: MapTileAssetId(name),
-            r#type: type_,
+            name,
             level,
             _octant_path: octant_path,
-            filename,
+            glb_path,
             vertex_count,
+            mesh_count,
             bbox: BBox {
-                min: Vec3::new(minx, minz, -miny),
-                max: Vec3::new(maxx, maxz, -maxy),
+                // min: Vec3::new(x_min, z_min, -y_min),
+                // max: Vec3::new(x_max, z_max, -y_max),
+                min: Vec3::new(x_min, y_min, z_min),
+                max: Vec3::new(x_max, y_max, z_max),
             },
         });
     }
@@ -214,8 +214,7 @@ pub fn check_and_parse_parquet(
 
     let mut assets = BTreeMap::new();
     for asset in parsed_nodes {
-        // skip non-mesh assets
-        if asset.r#type == "mesh" {
+        if asset.level.unwrap_or(0) >= 14 {
             assets.insert(asset.name.clone(), asset);
         }
     }
@@ -335,7 +334,7 @@ pub fn check_and_parse_parquet(
         .iter()
         .map(|i| data_res.all_nodes.get(i).unwrap().assets.len())
         .sum::<usize>()
-        + 200;
+        + 420;
     lod_state.lod_budget = budget as u32;
     let timeout = 0.1 + rand::random::<f32>() * 0.1;
     lod_state.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
