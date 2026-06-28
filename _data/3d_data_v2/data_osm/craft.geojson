@@ -1,0 +1,486 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3054745633,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "brand": "Kodak Express",
+          "brand:wikidata": "Q6425126",
+          "craft": "photographic_laboratory",
+          "name": "Kodak Express",
+          "opening_hours": "Mo-Fr 09:00-19:00; Sa 09:00-15:00",
+          "shop": "photo",
+          "source": "survey",
+          "wheelchair": "limited"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1603816,
+          44.4431734
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3312317482,
+        "tags": {
+          "craft": "tiler",
+          "name": "Top mosaic"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1216259,
+          44.4355937
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3958309357,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "3B",
+          "addr:street": "Strada Slt. Dima Cristescu",
+          "craft": "electronics_repair",
+          "name": "Vico Service RX",
+          "phone": "+40212501440"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.141474,
+          44.44276
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 6782601811,
+        "tags": {
+          "check_date:opening_hours": "2024-11-15",
+          "craft": "shoemaker",
+          "name": "Confec\u021bii \u00eenc\u0103l\u021b\u0103minte",
+          "opening_hours": "Mo-Fr 11:00-19:00; Sa 11:00-14:00",
+          "source": "survey",
+          "wheelchair": "no"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1425973,
+          44.4421472
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10596307643,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:street": "\u0218oseaua Pantelimon",
+          "craft": "window_construction",
+          "name": "Tehnica sticlei"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.164872,
+          44.4428724
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11217327331,
+        "tags": {
+          "check_date": "2023-09-25",
+          "craft": "photographic_laboratory",
+          "level": "0",
+          "name": "FOTOGRAFIA"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.121678,
+          44.4464735
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11511308436,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:country": "RO",
+          "addr:housenumber": "97",
+          "addr:postcode": "024076",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "Strada Popa Nan",
+          "craft": "confectionery",
+          "name": "Dr. Crazy"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1259234,
+          44.4326002
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11780657255,
+        "tags": {
+          "craft": "watchmaker",
+          "name": "Repara\u021bii ceasuri"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1213709,
+          44.4461574
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11780711689,
+        "tags": {
+          "craft": "glaziery",
+          "name": "Geamuri"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1236271,
+          44.4478575
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11795692240,
+        "tags": {
+          "craft": "electronics_repair",
+          "name": "Galaxy Total Mobile",
+          "phone": "+40765733451;+40769641699"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1490107,
+          44.442793
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11795692246,
+        "tags": {
+          "craft": "window_construction",
+          "name": "Vera Glass Design",
+          "opening_hours": "Mo-Fr 09:00-18:00; Sa 09:00-13:00"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1483041,
+          44.4427225
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11800224685,
+        "tags": {
+          "craft": "window_construction",
+          "email": "idealmarisand@yahoo.com",
+          "name": "Termopane Marisand",
+          "phone": "+40720150120;+40729676966"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1649407,
+          44.4428712
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11802846754,
+        "tags": {
+          "craft": "electronics_repair",
+          "name": "Service Gsm",
+          "phone": "+40761333231"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1591839,
+          44.4430004
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11847937926,
+        "tags": {
+          "craft": "window_construction",
+          "name": "Fantastic Service",
+          "opening_hours": "Mo-Fr 09:00-16:00; Sa 10:00-13:00"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1395963,
+          44.442063
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11847937927,
+        "tags": {
+          "craft": "joiner",
+          "name": "S.C.M. Mobil\u0103 \u0219i tapi\u021berie"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1395522,
+          44.4420578
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12634523743,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "319A",
+          "addr:postcode": "030622",
+          "addr:street": "Calea C\u0103l\u0103ra\u0219ilor",
+          "craft": "electronics_repair",
+          "name": "Coral GSM",
+          "opening_hours": "Mo-Fr 09:00-19:00",
+          "repair": "mobile_phone"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1365316,
+          44.4319119
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12892519882,
+        "tags": {
+          "craft": "confectionery",
+          "name": "Pandora's Cakes"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1335924,
+          44.4373213
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12892530490,
+        "tags": {
+          "craft": "optician",
+          "name": "Optic\u0103 medical\u0103"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1348701,
+          44.4375771
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12892538441,
+        "tags": {
+          "craft": "confectionery",
+          "name": "Maryab"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1366868,
+          44.4378145
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12892543131,
+        "tags": {
+          "craft": "confectionery",
+          "name": "Oana's Bakery"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1389018,
+          44.4326175
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13574625922,
+        "tags": {
+          "craft": "electronics_repair",
+          "name": "Blue Gsm"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1310686,
+          44.444813
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 976381829,
+        "tags": {
+          "building": "yes",
+          "craft": "yes",
+          "name": "Atelier MAM Bricolaj"
+        },
+        "nodes": [
+          9035539250,
+          9035539251,
+          9035539252,
+          9035539253,
+          9035539254,
+          9035539255,
+          9035539256,
+          9035539257,
+          9035539250
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1647531,
+              44.4398843
+            ],
+            [
+              26.1643678,
+              44.4397915
+            ],
+            [
+              26.1644104,
+              44.4396988
+            ],
+            [
+              26.1637048,
+              44.4395052
+            ],
+            [
+              26.1637877,
+              44.4394509
+            ],
+            [
+              26.1640766,
+              44.4388623
+            ],
+            [
+              26.1647352,
+              44.4390479
+            ],
+            [
+              26.1651428,
+              44.4391374
+            ],
+            [
+              26.1647531,
+              44.4398843
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

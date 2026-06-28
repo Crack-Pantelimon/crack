@@ -1,0 +1,3932 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178834290,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 8 Bloc 111 B, Sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3646",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.13556,
+          44.442562
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178840769,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Dobrina 4 Bloc 49 B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3529",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.159219,
+          44.44438
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178840770,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Bd. Lucre\u0163iu P\u0103tr\u0103\u015fcanu 3 Gradinita, Sector 3, BIF",
+          "military": "bunker",
+          "ref": "4464",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.164871,
+          44.431611
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178840800,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 47 Bloc 102 C, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3741",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.145814,
+          44.442799
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178863849,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Cap. Cerga Nicolae 4 Bloc P4-5, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3566",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.13982,
+          44.436639
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178863869,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 18 Bloc 118 B, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3641",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.138753,
+          44.442909
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178870063,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Calea Mo\u015filor 292 Bloc 38, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3554",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.12123,
+          44.44519
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178870094,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 286 Bloc 41, sc. 8, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3782",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.16369,
+          44.442265
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878301,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 227 Bloc 70, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3787",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.150052,
+          44.443774
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878317,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 25 A Bloc 2(IRTA), Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3681",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128955,
+          44.456435
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878344,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 39 Bloc 103 A, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3712",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.144853,
+          44.442858
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878361,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Bucovina (I.O.R.) 1 bis Bloc L 10 A, Sector 3, BIF",
+          "military": "bunker",
+          "ref": "3878",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154545,
+          44.432382
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878370,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 41 Bloc 102 D, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3739",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.144982,
+          44.442816
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878396,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 253 Bloc 44, sc. 3/C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3770",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.160968,
+          44.443287
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878422,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. \u015etefan cel Mare 240 Bloc 59 A, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3805",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.123513,
+          44.449765
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878438,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. M\u0103gura Vulturilor 51 Bloc 116 A, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3627",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.136716,
+          44.441868
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878441,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Bd. Basarabia 171 S.C. Stiteh S.A., Sector 3, BIF",
+          "military": "bunker",
+          "ref": "3919",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.163315,
+          44.436152
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878487,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Ziduri \u00eentre Vii 1 Complex Comercial, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "4447",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.145991,
+          44.451192
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878491,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 2 C Bloc 4, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3693",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128685,
+          44.454068
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878512,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 4 Bloc 58 C, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3539",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156166,
+          44.444253
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878517,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 126 Bloc 120, sc.A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3724",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.144788,
+          44.442618
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878544,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 248 Bloc 59/60, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3767",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.165261,
+          44.443137
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878560,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 8 Bloc 111 B, Sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3645",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135657,
+          44.442619
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878571,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 237 Bloc 65, sc. 3, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3798",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.153019,
+          44.443738
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878587,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos Iancului 130 Bloc 121, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3676",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.149097,
+          44.442784
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878614,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 11 Bloc 108, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3719",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137547,
+          44.442025
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878640,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Mihai Bravu 43 Bloc 4, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3750",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128198,
+          44.444886
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878657,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Intr. Muncii 4A Bloc C, Sector 3, BIF",
+          "military": "bunker",
+          "ref": "3852",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.165195,
+          44.434822
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878666,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 245 Bloc 51, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3785",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156671,
+          44.443297
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878681,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Irimicului 2 Bloc 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3607",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.124138,
+          44.45281
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878688,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Cap. Cerga Nicolae 4 Bloc P4-5, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3567",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.140228,
+          44.436715
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878708,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 14 Bloc 117 C, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3638",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137787,
+          44.442963
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878787,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 39 Bloc 103 A, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3731",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1448,
+          44.442833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878802,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Ma\u015fina de P\u00e2ine 20 A Bloc 6 IRTA, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3625",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128011,
+          44.456074
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878814,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 229 Bloc 68, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3762",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1503,
+          44.443887
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878830,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Traian 248 Bloc 30 B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3656",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.120076,
+          44.443602
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878841,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 237 Bloc 65, sc. 1-2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3797",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.153126,
+          44.443888
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878884,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 10 Bloc 114 B, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3714",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137308,
+          44.441101
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878905,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Al. C\u00e2mpul Mo\u015fi 2 Bloc ALMO 5, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3504",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.125806,
+          44.449896
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878910,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Mihai Bravu 43 Bloc 4, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3749",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.127371,
+          44.446256
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878931,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Al. Hobita 1 Bloc 300, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3531",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.14976,
+          44.444761
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878936,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 286 Bloc 41, sc. 5, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3780",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.16321,
+          44.442215
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878958,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Avrig 64 Bloc O 20, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3562",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.13227,
+          44.443021
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878963,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 225 Bloc 66, sc. 4-5, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3759",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.14813,
+          44.444035
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878979,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 14 Bloc 117 C, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3637",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137699,
+          44.442941
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178878990,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 256 Bloc 53, sc. 3, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3790",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156349,
+          44.442722
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879017,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u0218oseaua Mihai Bravu 1 Bloc ALMO 2 Magazin Bucur Obor, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3826",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.125861,
+          44.449777
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879033,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 39 Bloc 103 A, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3711",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.144978,
+          44.442891
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879059,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 53 Bloc 102 B, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3742",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.147044,
+          44.443067
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879081,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Elev \u015etef\u0103nescu 15 Bloc 452, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3580",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135798,
+          44.443874
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879086,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 286 Bloc 41, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3777",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.162733,
+          44.442283
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879128,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. M\u0103gura Vulturilor 66 Bloc 117 A, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3630",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137121,
+          44.443021
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879202,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 5 Bloc 57, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3542",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.155656,
+          44.443788
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879207,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 27 Bloc 105 D, sc. 3, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3723",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.140802,
+          44.442689
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879229,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Elev \u015etef\u0103nescu 9 Bloc 449, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3577",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.134431,
+          44.443706
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879234,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 291A Bloc 9 B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3754",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.152969,
+          44.432925
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879261,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 256 Bloc 53, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3789",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156348,
+          44.442817
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879426,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 258 Bloc 47, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3772",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.158132,
+          44.442476
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879468,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. M\u0103gura Vulturilor 64 Bloc 117 A, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3629",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137167,
+          44.442529
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879495,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Vatra Luminoas\u0103 28 Bloc P 7, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3660",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.138984,
+          44.438047
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879542,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 5 Bloc 57, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3541",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.155579,
+          44.444013
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879547,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 19 Bloc 106 B, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3734",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139571,
+          44.442155
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879569,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Delfinului 2 Bloc 42, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3572",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.163551,
+          44.443771
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879574,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 253 Bloc 44, sc. 2/B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3769",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.160676,
+          44.443255
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879601,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 231 Bloc 69 A, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3800",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.15097,
+          44.443868
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879644,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 27 Bloc 105 D, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3721",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.14078,
+          44.44265
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879665,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Al. C\u00e2mpul Mo\u015fi 3 Bloc 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3503",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.127227,
+          44.451287
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879670,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 363 Bloc A 3, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3752",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.153037,
+          44.443406
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879691,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 1 Bloc 58 A, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3534",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154467,
+          44.443877
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879696,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 286 Bloc 41, sc. 4, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3779",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.162967,
+          44.442184
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879718,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Ciurea 2-4 Bloc P 6, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3569",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139092,
+          44.437992
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879739,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 16 Bloc 118 A, sc A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3640",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.13872,
+          44.442884
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879818,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 7 Bloc 109 B, sc B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3733",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.136295,
+          44.441782
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879840,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Elev \u015etef\u0103nescu 13 Bloc 451, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3579",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135175,
+          44.443778
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879845,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 241 Bloc 61, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3764",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.14971,
+          44.444834
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879914,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 21 Bloc 106 A, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3716",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.140281,
+          44.442226
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879940,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 2 D Bloc 5, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3695",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.12779,
+          44.452858
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879961,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 1 Bloc 58 A, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3533",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154404,
+          44.444024
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879966,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 8 Bloc 114 A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3726",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.136508,
+          44.441367
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178879993,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 229 Bloc 68, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3761",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.150212,
+          44.443996
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880009,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 4 Bloc 112, sc A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3647",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.134294,
+          44.442289
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880020,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 144 Bloc 102 A, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3792",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.147024,
+          44.443787
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880036,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 23 A Bloc 1A (IRTA), Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3678",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128432,
+          44.455371
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880063,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 10 Bloc 114 B, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3713",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137216,
+          44.441115
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880089,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 47 Bloc 102 C, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3744",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.146001,
+          44.442868
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880115,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 258 Bloc 47, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3771",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.158091,
+          44.442404
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880141,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 287A Bloc 10 A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3802",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.165118,
+          44.442851
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880157,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Pictor H\u0103rlescu 3 Bloc A 6, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3632",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.157955,
+          44.438632
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880184,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Vatra Luminoas\u0103 26 Bloc P 7 A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3659",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.138851,
+          44.437992
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880231,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Bd. Chi\u015fin\u0103u 2 Bloc 50, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3544",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.157314,
+          44.444196
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880236,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 6 Bloc 113 B, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3725",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135912,
+          44.441285
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880258,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Slt. Cristescu Dima 1 Bloc 105 C, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3571",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.142141,
+          44.443127
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880279,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 18 Bloc 118 B, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3642",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.138814,
+          44.442922
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880290,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 237 Bloc 65, sc. 4-5, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3799",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.153145,
+          44.443795
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880333,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 6 Bloc 113 B, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3708",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.13588,
+          44.441325
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880373,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Ziduri Mo\u015fi 2 Bloc 6, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3666",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.127926,
+          44.453102
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880636,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 14 Bloc 117 C, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3639",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137745,
+          44.44293
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880715,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 33 Bloc 105 B, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3736",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.142303,
+          44.442533
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880742,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 239 Bloc 62, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3763",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.15406,
+          44.443641
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880769,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 84 Bloc 409 B, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3794",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.138789,
+          44.445
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880812,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 13 Bloc 107, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3715",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.13835,
+          44.442068
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880833,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Al. C\u00e2mpul Mo\u015fi 4 Bloc ALMO 4, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3505",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.127392,
+          44.450528
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880838,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Mihai Bravu 2 Bloc 60 B, sc.3, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3746",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.125007,
+          44.448326
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880859,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 2 Bloc 58 B, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3536",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156323,
+          44.444457
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880864,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 286 Bloc 41, sc. 6, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3781",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.16349,
+          44.442271
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880886,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Avrig 26 Bloc P 18, sc B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3563",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.130017,
+          44.445864
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880918,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 144 Bloc 102 A, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3791",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.146974,
+          44.443731
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178880986,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 37 Bloc 103B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3743",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.143879,
+          44.442707
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881009,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Bd. Basarabiei nr. 49 \u00f7 51 Spitalul Clinic Judetean de Urgenta Ilfov, Bucure\u015fti, BIF",
+          "military": "bunker",
+          "ref": "4520",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.15714,
+          44.434688
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881013,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 260 Bloc 46, sc. 2/3, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3774",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.159873,
+          44.44246
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881028,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Herta 4 Bloc 64 A, sc B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3652",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154602,
+          44.442056
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881129,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Bd. Chi\u015fin\u0103u 5 Bloc 48 A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3543",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.158269,
+          44.443897
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881134,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 12 Bloc 115, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3728",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137825,
+          44.441597
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881156,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Delfinului 2 Bloc 42, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3574",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.163488,
+          44.443456
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881177,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 10 Bloc 111 A, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3649",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.13594,
+          44.442632
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881188,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 227 Bloc 70, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3786",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.150307,
+          44.443833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881204,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 2 Bloc ALMO 1,sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3680",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1261751,
+          44.450569
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881248,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Bucovina (I.O.R.) 1 A Bloc L 10, Sector 3, BIF",
+          "military": "bunker",
+          "ref": "3877",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154285,
+          44.432166
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881252,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Avrig 54 Bloc O 15, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3561",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.132083,
+          44.444059
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881257,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 5 Bloc 110, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3738",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135375,
+          44.441798
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881283,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 258 Bloc 47, sc. D, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3773",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.158161,
+          44.44239
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881309,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 369 Bloc A4, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3804",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.13499,
+          44.445797
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881325,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. M\u0103gura Vulturilor 51 Bloc 116 A, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3626",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.136993,
+          44.441922
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881378,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 2 C Bloc 4, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3692",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128664,
+          44.453997
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881399,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 3 Bloc 56, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3538",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156085,
+          44.443638
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881404,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 29 Bloc 105 B, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3735",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.141252,
+          44.442291
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881426,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Delfinului 2 Bloc 42, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3573",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.163592,
+          44.443773
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881431,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 248 Bloc 59/60, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3766",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154146,
+          44.443578
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881447,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 2 Bloc 112 B, Sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3644",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139268,
+          44.442991
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881458,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 231 Bloc 69 A, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3801",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.151093,
+          44.443808
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881501,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 29 Bloc 105 B, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3718",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.141252,
+          44.442342
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881527,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 363 Bloc A 3, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3753",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135027,
+          44.445747
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881548,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 2 Bloc 58 B, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3535",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156736,
+          44.444419
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881553,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 245 Bloc 51, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3784",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156845,
+          44.443376
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881643,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Calea Mo\u015filor 292 Bloc 38, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3553",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.121288,
+          44.445204
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881648,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 35 Bloc 104, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3730",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.143139,
+          44.442728
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881663,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Ma\u015fina de P\u00e2ine 37 Bloc 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3624",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.124767,
+          44.452651
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881666,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Sold. Nicolae Sebe 10 Bloc L 36, Sector 3, BIF",
+          "military": "bunker",
+          "ref": "3912",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.158396,
+          44.432691
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881691,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Herta 4 Bloc 64 A, sc A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3651",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154488,
+          44.442053
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881702,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 86 Bloc 409 A, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3796",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139716,
+          44.444465
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881745,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 21 Bloc 106 A, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3717",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139932,
+          44.44227
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881771,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Mihai Bravu 41/4 Bloc 4 bis, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3748",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.127958,
+          44.445205
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881792,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Al. Dobrina 4 Bl. 49 B, sc.1+2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3530",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.159122,
+          44.444368
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881797,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 12 Bloc 115, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3727",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137805,
+          44.441543
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881815,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Petre Tina 5 Bloc L 41, Sector 3, BIF",
+          "military": "bunker",
+          "ref": "3897",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.157274,
+          44.432812
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881824,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 225 Bloc 66, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3758",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.148011,
+          44.444052
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881840,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Slt. Manoliu Pompiliu 2 Bloc P1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3636",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139124,
+          44.436874
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881851,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 144 Bloc 102 A, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3793",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.147028,
+          44.443688
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881867,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 2 Bloc ALMO 1,sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3679",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1260891,
+          44.4504534
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881894,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 35 Bloc 104, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3710",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.143116,
+          44.442798
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881920,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Mihai Bravu 2 Bloc 60 B, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3745",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.125049,
+          44.448368
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881946,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 286 Bloc 41, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3776",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.162713,
+          44.442335
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881972,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 359 Bloc B 2, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3803",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135292,
+          44.445556
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178881988,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Pictor H\u0103rlescu 3 Bloc A 6, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3633",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.15782,
+          44.438818
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882062,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Bd. Chi\u015fin\u0103u 2 Bloc 50, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3545",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.157269,
+          44.444146
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882067,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 27 Bloc 105 D, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3722",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.140771,
+          44.442838
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882089,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Elev \u015etef\u0103nescu 3 Bloc 444, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3576",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.136569,
+          44.443957
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882110,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Lt. Sachelarie Visarion 18 Bloc 119, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3643",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139122,
+          44.442862
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882121,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 256 Bloc 53, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3788",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.15634,
+          44.442791
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882164,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 17 Bloc 106 C, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3709",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139273,
+          44.442254
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882185,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Calea Mo\u015filor 249 Bloc 49-49 A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3555",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.122467,
+          44.447343
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882190,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u0218os. Iancului 41 Bloc 102 D, sc B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3740",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.144908,
+          44.442715
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882216,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 245 Bloc 51, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3783",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1568,
+          44.443348
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882258,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. M\u0103gura Vulturilor 64 Bloc 117 A, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3628",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.137211,
+          44.442591
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882332,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 4 Bloc 58 C, sc. 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3540",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.155688,
+          44.444325
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882337,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 5 Bloc 110, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3737",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135306,
+          44.44188
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882352,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Ma\u015fina de P\u00e2ine 20 C Bloc 4 (IRTA), Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3623",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128451,
+          44.456179
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882364,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 251 Bloc 45, sc A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3768",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.159985,
+          44.443073
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882380,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Herta 6 Bloc 64 B, sc B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3654",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.15488,
+          44.442942
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882391,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 86 Bloc 409 A, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3795",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139689,
+          44.444464
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882407,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 23 B Bloc 1 B (IRTA), Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3689",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128534,
+          44.455524
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882418,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u0218oseaua Mihai Bravu 3 ALMO 3 Magazin Bucur Obor, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3827",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.126814,
+          44.449767
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882434,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 53 Bloc 102 B, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3720",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.146975,
+          44.443069
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882455,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Al. C\u00e2mpul Mo\u015fi 1 Bloc 2, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3502",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.126908,
+          44.451564
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882460,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Mihai Bravu 37 Bloc P 30 A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3747",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.128015,
+          44.4459
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882481,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Aleea Ilia 3 Bloc 56, sc. 1, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3537",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156136,
+          44.443944
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882486,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 286 Bloc 41, sc. 3, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3778",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.162699,
+          44.442234
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882508,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Cap. Cerga Nicolae 4 Bloc P4-5, sc. C, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3568",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.140647,
+          44.436745
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882625,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 4 Bloc 113 A, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3732",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135231,
+          44.441167
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882647,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Elev \u015etef\u0103nescu 11 Bloc 450, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3578",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.134767,
+          44.443775
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882652,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 260 Bloc 46, sc. 4/5, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3775",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.159877,
+          44.442454
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882667,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Herta 6 Bloc 64 B, sc A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3653",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154809,
+          44.442908
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882747,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Colentina 2 D Bloc 5, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3694",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.127142,
+          44.452154
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882768,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Al. Hobita 1 Bloc 300, sc. B, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3532",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.149797,
+          44.444489
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882773,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Iancului 17 Bloc 106 C, sc. A, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3729",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.139195,
+          44.442215
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882795,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "Str. Delfinului 2 Bloc 42, sc. D, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3575",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.163617,
+          44.443354
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12178882800,
+        "tags": {
+          "bunker_type": "bomb_shelter",
+          "description": "\u015eos. Pantelimon 225 Bloc 66, sc. 7, Sector 2, BIF",
+          "military": "bunker",
+          "ref": "3760",
+          "source": "https://igsu.ro/Resources/Documente_Generale/Situatia_adaposturilor_de_protectie_civila.pdf"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.148591,
+          44.444008
+        ]
+      }
+    }
+  ]
+}

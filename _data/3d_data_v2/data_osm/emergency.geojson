@@ -1,0 +1,376 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9950182383,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1522977,
+          44.4385612
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9950182384,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1531978,
+          44.4384794
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9950199503,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1529701,
+          44.4358664
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9950199504,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1537735,
+          44.4361688
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9950199505,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1541969,
+          44.4371265
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9950199506,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1540676,
+          44.4376751
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9950199507,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.151239,
+          44.4382227
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9951267471,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1508238,
+          44.437653
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9951267472,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1508292,
+          44.4376627
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9951267473,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1511546,
+          44.4363425
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9951267474,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1511673,
+          44.4363289
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9951267475,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1517895,
+          44.4359227
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10173818018,
+        "tags": {
+          "emergency": "fire_hydrant",
+          "fire_hydrant:position": "green",
+          "fire_hydrant:type": "pillar",
+          "water_source": "main"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1518974,
+          44.4360839
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11793072270,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "16",
+          "addr:postcode": "021177",
+          "addr:street": "\u0218oseaua Colentina",
+          "amenity": "dentist",
+          "contact:phone": "0787877799",
+          "dispensing": "no",
+          "electricity": "grid",
+          "emergency": "yes",
+          "healthcare": "dentist",
+          "healthcare:speciality": "dental_oral_maxillo_facial_surgery;stomatology",
+          "insurance:health": "private",
+          "name": "Dentarbre Dental Clinic",
+          "opening_hours": "Mo-Fr 09:00-21:00",
+          "operational_status": "operational",
+          "operator": "DR. DENT MEDICAL SERVICES S.R.L.",
+          "operator:type": "private",
+          "staff_count:doctors": "5",
+          "staff_count:nurses": "2",
+          "url": "https://dentarbre.com/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.131593,
+          44.4581713
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 401338812,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "27",
+          "addr:postcode": "021967",
+          "addr:street": "Strada Tony Bulandra",
+          "amenity": "hospital",
+          "building": "hospital",
+          "building:levels": "7",
+          "emergency": "no",
+          "healthcare": "hospital",
+          "name": "Spitalul Monza",
+          "roof:levels": "0",
+          "roof:shape": "flat"
+        },
+        "nodes": [
+          4037782069,
+          4037782063,
+          4037782066,
+          4037782068,
+          4037782067,
+          4037782064,
+          4037782065,
+          4037782062,
+          4037782069
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1485609,
+              44.439052
+            ],
+            [
+              26.1488262,
+              44.43912
+            ],
+            [
+              26.1488031,
+              44.4391659
+            ],
+            [
+              26.1490158,
+              44.4392204
+            ],
+            [
+              26.149036,
+              44.4391803
+            ],
+            [
+              26.1493366,
+              44.4392574
+            ],
+            [
+              26.1494574,
+              44.4390173
+            ],
+            [
+              26.1486787,
+              44.4388177
+            ],
+            [
+              26.1485609,
+              44.439052
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

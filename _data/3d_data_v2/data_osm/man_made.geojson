@@ -1,0 +1,2273 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 2913514101,
+        "tags": {
+          "man_made": "surveillance",
+          "source": "survey"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1225779,
+          44.4392339
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3724960426,
+        "tags": {
+          "amenity": "drinking_water",
+          "check_date": "2023-04-16",
+          "man_made": "water_tap"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1269411,
+          44.4489987
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159525076,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1502968,
+          44.4396306
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159525077,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1500848,
+          44.4399807
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530186,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1497457,
+          44.440017
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530187,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1499447,
+          44.440234
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530188,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1497035,
+          44.4402082
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530189,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1496785,
+          44.4403214
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530190,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1499196,
+          44.4403495
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530191,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1496531,
+          44.4404361
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530192,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1498931,
+          44.4404717
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530201,
+        "tags": {
+          "man_made": "beacon",
+          "name": "Sala cursuri"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1496293,
+          44.4405457
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159530202,
+        "tags": {
+          "man_made": "beacon",
+          "name": "Dormitoare"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1498744,
+          44.4405577
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159549435,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1491094,
+          44.4400527
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159549436,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1491778,
+          44.4399142
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159549437,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.14924,
+          44.4397882
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159552212,
+        "tags": {
+          "man_made": "beacon",
+          "name": "Intrare \u0219coal\u0103"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1502311,
+          44.4392627
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7159562419,
+        "tags": {
+          "man_made": "beacon"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1497068,
+          44.4398616
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10836452073,
+        "tags": {
+          "amenity": "drinking_water",
+          "man_made": "water_tap"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1301386,
+          44.4418574
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782939,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1218001,
+          44.4456679
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782940,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1228252,
+          44.4467452
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782941,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1236435,
+          44.4476714
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782942,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1247606,
+          44.4482741
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782943,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1254396,
+          44.447194
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782944,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1266821,
+          44.4441197
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782945,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1273716,
+          44.4442879
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782946,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1293309,
+          44.442825
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782947,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1305437,
+          44.4422576
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782948,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1331118,
+          44.4406515
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782949,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1349048,
+          44.4377193
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782950,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1355554,
+          44.4371446
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782951,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1370053,
+          44.4344505
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782952,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1380183,
+          44.4362847
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782953,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.138529,
+          44.4363126
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782954,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1379049,
+          44.4365451
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782955,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1376554,
+          44.436957
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782956,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1372974,
+          44.4372755
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782957,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1380268,
+          44.4373996
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782958,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1382171,
+          44.4375579
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782959,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1383355,
+          44.4373161
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782960,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1412314,
+          44.4381637
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782961,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1411628,
+          44.4384806
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782962,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1415606,
+          44.4368095
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782963,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1412283,
+          44.4367414
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782964,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1418834,
+          44.4369529
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11250782965,
+        "tags": {
+          "communication:4g": "yes",
+          "communication:5g": "yes",
+          "man_made": "antenna"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1421289,
+          44.4368685
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11925459269,
+        "tags": {
+          "amenity": "drinking_water",
+          "bottle": "no",
+          "dog": "no",
+          "drinking_water": "yes",
+          "man_made": "water_tap"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.140871,
+          44.437907
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11925464369,
+        "tags": {
+          "amenity": "drinking_water",
+          "bottle": "no",
+          "dog": "no",
+          "drinking_water": "yes",
+          "man_made": "water_tap"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.127028,
+          44.4561
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12212063706,
+        "tags": {
+          "man_made": "works",
+          "name": "printare.xyz",
+          "phone": "+40750405393",
+          "website": "https://printare.xyz"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1212584,
+          44.4578124
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13763117159,
+        "tags": {
+          "camera:mount": "wall",
+          "man_made": "surveillance",
+          "surveillance": "private",
+          "surveillance:type": "camera",
+          "surveillance:zone": "area"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1229774,
+          44.4341406
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 201828136,
+        "tags": {
+          "man_made": "works",
+          "name": "IOR"
+        },
+        "nodes": [
+          2118463892,
+          2118463889,
+          2118463891,
+          2118463885,
+          2118463887,
+          2118463893,
+          2118463892
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1531903,
+              44.4321253
+            ],
+            [
+              26.1533009,
+              44.4317504
+            ],
+            [
+              26.1533492,
+              44.4317536
+            ],
+            [
+              26.1534082,
+              44.4315935
+            ],
+            [
+              26.1535899,
+              44.4316251
+            ],
+            [
+              26.153414,
+              44.4321645
+            ],
+            [
+              26.1531903,
+              44.4321253
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 258094089,
+        "tags": {
+          "SIRUTA:code": "179150",
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "33",
+          "addr:postcode": "021381",
+          "addr:street": "Bulevardul Ferdinand I",
+          "alt_name": "Foi\u0219orul de foc",
+          "building": "yes",
+          "codul_entit\u0103\u021bii_muzeale": "7540200.0",
+          "construction": "public",
+          "description:en": "Founded in 1963, as a Section of the History Museum of the city of Bucharest, it was transferred to the Ministry of the Internal Affairs in 1972. In 1992 it was turned into the Fireman National Museum.",
+          "description:ro": "infiintat in 1963, ca sectie a Muzeului de Istorie a orasului Bucuresti, este transferat la Ministerul de Interne in 1972. in 1992 s-a transformat in Muzeu National al Pompierilor.",
+          "email": "contact@muzeulpompierilor.ro",
+          "fax": "08.06.2012",
+          "height": "42",
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "man_made": "tower",
+          "name": "Foi\u0219orul de Foc",
+          "name:en": "The Fire Tower",
+          "phone": "021/242.09.90",
+          "ref:RO:lmi": "B-II-m-B-18722",
+          "source": "INP",
+          "source:link": "http://date.gov.ro/dataset/ghidul-muzeelor-din-romania",
+          "start_date": "1963",
+          "tourism_survey": "05.12.2013 11:37:34",
+          "tower:construction": "brick",
+          "tower:type": "observation",
+          "website": "http://www.muzeulpompierilor.ro;http://www.foisoruldefoc.ro",
+          "wikidata": "Q4687576",
+          "wikimedia_commons": "Category:Foi\u0219orul de Foc",
+          "wikipedia": "en:Foi\u0219orul de Foc"
+        },
+        "nodes": [
+          2635056775,
+          2635056783,
+          2635056767,
+          2635056781,
+          2635056768,
+          2635056770,
+          2635056772,
+          2635056752,
+          2635056749,
+          2635056778,
+          2635056750,
+          2635056754,
+          2635056763,
+          2635056765,
+          2635056762,
+          2635056776,
+          2635056780,
+          2635056773,
+          2635056775
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1207055,
+              44.4402196
+            ],
+            [
+              26.1206954,
+              44.4402434
+            ],
+            [
+              26.1206974,
+              44.4402684
+            ],
+            [
+              26.1207112,
+              44.4402913
+            ],
+            [
+              26.1207351,
+              44.4403094
+            ],
+            [
+              26.1207663,
+              44.4403207
+            ],
+            [
+              26.120801,
+              44.4403236
+            ],
+            [
+              26.120835,
+              44.4403179
+            ],
+            [
+              26.1208643,
+              44.4403042
+            ],
+            [
+              26.1208852,
+              44.4402842
+            ],
+            [
+              26.1208952,
+              44.4402603
+            ],
+            [
+              26.1208933,
+              44.4402354
+            ],
+            [
+              26.1208795,
+              44.4402125
+            ],
+            [
+              26.1208555,
+              44.4401943
+            ],
+            [
+              26.1208243,
+              44.4401831
+            ],
+            [
+              26.1207896,
+              44.4401802
+            ],
+            [
+              26.1207556,
+              44.4401859
+            ],
+            [
+              26.1207264,
+              44.4401996
+            ],
+            [
+              26.1207055,
+              44.4402196
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 314898673,
+        "tags": {
+          "building": "yes",
+          "height": "86",
+          "leisure": "pitch",
+          "man_made": "tower",
+          "material": "concrete",
+          "name": "Turnul de Para\u0219utism",
+          "sport": "parachuting",
+          "tower:type": "diving"
+        },
+        "nodes": [
+          3209540662,
+          3209540663,
+          3209540664,
+          3209540665,
+          3209540666,
+          558116686,
+          3209539649,
+          3209539650,
+          3209539654,
+          3209539655,
+          3209539656,
+          3209539657,
+          3209539658,
+          3209539659,
+          3209539660,
+          3209540661,
+          3209539651,
+          3209539652,
+          3209539653,
+          3209540662
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1488106,
+              44.4346343
+            ],
+            [
+              26.1488133,
+              44.4346277
+            ],
+            [
+              26.1488189,
+              44.4346221
+            ],
+            [
+              26.1488267,
+              44.434618
+            ],
+            [
+              26.148836,
+              44.4346161
+            ],
+            [
+              26.1488456,
+              44.4346164
+            ],
+            [
+              26.1488546,
+              44.434619
+            ],
+            [
+              26.1488618,
+              44.4346234
+            ],
+            [
+              26.1488666,
+              44.4346292
+            ],
+            [
+              26.1488685,
+              44.4346358
+            ],
+            [
+              26.1488673,
+              44.4346426
+            ],
+            [
+              26.1488632,
+              44.4346486
+            ],
+            [
+              26.1488565,
+              44.4346535
+            ],
+            [
+              26.1488481,
+              44.4346565
+            ],
+            [
+              26.1488387,
+              44.4346574
+            ],
+            [
+              26.1488294,
+              44.4346561
+            ],
+            [
+              26.1488211,
+              44.4346528
+            ],
+            [
+              26.1488148,
+              44.4346476
+            ],
+            [
+              26.1488111,
+              44.4346412
+            ],
+            [
+              26.1488106,
+              44.4346343
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 845076153,
+        "tags": {
+          "building": "yes",
+          "content": "water",
+          "man_made": "reservoir_covered"
+        },
+        "nodes": [
+          7884155954,
+          7884155955,
+          7884155956,
+          7884155957,
+          7884155958,
+          7884155959,
+          7884155941,
+          7884155942,
+          7884155943,
+          7884155947,
+          7884155948,
+          7884155949,
+          7884155950,
+          7884155951,
+          7884155952,
+          7884155953,
+          7884155944,
+          7884155945,
+          7884155946,
+          7884155954
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1554862,
+              44.4405083
+            ],
+            [
+              26.1554726,
+              44.4405318
+            ],
+            [
+              26.1554709,
+              44.4405572
+            ],
+            [
+              26.1554811,
+              44.4405816
+            ],
+            [
+              26.1555022,
+              44.4406021
+            ],
+            [
+              26.1555317,
+              44.4406164
+            ],
+            [
+              26.1555661,
+              44.4406228
+            ],
+            [
+              26.1555996,
+              44.440621
+            ],
+            [
+              26.1556306,
+              44.4406118
+            ],
+            [
+              26.1556559,
+              44.440596
+            ],
+            [
+              26.1556729,
+              44.4405753
+            ],
+            [
+              26.1556799,
+              44.4405518
+            ],
+            [
+              26.1556762,
+              44.440528
+            ],
+            [
+              26.1556621,
+              44.4405062
+            ],
+            [
+              26.1556391,
+              44.4404887
+            ],
+            [
+              26.1556096,
+              44.4404773
+            ],
+            [
+              26.1555765,
+              44.4404732
+            ],
+            [
+              26.1555413,
+              44.4404772
+            ],
+            [
+              26.15551,
+              44.4404893
+            ],
+            [
+              26.1554862,
+              44.4405083
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 845076154,
+        "tags": {
+          "building": "yes",
+          "content": "water",
+          "man_made": "reservoir_covered"
+        },
+        "nodes": [
+          7884155960,
+          7884155961,
+          7884155962,
+          7884155963,
+          7884155964,
+          7884155965,
+          7884155966,
+          7884155967,
+          7884155968,
+          7884155969,
+          7884155970,
+          7884155971,
+          7884155972,
+          7884155973,
+          7884155974,
+          7884155975,
+          7884155976,
+          7884155977,
+          7884155978,
+          7884155960
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1557423,
+              44.4405331
+            ],
+            [
+              26.1557288,
+              44.4405566
+            ],
+            [
+              26.155727,
+              44.440582
+            ],
+            [
+              26.1557373,
+              44.4406064
+            ],
+            [
+              26.1557583,
+              44.4406269
+            ],
+            [
+              26.1557878,
+              44.4406412
+            ],
+            [
+              26.1558223,
+              44.4406476
+            ],
+            [
+              26.1558558,
+              44.4406458
+            ],
+            [
+              26.1558868,
+              44.4406366
+            ],
+            [
+              26.1559121,
+              44.4406208
+            ],
+            [
+              26.1559291,
+              44.4406001
+            ],
+            [
+              26.1559361,
+              44.4405766
+            ],
+            [
+              26.1559324,
+              44.4405528
+            ],
+            [
+              26.1559183,
+              44.440531
+            ],
+            [
+              26.1558953,
+              44.4405135
+            ],
+            [
+              26.1558657,
+              44.4405021
+            ],
+            [
+              26.1558326,
+              44.440498
+            ],
+            [
+              26.1557974,
+              44.440502
+            ],
+            [
+              26.1557661,
+              44.4405141
+            ],
+            [
+              26.1557423,
+              44.4405331
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 980620201,
+        "tags": {
+          "man_made": "water_tower"
+        },
+        "nodes": [
+          9070971583,
+          9070971584,
+          9070971585,
+          9070971586,
+          9070971587,
+          9070971588,
+          9070971589,
+          9070971571,
+          9070971572,
+          9070971575,
+          9070971576,
+          9070971577,
+          9070971578,
+          9070971579,
+          9070971580,
+          9070971581,
+          9070971582,
+          9070971573,
+          9070971574,
+          9070971583
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.135482,
+              44.450167
+            ],
+            [
+              26.1355181,
+              44.4501898
+            ],
+            [
+              26.1355413,
+              44.4502199
+            ],
+            [
+              26.1355489,
+              44.4502539
+            ],
+            [
+              26.1355399,
+              44.4502878
+            ],
+            [
+              26.1355154,
+              44.4503174
+            ],
+            [
+              26.1354783,
+              44.4503395
+            ],
+            [
+              26.135433,
+              44.4503512
+            ],
+            [
+              26.1353885,
+              44.4503518
+            ],
+            [
+              26.1353459,
+              44.4503424
+            ],
+            [
+              26.1353096,
+              44.450324
+            ],
+            [
+              26.1352833,
+              44.4502984
+            ],
+            [
+              26.1352694,
+              44.4502682
+            ],
+            [
+              26.1352695,
+              44.4502364
+            ],
+            [
+              26.1352835,
+              44.4502062
+            ],
+            [
+              26.13531,
+              44.4501806
+            ],
+            [
+              26.1353464,
+              44.4501623
+            ],
+            [
+              26.135389,
+              44.450153
+            ],
+            [
+              26.1354372,
+              44.4501542
+            ],
+            [
+              26.135482,
+              44.450167
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 980620202,
+        "tags": {
+          "building": "yes",
+          "man_made": "tower",
+          "tower:type": "cooling"
+        },
+        "nodes": [
+          9070971602,
+          9070971603,
+          9070971604,
+          9070971605,
+          9070971606,
+          9070971607,
+          9070971608,
+          9070971590,
+          9070971591,
+          9070971594,
+          9070971595,
+          9070971596,
+          9070971597,
+          9070971598,
+          9070971599,
+          9070971600,
+          9070971601,
+          9070971592,
+          9070971593,
+          9070971602
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1351182,
+              44.4504275
+            ],
+            [
+              26.1351238,
+              44.450437
+            ],
+            [
+              26.1351247,
+              44.4504474
+            ],
+            [
+              26.1351208,
+              44.4504574
+            ],
+            [
+              26.1351125,
+              44.4504659
+            ],
+            [
+              26.1351008,
+              44.4504721
+            ],
+            [
+              26.135087,
+              44.4504751
+            ],
+            [
+              26.1350725,
+              44.4504748
+            ],
+            [
+              26.1350591,
+              44.4504712
+            ],
+            [
+              26.135048,
+              44.4504646
+            ],
+            [
+              26.1350405,
+              44.4504559
+            ],
+            [
+              26.1350374,
+              44.4504459
+            ],
+            [
+              26.1350389,
+              44.4504358
+            ],
+            [
+              26.1350449,
+              44.4504265
+            ],
+            [
+              26.1350548,
+              44.4504191
+            ],
+            [
+              26.1350676,
+              44.4504144
+            ],
+            [
+              26.1350817,
+              44.4504129
+            ],
+            [
+              26.1350958,
+              44.4504147
+            ],
+            [
+              26.1351085,
+              44.4504197
+            ],
+            [
+              26.1351182,
+              44.4504275
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 983580440,
+        "tags": {
+          "bridge:structure": "beam",
+          "layer": "1",
+          "man_made": "bridge"
+        },
+        "nodes": [
+          9094125958,
+          9094125959,
+          2440495357,
+          9094004778,
+          2440493244,
+          9094125960,
+          9094125958
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1590001,
+              44.4463343
+            ],
+            [
+              26.1589741,
+              44.4460892
+            ],
+            [
+              26.1591208,
+              44.4460807
+            ],
+            [
+              26.1591789,
+              44.4460775
+            ],
+            [
+              26.1591858,
+              44.4461401
+            ],
+            [
+              26.1591994,
+              44.4463236
+            ],
+            [
+              26.1590001,
+              44.4463343
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 1078123539,
+        "tags": {
+          "man_made": "water_works",
+          "restricted": "yes"
+        },
+        "nodes": [
+          9884430268,
+          9884430269,
+          9884430270,
+          9884430271,
+          9884430268
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1396847,
+              44.4481466
+            ],
+            [
+              26.1397706,
+              44.4481849
+            ],
+            [
+              26.1398336,
+              44.4481227
+            ],
+            [
+              26.1397464,
+              44.4480854
+            ],
+            [
+              26.1396847,
+              44.4481466
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 1138335947,
+        "tags": {
+          "area": "yes",
+          "man_made": "pier"
+        },
+        "nodes": [
+          10594007554,
+          10594007551,
+          12126420057,
+          10593618360,
+          10611510087,
+          10594007554
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.15983,
+              44.4416174
+            ],
+            [
+              26.1598795,
+              44.4416157
+            ],
+            [
+              26.1598804,
+              44.4416276
+            ],
+            [
+              26.1598817,
+              44.4416437
+            ],
+            [
+              26.1598319,
+              44.4416454
+            ],
+            [
+              26.15983,
+              44.4416174
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 1138335948,
+        "tags": {
+          "area": "yes",
+          "man_made": "pier"
+        },
+        "nodes": [
+          10594007553,
+          12126420065,
+          10611510088,
+          9407285618,
+          12126420056,
+          10594007552,
+          10594007553
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1598259,
+              44.4415465
+            ],
+            [
+              26.159825,
+              44.4415328
+            ],
+            [
+              26.1598245,
+              44.4415234
+            ],
+            [
+              26.1598721,
+              44.4415217
+            ],
+            [
+              26.1598728,
+              44.4415312
+            ],
+            [
+              26.1598739,
+              44.4415451
+            ],
+            [
+              26.1598259,
+              44.4415465
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 1138335949,
+        "tags": {
+          "area": "yes",
+          "man_made": "pier"
+        },
+        "nodes": [
+          9407285617,
+          10611510089,
+          10613685879,
+          10611510090,
+          10582061422,
+          10613685880,
+          9407285617
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1598671,
+              44.4414579
+            ],
+            [
+              26.1598222,
+              44.4414594
+            ],
+            [
+              26.1598206,
+              44.4414362
+            ],
+            [
+              26.1598198,
+              44.4414197
+            ],
+            [
+              26.1598651,
+              44.4414326
+            ],
+            [
+              26.1598663,
+              44.4414489
+            ],
+            [
+              26.1598671,
+              44.4414579
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 1156677468,
+        "tags": {
+          "access": "no",
+          "man_made": "water_works",
+          "name": "Zona de protec\u0163ie sanitar\u0103",
+          "name:en": "Sanitary protection zone",
+          "name:ro": "Zona de protec\u0163ie sanitar\u0103",
+          "source": "survey"
+        },
+        "nodes": [
+          10756545705,
+          10756545737,
+          10756545736,
+          10756545738,
+          10756545705
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1276867,
+              44.4521712
+            ],
+            [
+              26.127775,
+              44.4523085
+            ],
+            [
+              26.128038,
+              44.4522224
+            ],
+            [
+              26.1279498,
+              44.452085
+            ],
+            [
+              26.1276867,
+              44.4521712
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 1307425661,
+        "tags": {
+          "man_made": "water_works",
+          "name": "Apa Nova S3"
+        },
+        "nodes": [
+          1154983864,
+          9348976481,
+          1154983868,
+          1154983839,
+          1154983641,
+          1154983609,
+          1154983636,
+          1154983864
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1553096,
+              44.4414416
+            ],
+            [
+              26.1553556,
+              44.4411667
+            ],
+            [
+              26.155393,
+              44.4409433
+            ],
+            [
+              26.1552841,
+              44.4408437
+            ],
+            [
+              26.1553843,
+              44.4403715
+            ],
+            [
+              26.1561332,
+              44.4404493
+            ],
+            [
+              26.1559555,
+              44.4414903
+            ],
+            [
+              26.1553096,
+              44.4414416
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 1318824787,
+        "tags": {
+          "man_made": "water_tower"
+        },
+        "nodes": [
+          12205227389,
+          12205227390,
+          12205227391,
+          12205227392,
+          12205227393,
+          12205227394,
+          12205227376,
+          12205227377,
+          12205227378,
+          12205227383,
+          12205227384,
+          12205227385,
+          12205227386,
+          12205227387,
+          12205227388,
+          12205227379,
+          12205227380,
+          12205227381,
+          12205227382,
+          12205227389
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1385823,
+              44.4494987
+            ],
+            [
+              26.1385635,
+              44.4494959
+            ],
+            [
+              26.138547,
+              44.4494888
+            ],
+            [
+              26.1385348,
+              44.4494782
+            ],
+            [
+              26.1385281,
+              44.4494653
+            ],
+            [
+              26.1385278,
+              44.4494516
+            ],
+            [
+              26.1385338,
+              44.4494385
+            ],
+            [
+              26.138545,
+              44.4494279
+            ],
+            [
+              26.1385605,
+              44.4494204
+            ],
+            [
+              26.1385784,
+              44.4494168
+            ],
+            [
+              26.138597,
+              44.4494175
+            ],
+            [
+              26.1386143,
+              44.4494224
+            ],
+            [
+              26.1386286,
+              44.4494311
+            ],
+            [
+              26.1386382,
+              44.4494424
+            ],
+            [
+              26.1386422,
+              44.4494554
+            ],
+            [
+              26.1386402,
+              44.4494687
+            ],
+            [
+              26.138632,
+              44.4494811
+            ],
+            [
+              26.1386186,
+              44.4494909
+            ],
+            [
+              26.1386014,
+              44.449497
+            ],
+            [
+              26.1385823,
+              44.4494987
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 1322834517,
+        "tags": {
+          "building": "yes",
+          "man_made": "tower",
+          "tower:type": "bell_tower"
+        },
+        "nodes": [
+          12240817930,
+          12240817931,
+          12240817932,
+          12240817933,
+          12240817930
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1567603,
+              44.4416301
+            ],
+            [
+              26.1569296,
+              44.4416265
+            ],
+            [
+              26.1569314,
+              44.4416707
+            ],
+            [
+              26.1567622,
+              44.4416744
+            ],
+            [
+              26.1567603,
+              44.4416301
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

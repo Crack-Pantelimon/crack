@@ -334,7 +334,7 @@ pub fn check_and_parse_parquet(
         .iter()
         .map(|i| data_res.all_nodes.get(i).unwrap().assets.len())
         .sum::<usize>()
-        + 420;
+        + 320;
     lod_state.lod_budget = budget as u32;
     let timeout = 0.1 + rand::random::<f32>() * 0.1;
     lod_state.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));

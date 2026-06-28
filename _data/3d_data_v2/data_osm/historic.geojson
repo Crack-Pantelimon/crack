@@ -1,0 +1,394 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 906089634,
+        "tags": {
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "memorial",
+          "memorial": "war_memorial",
+          "monument": "statue",
+          "name": "Monumentul Eroilor c\u0103zu\u021bi \u00een primul r\u0103zboi mondial",
+          "ref:RO:lmi": "IF-III-m-B-15330"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1631275,
+          44.4567944
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 940839126,
+        "tags": {
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "wayside_cross",
+          "material": "stone",
+          "name": "Cruce de piatr\u0103",
+          "name:signed": "no",
+          "ref:RO:lmi": "B-IV-m-B-20119",
+          "start_date": "1852",
+          "tourism": "attraction"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1296811,
+          44.4354201
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 979600941,
+        "tags": {
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "wayside_cross",
+          "material": "stone",
+          "noname": "yes",
+          "ref:RO:lmi": "B-IV-m-B-20120",
+          "ref:RO:ran": "179132.145",
+          "tourism": "attraction"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1254268,
+          44.4353596
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10884398378,
+        "tags": {
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "wayside_cross",
+          "material": "stone",
+          "name": "Crucea Pescarilor",
+          "ref:RO:lmi": "IF-III-m-B-15329",
+          "start_date": "1858"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1631675,
+          44.4566443
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11329734994,
+        "tags": {
+          "historic": "wayside_cross",
+          "material": "stone"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1270337,
+          44.4429375
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11329747450,
+        "tags": {
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "wayside_cross",
+          "material": "stone",
+          "name": "Cruce de piatr\u0103",
+          "ref:RO:lmi": "B-IV-m-B-20112",
+          "start_date": "1877",
+          "wikidata": "Q25461390",
+          "wikipedia": "ro:Crucea de piatr\u0103 din parcul Obor"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1268042,
+          44.4483298
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12633713471,
+        "tags": {
+          "historic": "wayside_cross",
+          "inscription": "Sfantul Nicolae",
+          "material": "stone",
+          "religion": "christian"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1382235,
+          44.4315724
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 35147215,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "133",
+          "addr:postcode": "030613",
+          "addr:street": "Calea C\u0103l\u0103ra\u0219ilor",
+          "architect": "Giulio Magni",
+          "building": "retail",
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "yes",
+          "name": "Hala Traian",
+          "ref:RO:lmi": "B-II-m-A-18393",
+          "start_date": "1896",
+          "wikidata": "Q26257352",
+          "wikimedia_commons": "Category:Hala Traian (Bucharest)",
+          "wikipedia": "ro:Hala Traian din Bucure\u0219ti"
+        },
+        "nodes": [
+          412264969,
+          412264970,
+          412264971,
+          13456671088,
+          412264972,
+          13625669762,
+          412264969
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1204412,
+              44.4335348
+            ],
+            [
+              26.1203908,
+              44.4332018
+            ],
+            [
+              26.1206928,
+              44.4331785
+            ],
+            [
+              26.120718,
+              44.433345
+            ],
+            [
+              26.1207432,
+              44.4335115
+            ],
+            [
+              26.1207075,
+              44.4335143
+            ],
+            [
+              26.1204412,
+              44.4335348
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 115715775,
+        "tags": {
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "ruins",
+          "landuse": "brownfield",
+          "name": "Moara lui Assan (1853)",
+          "ref:RO:lmi": "B-II-m-A-19692",
+          "start_date": "1853",
+          "wikidata": "Q18541951",
+          "wikimedia_commons": "Category:Assan's Mill, Bucharest",
+          "wikipedia": "ro:Moara lui Assan"
+        },
+        "nodes": [
+          1306582000,
+          1306582027,
+          1306582028,
+          1306582018,
+          1306582022,
+          2974723861,
+          2974723862,
+          1306582020,
+          1306582012,
+          1306581982,
+          1306582033,
+          1306581996,
+          1306581998,
+          1306582034,
+          5661648078,
+          5679687132,
+          5661648077,
+          1306582025,
+          5661648080,
+          1306582005,
+          1306582038,
+          1306582035,
+          5661648066,
+          1306582036,
+          1306582004,
+          1306582019,
+          1306582000
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.123672,
+              44.4540354
+            ],
+            [
+              26.1230951,
+              44.4542528
+            ],
+            [
+              26.1230717,
+              44.4543105
+            ],
+            [
+              26.1224991,
+              44.4544873
+            ],
+            [
+              26.1219266,
+              44.4533552
+            ],
+            [
+              26.1218658,
+              44.4532341
+            ],
+            [
+              26.1214084,
+              44.4533419
+            ],
+            [
+              26.1212888,
+              44.4531202
+            ],
+            [
+              26.1209769,
+              44.4531988
+            ],
+            [
+              26.1207737,
+              44.4528468
+            ],
+            [
+              26.1206047,
+              44.4525262
+            ],
+            [
+              26.1205615,
+              44.4524013
+            ],
+            [
+              26.1206577,
+              44.4523382
+            ],
+            [
+              26.1213449,
+              44.4521343
+            ],
+            [
+              26.1216814,
+              44.4520007
+            ],
+            [
+              26.1218276,
+              44.4519441
+            ],
+            [
+              26.1222049,
+              44.4518043
+            ],
+            [
+              26.1228413,
+              44.4515599
+            ],
+            [
+              26.1230338,
+              44.4521367
+            ],
+            [
+              26.1232234,
+              44.4524756
+            ],
+            [
+              26.1233587,
+              44.4527092
+            ],
+            [
+              26.1237107,
+              44.452634
+            ],
+            [
+              26.1239811,
+              44.4531987
+            ],
+            [
+              26.1236107,
+              44.4534388
+            ],
+            [
+              26.1237234,
+              44.4537068
+            ],
+            [
+              26.1235463,
+              44.4537604
+            ],
+            [
+              26.123672,
+              44.4540354
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

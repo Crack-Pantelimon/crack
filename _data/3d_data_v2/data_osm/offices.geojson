@@ -1,0 +1,2185 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 558116684,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "1",
+          "addr:postcode": "030353",
+          "addr:street": "Intrarea Sectorului",
+          "name": "Oficiul Registrul Comer\u021bului Bucure\u0219ti",
+          "office": "government",
+          "opening_hours": "Mo-Th 09:00-11:00,12:00-14:00; Fr 08:00-10:00,11:00-13:00"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1407523,
+          44.4314403
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 1820023068,
+        "tags": {
+          "office": "company"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1312685,
+          44.4537145
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 1820023071,
+        "tags": {
+          "office": "estate_agent"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1312185,
+          44.4537697
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 1820148292,
+        "tags": {
+          "office": "lawyer"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1284943,
+          44.4593521
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 1864139254,
+        "tags": {
+          "check_date": "2023-12-14",
+          "name": "Birou Notarial",
+          "office": "notary"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1496478,
+          44.4424298
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 2420824072,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "98-106",
+          "addr:postcode": "021332",
+          "addr:street": "\u0218oseaua Mihai Bravu",
+          "check_date:opening_hours": "2024-11-20",
+          "is_in:city": "Bucure\u0219ti",
+          "name": "Digi",
+          "office": "telecommunication",
+          "opening_hours": "Mo-Fr 09:00-18:00",
+          "operator": "RCS & RDS"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1305834,
+          44.4421901
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 2420833633,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "113",
+          "addr:postcode": "021597",
+          "addr:street": "\u0218oseaua Pantelimon",
+          "check_date:opening_hours": "2023-05-22",
+          "is_in:city": "Bucure\u0219ti",
+          "name": "Digi",
+          "office": "telecommunication",
+          "opening_hours": "Mo-Fr 09:00-18:00; Sa 09:00-14:00",
+          "operator": "RCS & RDS"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1426569,
+          44.4446033
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 2455462560,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:street": "Calea C\u0103l\u0103ra\u0219ilor",
+          "government": "healthcare",
+          "name": "Casa Na\u021bional\u0103 de Asigur\u0103ri de S\u0103n\u0103tate",
+          "office": "government",
+          "source": "survey"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1360048,
+          44.4314537
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 2508465048,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "11-13",
+          "addr:postcode": "024056",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "Strada Chiristigiilor",
+          "government": "register_office",
+          "name": "Serviciul Stare Civil\u0103 Sector 2",
+          "office": "government",
+          "phone": "+40 21 252 02 74"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1280319,
+          44.4487253
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 2637394130,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "2D",
+          "addr:postcode": "021172",
+          "addr:street": "\u0218oseaua Colentina",
+          "name": "Anuntul Telefonic",
+          "office": "company",
+          "opening_hours": "Mo-Fr 09:00-18:00",
+          "phone": "+40 21 242 13 86",
+          "website": "https://www.anuntul.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.127631,
+          44.4530579
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3096287843,
+        "tags": {
+          "internet_access": "wlan",
+          "layer": "-2",
+          "name": "hotspot Wi-Fi Digi, Metrou Obor",
+          "office": "telecommunication"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.124645,
+          44.4494381
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3363268232,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "100",
+          "addr:postcode": "021728",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "\u0218oseaua Iancului",
+          "name": "Asocia\u021bia Bate \u0218aua S\u0103 Priceap\u0103 Iapa",
+          "note": "Asocia\u021bie de ciclism - Centru de ini\u021biere \u0219i informare",
+          "office": "cycling_club",
+          "phone": "+40722736694",
+          "website": "https://batesaua.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1454415,
+          44.4425001
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3384223993,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "check_date:opening_hours": "2024-12-24",
+          "is_in:city": "Bucure\u0219ti",
+          "name": "RCS & RDS Digi - Pantelimon 256",
+          "office": "telecommunication",
+          "opening_hours": "Mo-Fr 09:00-19:00; Sa 09:00-13:00",
+          "operator": "RCS & RDS"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1565143,
+          44.4427006
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3384224093,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "internet_access": "wlan",
+          "name": "hotspot Wi-Fi Digi Casierie Pantelimon 256",
+          "office": "telecommunication",
+          "opening_hours": "Mo-Fr 09:00-19:00; Sa 09:00-13:00"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.156543,
+          44.4426841
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3954861267,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "5-25",
+          "addr:postcode": "021586",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "Strada Popa Laz\u0103r",
+          "name": "Rosegur",
+          "office": "company"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.131887,
+          44.4467844
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3957018793,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "10",
+          "addr:street": "Bulevardul G\u0103rii Obor",
+          "name": "Direc\u021bia Venituri Buget Local Sector 2",
+          "office": "financial",
+          "phone": "021 252 8409"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1408648,
+          44.4478443
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 4326661405,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "2",
+          "addr:postcode": "030673",
+          "addr:street": "Strada Delea Nou\u0103",
+          "government": "administrative",
+          "name": "ANCOM",
+          "office": "government",
+          "phone": "+40372845845",
+          "source": "survey",
+          "website": "http://www.ancom.org.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1296408,
+          44.43132
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 4710586889,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "190",
+          "addr:street": "Strada Traian",
+          "email": "office@executor.com.ro",
+          "name": "Executor Judec\u0103toresc Balaciu",
+          "name:en": "Bailiff",
+          "name:ro": "Executor Judec\u0103toresc Balaciu",
+          "office": "lawyer",
+          "phone": "0720555852",
+          "website": "http://executor.com.ro"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.121016,
+          44.4374178
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 4721502279,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "27",
+          "addr:postcode": "021156",
+          "addr:street": "\u0218oseaua Colentina",
+          "is_in:city": "Bucure\u0219ti",
+          "name": "Digi",
+          "office": "telecommunication",
+          "opening_hours": "Mo-Fr 09:00-21:00; Sa 09:00-14:00",
+          "operator": "Digi Communications Romania"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1290606,
+          44.4565268
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 4721507033,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "3-5",
+          "addr:postcode": "021313",
+          "addr:street": "Bulevardul Pierre de Coubertin",
+          "is_in:city": "Bucure\u0219ti",
+          "name": "Digi",
+          "office": "telecommunication",
+          "opening_hours": "Mo-Su 10:00-22:00",
+          "operator": "Digi Communications Romania",
+          "website": "https://www.digiromania.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1525953,
+          44.4421402
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 4822396886,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:country": "RO",
+          "addr:housenumber": "62",
+          "addr:postcode": "023492",
+          "addr:street": "Strada Seneslav Voievod",
+          "description": "Magazin de computere de ocazie, calculatoare second hand, monitoare, laptopuri, imprimante laser refurbished sau second-hand. Tehnica de calcul la mana a doua cu garantie. Livram produsele in Bucuresti (in orice sector) si zona limitrofa a Bucurestiului",
+          "name": "Ena Sistem Computers SRL",
+          "office": "company",
+          "opening_hours": "Mo-Sa 09:00-18:00",
+          "phone": "0722 631 613",
+          "smoking": "outside",
+          "website": "http://www.enasistem.ro"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1328933,
+          44.4539958
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 4883039537,
+        "tags": {
+          "name": "Enel",
+          "office": "energy_supplier",
+          "operator": "Enel",
+          "operator:wikidata": "Q651222"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1605601,
+          44.4431671
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 5076952123,
+        "tags": {
+          "addr:housenumber": "1 Bis",
+          "addr:postcode": "030391",
+          "addr:street": "Strada Bucovina",
+          "email": "asociatiel10a@gmail.com",
+          "name": "Asocia\u021bia de Proprietari bloc L 10 A",
+          "name:en": "L10A Block Owners Association",
+          "name:ro": "Asocia\u021bia de Proprietari bloc L 10 A",
+          "office": "ngo",
+          "opening_hours": "Mo-Fr 09:00-21:00",
+          "phone": "0765048896"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.154541,
+          44.4324557
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 6194721792,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "26",
+          "addr:postcode": "021585",
+          "addr:street": "Strada Ion Heliade R\u0103dulescu",
+          "name": "Amaris",
+          "office": "company"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1309055,
+          44.4478843
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 6745683887,
+        "tags": {
+          "name": "Semtec Universal",
+          "office": "company"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1453638,
+          44.4414505
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7117225338,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "117B",
+          "addr:postcode": "021387",
+          "addr:street": "Bulevardul Ferdinand I",
+          "check_date:opening_hours": "2021-02-22",
+          "name": "Concret Consult SRL",
+          "office": "company",
+          "opening_hours": "Mo-Fr 09:00-18:00"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1324827,
+          44.4454291
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7497995685,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "6",
+          "addr:postcode": "022166",
+          "addr:street": "Strada Pesc\u0103ru\u0219ului",
+          "email": "contact@plasadetantari.ro",
+          "name": "Plasa de Tantari",
+          "office": "company",
+          "opening_hours": "Mo-Sa 09:00-21:00",
+          "phone": "0737887857",
+          "website": "https://plasadetantari.ro"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1567412,
+          44.4382512
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10756545741,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "2B",
+          "addr:postcode": "021172",
+          "addr:street": "\u0218oseaua Colentina",
+          "name": "Traduceri",
+          "office": "translator"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1270559,
+          44.4522029
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10756545745,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "2D",
+          "addr:postcode": "021172",
+          "addr:street": "\u0218oseaua Colentina",
+          "name": "Magister",
+          "office": "notary",
+          "opening_hours": "Mo-Fr 09:00-17:00",
+          "phone": "+40 740 015 850"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1275969,
+          44.4530108
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10756545846,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "2A",
+          "addr:postcode": "021172",
+          "addr:street": "\u0218oseaua Colentina",
+          "name": "Master",
+          "office": "notary",
+          "opening_hours": "Mo-Th 08:30-17:00; Fr 08:30-15:00",
+          "phone": "+40 740 015 850"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1268446,
+          44.4515913
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10756702987,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "39",
+          "addr:postcode": "020133",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "\u0218oseaua \u0218tefan cel Mare",
+          "name": "Maria Cazan",
+          "office": "notary",
+          "opening_hours": "Mo-Fr 09:00-17:00",
+          "phone": "+40 724 906 556"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1238578,
+          44.4505583
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10929033745,
+        "tags": {
+          "name": "Academia de Robotic\u0103",
+          "office": "educational_institution"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1449949,
+          44.4370829
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11469041273,
+        "tags": {
+          "name": "O.A.M.G.M.A.M.R",
+          "office": "ngo"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1287163,
+          44.4470903
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11672288283,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "29",
+          "addr:postcode": "021716",
+          "addr:street": "\u0218oseaua Iancului",
+          "name": "SmartyKids Iancului-Obor",
+          "office": "educational_institution",
+          "opening_hours": "Mo-Fr 12:00-20:00",
+          "phone": "+40745244346",
+          "website": "https://www.freeschool.ro"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1416723,
+          44.4422866
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11753327495,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "140",
+          "addr:postcode": "021397",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "Bulevardul Ferdinand I",
+          "contact:email": "office@digitaladv.ro",
+          "contact:phone": "+40767800801;+40767800803;+40314054866",
+          "contact:website": "https://www.digitaladv.ro/",
+          "name": "Digital Advertising",
+          "office": "advertising_agency"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1329903,
+          44.4451163
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11800256849,
+        "tags": {
+          "name": "Notari publici Loredana Oana Iacob \u015fi Ana-Maria Cristina Filip",
+          "office": "notary"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1620063,
+          44.4429163
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11821977815,
+        "tags": {
+          "brand": "Groupama",
+          "brand:wikidata": "Q3083531",
+          "email": "ag.mihaibravu@groupama.ro",
+          "name": "Groupama",
+          "name:en": "Groupama",
+          "office": "insurance",
+          "official_name": "Groupe des Assurances Mutuelles Agricoles",
+          "opening_hours": "Mo-Fr 09:00-17:00",
+          "phone": "+40 374 110 110;+40 374 711 115",
+          "website": "https://www.groupama.ro"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1310628,
+          44.441985
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11841821483,
+        "tags": {
+          "name": "Omniasig",
+          "office": "insurance",
+          "opening_hours": "Mo-Fr 08:30-17:00"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1484287,
+          44.4431603
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 11841821489,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "23",
+          "addr:street": "Strada Ziduri Mo\u0219i",
+          "government": "register_office",
+          "level": "2",
+          "name": "Direc\u021bia public\u0103 de eviden\u021b\u0103 persoane \u0219i stare civil\u0103 sector 2",
+          "office": "government",
+          "opening_hours": "Mo-We 08:30-16:30; Th 08:30-18:30; Fr 08:30-14:00",
+          "website": "https://dpepsc.ps2.ro/",
+          "wheelchair": "yes"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1303629,
+          44.4523212
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12097789283,
+        "tags": {
+          "name": "ProLegalis",
+          "office": "lawyer"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.130154,
+          44.4439667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12168440791,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:country": "RO",
+          "addr:housenumber": "11",
+          "addr:postcode": "021904",
+          "addr:street": "Bulevardul Pierre de Coubertin",
+          "name": "Federa\u021bia Rom\u00e2n\u0103 de Tenis",
+          "office": "association",
+          "sport": "tennis",
+          "website": "http://www.frt.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1519871,
+          44.4398789
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12400174539,
+        "tags": {
+          "brand": "Groupama",
+          "brand:wikidata": "Q3083531",
+          "email": "ag.flamaropol@groupama.ro",
+          "name": "Groupama",
+          "name:en": "Groupama",
+          "office": "insurance",
+          "official_name": "Groupe des Assurances Mutuelles Agricoles",
+          "opening_hours": "Mo-Fr 09:00-17:00",
+          "phone": "+40 374 110 110;+40 374 711 503",
+          "website": "https://www.groupama.ro"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1467717,
+          44.4323721
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12905382078,
+        "tags": {
+          "name": "Camera de Comer\u021b Bilateral\u0103 Rom\u00e2nia - Turcia",
+          "office": "government"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1240251,
+          44.4348696
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 12905406615,
+        "tags": {
+          "description": "Traduceri Legalizate si Autorizate",
+          "name": "Idiomas",
+          "office": "company",
+          "website": "https://www.legal-translate.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1291022,
+          44.4326745
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13503680607,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "5",
+          "addr:postcode": "021708",
+          "addr:street": "Intrarea Albinari",
+          "name": "Web365",
+          "office": "it",
+          "website": "https://www.web365.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1367081,
+          44.4407443
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13503680608,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "146",
+          "addr:street": "Bulevardul Ferdinand I",
+          "email": "office@didactika.ro",
+          "name": "Didactika",
+          "office": "educational_institution",
+          "opening_hours": "Mo-Fr 08:00-20:30 Sa 08:00-14:00",
+          "website": "https://www.didactika.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1334271,
+          44.4454152
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13531402273,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:district": "2",
+          "addr:housenumber": "266",
+          "addr:postcode": "021652",
+          "addr:street": "\u0218oseaua Pantelimon",
+          "email": "urban-incerc@incd.ro",
+          "name": "INCD URBAN-INCERC",
+          "office": "research",
+          "phone": "+40 21 255 1213",
+          "website": "https://incd.ro/"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1611381,
+          44.4420719
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13688881970,
+        "tags": {
+          "name": "Simplu Credit IFN",
+          "office": "financial"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1294751,
+          44.4429096
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 44046988,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "89A",
+          "addr:street": "Bulevardul Ferdinand I",
+          "building": "apartments",
+          "building:levels": "2",
+          "government": "tax",
+          "name": "Trezoreria Sector 2",
+          "office": "government",
+          "opening_hours": "Mo,Tu,Th,Fr 08:30-16:30; We 08:30-18:30",
+          "roof:levels": "1",
+          "roof:shape": "hipped",
+          "wheelchair": "no"
+        },
+        "nodes": [
+          559959202,
+          559959203,
+          559959204,
+          559959205,
+          559959202
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1269908,
+              44.4432556
+            ],
+            [
+              26.1272067,
+              44.4433446
+            ],
+            [
+              26.1273601,
+              44.4431551
+            ],
+            [
+              26.1271441,
+              44.443066
+            ],
+            [
+              26.1269908,
+              44.4432556
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 83555215,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "37-39",
+          "addr:street": "Strada Agricultori",
+          "building": "school",
+          "building:levels": "6",
+          "name": "CODECS",
+          "office": "educational_institution",
+          "phone": "+40212525182",
+          "roof:levels": "0",
+          "roof:shape": "flat",
+          "source": "Yahoo",
+          "website": "https://www.codecs.ro/"
+        },
+        "nodes": [
+          973035553,
+          973035556,
+          9721236367,
+          9721236368,
+          9721236370,
+          973035560,
+          973035553
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1318039,
+              44.438494
+            ],
+            [
+              26.1320649,
+              44.4386102
+            ],
+            [
+              26.1321414,
+              44.4385225
+            ],
+            [
+              26.1321868,
+              44.4385427
+            ],
+            [
+              26.1322637,
+              44.4384547
+            ],
+            [
+              26.1319574,
+              44.4383183
+            ],
+            [
+              26.1318039,
+              44.438494
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 159968117,
+        "tags": {
+          "addr:housenumber": "3",
+          "addr:street": "Strada Avrig",
+          "building": "office",
+          "building:levels": "7",
+          "name:signed": "no",
+          "office": "company",
+          "roof:levels": "0"
+        },
+        "nodes": [
+          1720349100,
+          1720349099,
+          2515965603,
+          2515965605,
+          1720349098,
+          1720349102,
+          1720349100
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1285642,
+              44.4475127
+            ],
+            [
+              26.1287929,
+              44.4472666
+            ],
+            [
+              26.1292813,
+              44.447498
+            ],
+            [
+              26.1291703,
+              44.4476174
+            ],
+            [
+              26.1292574,
+              44.4476587
+            ],
+            [
+              26.1291398,
+              44.4477853
+            ],
+            [
+              26.1285642,
+              44.4475127
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 178704675,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "25",
+          "addr:postcode": "021405",
+          "addr:street": "Bulevardul Pache Protopopescu",
+          "building": "yes",
+          "office": "company"
+        },
+        "nodes": [
+          1890558473,
+          1890558478,
+          1890558479,
+          1890558477,
+          1890558465,
+          1890558463,
+          1890558461,
+          1890558458,
+          1890558459,
+          1890558456,
+          1890558464,
+          1890558467,
+          1890558470,
+          1890558471,
+          1890558472,
+          6624468565,
+          6624468564,
+          1890558476,
+          1890558474,
+          1890558473
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.121196,
+              44.4392426
+            ],
+            [
+              26.1212083,
+              44.4392391
+            ],
+            [
+              26.1212185,
+              44.4392339
+            ],
+            [
+              26.1212243,
+              44.4392282
+            ],
+            [
+              26.1212281,
+              44.439221
+            ],
+            [
+              26.1212718,
+              44.4391281
+            ],
+            [
+              26.1212722,
+              44.4391168
+            ],
+            [
+              26.1212679,
+              44.4391069
+            ],
+            [
+              26.1212583,
+              44.4390985
+            ],
+            [
+              26.1209785,
+              44.4390471
+            ],
+            [
+              26.1209641,
+              44.4391292
+            ],
+            [
+              26.1209902,
+              44.4391388
+            ],
+            [
+              26.1209867,
+              44.4391656
+            ],
+            [
+              26.12105,
+              44.4391748
+            ],
+            [
+              26.1210479,
+              44.4391872
+            ],
+            [
+              26.1210703,
+              44.4391918
+            ],
+            [
+              26.1210695,
+              44.4392038
+            ],
+            [
+              26.1211451,
+              44.4392299
+            ],
+            [
+              26.1211818,
+              44.4392432
+            ],
+            [
+              26.121196,
+              44.4392426
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 218680424,
+        "tags": {
+          "building": "office",
+          "building:levels": "8",
+          "name": "Accent - Travel & Events",
+          "office": "company",
+          "roof:levels": "0"
+        },
+        "nodes": [
+          2279094812,
+          2279094808,
+          2279094807,
+          2279094804,
+          2279094806,
+          2279094817,
+          2279094812
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1386241,
+              44.4331114
+            ],
+            [
+              26.1388587,
+              44.4331668
+            ],
+            [
+              26.1388965,
+              44.4330852
+            ],
+            [
+              26.1388008,
+              44.4330626
+            ],
+            [
+              26.1388136,
+              44.4330349
+            ],
+            [
+              26.1386747,
+              44.4330022
+            ],
+            [
+              26.1386241,
+              44.4331114
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 241156468,
+        "tags": {
+          "building": "yes",
+          "building:levels": "4",
+          "name": "Federa\u0163ia Rom\u00e2n\u0103 De Culturism \u015ei Fitness",
+          "office": "association"
+        },
+        "nodes": [
+          2488537376,
+          2488537377,
+          7623620162,
+          7623620163,
+          2488537378,
+          2488537379,
+          2488537380,
+          2488537381,
+          2488537376
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1507575,
+              44.4354776
+            ],
+            [
+              26.1507765,
+              44.435061
+            ],
+            [
+              26.1510006,
+              44.4350662
+            ],
+            [
+              26.1510013,
+              44.4350509
+            ],
+            [
+              26.151154,
+              44.4350545
+            ],
+            [
+              26.1511432,
+              44.4352914
+            ],
+            [
+              26.1509261,
+              44.4352864
+            ],
+            [
+              26.1509172,
+              44.4354813
+            ],
+            [
+              26.1507575,
+              44.4354776
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 244254892,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "10-12",
+          "addr:postcode": "021631",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "\u0218oseaua Pantelimon",
+          "building": "office",
+          "building:levels": "9",
+          "check_date": "2023-09-07",
+          "name": "Centrul de Afaceri Obor",
+          "office": "company",
+          "roof:levels": "0",
+          "roof:shape": "flat"
+        },
+        "nodes": [
+          2515947167,
+          2515947165,
+          2515947163,
+          2515947161,
+          2515947164,
+          2515947166,
+          2515947167
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1325626,
+              44.4476169
+            ],
+            [
+              26.1326974,
+              44.4475136
+            ],
+            [
+              26.1328003,
+              44.4473964
+            ],
+            [
+              26.1326876,
+              44.4473299
+            ],
+            [
+              26.1325577,
+              44.4474262
+            ],
+            [
+              26.1324449,
+              44.4475451
+            ],
+            [
+              26.1325626,
+              44.4476169
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 270800239,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "1",
+          "addr:postcode": "030353",
+          "addr:street": "Intrarea Sectorului",
+          "building": "yes",
+          "building:levels": "7",
+          "office": "company"
+        },
+        "nodes": [
+          2757844793,
+          2757844805,
+          2757844790,
+          2757844785,
+          2757844809,
+          2757844781,
+          2757844838,
+          2757844812,
+          2757844830,
+          2757844793
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1402906,
+              44.4318475
+            ],
+            [
+              26.1400338,
+              44.4318263
+            ],
+            [
+              26.1400573,
+              44.4316809
+            ],
+            [
+              26.1402091,
+              44.431693
+            ],
+            [
+              26.1407841,
+              44.4312978
+            ],
+            [
+              26.1409183,
+              44.4313112
+            ],
+            [
+              26.1408975,
+              44.4313723
+            ],
+            [
+              26.1408593,
+              44.4314166
+            ],
+            [
+              26.1408921,
+              44.4314432
+            ],
+            [
+              26.1402906,
+              44.4318475
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 270800246,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "25",
+          "addr:postcode": "030964",
+          "addr:street": "Bulevardul Decebal",
+          "building": "office",
+          "building:levels": "12",
+          "name": "Olympia Tower",
+          "office": "company",
+          "roof:shape": "flat"
+        },
+        "nodes": [
+          2757844819,
+          2757844797,
+          2757844786,
+          2757844821,
+          2757844820,
+          2757844814,
+          2757844810,
+          2757844831,
+          2757844813,
+          2757844819
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1373177,
+              44.431397
+            ],
+            [
+              26.1372236,
+              44.4313386
+            ],
+            [
+              26.1371365,
+              44.4313592
+            ],
+            [
+              26.1370588,
+              44.4316392
+            ],
+            [
+              26.1374014,
+              44.4316803
+            ],
+            [
+              26.1375101,
+              44.4315108
+            ],
+            [
+              26.1374457,
+              44.4314727
+            ],
+            [
+              26.1373813,
+              44.4314885
+            ],
+            [
+              26.1372573,
+              44.4314768
+            ],
+            [
+              26.1373177,
+              44.431397
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 276449322,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:country": "RO",
+          "addr:housenumber": "12",
+          "addr:postcode": "022186",
+          "addr:street": "Strada Sergent \u0218erb\u0103nic\u0103 Vasile",
+          "association": "sport",
+          "building": "office",
+          "building:levels": "3",
+          "name": "Federa\u021bia Rom\u00e2n\u0103 de Fotbal",
+          "name:en": "Romanian Football Federation",
+          "name:ro": "Federa\u021bia Rom\u00e2n\u0103 de Fotbal",
+          "office": "association",
+          "opening_hours": "Mo-Fr 08:30-17:00",
+          "phone": "+40 21 302 9150",
+          "roof:levels": "0",
+          "roof:shape": "flat",
+          "short_name": "FRF",
+          "website": "https://www.frf.ro/",
+          "wikidata": "Q631999",
+          "wikipedia": "ro:Federa\u021bia Rom\u00e2n\u0103 de Fotbal"
+        },
+        "nodes": [
+          2810443933,
+          2810443930,
+          2810443932,
+          2810443931,
+          2810443933
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1547522,
+              44.4366392
+            ],
+            [
+              26.1545894,
+              44.4361743
+            ],
+            [
+              26.1547721,
+              44.4361417
+            ],
+            [
+              26.1549348,
+              44.4366066
+            ],
+            [
+              26.1547522,
+              44.4366392
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 278821627,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:country": "RO",
+          "addr:housenumber": "37-39",
+          "addr:postcode": "022114",
+          "addr:street": "Bulevardul Basarabia",
+          "association": "sport",
+          "building": "office",
+          "building:levels": "4",
+          "facebook": "frb.romania.basketball",
+          "name": "Federa\u021bia Rom\u00e2n\u0103 de Baschet",
+          "name:en": "Romanian Basketball Federation",
+          "name:ro": "Federa\u021bia Rom\u00e2n\u0103 de Baschet",
+          "office": "association",
+          "phone": "+40 21 317 0098",
+          "short_name": "FRB",
+          "website": "https://www.frbaschet.ro/",
+          "wikidata": "Q3741222",
+          "wikipedia": "ro:Federa\u021bia Rom\u00e2n\u0103 de Baschet"
+        },
+        "nodes": [
+          8559338317,
+          2831206399,
+          2831242206,
+          8559338317
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1491819,
+              44.4338593
+            ],
+            [
+              26.1489753,
+              44.4335969
+            ],
+            [
+              26.149217,
+              44.4336146
+            ],
+            [
+              26.1491819,
+              44.4338593
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 319693391,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housename": "Office Building Center",
+          "addr:housenumber": "5",
+          "addr:postcode": "021901",
+          "addr:street": "Bulevardul Pierre de Coubertin",
+          "building": "yes",
+          "name": "NCH 2",
+          "office": "company"
+        },
+        "nodes": [
+          3261495634,
+          11688085835,
+          11688085837,
+          11688085838,
+          11688085836,
+          3261495654,
+          3261495645,
+          11688085840,
+          11688085842,
+          11688085841,
+          11688085839,
+          3261495651,
+          3261495634
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1512563,
+              44.4410936
+            ],
+            [
+              26.151314,
+              44.4411004
+            ],
+            [
+              26.1513104,
+              44.4411161
+            ],
+            [
+              26.1514501,
+              44.4411327
+            ],
+            [
+              26.1514535,
+              44.4411182
+            ],
+            [
+              26.1515097,
+              44.4411249
+            ],
+            [
+              26.1516567,
+              44.4404927
+            ],
+            [
+              26.1515948,
+              44.4404853
+            ],
+            [
+              26.1515987,
+              44.4404684
+            ],
+            [
+              26.1514649,
+              44.4404525
+            ],
+            [
+              26.1514607,
+              44.4404706
+            ],
+            [
+              26.1514032,
+              44.4404637
+            ],
+            [
+              26.1512563,
+              44.4410936
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 319693393,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housename": "NCH",
+          "addr:housenumber": "3",
+          "addr:postcode": "021901",
+          "addr:street": "Bulevardul Pierre de Coubertin",
+          "building": "office",
+          "building:levels": "2",
+          "name": "NCH",
+          "office": "company",
+          "roof:levels": "0",
+          "roof:shape": "flat"
+        },
+        "nodes": [
+          3923619136,
+          3261495652,
+          3261495638,
+          3261495647,
+          3261495636,
+          3261495637,
+          3261495658,
+          3261495661,
+          3261495662,
+          3923619135,
+          3261495650,
+          3261495659,
+          3261495656,
+          3261495648,
+          3261495635,
+          3261495657,
+          3261495660,
+          3261495644,
+          3261495653,
+          3923619136
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1510239,
+              44.4414661
+            ],
+            [
+              26.151077,
+              44.4415024
+            ],
+            [
+              26.1511435,
+              44.4415246
+            ],
+            [
+              26.1512166,
+              44.4415305
+            ],
+            [
+              26.1512884,
+              44.4415194
+            ],
+            [
+              26.1513515,
+              44.4414925
+            ],
+            [
+              26.1513993,
+              44.4414526
+            ],
+            [
+              26.1514267,
+              44.441404
+            ],
+            [
+              26.1514309,
+              44.4413516
+            ],
+            [
+              26.1514115,
+              44.441301
+            ],
+            [
+              26.1513688,
+              44.4412562
+            ],
+            [
+              26.1513078,
+              44.441224
+            ],
+            [
+              26.1512353,
+              44.441208
+            ],
+            [
+              26.1511595,
+              44.4412098
+            ],
+            [
+              26.1510888,
+              44.4412294
+            ],
+            [
+              26.1510311,
+              44.4412646
+            ],
+            [
+              26.1509928,
+              44.4413113
+            ],
+            [
+              26.1509782,
+              44.4413644
+            ],
+            [
+              26.150989,
+              44.441418
+            ],
+            [
+              26.1510239,
+              44.4414661
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 761753040,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "117B",
+          "addr:postcode": "021387",
+          "addr:street": "Bulevardul Ferdinand I",
+          "building": "apartments",
+          "building:levels": "4",
+          "name": "Concret Offices",
+          "office": "company",
+          "roof:levels": "0"
+        },
+        "nodes": [
+          7117225328,
+          7117225329,
+          7117225336,
+          7117225330,
+          11759056143,
+          11759056144,
+          7117225331,
+          7117225332,
+          11759056142,
+          11759056138,
+          11759056141,
+          11759056140,
+          11759056139,
+          7117225334,
+          7117225335,
+          7117225328
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1325328,
+              44.4454707
+            ],
+            [
+              26.1324455,
+              44.44543
+            ],
+            [
+              26.1323902,
+              44.4454936
+            ],
+            [
+              26.1323534,
+              44.4455741
+            ],
+            [
+              26.1323664,
+              44.4455834
+            ],
+            [
+              26.1323766,
+              44.4455733
+            ],
+            [
+              26.1324187,
+              44.445594
+            ],
+            [
+              26.1324071,
+              44.4456109
+            ],
+            [
+              26.1324592,
+              44.4456333
+            ],
+            [
+              26.1324968,
+              44.4455852
+            ],
+            [
+              26.1324787,
+              44.4455736
+            ],
+            [
+              26.1325176,
+              44.4455269
+            ],
+            [
+              26.1325382,
+              44.4455391
+            ],
+            [
+              26.1325677,
+              44.4455038
+            ],
+            [
+              26.1325289,
+              44.4454865
+            ],
+            [
+              26.1325328,
+              44.4454707
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

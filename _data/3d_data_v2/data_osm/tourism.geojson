@@ -1,0 +1,769 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 940839126,
+        "tags": {
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "wayside_cross",
+          "material": "stone",
+          "name": "Cruce de piatr\u0103",
+          "name:signed": "no",
+          "ref:RO:lmi": "B-IV-m-B-20119",
+          "start_date": "1852",
+          "tourism": "attraction"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1296811,
+          44.4354201
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 979600941,
+        "tags": {
+          "heritage": "2",
+          "heritage:operator": "lmi",
+          "historic": "wayside_cross",
+          "material": "stone",
+          "noname": "yes",
+          "ref:RO:lmi": "B-IV-m-B-20120",
+          "ref:RO:ran": "179132.145",
+          "tourism": "attraction"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1254268,
+          44.4353596
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 1008865311,
+        "tags": {
+          "name": "Hotel Aphitryon",
+          "tourism": "hotel",
+          "wheelchair": "yes"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1206708,
+          44.4459117
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 1741344816,
+        "tags": {
+          "amenity": "arts_centre",
+          "name": "Incubator 107",
+          "tourism": "attraction"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1206009,
+          44.4339991
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 1743399307,
+        "tags": {
+          "amenity": "fountain",
+          "artwork_type": "sculpture",
+          "name": "Lalele",
+          "tourism": "artwork"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1490653,
+          44.4433011
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 1820023024,
+        "tags": {
+          "name": "Hotel Litovoi",
+          "tourism": "hostel"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1335411,
+          44.4550587
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 2567699447,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "10",
+          "addr:postcode": "030642",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "Strada Hagiului",
+          "is_in:city": "Bucure\u0219ti",
+          "name": "Hostel Tripoli",
+          "stars": "3",
+          "tourism": "hotel"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1221056,
+          44.4324248
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 2567699454,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "159",
+          "addr:postcode": "030614",
+          "addr:postcode:source": "Date de la Po\u0219ta Rom\u00e2n\u0103, publicate sub Licen\u021ba pentru Guvernare Deschis\u0103 v1.0 la http://date.gov.ro/organization/posta-romana",
+          "addr:street": "Calea C\u0103l\u0103ra\u0219ilor",
+          "check_date": "2025-11-01",
+          "description": "CAZARE 3 STELE; RESTAURANT CU TERASA, DESCHIS NON-STOP, MUZICA LIVE;, TARIFELE INCLUD MIC DEJUN(BUFET SUEDEZ), TOATE TAXELE SI CINA.; PARCARE GRATUITA; INTERNET GRATUIT",
+          "email": "rezervari@hotelrazvan.com",
+          "internet_access": "yes",
+          "is_in:city": "Bucure\u0219ti",
+          "name": "Hotel R\u0103zvan",
+          "phone": "+40 21 3200 173, +40 735 176 047",
+          "stars": "3",
+          "tourism": "hotel",
+          "website": "https://hotelrazvan.com/",
+          "wheelchair": "no"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1232992,
+          44.4328155
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 3086068231,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "5",
+          "addr:street": "Intrarea Platon",
+          "name": "Hotel R\u0103zvan",
+          "source": "survey",
+          "tourism": "hostel"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1232706,
+          44.4334482
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 5365335833,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "128",
+          "addr:street": "Bulevardul Pache Protopopescu",
+          "artwork_type": "bust",
+          "inscription": "Monument Istoric",
+          "name": "Eleftherios Venizelos",
+          "tourism": "artwork"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1200613,
+          44.4387154
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7117225287,
+        "tags": {
+          "artist_name": "George T\u0103nase",
+          "artwork_type": "statue",
+          "material": "bronze",
+          "name": "\u0218tefan cel Mare",
+          "tourism": "artwork"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1264267,
+          44.4481772
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 7130389486,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "11A",
+          "addr:postcode": "021713",
+          "addr:street": "Strada Iancu C\u0103pitanu",
+          "internet_access": "wlan",
+          "name:en": "AKIRO Boutique hotel",
+          "phone": "+40 740 076 769",
+          "tourism": "hotel",
+          "website": "https://www.booking.com/Share-sFCt2el"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1214376,
+          44.4418926
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 8432910018,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "200 b sc a",
+          "addr:street": "Bulevardul Basarabia",
+          "tourism": "apartment"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1643756,
+          44.4351946
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 9884430255,
+        "tags": {
+          "artwork_type": "statue",
+          "name": "Titus Ozon",
+          "tourism": "artwork"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1401893,
+          44.4480384
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10867376124,
+        "tags": {
+          "artwork_type": "sculpture",
+          "material": "marble",
+          "name": "M\u00e2na \u00centins\u0103",
+          "tourism": "artwork"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1576277,
+          44.4427365
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 10886384891,
+        "tags": {
+          "name": "Muzeul Na\u021bional al Pompierilor",
+          "name:en": "The National Museum of Firefighters",
+          "tourism": "museum"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1207393,
+          44.4403061
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13442950571,
+        "tags": {
+          "name": "Tomis Garden Aparthotel",
+          "tourism": "hotel"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.135185,
+          44.435906
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13629524577,
+        "tags": {
+          "name": "Fosta Bariera Vergului (Pantelimonului)",
+          "tourism": "attraction"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1393366,
+          44.4320545
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13739739740,
+        "tags": {
+          "name": "Fosta Bariera Delea veche (Iancului)",
+          "tourism": "attraction"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1339339,
+          44.4410991
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "node",
+        "id": 13739739741,
+        "tags": {
+          "name": "Fosta Bariera T\u00e2rgului de afar\u0103",
+          "tourism": "attraction"
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          26.1253041,
+          44.4494401
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 28401758,
+        "tags": {
+          "building": "yes",
+          "name": "Lina Hotel",
+          "tourism": "hotel",
+          "wheelchair": "yes"
+        },
+        "nodes": [
+          311979443,
+          311979444,
+          13564795449,
+          311979412,
+          2273072064,
+          311979445,
+          311979443
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1201243,
+              44.4523058
+            ],
+            [
+              26.1200613,
+              44.452181
+            ],
+            [
+              26.1202135,
+              44.452139
+            ],
+            [
+              26.1202659,
+              44.4521245
+            ],
+            [
+              26.1203194,
+              44.4522397
+            ],
+            [
+              26.1203244,
+              44.4522506
+            ],
+            [
+              26.1201243,
+              44.4523058
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 175454350,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "23",
+          "addr:postcode": "021591",
+          "addr:street": "\u0218oseaua Pantelimon",
+          "building": "yes",
+          "building:levels": "5",
+          "check_date": "2024-07-04",
+          "name": "Hotel Est",
+          "roof:shape": "flat",
+          "tourism": "hotel",
+          "wheelchair": "yes"
+        },
+        "nodes": [
+          1860385650,
+          1860385644,
+          1860385622,
+          1860385631,
+          1860385650
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1339221,
+              44.447193
+            ],
+            [
+              26.133822,
+              44.4471224
+            ],
+            [
+              26.1341093,
+              44.4469147
+            ],
+            [
+              26.1342094,
+              44.4469853
+            ],
+            [
+              26.1339221,
+              44.447193
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 175454357,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "14",
+          "addr:postcode": "021631",
+          "addr:street": "\u0218oseaua Pantelimon",
+          "building": "yes",
+          "building:levels": "3",
+          "check_date": "2025-07-01",
+          "name": "Hotel EOS",
+          "roof:shape": "gabled",
+          "tourism": "hotel",
+          "wheelchair": "no"
+        },
+        "nodes": [
+          1860385606,
+          13268959842,
+          1860385593,
+          1860385574,
+          1860385587,
+          1860385584,
+          1860385590,
+          1860385606
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1336839,
+              44.446815
+            ],
+            [
+              26.1337769,
+              44.4467412
+            ],
+            [
+              26.1337988,
+              44.4467238
+            ],
+            [
+              26.1336599,
+              44.4466347
+            ],
+            [
+              26.1335905,
+              44.4466899
+            ],
+            [
+              26.1335555,
+              44.4466675
+            ],
+            [
+              26.1335101,
+              44.4467035
+            ],
+            [
+              26.1336839,
+              44.446815
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 241155479,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:country": "RO",
+          "addr:housenumber": "39",
+          "addr:postcode": "022114",
+          "addr:street": "Bulevardul Basarabia",
+          "building": "hotel",
+          "name": "Hotel Sport",
+          "rooms": "135",
+          "source": "survey",
+          "tourism": "hotel",
+          "website": "http://www.csnliamanoliu.ro/servicii/hotel-sport/"
+        },
+        "nodes": [
+          2488526782,
+          2488526819,
+          2488526834,
+          2488526846,
+          2488526889,
+          2488526920,
+          2488526946,
+          2488526970,
+          2488526996,
+          2488527022,
+          2488527072,
+          2488527102,
+          2488526782
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1501056,
+              44.4337671
+            ],
+            [
+              26.150398,
+              44.4337772
+            ],
+            [
+              26.1504007,
+              44.4337372
+            ],
+            [
+              26.1506011,
+              44.4337441
+            ],
+            [
+              26.1505854,
+              44.4339759
+            ],
+            [
+              26.1504941,
+              44.4339728
+            ],
+            [
+              26.1504699,
+              44.4343316
+            ],
+            [
+              26.1502401,
+              44.4343237
+            ],
+            [
+              26.1502639,
+              44.4339716
+            ],
+            [
+              26.1500922,
+              44.4339657
+            ],
+            [
+              26.1500975,
+              44.4338863
+            ],
+            [
+              26.1501009,
+              44.4338358
+            ],
+            [
+              26.1501056,
+              44.4337671
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "type": "way",
+        "id": 244255854,
+        "tags": {
+          "addr:city": "Bucure\u0219ti",
+          "addr:housenumber": "12",
+          "addr:street": "Strada Popa Laz\u0103r",
+          "building": "hotel",
+          "building:levels": "6",
+          "email": "rezervari@citadella.ro",
+          "internet_access": "wlan",
+          "internet_access:fee": "customers",
+          "name": "Hotel Citadella",
+          "phone": "+40728777837",
+          "roof:shape": "gabled",
+          "stars": "3",
+          "tourism": "hotel",
+          "website": "https://www.hotelcitadella.ro/"
+        },
+        "nodes": [
+          2515953887,
+          443313647,
+          11759025511,
+          11759025512,
+          443313648,
+          2515953888,
+          2515953887
+        ]
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              26.1327534,
+              44.4468022
+            ],
+            [
+              26.1329855,
+              44.4469132
+            ],
+            [
+              26.1329181,
+              44.446985
+            ],
+            [
+              26.1328727,
+              44.4469633
+            ],
+            [
+              26.1328278,
+              44.4470111
+            ],
+            [
+              26.1326411,
+              44.4469219
+            ],
+            [
+              26.1327534,
+              44.4468022
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
