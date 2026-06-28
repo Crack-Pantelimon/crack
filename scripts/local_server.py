@@ -20,7 +20,7 @@ class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         
         # Route to data directory if requested
         clean_path = normalized_path.lstrip('/')
-        if clean_path.startswith('3d_data') or clean_path.startswith('3d_data_v2') or clean_path.startswith('sound_data'):
+        if clean_path.startswith('3d_data') or clean_path.startswith('3d_data_v2') or clean_path.startswith('sound_data') or clean_path.startswith('blender_generated'):
             full_path = os.path.join(DATA_DIR, clean_path)
             return full_path
         else:
