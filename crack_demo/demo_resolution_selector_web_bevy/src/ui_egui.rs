@@ -18,11 +18,12 @@ impl Plugin for UiEguiPlugin {
 }
 
 #[derive(Resource, Clone, Debug, PartialEq)]
-struct UiState {
-    resolution: i32,
-    ui_scale: i32,
-    smooth: bool,
-    show_settings: bool,
+pub struct UiState {
+    pub resolution: i32,
+    pub ui_scale: i32,
+    pub smooth: bool,
+    pub show_settings: bool,
+    pub draw_map_bboxes: bool,
 }
 impl Default for UiState {
     fn default() -> Self {
@@ -31,6 +32,7 @@ impl Default for UiState {
             ui_scale: 125,
             smooth: true,
             show_settings: false,
+            draw_map_bboxes: false,
         }
     }
 }
@@ -127,6 +129,9 @@ fn ui_example_system(
                 if ui.button("Resolution -").clicked() {
                     ui_state.resolution -= 5;
                 }
+
+                ui.allocate_space(egui::Vec2::new(1.0, 5.0));
+                ui.checkbox(&mut ui_state.draw_map_bboxes, "Draw Map BBoxes");
 
                 ui.allocate_space(egui::Vec2::new(1.0, 10.0));
 

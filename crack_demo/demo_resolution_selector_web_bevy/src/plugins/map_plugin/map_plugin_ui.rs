@@ -10,7 +10,16 @@ pub fn draw_tree_bboxes(
     data_res: Res<MapTree>,
     lod_state: Res<MapLODState>,
     tiles_query: Query<&TreeMapTile>,
+    ui_state: Option<Res<crate::ui_egui::UiState>>,
 ) {
+    if let Some(state) = ui_state {
+        if !state.draw_map_bboxes {
+            return;
+        }
+    } else {
+        return;
+    }
+
     if !data_res.parsed {
         return;
     }

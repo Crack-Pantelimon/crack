@@ -19,7 +19,7 @@ impl Plugin for GeoJsonPlugin {
             .init_resource::<GeoJsonSelection>()
             .init_resource::<GeoJsonLoaderState>()
             .add_systems(Startup, setup_geojson_loading)
-            .add_systems(EguiPrimaryContextPass, geojson_ui_system)
+            .add_systems(EguiPrimaryContextPass, (geojson_ui_system, geojson_text_labels_system))
             .add_systems(
                 Update,
                 (
@@ -57,9 +57,8 @@ impl AssetLoader for GeoJsonTextAssetLoader {
     ) -> Result<Self::Asset, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
-        let text = String::from_utf8(bytes).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-        })?;
+        let text = String::from_utf8(bytes)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         Ok(GeoJsonTextAsset { text })
     }
 
@@ -87,14 +86,14 @@ fn get_enu_rotation_matrix(ref_point: Vec3) -> [Vec3; 3] {
         return [Vec3::X, Vec3::Y, Vec3::Z];
     }
     let u = Vec3::new((rx / l) as f32, (ry / l) as f32, (rz / l) as f32);
-    
+
     let xy_len = (rx * rx + ry * ry).sqrt();
     let e = if xy_len > 0.0 {
         Vec3::new((-ry / xy_len) as f32, (rx / xy_len) as f32, 0.0)
     } else {
         Vec3::new(1.0, 0.0, 0.0)
     };
-    
+
     let n = u.cross(e);
     [e, n, u]
 }
@@ -117,18 +116,30 @@ fn lat_lon_to_bevy(lat_deg: f32, lon_deg: f32, ref_point: Vec3, rot_matrix: &[Ve
     let east = rel_ecef.dot(rot_matrix[0]);
     let north = rel_ecef.dot(rot_matrix[1]);
     let up = rel_ecef.dot(rot_matrix[2]);
-    
+
     // Bevy X is East, Bevy Y is Up, Bevy Z is -North (North is -Z)
     Vec3::new(east, up, -north)
 }
 
 fn parse_bbox_from_txt(text: &str) -> Option<(f32, f32)> {
-    let lines: Vec<&str> = text.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
     if lines.len() != 2 {
         return None;
     }
-    let p1: Vec<f32> = lines[0].split(',').map(|s| s.trim().parse::<f32>().ok()).flatten().collect();
-    let p2: Vec<f32> = lines[1].split(',').map(|s| s.trim().parse::<f32>().ok()).flatten().collect();
+    let p1: Vec<f32> = lines[0]
+        .split(',')
+        .map(|s| s.trim().parse::<f32>().ok())
+        .flatten()
+        .collect();
+    let p2: Vec<f32> = lines[1]
+        .split(',')
+        .map(|s| s.trim().parse::<f32>().ok())
+        .flatten()
+        .collect();
     if p1.len() != 2 || p2.len() != 2 {
         return None;
     }
@@ -161,21 +172,61 @@ pub fn octant_path_to_geobbox(path: &str) -> Option<GeoBBox> {
     }
     let first_two = &path[0..2];
     let mut box_ = match first_two {
-        "02" => GeoBBox { north: 0.0, south: -90.0, west: -180.0, east: -90.0 },
-        "03" => GeoBBox { north: 0.0, south: -90.0, west: -90.0, east: 0.0 },
-        "12" => GeoBBox { north: 0.0, south: -90.0, west: 0.0, east: 90.0 },
-        "13" => GeoBBox { north: 0.0, south: -90.0, west: 90.0, east: 180.0 },
-        "20" => GeoBBox { north: 90.0, south: 0.0, west: -180.0, east: -90.0 },
-        "21" => GeoBBox { north: 90.0, south: 0.0, west: -90.0, east: 0.0 },
-        "30" => GeoBBox { north: 90.0, south: 0.0, west: 0.0, east: 90.0 },
-        "31" => GeoBBox { north: 90.0, south: 0.0, west: 90.0, east: 180.0 },
+        "02" => GeoBBox {
+            north: 0.0,
+            south: -90.0,
+            west: -180.0,
+            east: -90.0,
+        },
+        "03" => GeoBBox {
+            north: 0.0,
+            south: -90.0,
+            west: -90.0,
+            east: 0.0,
+        },
+        "12" => GeoBBox {
+            north: 0.0,
+            south: -90.0,
+            west: 0.0,
+            east: 90.0,
+        },
+        "13" => GeoBBox {
+            north: 0.0,
+            south: -90.0,
+            west: 90.0,
+            east: 180.0,
+        },
+        "20" => GeoBBox {
+            north: 90.0,
+            south: 0.0,
+            west: -180.0,
+            east: -90.0,
+        },
+        "21" => GeoBBox {
+            north: 90.0,
+            south: 0.0,
+            west: -90.0,
+            east: 0.0,
+        },
+        "30" => GeoBBox {
+            north: 90.0,
+            south: 0.0,
+            west: 0.0,
+            east: 90.0,
+        },
+        "31" => GeoBBox {
+            north: 90.0,
+            south: 0.0,
+            west: 90.0,
+            east: 180.0,
+        },
         _ => return None,
     };
 
     for ch in path[2..].chars() {
         let digit = ch.to_digit(10)? as i32;
         let lat_bit = (digit >> 1) & 1; // bit 1
-        let lon_bit = digit & 1;        // bit 0
+        let lon_bit = digit & 1; // bit 0
 
         let mid_lat = (box_.north + box_.south) / 2.0;
         let mid_lon = (box_.west + box_.east) / 2.0;
@@ -210,7 +261,9 @@ fn find_tile_for_lat_lon<'a>(
     map_tree: &'a crate::plugins::map_plugin::MapTree,
 ) -> Option<&'a crate::plugins::map_plugin::MapTreeNodeInfo> {
     // Start from the roots
-    let matching_roots: Vec<&crate::plugins::map_plugin::MapTreeNodePath> = map_tree.roots.iter()
+    let matching_roots: Vec<&crate::plugins::map_plugin::MapTreeNodePath> = map_tree
+        .roots
+        .iter()
         .filter(|node_path| {
             octant_path_to_geobbox(&node_path.0)
                 .map(|geobbox| geobbox.contains(lat, lon))
@@ -238,7 +291,8 @@ fn find_tile_for_lat_lon<'a>(
             break;
         }
 
-        let matching_children: Vec<&crate::plugins::map_plugin::MapTreeNodePath> = children_set.iter()
+        let matching_children: Vec<&crate::plugins::map_plugin::MapTreeNodePath> = children_set
+            .iter()
             .filter(|child_path| {
                 octant_path_to_geobbox(&child_path.0)
                     .map(|geobbox| geobbox.contains(lat, lon))
@@ -290,8 +344,10 @@ fn project_point(
                 let u = (lon - geobbox.west) / width;
                 let v = (lat - geobbox.south) / height;
 
-                let x = node_info.bbox.min.x + u as f32 * (node_info.bbox.max.x - node_info.bbox.min.x);
-                let z = node_info.bbox.max.z - v as f32 * (node_info.bbox.max.z - node_info.bbox.min.z);
+                let x =
+                    node_info.bbox.min.x + u as f32 * (node_info.bbox.max.x - node_info.bbox.min.x);
+                let z =
+                    node_info.bbox.max.z - v as f32 * (node_info.bbox.max.z - node_info.bbox.min.z);
                 let y = node_info.bbox.min.y + 2.0; // Slightly above bottom to prevent ground clipping
                 return Vec3::new(x, y, z);
             }
@@ -299,7 +355,40 @@ fn project_point(
     }
 
     // Fallback: mathematical ENU projection relative to reference point
-    lat_lon_to_bevy(lat as f32, lon as f32, coord_res.ref_point, &coord_res.rot_matrix)
+    lat_lon_to_bevy(
+        lat as f32,
+        lon as f32,
+        coord_res.ref_point,
+        &coord_res.rot_matrix,
+    )
+}
+
+// ----------------------------------------------------
+// Ground Raycasting helper
+// ----------------------------------------------------
+
+fn query_point_ground_y(
+    x: f32,
+    z: f32,
+    map_tree: &crate::plugins::map_plugin::MapTree,
+    spatial_query: &avian3d::prelude::SpatialQuery,
+) -> f32 {
+    let start_y = map_tree.bbox.max.y + 10.0;
+    let ray_origin = Vec3::new(x, start_y, z);
+    let ray_dir = Dir3::NEG_Y;
+    let max_dist = (map_tree.bbox.max.y - map_tree.bbox.min.y) + 20.0;
+
+    if let Some(hit) = spatial_query.cast_ray(
+        ray_origin,
+        ray_dir,
+        max_dist,
+        true,
+        &avian3d::prelude::SpatialQueryFilter::default(),
+    ) {
+        start_y - hit.distance
+    } else {
+        map_tree.bbox.min.y
+    }
 }
 
 // ----------------------------------------------------
@@ -378,7 +467,7 @@ pub enum GeoJsonLoaderState {
 }
 
 // ----------------------------------------------------
-// Loading and Parsing Systems
+// Loading and Staging Systems
 // ----------------------------------------------------
 
 fn setup_geojson_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -391,7 +480,10 @@ fn setup_geojson_loading(mut commands: Commands, asset_server: Res<AssetServer>)
         crate::config::DATA_BASE_URL
     );
 
-    info!("GeoJSON setups: Loading bbox from {}, list from {}", bbox_url, list_url);
+    info!(
+        "GeoJSON setups: Loading bbox from {}, list from {}",
+        bbox_url, list_url
+    );
 
     let bbox_handle = asset_server.load(bbox_url);
     let list_handle = asset_server.load(list_url);
@@ -404,12 +496,12 @@ fn setup_geojson_loading(mut commands: Commands, asset_server: Res<AssetServer>)
 
 fn check_geojson_loading(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
     handles: Option<Res<GeoJsonHandles>>,
     mut text_assets: ResMut<Assets<GeoJsonTextAsset>>,
     mut loader_state: ResMut<GeoJsonLoaderState>,
     mut database: ResMut<GeoJsonDatabase>,
     coord_res: Option<Res<GeoJsonCoordinatesResource>>,
+    asset_server: Res<AssetServer>,
 ) {
     let Some(handles) = handles else {
         return;
@@ -427,7 +519,10 @@ fn check_geojson_loading(
                             ref_point,
                             rot_matrix,
                         });
-                        info!("GeoJSON reference point initialized at Lat: {}, Lon: {}", lat, lon);
+                        info!(
+                            "GeoJSON reference point initialized at Lat: {}, Lon: {}",
+                            lat, lon
+                        );
                     } else {
                         error!("Failed to parse zone-bbox.txt");
                         commands.remove_resource::<GeoJsonHandles>();
@@ -444,11 +539,13 @@ fn check_geojson_loading(
             };
 
             if let Some(list_asset) = text_assets.get(&handles.list) {
-                let lines: Vec<&str> = list_asset.text.lines()
+                let lines: Vec<&str> = list_asset
+                    .text
+                    .lines()
                     .map(|l| l.trim())
                     .filter(|l| !l.is_empty())
                     .collect();
-                
+
                 let mut files = Vec::new();
                 for line in lines {
                     let file_url = format!(
@@ -461,11 +558,11 @@ fn check_geojson_loading(
                     let category_name = line.replace(".geojson", "");
                     files.push((category_name, handle));
                 }
-                
+
                 *loader_state = GeoJsonLoaderState::LoadingFiles { files };
             }
         }
-        
+
         GeoJsonLoaderState::LoadingFiles { files } => {
             // Check if all files have loaded
             for (_, handle) in files {
@@ -478,7 +575,7 @@ fn check_geojson_loading(
 
             for (category_name, handle) in files {
                 let text_asset = text_assets.remove(handle).unwrap();
-                
+
                 let parsed_json: serde_json::Value = match serde_json::from_str(&text_asset.text) {
                     Ok(val) => val,
                     Err(e) => {
@@ -495,9 +592,22 @@ fn check_geojson_loading(
                         }
                     }
                 }
-                
-                info!("Staged {} raw features for category '{}'", category_raw_features.len(), category_name);
-                database.raw_categories.insert(category_name.clone(), category_raw_features);
+
+                if category_raw_features.is_empty() {
+                    info!(
+                        "Staging: Category '{}' has 0 features. Skipping to optimize memory.",
+                        category_name
+                    );
+                } else {
+                    info!(
+                        "Staged {} raw features for category '{}'",
+                        category_raw_features.len(),
+                        category_name
+                    );
+                    database
+                        .raw_categories
+                        .insert(category_name.clone(), category_raw_features);
+                }
             }
 
             database.files_loaded = true;
@@ -505,7 +615,7 @@ fn check_geojson_loading(
             commands.remove_resource::<GeoJsonHandles>();
             info!("GeoJSON staging complete. Awaiting MapTree to project coordinates.");
         }
-        
+
         GeoJsonLoaderState::Staged => {}
     }
 }
@@ -514,7 +624,7 @@ fn parse_raw_geojson_feature(val: &serde_json::Value) -> Option<RawGeoJsonFeatur
     let feature_obj = val.as_object()?;
     let properties = feature_obj.get("properties")?.as_object()?;
     let geometry_obj = feature_obj.get("geometry")?.as_object()?;
-    
+
     let mut tags = BTreeMap::new();
     for (k, v) in properties {
         if k != "tags" && k != "nodes" {
@@ -529,7 +639,7 @@ fn parse_raw_geojson_feature(val: &serde_json::Value) -> Option<RawGeoJsonFeatur
             }
         }
     }
-    
+
     if let Some(tags_val) = properties.get("tags").and_then(|t| t.as_object()) {
         for (k, v) in tags_val {
             if let Some(s) = v.as_str() {
@@ -543,14 +653,21 @@ fn parse_raw_geojson_feature(val: &serde_json::Value) -> Option<RawGeoJsonFeatur
             }
         }
     }
-    
+
     let name = tags.get("name").cloned();
-    let id = properties.get("id").and_then(|v| v.as_i64()).or_else(|| tags.get("id").and_then(|s| s.parse::<i64>().ok()));
-    let osm_type = properties.get("type").and_then(|v| v.as_str()).unwrap_or("node").to_string();
-    
+    let id = properties
+        .get("id")
+        .and_then(|v| v.as_i64())
+        .or_else(|| tags.get("id").and_then(|s| s.parse::<i64>().ok()));
+    let osm_type = properties
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("node")
+        .to_string();
+
     let geom_type = geometry_obj.get("type")?.as_str()?;
     let coords = geometry_obj.get("coordinates")?;
-    
+
     let raw_geometry = match geom_type {
         "Point" => {
             let arr = coords.as_array()?;
@@ -587,7 +704,7 @@ fn parse_raw_geojson_feature(val: &serde_json::Value) -> Option<RawGeoJsonFeatur
         }
         _ => return None,
     };
-    
+
     Some(RawGeoJsonFeature {
         id,
         osm_type,
@@ -615,7 +732,7 @@ fn project_geojson_coordinates(
     };
 
     info!("Projecting GeoJSON coordinates utilizing MapTree metadata...");
-    
+
     let raw_categories = std::mem::take(&mut database.raw_categories);
 
     for (category_name, raw_features) in raw_categories {
@@ -627,13 +744,15 @@ fn project_geojson_coordinates(
                     FeatureGeometry::Point(project_point(*lat, *lon, &map_tree, &coord))
                 }
                 RawFeatureGeometry::LineString(pts) => {
-                    let projected_pts = pts.iter()
+                    let projected_pts = pts
+                        .iter()
                         .map(|&(lat, lon)| project_point(lat, lon, &map_tree, &coord))
                         .collect();
                     FeatureGeometry::LineString(projected_pts)
                 }
                 RawFeatureGeometry::Polygon(rings) => {
-                    let projected_rings = rings.iter()
+                    let projected_rings = rings
+                        .iter()
                         .map(|ring| {
                             ring.iter()
                                 .map(|&(lat, lon)| project_point(lat, lon, &map_tree, &coord))
@@ -689,8 +808,14 @@ fn project_geojson_coordinates(
             });
         }
 
-        info!("Projected {} features for category '{}'", projected_features.len(), category_name);
-        database.categories.insert(category_name, projected_features);
+        info!(
+            "Projected {} features for category '{}'",
+            projected_features.len(),
+            category_name
+        );
+        database
+            .categories
+            .insert(category_name, projected_features);
     }
 
     database.parsed = true;
@@ -727,62 +852,82 @@ fn geojson_ui_system(
             ui.text_edit_singleline(&mut search_state.query);
         });
         ui.separator();
-        
+
         let query_trimmed = search_state.query.trim();
-        
-        egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
-            if query_trimmed.len() <= 3 {
-                // Display first 10 items of each type
-                for (cat_name, features) in &database.categories {
-                    ui.collapsing(format!("{} ({})", cat_name, features.len()), |ui| {
-                        let display_count = features.len().min(10);
-                        for idx in 0..display_count {
-                            let feature = &features[idx];
-                            let display_name = feature.name.clone().unwrap_or_else(|| {
-                                format!("{} #{}", feature.osm_type, feature.id.unwrap_or(idx as i64))
-                            });
-                            
-                            let is_selected = selection.selected.as_ref() == Some(&(cat_name.clone(), idx));
-                            if ui.selectable_label(is_selected, &display_name).clicked() {
-                                select_and_animate(cat_name.clone(), idx, feature, &mut commands, &camera_query);
-                                selection.selected = Some((cat_name.clone(), idx));
+
+        egui::ScrollArea::vertical()
+            .max_height(300.0)
+            .show(ui, |ui| {
+                if query_trimmed.len() <= 3 {
+                    // Display first 10 items of each type
+                    for (cat_name, features) in &database.categories {
+                        ui.collapsing(format!("{} ({})", cat_name, features.len()), |ui| {
+                            let display_count = features.len().min(10);
+                            for idx in 0..display_count {
+                                let feature = &features[idx];
+                                let display_name = feature.name.clone().unwrap_or_else(|| {
+                                    format!(
+                                        "{} #{}",
+                                        feature.osm_type,
+                                        feature.id.unwrap_or(idx as i64)
+                                    )
+                                });
+
+                                let is_selected =
+                                    selection.selected.as_ref() == Some(&(cat_name.clone(), idx));
+                                if ui.selectable_label(is_selected, &display_name).clicked() {
+                                    select_and_animate(
+                                        cat_name.clone(),
+                                        idx,
+                                        feature,
+                                        &mut commands,
+                                        &camera_query,
+                                    );
+                                    selection.selected = Some((cat_name.clone(), idx));
+                                }
                             }
-                        }
-                    });
-                }
-            } else {
-                // Text search (case-insensitive) across names
-                let mut matches = Vec::new();
-                let query_lower = query_trimmed.to_lowercase();
-                
-                'outer: for (cat_name, features) in &database.categories {
-                    for (idx, feature) in features.iter().enumerate() {
-                        if let Some(name) = &feature.name {
-                            if name.to_lowercase().contains(&query_lower) {
-                                matches.push((cat_name.clone(), idx, feature));
-                                if matches.len() >= 200 {
-                                    break 'outer;
+                        });
+                    }
+                } else {
+                    // Text search (case-insensitive) across names
+                    let mut matches = Vec::new();
+                    let query_lower = query_trimmed.to_lowercase();
+
+                    'outer: for (cat_name, features) in &database.categories {
+                        for (idx, feature) in features.iter().enumerate() {
+                            if let Some(name) = &feature.name {
+                                if name.to_lowercase().contains(&query_lower) {
+                                    matches.push((cat_name.clone(), idx, feature));
+                                    if matches.len() >= 200 {
+                                        break 'outer;
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                
-                ui.label(format!("Found {} matches (max 200)", matches.len()));
-                for (cat_name, idx, feature) in matches {
-                    let display_name = format!(
-                        "[{}] {}",
-                        cat_name,
-                        feature.name.clone().unwrap_or_default()
-                    );
-                    let is_selected = selection.selected.as_ref() == Some(&(cat_name.clone(), idx));
-                    if ui.selectable_label(is_selected, &display_name).clicked() {
-                        select_and_animate(cat_name.clone(), idx, feature, &mut commands, &camera_query);
-                        selection.selected = Some((cat_name.clone(), idx));
+
+                    ui.label(format!("Found {} matches (max 200)", matches.len()));
+                    for (cat_name, idx, feature) in matches {
+                        let display_name = format!(
+                            "[{}] {}",
+                            cat_name,
+                            feature.name.clone().unwrap_or_default()
+                        );
+                        let is_selected =
+                            selection.selected.as_ref() == Some(&(cat_name.clone(), idx));
+                        if ui.selectable_label(is_selected, &display_name).clicked() {
+                            select_and_animate(
+                                cat_name.clone(),
+                                idx,
+                                feature,
+                                &mut commands,
+                                &camera_query,
+                            );
+                            selection.selected = Some((cat_name.clone(), idx));
+                        }
                     }
                 }
-            }
-        });
+            });
 
         // Detail panel for selected element
         if let Some((cat_name, idx)) = &selection.selected {
@@ -796,7 +941,7 @@ fn geojson_ui_system(
                     if let Some(name) = &feature.name {
                         ui.label(format!("Name: {}", name));
                     }
-                    
+
                     ui.collapsing("All Tags", |ui| {
                         for (k, v) in &feature.tags {
                             ui.label(format!("{}: {}", k, v));
@@ -818,29 +963,33 @@ fn select_and_animate(
     let Some(camera_transform) = camera_query.iter().next() else {
         return;
     };
-    
+
     let start_pos = camera_transform.translation;
     let start_rot = camera_transform.rotation;
-    
+
     let target_pos;
     let target_rot;
-    
+
     match &feature.geometry {
         FeatureGeometry::Point(p) => {
             // Height 100, horizontal distance 200 along South direction (+Z)
             target_pos = Vec3::new(p.x, p.y + 100.0, p.z + 200.0);
-            target_rot = Transform::from_translation(target_pos).looking_at(*p, Vec3::Y).rotation;
+            target_rot = Transform::from_translation(target_pos)
+                .looking_at(*p, Vec3::Y)
+                .rotation;
         }
         FeatureGeometry::LineString(_) | FeatureGeometry::Polygon(_) => {
             let center = feature.center;
             let size = feature.bbox_max - feature.bbox_min;
             let dist = size.x.max(size.z).max(10.0) * 1.5;
-            
+
             target_pos = Vec3::new(center.x, center.y + dist, center.z + dist * 0.5);
-            target_rot = Transform::from_translation(target_pos).looking_at(center, Vec3::Y).rotation;
+            target_rot = Transform::from_translation(target_pos)
+                .looking_at(center, Vec3::Y)
+                .rotation;
         }
     }
-    
+
     commands.insert_resource(ActiveCameraAnimation {
         start_pos,
         start_rot,
@@ -849,8 +998,98 @@ fn select_and_animate(
         elapsed: 0.0,
         duration: 1.5,
     });
-    
-    info!("Animating camera for selection '{}/{}': Target position {:?}", cat_name, idx, target_pos);
+
+    info!(
+        "Animating camera for selection '{}/{}': Target position {:?}",
+        cat_name, idx, target_pos
+    );
+}
+
+// ----------------------------------------------------
+// Screen-Space Text Labels rendering system
+// ----------------------------------------------------
+
+fn geojson_text_labels_system(
+    mut contexts: EguiContexts,
+    database: Res<GeoJsonDatabase>,
+    selection: Res<GeoJsonSelection>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    map_tree: Res<crate::plugins::map_plugin::MapTree>,
+    spatial_query: avian3d::prelude::SpatialQuery,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    if !database.parsed {
+        return;
+    }
+    let Some((cat_name, idx)) = &selection.selected else {
+        return;
+    };
+    let Some(features) = database.categories.get(cat_name) else {
+        return;
+    };
+    let Some(feature) = features.get(*idx) else {
+        return;
+    };
+    let Some((camera, camera_transform)) = camera_query.iter().next() else {
+        return;
+    };
+
+    let raw_name = feature.name.clone().unwrap_or_else(|| {
+        format!("ID: {}", feature.id.unwrap_or(0))
+    });
+    let mut name_15 = raw_name.chars().take(15).collect::<String>();
+    if raw_name.chars().count() > 15 {
+        name_15.push_str("...");
+    }
+
+    // Determine target points and label texts
+    let mut target_points = Vec::new();
+    match &feature.geometry {
+        FeatureGeometry::Point(p) => {
+            target_points.push((*p, name_15));
+        }
+        FeatureGeometry::LineString(pts) => {
+            for (node_idx, pt) in pts.iter().enumerate() {
+                let node_id_name = format!("Node #{}", node_idx);
+                target_points.push((*pt, node_id_name));
+            }
+        }
+        FeatureGeometry::Polygon(_) => {
+            target_points.push((feature.center, name_15));
+        }
+    }
+
+    for (pt, label) in target_points {
+        let mut pos = pt;
+        pos.y = query_point_ground_y(pos.x, pos.z, &map_tree, &spatial_query) + 0.1;
+
+        if cat_name == "amenities" || cat_name == "shops" {
+            pos.y += 50.0;
+        }
+
+        if let Ok(p_center) = camera.world_to_viewport(camera_transform, pos) {
+            let camera_right = camera_transform.right();
+            let sphere_radius = 3.0;
+            if let Ok(p_edge) = camera.world_to_viewport(camera_transform, pos + camera_right * sphere_radius) {
+                let r_screen = p_center.distance(p_edge);
+                let font_size = (r_screen * 3.0).clamp(11.0, 36.0);
+
+                egui::Area::new(egui::Id::new(format!("lbl_{:?}_{}", pos, label)))
+                    .fixed_pos(egui::pos2(p_center.x - 20.0, p_center.y - font_size - 8.0))
+                    .show(ctx, |ui| {
+                        ui.label(
+                            egui::RichText::new(&label)
+                                .color(egui::Color32::from_rgb(255, 60, 60))
+                                .size(font_size)
+                                .strong()
+                                .background_color(egui::Color32::from_rgba_premultiplied(0, 0, 0, 180))
+                        );
+                    });
+            }
+        }
+    }
 }
 
 // ----------------------------------------------------
@@ -861,6 +1100,8 @@ fn geojson_gizmos_system(
     mut gizmos: Gizmos,
     database: Res<GeoJsonDatabase>,
     selection: Res<GeoJsonSelection>,
+    map_tree: Res<crate::plugins::map_plugin::MapTree>,
+    spatial_query: avian3d::prelude::SpatialQuery,
 ) {
     if !database.parsed {
         return;
@@ -874,26 +1115,222 @@ fn geojson_gizmos_system(
     let Some(feature) = features.get(*idx) else {
         return;
     };
-    
-    let color = Color::srgb(1.0, 1.0, 0.0); // Bright Yellow
-    
+
+    let red = Color::srgb(1.0, 0.0, 0.0);
+    let black = Color::BLACK;
+
+    // Helper for drawing 3D cross star marker of length 30 and black sphere
+    let draw_star_marker = |gizmos: &mut Gizmos, center: Vec3| {
+        // Draw 3 axes
+        gizmos.line(center - Vec3::X * 15.0, center + Vec3::X * 15.0, red);
+        gizmos.line(center - Vec3::Y * 15.0, center + Vec3::Y * 15.0, red);
+        gizmos.line(center - Vec3::Z * 15.0, center + Vec3::Z * 15.0, red);
+
+        // Draw 4 diagonals
+        let d1 = Vec3::new(1.0, 1.0, 1.0).normalize() * 15.0;
+        let d2 = Vec3::new(1.0, 1.0, -1.0).normalize() * 15.0;
+        let d3 = Vec3::new(1.0, -1.0, 1.0).normalize() * 15.0;
+        let d4 = Vec3::new(1.0, -1.0, -1.0).normalize() * 15.0;
+        gizmos.line(center - d1, center + d1, red);
+        gizmos.line(center - d2, center + d2, red);
+        gizmos.line(center - d3, center + d3, red);
+        gizmos.line(center - d4, center + d4, red);
+
+        // Draw center black sphere
+        let sphere = Sphere::new(3.0);
+        gizmos.primitive_3d(&sphere, Isometry3d::from_translation(center), black);
+    };
+
     match &feature.geometry {
         FeatureGeometry::Point(p) => {
-            let sphere = Sphere::new(3.0);
-            gizmos.primitive_3d(&sphere, Isometry3d::from_translation(*p), color);
-            gizmos.line(*p - Vec3::X * 10.0, *p + Vec3::X * 10.0, color);
-            gizmos.line(*p - Vec3::Y * 10.0, *p + Vec3::Y * 10.0, color);
-            gizmos.line(*p - Vec3::Z * 10.0, *p + Vec3::Z * 10.0, color);
-        }
-        FeatureGeometry::LineString(pts) => {
-            for window in pts.windows(2) {
-                gizmos.line(window[0], window[1], color);
+            let mut pos = *p;
+            pos.y = query_point_ground_y(pos.x, pos.z, &map_tree, &spatial_query) + 0.1;
+
+            if cat_name == "amenities" || cat_name == "shops" {
+                // SCI-FI BEACON
+                let beacon_top = pos + Vec3::Y * 50.0;
+                gizmos.line(pos, beacon_top, Color::srgb(1.0, 0.3, 0.3));
+                draw_star_marker(&mut gizmos, beacon_top);
+            } else {
+                // NORMAL POINT
+                draw_star_marker(&mut gizmos, pos);
             }
         }
+
+        FeatureGeometry::LineString(pts) => {
+            // Project each point to ground Y
+            let mut grounded_pts = Vec::new();
+            for pt in pts {
+                let mut gp = *pt;
+                gp.y = query_point_ground_y(gp.x, gp.z, &map_tree, &spatial_query) + 0.1;
+                grounded_pts.push(gp);
+            }
+
+            // Draw a little star at each node
+            for pt in &grounded_pts {
+                draw_star_marker(&mut gizmos, *pt);
+            }
+
+            // Connect path nodes with lines and repeat at different Y levels
+            if grounded_pts.len() >= 2 {
+                let mut min_y = f32::INFINITY;
+                let mut max_y = -f32::INFINITY;
+                for pt in &grounded_pts {
+                    min_y = min_y.min(pt.y);
+                    max_y = max_y.max(pt.y);
+                }
+
+                if cat_name == "railways" {
+                    // RAILWAY CROSS-TIES
+                    let steps = 10;
+                    for step in 0..=steps {
+                        let y_level = if max_y > min_y {
+                            min_y + (step as f32 / steps as f32) * (max_y - min_y)
+                        } else {
+                            min_y
+                        };
+
+                        for window in grounded_pts.windows(2) {
+                            let p1 = Vec3::new(window[0].x, y_level, window[0].z);
+                            let p2 = Vec3::new(window[1].x, y_level, window[1].z);
+                            gizmos.line(p1, p2, Color::srgb(0.7, 0.7, 0.7)); // Silver rails
+
+                            // Ties every 10 meters
+                            let diff = p2 - p1;
+                            let dist = diff.length();
+                            let dir = diff.normalize_or_zero();
+                            let perp = Vec3::new(-dir.z, 0.0, dir.x).normalize_or_zero();
+
+                            let mut current_dist = 0.0;
+                            while current_dist <= dist {
+                                let tie_center = p1 + dir * current_dist;
+                                gizmos.line(tie_center - perp * 2.0, tie_center + perp * 2.0, Color::srgb(0.5, 0.25, 0.1));
+                                current_dist += 10.0;
+                            }
+                        }
+
+                        if max_y <= min_y {
+                            break;
+                        }
+                    }
+                } else if cat_name == "waterways" {
+                    // WATERWAY BANK LINES
+                    let steps = 10;
+                    for step in 0..=steps {
+                        let y_level = if max_y > min_y {
+                            min_y + (step as f32 / steps as f32) * (max_y - min_y)
+                        } else {
+                            min_y
+                        };
+
+                        for window in grounded_pts.windows(2) {
+                            let p1 = Vec3::new(window[0].x, y_level, window[0].z);
+                            let p2 = Vec3::new(window[1].x, y_level, window[1].z);
+
+                            let dir = (p2 - p1).normalize_or_zero();
+                            let perp = Vec3::new(-dir.z, 0.0, dir.x).normalize_or_zero();
+
+                            gizmos.line(p1 - perp * 2.0, p2 - perp * 2.0, Color::srgb(0.0, 0.0, 1.0));
+                            gizmos.line(p1 + perp * 2.0, p2 + perp * 2.0, Color::srgb(0.0, 0.0, 1.0));
+                        }
+
+                        if max_y <= min_y {
+                            break;
+                        }
+                    }
+                } else {
+                    // NORMAL ROAD LINES
+                    let steps = 10;
+                    for step in 0..=steps {
+                        let y_level = if max_y > min_y {
+                            min_y + (step as f32 / steps as f32) * (max_y - min_y)
+                        } else {
+                            min_y
+                        };
+
+                        for window in grounded_pts.windows(2) {
+                            let p1 = Vec3::new(window[0].x, y_level, window[0].z);
+                            let p2 = Vec3::new(window[1].x, y_level, window[1].z);
+                            gizmos.line(p1, p2, red);
+                        }
+
+                        if max_y <= min_y {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         FeatureGeometry::Polygon(rings) => {
-            for ring in rings {
-                for window in ring.windows(2) {
-                    gizmos.line(window[0], window[1], color);
+            // Draw polygon stack repeated 15 times from min Y to max Y of map bbox
+            let min_y = map_tree.bbox.min.y;
+            let max_y = map_tree.bbox.max.y;
+
+            let steps = 15;
+            for step in 0..steps {
+                let t = step as f32 / (steps - 1) as f32;
+                let y_level = min_y + t * (max_y - min_y);
+
+                let orange_shade = Color::srgb(1.0, 0.2 + 0.6 * t, 0.0);
+
+                for ring in rings {
+                    // Draw outer boundary
+                    for window in ring.windows(2) {
+                        let p1 = Vec3::new(window[0].x, y_level, window[0].z);
+                        let p2 = Vec3::new(window[1].x, y_level, window[1].z);
+                        gizmos.line(p1, p2, orange_shade);
+                    }
+                    if ring.len() >= 3 {
+                        let p1 = Vec3::new(ring[ring.len() - 1].x, y_level, ring[ring.len() - 1].z);
+                        let p2 = Vec3::new(ring[0].x, y_level, ring[0].z);
+                        gizmos.line(p1, p2, orange_shade);
+                    }
+
+                    // Surface Diagonals visual improvement
+                    if cat_name == "landuse" || cat_name == "leisure" {
+                        let len = ring.len();
+                        if len >= 4 {
+                            for k in 0..15 {
+                                let idx1 = (k * 7) % len;
+                                let idx2 = (idx1 + len / 2) % len;
+                                if idx1 != idx2 {
+                                    let p1 = Vec3::new(ring[idx1].x, y_level, ring[idx1].z);
+                                    let p2 = Vec3::new(ring[idx2].x, y_level, ring[idx2].z);
+                                    gizmos.line(p1, p2, orange_shade);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Buildings 3D extruded wireframe box visual improvement
+            if cat_name == "buildings" {
+                for ring in rings {
+                    let mut ground_pts = Vec::new();
+                    let mut roof_pts = Vec::new();
+
+                    for pt in ring {
+                        let mut gp = *pt;
+                        gp.y = query_point_ground_y(gp.x, gp.z, &map_tree, &spatial_query) + 0.1;
+                        ground_pts.push(gp);
+
+                        let mut rp = gp;
+                        rp.y += 15.0; // Extruded roof height
+                        roof_pts.push(rp);
+                    }
+
+                    let count = ground_pts.len();
+                    for idx in 0..count {
+                        let next_idx = (idx + 1) % count;
+                        // Bottom base
+                        gizmos.line(ground_pts[idx], ground_pts[next_idx], Color::srgb(1.0, 0.4, 0.0));
+                        // Top roof
+                        gizmos.line(roof_pts[idx], roof_pts[next_idx], Color::srgb(1.0, 0.7, 0.0));
+                        // Vertical pillars
+                        gizmos.line(ground_pts[idx], roof_pts[idx], Color::srgb(1.0, 0.5, 0.0));
+                    }
                 }
             }
         }

@@ -81,7 +81,6 @@ fn camera_movement_system(
     mut mouse_wheel: MessageReader<MouseWheel>,
     mut camera_query: Query<&mut Transform, With<Camera>>,
     mut contexts: EguiContexts,
-    mut last_offset: Local<Option<f32>>,
     mut last_pos: Local<Option<Vec3>>,
     anim: Option<Res<ActiveCameraAnimation>>,
 ) {
@@ -96,12 +95,6 @@ fn camera_movement_system(
     let Some(mut transform) = camera_query.iter_mut().next() else {
         return;
     };
-
-    if let Some(lpos) = *last_pos {
-        if lpos.distance(transform.translation) > 0.1 {
-            *last_offset = None;
-        }
-    }
 
     // Check if Egui wants input (skip rotation/keyboard if user interacts with UI)
     let egui_focused = if let Ok(ctx) = contexts.ctx_mut() {
@@ -126,18 +119,14 @@ fn camera_movement_system(
         for _ in mouse_motion.read() {}
     }
 
-    // 2. Height Offset Tracking
+    // 2. Height Above Ground
     let ground_y = query_ground_y(transform.translation.x, transform.translation.z, &data_res, &spatial_query);
-    let mut offset = match *last_offset {
-        Some(val) => val,
-        None => (transform.translation.y - ground_y).clamp(0.1, 500.0),
-    };
+    let height = (transform.translation.y - ground_y).max(0.1);
 
-    // 3. Speed proportional to offset
-    // Shift makes it faster if held down
+    // 3. Speed proportional to height
     let is_shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     let speed_multiplier = if is_shift { 5.0 } else { 1.0 };
-    let speed = (offset * 1.0).clamp(5.0, 500.0) * speed_multiplier;
+    let speed = (height * 1.0).clamp(5.0, 500.0) * speed_multiplier;
 
     // 4. Movement input (only if egui is not focused)
     if !egui_focused {
@@ -166,11 +155,11 @@ fn camera_movement_system(
 
         // Up/Down keyboard movement (Space for Up, Ctrl for Down)
         if keyboard.pressed(KeyCode::Space) {
-            offset += speed * time.delta_secs();
+            transform.translation.y += speed * time.delta_secs();
         }
         let is_ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
         if is_ctrl {
-            offset -= speed * time.delta_secs();
+            transform.translation.y -= speed * time.delta_secs();
         }
     }
 
@@ -185,20 +174,17 @@ fn camera_movement_system(
             }
         }
         if scroll_direction != 0.0 {
-            // Scroll by a preset amount scaled by current offset
-            offset += scroll_direction * (offset * 0.1).max(1.0);
+            transform.translation.y += scroll_direction * (height * 0.1).max(1.0);
         }
     } else {
         // Drain events to prevent build-up
         for _ in mouse_wheel.read() {}
     }
 
-    // Clamp the offset to 0.1 - 500m
-    offset = offset.clamp(0.1, 500.0);
-    *last_offset = Some(offset);
-
-    // 6. Update position based on new ground_y and offset
+    // 6. Update position based on new ground_y (prevent going under terrain)
     let new_ground_y = query_ground_y(transform.translation.x, transform.translation.z, &data_res, &spatial_query);
-    transform.translation.y = new_ground_y + offset;
+    if transform.translation.y < new_ground_y + 1.0 {
+        transform.translation.y = new_ground_y + 1.0;
+    }
     *last_pos = Some(transform.translation);
 }
