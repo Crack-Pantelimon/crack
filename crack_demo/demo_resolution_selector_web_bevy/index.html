@@ -1,18 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
-    <title>Wasm Example</title>
-    <link data-trunk rel="rust"
-    data-initializer="public/trunk-init.js"
-    />
-    <link data-trunk rel="css" data-inline href="/public/style.css">
-    <link data-trunk rel="icon" href="/public/favicon.ico">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- PWA MANIFEST -->
-    <!-- <link rel="manifest" href="/pwa_manifest.json">
+  <title>Crack! - Pantelimon</title>
+  <link data-trunk rel="rust" data-initializer="public/trunk-init.js" />
+  <link data-trunk rel="css" data-inline href="/public/style.css">
+  <link data-trunk rel="icon" href="/public/favicon.ico">
+
+  <!-- PWA MANIFEST -->
+  <!-- <link rel="manifest" href="/pwa_manifest.json">
     <script>
       if ('serviceWorker' in navigator) {
         console.log("INSTALLING SERVICE WORKER");
@@ -25,26 +24,29 @@
       }
     </script> -->
 
-      <link data-trunk rel="copy-dir" href="public" data-target-path="/"/>
+  <link data-trunk rel="copy-dir" href="public" data-target-path="/" />
 
 
-      <!-- SPECIFIC TO CRACK -->
-      <script src="/scripts/storage.js"></script>
-      <script src="/scripts/v2/crack2-client.js"></script>
+  <!-- SPECIFIC TO CRACK -->
+  <script src="/scripts/storage.js"></script>
+  <script src="/scripts/v2/crack2-client.js"></script>
 
 
-      <!-- END SPECIFIC -->
-      
-  </head>
+  <!-- END SPECIFIC -->
 
-  <body>
-    <main>
-      <div id="canvas-container" class="canvas-container">
-        <div id="canvas-parent" class="canvas-parent">
-          <canvas id="the-canvas" width="800" height="600"></canvas>
-        </div>
+</head>
+
+<body>
+  <main>
+    <div id="canvas-container" class="canvas-container">
+      <div id="canvas-parent" class="canvas-parent">
+        <canvas id="the-canvas" width="800" height="600"></canvas>
       </div>
-      <div id="loading-screen"><h1 id="loading-screen-text">Loading...</h1></div>
-    </main>
-  </body>
+    </div>
+    <div id="loading-screen">
+      <h1 id="loading-screen-text">Loading...</h1>
+    </div>
+  </main>
+</body>
+
 </html>
