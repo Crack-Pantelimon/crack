@@ -1,10 +1,14 @@
-world of warcraft pantelimon
+DACA N-ARE STATUS E IDEE DE TINUT PT MEGA VIITOR
 
-pantelimonu petrece
 
-skyrym hey you your finally awake
 
-liviu
+world of warcraft pantelimon 
+
+pantelimonu petrece - STATUS: formatted, added to todo
+
+skyrym hey you your finally awake 
+
+liviu - STATUS: muie ba
 
 arme: dumnezeu, ak47, grenada
 
@@ -38,7 +42,7 @@ job - glovo, doar pe nepalez
 radio- cand mergi incet, muzica clasica, 
 cnd mergi repede, manele
 
-radio cur
+radio cur - STATUS: ADDED TO TODO
 
 ratb dar nai bilet
 
@@ -82,6 +86,6 @@ cules peturi de 0,5 lei pt garantie
 
 gratar mici pe strada
 
-socului
+socului - STATUS: Avem
 
-bisnite cu manuale de franceza
+bisnite cu manuale de franceza - STATUS: rejected
