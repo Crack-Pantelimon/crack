@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::input::mouse::MouseWheel;
 use crate::plugins::gta_plugin::car::Car;
 use crate::plugins::gta_plugin::GtaSpawnState;
 
@@ -23,6 +24,7 @@ impl Default for GtaCameraState {
 
 pub fn camera_follow_system(
     keyboard: Res<ButtonInput<KeyCode>>,
+    mut mouse_wheel: MessageReader<MouseWheel>,
     time: Res<Time>,
     mut camera_state: ResMut<GtaCameraState>,
     spawn_state: Res<GtaSpawnState>,
@@ -54,6 +56,20 @@ pub fn camera_follow_system(
     if keyboard.pressed(KeyCode::ArrowDown) {
         camera_state.pitch = (camera_state.pitch - rotation_speed * delta).clamp(5.0f32.to_radians(), 75.0f32.to_radians());
         arrow_pressed = true;
+    }
+
+    // Zoom control using Equal/Minus keys
+    let zoom_speed = 15.0;
+    if keyboard.pressed(KeyCode::Equal) {
+        camera_state.distance = (camera_state.distance - zoom_speed * delta).clamp(2.0, 60.0);
+    }
+    if keyboard.pressed(KeyCode::Minus) {
+        camera_state.distance = (camera_state.distance + zoom_speed * delta).clamp(2.0, 60.0);
+    }
+
+    // Zoom control using mouse scroll wheel
+    for event in mouse_wheel.read() {
+        camera_state.distance = (camera_state.distance - event.y * 1.5).clamp(2.0, 60.0);
     }
 
     // Determine target point: spawn_point if timer is active, otherwise the car
