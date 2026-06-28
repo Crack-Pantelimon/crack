@@ -18,14 +18,18 @@ impl Plugin for GeoJsonPlugin {
             .init_resource::<GeoJsonSearchState>()
             .init_resource::<GeoJsonSelection>()
             .init_resource::<GeoJsonLoaderState>()
-            .add_systems(Startup, setup_geojson_loading)
+            .init_resource::<GameLoadingStatus>()
+            .init_resource::<TooltipNotificationState>()
             .add_systems(EguiPrimaryContextPass, (geojson_ui_system, geojson_text_labels_system))
             .add_systems(
                 Update,
                 (
+                    trigger_geojson_loading,
                     check_geojson_loading,
                     project_geojson_coordinates,
                     geojson_gizmos_system,
+                    update_geojson_loading_finished,
+                    update_tooltip_timers,
                 ),
             );
         info!("done loading: GeoJsonPlugin");
@@ -466,32 +470,78 @@ pub enum GeoJsonLoaderState {
     Staged,
 }
 
+#[derive(Resource, Debug, Default)]
+pub struct GameLoadingStatus {
+    pub map_loaded: bool,
+    pub geojson_loaded: bool,
+    pub geojson_loading_started: bool,
+}
+
+#[derive(Resource, Debug, Default)]
+pub struct TooltipNotificationState {
+    pub map_loaded_timer: f32,
+    pub geojson_loaded_timer: f32,
+}
+
 // ----------------------------------------------------
 // Loading and Staging Systems
 // ----------------------------------------------------
 
-fn setup_geojson_loading(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let bbox_url = format!(
-        "{}3d_data_v2/data_in/zone-bbox.txt",
-        crate::config::DATA_BASE_URL
-    );
-    let list_url = format!(
-        "{}3d_data_v2/data_osm/_list.txt",
-        crate::config::DATA_BASE_URL
-    );
+fn trigger_geojson_loading(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut loading_status: ResMut<GameLoadingStatus>,
+) {
+    if loading_status.map_loaded && !loading_status.geojson_loading_started {
+        let bbox_url = format!(
+            "{}3d_data_v2/data_in/zone-bbox.txt",
+            crate::config::DATA_BASE_URL
+        );
+        let list_url = format!(
+            "{}3d_data_v2/data_osm/_list.txt",
+            crate::config::DATA_BASE_URL
+        );
 
-    info!(
-        "GeoJSON setups: Loading bbox from {}, list from {}",
-        bbox_url, list_url
-    );
+        info!(
+            "Starting parallel GeoJSON load: bbox from {}, list from {}",
+            bbox_url, list_url
+        );
 
-    let bbox_handle = asset_server.load(bbox_url);
-    let list_handle = asset_server.load(list_url);
+        let bbox_handle = asset_server.load(bbox_url);
+        let list_handle = asset_server.load(list_url);
 
-    commands.insert_resource(GeoJsonHandles {
-        bbox: bbox_handle,
-        list: list_handle,
-    });
+        commands.insert_resource(GeoJsonHandles {
+            bbox: bbox_handle,
+            list: list_handle,
+        });
+
+        loading_status.geojson_loading_started = true;
+    }
+}
+
+fn update_geojson_loading_finished(
+    database: Res<GeoJsonDatabase>,
+    mut loading_status: ResMut<GameLoadingStatus>,
+    mut tooltip_state: ResMut<TooltipNotificationState>,
+) {
+    if database.parsed && !loading_status.geojson_loaded {
+        loading_status.geojson_loaded = true;
+        tooltip_state.geojson_loaded_timer = 3.0;
+        info!("GeoJSON loading is fully completed!");
+    }
+}
+
+fn update_tooltip_timers(
+    time: Res<Time>,
+    mut tooltip_state: ResMut<TooltipNotificationState>,
+) {
+    let dt = time.delta_secs();
+    if tooltip_state.map_loaded_timer > 0.0 {
+        tooltip_state.map_loaded_timer = (tooltip_state.map_loaded_timer - dt).max(0.0);
+    }
+    if tooltip_state.geojson_loaded_timer > 0.0 {
+        tooltip_state.geojson_loaded_timer = (tooltip_state.geojson_loaded_timer - dt).max(0.0);
+    }
 }
 
 fn check_geojson_loading(

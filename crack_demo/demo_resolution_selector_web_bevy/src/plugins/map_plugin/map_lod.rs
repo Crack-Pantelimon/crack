@@ -558,3 +558,28 @@ pub fn do_merge_requests(
         commands.entity(drop).despawn();
     }
 }
+
+pub fn check_map_loaded_status(
+    tiles_query: Query<&TreeMapTile>,
+    lod_state: Res<MapLODState>,
+    loading_status: Option<ResMut<crate::plugins::geojson::GameLoadingStatus>>,
+    tooltip_state: Option<ResMut<crate::plugins::geojson::TooltipNotificationState>>,
+) {
+    let Some(mut loading_status) = loading_status else {
+        return;
+    };
+    if loading_status.map_loaded {
+        return;
+    }
+    
+    let loaded_count = tiles_query.iter().count();
+    let target = (lod_state.lod_budget / 2) as usize;
+    
+    if loaded_count >= target && target > 0 {
+        loading_status.map_loaded = true;
+        if let Some(mut tooltip_state) = tooltip_state {
+            tooltip_state.map_loaded_timer = 3.0;
+        }
+        info!("Initial map load complete: {} / {} tiles loaded.", loaded_count, target);
+    }
+}

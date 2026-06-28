@@ -56,6 +56,8 @@ fn ui_example_system(
     time: Res<Time>,
     mut fps: Local<f32>,
     mut edit_state: Option<ResMut<crate::plugins::map_plugin::map_material_edit::MapMaterialEditState>>,
+    loading_status: Option<Res<crate::plugins::geojson::GameLoadingStatus>>,
+    tooltip_state: Option<Res<crate::plugins::geojson::TooltipNotificationState>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         tracing::error!("no ctx in ui_example_system");
@@ -194,9 +196,14 @@ fn ui_example_system(
                     ui_state.show_lod_configurator = !ui_state.show_lod_configurator;
                     ui.close();
                 }
-                if ui.button("GeoJson Database").clicked() {
-                    ui_state.show_geojson_database = !ui_state.show_geojson_database;
-                    ui.close();
+                let geojson_loaded = loading_status.as_ref().map(|s| s.geojson_loaded).unwrap_or(false);
+                if geojson_loaded {
+                    if ui.button("GeoJson Database").clicked() {
+                        ui_state.show_geojson_database = !ui_state.show_geojson_database;
+                        ui.close();
+                    }
+                } else {
+                    ui.add_enabled(false, egui::Button::new("GeoJson Database (loading...)"));
                 }
                 if let Some(ref mut state) = edit_state {
                     if ui.button("Map Material & Lighting Editor").clicked() {
@@ -213,8 +220,52 @@ fn ui_example_system(
         });
     });
 
-    // --- FPS overlay (top-right corner) ---
     let screen_rect = ctx.screen_rect();
+
+    // --- Tooltip overlays (bottom-left corner) ---
+    if let Some(ref tooltips) = tooltip_state {
+        let show_map_tip = tooltips.map_loaded_timer > 0.0;
+        let show_geo_tip = tooltips.geojson_loaded_timer > 0.0;
+        
+        if show_map_tip || show_geo_tip {
+            egui::Area::new(egui::Id::new("loading_tooltips"))
+                .fixed_pos(egui::pos2(16.0, screen_rect.max.y - 80.0))
+                .order(egui::Order::Tooltip)
+                .show(ctx, |ui| {
+                    ui.vertical(|ui| {
+                        if show_map_tip {
+                            egui::Frame::window(ui.style())
+                                .fill(egui::Color32::from_black_alpha(200))
+                                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 180, 240)))
+                                .show(ui, |ui| {
+                                    ui.label(
+                                        egui::RichText::new("map loaded.")
+                                            .color(egui::Color32::WHITE)
+                                            .size(16.0)
+                                            .strong()
+                                    );
+                                });
+                        }
+                        ui.allocate_space(egui::Vec2::new(1.0, 4.0));
+                        if show_geo_tip {
+                            egui::Frame::window(ui.style())
+                                .fill(egui::Color32::from_black_alpha(200))
+                                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 220, 80)))
+                                .show(ui, |ui| {
+                                    ui.label(
+                                        egui::RichText::new("geojson loaded.")
+                                            .color(egui::Color32::WHITE)
+                                            .size(16.0)
+                                            .strong()
+                                    );
+                                });
+                        }
+                    });
+                });
+        }
+    }
+
+    // --- FPS overlay (top-right corner) ---
     egui::Area::new(egui::Id::new("fps_overlay"))
         .fixed_pos(egui::pos2(screen_rect.max.x - 160.0, 8.0))
         .order(egui::Order::Foreground)
