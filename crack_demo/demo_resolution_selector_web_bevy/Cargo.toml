@@ -24,6 +24,8 @@ tracing = "*"
 parquet = { version = "53", default-features = false, features = ["snap"] }
 bytes = "1.12.0"
 _crack_utils = { path = "../../packages/_crack_utils" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 [dependencies.web-sys]
 optional = true
 version = "0.3.77"

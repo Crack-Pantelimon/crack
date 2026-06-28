@@ -6,9 +6,44 @@ use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 
 pub struct CameraControlsPlugin;
 
+#[derive(Resource)]
+pub struct ActiveCameraAnimation {
+    pub start_pos: Vec3,
+    pub start_rot: Quat,
+    pub target_pos: Vec3,
+    pub target_rot: Quat,
+    pub elapsed: f32,
+    pub duration: f32,
+}
+
 impl Plugin for CameraControlsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, camera_movement_system);
+        app.add_systems(Update, (camera_movement_system, animate_camera_system));
+    }
+}
+
+fn animate_camera_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    anim: Option<ResMut<ActiveCameraAnimation>>,
+    mut camera_query: Query<&mut Transform, With<Camera>>,
+) {
+    let Some(mut anim) = anim else {
+        return;
+    };
+    let Some(mut transform) = camera_query.iter_mut().next() else {
+        return;
+    };
+    
+    anim.elapsed += time.delta_secs();
+    let t = (anim.elapsed / anim.duration).clamp(0.0, 1.0);
+    let t_smooth = t * t * (3.0 - 2.0 * t);
+    
+    transform.translation = anim.start_pos.lerp(anim.target_pos, t_smooth);
+    transform.rotation = anim.start_rot.slerp(anim.target_rot, t_smooth);
+    
+    if t >= 1.0 {
+        commands.remove_resource::<ActiveCameraAnimation>();
     }
 }
 
@@ -47,14 +82,26 @@ fn camera_movement_system(
     mut camera_query: Query<&mut Transform, With<Camera>>,
     mut contexts: EguiContexts,
     mut last_offset: Local<Option<f32>>,
+    mut last_pos: Local<Option<Vec3>>,
+    anim: Option<Res<ActiveCameraAnimation>>,
 ) {
     if !data_res.parsed {
+        return;
+    }
+
+    if anim.is_some() {
         return;
     }
 
     let Some(mut transform) = camera_query.iter_mut().next() else {
         return;
     };
+
+    if let Some(lpos) = *last_pos {
+        if lpos.distance(transform.translation) > 0.1 {
+            *last_offset = None;
+        }
+    }
 
     // Check if Egui wants input (skip rotation/keyboard if user interacts with UI)
     let egui_focused = if let Ok(ctx) = contexts.ctx_mut() {
@@ -153,4 +200,5 @@ fn camera_movement_system(
     // 6. Update position based on new ground_y and offset
     let new_ground_y = query_ground_y(transform.translation.x, transform.translation.z, &data_res, &spatial_query);
     transform.translation.y = new_ground_y + offset;
+    *last_pos = Some(transform.translation);
 }

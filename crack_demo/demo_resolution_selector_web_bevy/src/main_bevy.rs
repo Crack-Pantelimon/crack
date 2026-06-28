@@ -62,6 +62,7 @@ pub fn main_bevy() {
         .add_plugins(crate::plugins::camera_controls::CameraControlsPlugin)
         .add_plugins(crate::plugins::physics_plugin::PhysicsPlugin)
         .add_plugins(crate::plugins::map_plugin::MapPlugin)
+        .add_plugins(crate::plugins::geojson::GeoJsonPlugin)
         .insert_resource(ClearColor(Color::BLACK))
         .add_systems(Update, log_dt)
         .run();
