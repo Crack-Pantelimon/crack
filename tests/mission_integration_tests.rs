@@ -55,8 +55,8 @@ async fn test_trigger_and_state_machine_flow() {
         assert_eq!(state.active_state, MissionStatus::Available);
     }
     
-    // Spawn player at start of Mission 1: [-262.965, 517.524, 1412.29]
-    let start_pos = Vec3::new(-262.965, 517.524, 1412.29);
+    // Spawn player at start of Mission 1 (translated coordinate)
+    let start_pos = Vec3::new(-1060.515, -20120.376, -4723.09);
     app.world_mut().spawn((
         CarMarker,
         Transform::from_translation(start_pos),
@@ -71,8 +71,8 @@ async fn test_trigger_and_state_machine_flow() {
         assert_eq!(state.active_state, MissionStatus::Active);
     }
     
-    // Move player to destination of Mission 1: [-2411.763, 516.621, 2029.887]
-    let end_pos = Vec3::new(-2411.763, 516.621, 2029.887);
+    // Move player to destination of Mission 1 (translated coordinate)
+    let end_pos = Vec3::new(-3209.313, -20121.279, -5340.687);
     let mut player_query = app.world_mut().query::<&mut Transform>();
     for mut transform in player_query.iter_mut(app.world_mut()) {
         transform.translation = end_pos;

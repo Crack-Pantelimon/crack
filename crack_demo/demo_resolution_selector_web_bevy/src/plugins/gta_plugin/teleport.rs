@@ -63,8 +63,8 @@ pub fn teleport_car_system(
         let spawn_point = match chosen_point {
             Some(pt) => pt,
             None => {
-                // Safe street fallback: near Mission 1 start coordinate
-                Vec3::new(-2411.763, 516.621, 2029.887)
+                // Safe street fallback: Cora Pantelimon main starting street (translated)
+                Vec3::new(-1060.515, -20120.376, -4723.09)
             }
         };
 
