@@ -19,9 +19,9 @@ class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         normalized_path = path.split('?', 1)[0].split('#', 1)[0]
         
         # Route to data directory if requested
-        if normalized_path.startswith('/3d_data') or normalized_path.startswith('/sound_data'):
-            rel_path = normalized_path.lstrip('/')
-            full_path = os.path.join(DATA_DIR, rel_path)
+        clean_path = normalized_path.lstrip('/')
+        if clean_path.startswith('3d_data') or clean_path.startswith('3d_data_v2') or clean_path.startswith('sound_data'):
+            full_path = os.path.join(DATA_DIR, clean_path)
             return full_path
         else:
             # Route to dist directory
