@@ -80,7 +80,7 @@ pub fn drive_car_system(
     // Ground raycast check (sphere radius is 0.8)
     let origin = transform.translation;
     let direction = Dir3::NEG_Y;
-    let max_distance = 1.2; // distance from center of car downward
+    let max_distance = 3.0; // distance from center of car downward
     
     let filter = SpatialQueryFilter::from_excluded_entities([car_entity]);
     
@@ -94,7 +94,7 @@ pub fn drive_car_system(
         true,
         &filter,
     ) {
-        if hit.distance <= 1.0 {
+        if hit.distance <= 2.5 {
             grounded = true;
             ground_normal = hit.normal;
         }

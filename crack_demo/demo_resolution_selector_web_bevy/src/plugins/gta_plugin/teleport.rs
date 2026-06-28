@@ -62,11 +62,8 @@ pub fn teleport_car_system(
         let spawn_point = match chosen_point {
             Some(pt) => pt,
             None => {
-                // Fallback inside 95% map bbox at center Y height
-                let rx = center_x + (rand::random::<f32>() * 2.0 - 1.0) * half_x;
-                let rz = center_z + (rand::random::<f32>() * 2.0 - 1.0) * half_z;
-                let ry = (bbox.min.y + bbox.max.y) / 2.0;
-                Vec3::new(rx, ry, rz)
+                // Safe street fallback: near Mission 1 start coordinate
+                Vec3::new(-2411.763, 516.621, 2029.887)
             }
         };
 

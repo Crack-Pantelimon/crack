@@ -22,7 +22,7 @@ ignore = [] # Paths to ignore.
 
 [serve]
 # addresses = ["192.168.1.147"]  # The address to serve on.
-addresses = ["127.0.0.1", "192.168.1.147"]
+addresses = ["0.0.0.0"]
 port = 8080                # The port to serve on.
 aliases = [] # The aliases to serve on.
 open = false               # Open a browser tab once the initial build is complete.

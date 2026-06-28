@@ -10,10 +10,7 @@ use bevy::{
 };
 pub fn main_bevy() {
     info!("exec main_bevy()...");
-    #[cfg(feature = "web")]
     let backends = Backends::GL;
-    #[cfg(not(feature = "web"))]
-    let backends = Backends::PRIMARY;
 
     info!("backends: {:?}", backends);
 
@@ -38,6 +35,8 @@ pub fn main_bevy() {
                     render_creation: bevy::render::settings::RenderCreation::Automatic(Box::new(
                         WgpuSettings {
                             backends: Some(backends),
+                            force_fallback_adapter: std::env::var("WGPU_FORCE_FALLBACK").is_ok()
+                                || std::env::var("WGPU_ALLOW_SOFTWARE").is_ok(),
                             ..default()
                         },
                     )),
