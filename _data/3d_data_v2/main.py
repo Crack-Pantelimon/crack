@@ -63,7 +63,7 @@ def run_blender_batch(script: str, batch_json_path: str) -> str:
 # Configuration
 BBOX_FILE = "data_in/zone-bbox.txt"
 OUTPUT_DIR = "data_out"
-TARGET_GRID = 256  # aim for roughly 3x3 tiles
+TARGET_GRID = 512  # aim for roughly 3x3 tiles
 REQUEST_DELAY = 0.01  # seconds between node downloads
 GET_ALL_COARSER_LEVELS = True  # If True, download all levels of detail smaller than (coarser than or equal to) the 3x3 optimal level
 NETWORK_WORKERS = 100  # threads fetching + caching node data from the network

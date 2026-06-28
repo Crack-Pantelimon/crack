@@ -151,7 +151,7 @@ def main():
         logger.info("All files are already processed in the manifest.")
         return
 
-    BATCH_SIZE = 512
+    BATCH_SIZE = 1024 * 4
     # Chunk the remaining files into batches of 32
     batches = [glb_files_to_process[i:i + BATCH_SIZE] for i in range(0, len(glb_files_to_process), BATCH_SIZE)]
     failed = 0
