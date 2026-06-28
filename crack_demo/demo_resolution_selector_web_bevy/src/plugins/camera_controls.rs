@@ -64,7 +64,8 @@ fn camera_movement_system(
     };
 
     // 1. Mouse Drag Rotation
-    if !egui_focused && mouse_button.pressed(MouseButton::Left) {
+    let rotate_active = !egui_focused && mouse_button.pressed(MouseButton::Left);
+    if rotate_active {
         let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
         let sensitivity = 0.003;
         for event in mouse_motion.read() {

@@ -27,7 +27,7 @@ pub fn main_bevy() {
                         canvas: Some("#the-canvas".into()),
                         // resizable: true,
                         fit_canvas_to_parent: true,
-                        prevent_default_event_handling: false,
+                        prevent_default_event_handling: true,
                         resolution: WindowResolution::new(1280, 720)
                             .with_scale_factor_override(1.15),
                         ..default()
