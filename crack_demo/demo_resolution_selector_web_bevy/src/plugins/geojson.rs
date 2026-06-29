@@ -1243,7 +1243,28 @@ fn geojson_text_labels_system(
             for feat in features {
                 if let Some(name) = &feat.name {
                     if !name.trim().is_empty() {
-                        label_candidates.push((feat.center, name.clone(), "road".to_string()));
+                        match &feat.geometry {
+                            FeatureGeometry::LineString(pts) => {
+                                for (idx, pt) in pts.iter().enumerate() {
+                                    if idx == 0 || idx % 8 == 0 || idx == pts.len() - 1 {
+                                        label_candidates.push((*pt, name.clone(), "road".to_string()));
+                                    }
+                                }
+                            }
+                            FeatureGeometry::MultiLineString(lines) => {
+                                for pts in lines {
+                                    for (idx, pt) in pts.iter().enumerate() {
+                                        if idx == 0 || idx % 8 == 0 || idx == pts.len() - 1 {
+                                            label_candidates.push((*pt, name.clone(), "road".to_string()));
+                                        }
+                                    }
+                                }
+                            }
+                            FeatureGeometry::Point(pt) => {
+                                label_candidates.push((*pt, name.clone(), "road".to_string()));
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -1259,7 +1280,29 @@ fn geojson_text_labels_system(
                 let ref_name = feat.tags.get("ref").cloned()
                     .or_else(|| feat.name.clone())
                     .unwrap_or_else(|| "Bus".to_string());
-                label_candidates.push((feat.center, ref_name, "route".to_string()));
+                
+                match &feat.geometry {
+                    FeatureGeometry::LineString(pts) => {
+                        for (idx, pt) in pts.iter().enumerate() {
+                            if idx == 0 || idx % 6 == 0 || idx == pts.len() - 1 {
+                                label_candidates.push((*pt, ref_name.clone(), "route".to_string()));
+                            }
+                        }
+                    }
+                    FeatureGeometry::MultiLineString(lines) => {
+                        for pts in lines {
+                            for (idx, pt) in pts.iter().enumerate() {
+                                if idx == 0 || idx % 6 == 0 || idx == pts.len() - 1 {
+                                    label_candidates.push((*pt, ref_name.clone(), "route".to_string()));
+                                }
+                            }
+                        }
+                    }
+                    FeatureGeometry::Point(pt) => {
+                        label_candidates.push((*pt, ref_name.clone(), "route".to_string()));
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -1358,11 +1401,11 @@ fn geojson_text_labels_system(
                 camera.world_to_viewport(camera_transform, pos + camera_right * sphere_radius)
             {
                 let r_screen = p_center.distance(p_edge);
-                let font_size = (r_screen * 3.0).clamp(11.0, 24.0);
+                let font_size = (r_screen * 2.0).clamp(10.0, 16.0); // Made font size smaller (max 16.0 instead of 24.0)
 
                 let unique_id = format!("osm_lbl_{:?}_{}", pos, final_label);
                 egui::Area::new(egui::Id::new(unique_id))
-                    .fixed_pos(egui::pos2(p_center.x - 40.0, p_center.y - font_size - 8.0))
+                    .fixed_pos(egui::pos2(p_center.x - 30.0, p_center.y - font_size - 4.0)) // Centered better
                     .show(ctx, |ui| {
                         ui.label(
                             egui::RichText::new(&final_label)
