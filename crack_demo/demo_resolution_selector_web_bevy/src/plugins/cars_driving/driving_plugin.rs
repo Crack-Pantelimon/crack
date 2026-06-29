@@ -1,10 +1,11 @@
-use crate::plugins::cars_driving::click_spawn_select_controls::Car;
-use avian3d::prelude::{
-    AngularVelocity, Forces, LinearVelocity, PhysicsLayer, ReadRigidBodyForces, SpatialQuery,
-    SpatialQueryFilter, WriteRigidBodyForces,
-};
 use bevy::prelude::*;
+use bevy::ecs::relationship::Relationship;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
+use avian3d::prelude::{
+    SpatialQuery, SpatialQueryFilter, PhysicsLayer, LinearVelocity, AngularVelocity,
+    PrismaticJoint, RevoluteJoint, MotorModel, DistanceLimit
+};
+use crate::plugins::cars_driving::click_spawn_select_controls::Car;
 
 #[derive(PhysicsLayer, Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GamePhysicsLayer {
@@ -12,6 +13,32 @@ pub enum GamePhysicsLayer {
     Map,
     Car,
     Wheel,
+}
+
+#[derive(Component)]
+pub struct Wheel {
+    pub is_front: bool,
+    pub is_left: bool,
+}
+
+#[derive(Component)]
+pub struct SuspensionJoint {
+    pub car_entity: Entity,
+    pub is_front: bool,
+    pub is_left: bool,
+}
+
+#[derive(Component)]
+pub struct SteeringJoint {
+    pub car_entity: Entity,
+    pub is_left: bool,
+}
+
+#[derive(Component)]
+pub struct AxleJoint {
+    pub car_entity: Entity,
+    pub is_front: bool,
+    pub is_left: bool,
 }
 
 #[derive(EntityEvent, Clone, Debug)]
@@ -29,7 +56,7 @@ pub struct CarDriveState {
     pub avg_accelerate: f32,
     pub avg_brake: f32,
     pub avg_steer: f32,
-
+    
     // Sliders
     pub suspension_stiffness: f32,
     pub engine_hp: f32,
@@ -85,9 +112,9 @@ impl<S: States> Plugin for DrivingPlugin<S> {
                 camera_follows_car,
                 keybinds_control_car,
                 draw_car_gizmos,
-                car_clip_detection,
-            )
-                .run_if(in_state(self.state.clone())),
+                cap_car_velocities,
+                update_vehicle_physics,
+            ).run_if(in_state(self.state.clone())),
         );
         app.add_systems(
             EguiPrimaryContextPass,
@@ -99,9 +126,13 @@ impl<S: States> Plugin for DrivingPlugin<S> {
 pub fn camera_follows_car(
     time: Res<Time>,
     mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<Car>)>,
-    car_query: Query<&Transform, (With<Car>, Without<Camera3d>)>,
+    car_query: Query<(&Transform, &LinearVelocity), (With<Car>, Without<Camera3d>)>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    mut mouse_motion: MessageReader<bevy::input::mouse::MouseMotion>,
+    mut contexts: EguiContexts,
+    mut local_orbit: Local<Option<(f32, f32)>>, // (yaw, pitch)
 ) {
-    let Ok(car_transform) = car_query.single() else {
+    let Ok((car_transform, linear_velocity)) = car_query.single() else {
         return;
     };
     let Ok(mut camera_transform) = camera_query.single_mut() else {
@@ -113,33 +144,61 @@ pub fn camera_follows_car(
         return;
     }
 
-    // Camera follow parameters
-    let follow_distance = 16.0;
-    let follow_height = 5.0;
-    let speed = 4.0; // Translation lerp speed
+    let egui_focused = if let Ok(ctx) = contexts.ctx_mut() {
+        ctx.egui_wants_pointer_input() || ctx.is_pointer_over_egui()
+    } else {
+        false
+    };
 
-    // Nose of the car is towards -z
-    let car_forward = *car_transform.forward();
+    // Center point is just above the top of the car
+    let center = car_transform.translation + Vec3::Y * 1.5;
 
-    // Target position is behind the car and slightly above it
-    let target_pos =
-        car_transform.translation - car_forward * follow_distance + Vec3::Y * follow_height;
+    // Get car yaw (Y-rotation) in world space
+    let (car_yaw, _, _) = car_transform.rotation.to_euler(EulerRot::YXZ);
 
-    // Exponential decay translation
-    let decay = (-speed * dt).exp();
-    camera_transform.translation = target_pos + (camera_transform.translation - target_pos) * decay;
+    // Default behind-the-car positions
+    let default_yaw = car_yaw;
+    let default_pitch = 15.0f32.to_radians();
 
-    // Look at the car (slightly above the center)
-    let look_at_target = car_transform.translation + Vec3::Y * 1.5;
+    let (mut yaw, mut pitch) = local_orbit.unwrap_or((default_yaw, default_pitch));
 
-    // Create target rotation
-    let mut temp = Transform::from_translation(camera_transform.translation);
-    temp.look_at(look_at_target, Vec3::Y);
+    // Mouse drag updates yaw and pitch
+    let drag_active = !egui_focused && mouse_button.pressed(MouseButton::Left);
+    if drag_active {
+        let sensitivity = 0.003;
+        for event in mouse_motion.read() {
+            yaw -= event.delta.x * sensitivity;
+            pitch += event.delta.y * sensitivity;
+        }
+        pitch = pitch.clamp(-80.0f32.to_radians(), 80.0f32.to_radians());
+    } else {
+        for _ in mouse_motion.read() {}
+    }
 
-    // Slerp camera rotation with exponential decay
-    let rot_speed = 5.0;
-    let rot_decay = (-rot_speed * dt).exp();
-    camera_transform.rotation = temp.rotation.slerp(camera_transform.rotation, rot_decay);
+    // Auto-centering when speed > 1.0 m/s
+    let speed = linear_velocity.0.length();
+    if speed > 1.0 {
+        let yaw_diff = (default_yaw - yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+        let pitch_diff = default_pitch - pitch;
+
+        let reset_speed = 2.0;
+        let decay = (-reset_speed * dt).exp();
+
+        yaw = default_yaw - yaw_diff * decay;
+        pitch = default_pitch - pitch_diff * decay;
+    }
+
+    *local_orbit = Some((yaw, pitch));
+
+    // Position camera
+    let r = 16.0;
+    let offset = Vec3::new(
+        r * yaw.sin() * pitch.cos(),
+        r * pitch.sin(),
+        r * yaw.cos() * pitch.cos(),
+    );
+    camera_transform.translation = center + offset;
+    camera_transform.look_at(center, Vec3::Y);
 }
 
 pub fn keybinds_control_car(
@@ -156,11 +215,17 @@ pub fn keybinds_control_car(
     spatial_query: SpatialQuery,
     mut commands: Commands,
     mut next_state: ResMut<NextState<crate::plugins::states::GameControlState>>,
+    q_children: Query<(Entity, &ChildOf)>,
 ) {
     // If escape or F is pressed, exit car
     if keyboard.just_pressed(KeyCode::Escape) || keyboard.just_pressed(KeyCode::KeyF) {
         next_state.set(crate::plugins::states::GameControlState::MapFreecam);
         if let Ok((car_entity, _, _, _)) = q_car.single() {
+            for (child_entity, parent) in q_children.iter() {
+                if parent.get() == car_entity {
+                    commands.entity(child_entity).despawn();
+                }
+            }
             commands.entity(car_entity).despawn();
         }
         return;
@@ -213,66 +278,35 @@ pub fn keybinds_control_car(
     });
 }
 
-pub fn car_clip_detection(
-    mut q_car: Query<
-        (
-            Entity,
-            &mut Transform,
-            &mut LinearVelocity,
-            &mut AngularVelocity,
-        ),
-        With<Car>,
-    >,
-    spatial_query: SpatialQuery,
+pub fn cap_car_velocities(
+    mut q_car: Query<(&mut LinearVelocity, &mut AngularVelocity), With<Car>>,
 ) {
-    let Ok((car_entity, mut transform, mut lin_vel, mut ang_vel)) = q_car.single_mut() else {
-        return;
-    };
+    for (mut lin_vel, mut ang_vel) in q_car.iter_mut() {
+        // Max speed: 80 km/h = 22.22 m/s
+        let max_speed = 22.222;
+        let speed = lin_vel.0.length();
+        if speed > max_speed {
+            lin_vel.0 = lin_vel.0.normalize_or_zero() * max_speed;
+        }
 
-    let filter = SpatialQueryFilter::from_excluded_entities([car_entity]);
-
-    // Void detection
-    if transform.translation.y < -100.0 {
-        info!("Void detected! Resetting car to map height.");
-        let start_y = 3500.0; // high above map
-        let ray_origin = Vec3::new(transform.translation.x, start_y, transform.translation.z);
-        if let Some(hit) = spatial_query.cast_ray(ray_origin, Dir3::NEG_Y, 4000.0, true, &filter) {
-            let ground_y = start_y - hit.distance;
-            lin_vel.0 = Vec3::ZERO;
-            ang_vel.0 = Vec3::ZERO;
-            transform.rotation = Quat::IDENTITY;
-            transform.translation.y = ground_y + 9.0;
-            return;
+        // Max rotational speed: 720 deg/s = 12.566 rad/s
+        let max_ang_speed = 720.0f32.to_radians();
+        let ang_speed = ang_vel.0.length();
+        if ang_speed > max_ang_speed {
+            ang_vel.0 = ang_vel.0.normalize_or_zero() * max_ang_speed;
         }
     }
-
-    // // Clip detection: Cast a ray down from slightly above the car
-    // let start_y = transform.translation.y + 5.0;
-    // let ray_origin = Vec3::new(transform.translation.x, start_y, transform.translation.z);
-
-    // if let Some(hit) = spatial_query.cast_ray(ray_origin, Dir3::NEG_Y, 100.0, true, &filter) {
-    //     let ground_y = start_y - hit.distance;
-    //     // If the car's center is below the ground level, it has clipped
-    //     if transform.translation.y < ground_y - 0.2 {
-    //         info!("Ground clip detected! Resetting car above terrain.");
-    //         lin_vel.0 = Vec3::ZERO;
-    //         ang_vel.0 = Vec3::ZERO;
-    //         transform.rotation = Quat::IDENTITY;
-    //         transform.translation.y = ground_y + 9.0;
-    //     }
-    // }
 }
 
 pub fn car_drive_observer(
     trigger: On<Drive>,
-    mut query: Query<(&Transform, Forces, &mut CarDriveState)>,
-    spatial_query: SpatialQuery,
+    mut query: Query<&mut CarDriveState>,
     time: Res<Time>,
 ) {
     let car_entity = trigger.event_target();
     let drive_input = trigger.event().clone();
 
-    let Ok((transform, mut forces, mut drive_state)) = query.get_mut(car_entity) else {
+    let Ok(mut drive_state) = query.get_mut(car_entity) else {
         return;
     };
 
@@ -324,168 +358,83 @@ pub fn car_drive_observer(
         }
     }
     drive_state.current_steer_integrated = drive_state.current_steer_integrated.clamp(-1.0, 1.0);
-
-    // 3. FWD Suspension and Drive physics
-    let half_width = 0.9f32;
-    let half_length = 1.8f32;
-    let wheel_radius = 0.35f32;
-
-    let wheels_offsets = [
-        (Vec3::new(-half_width, 0.0, -half_length), true, true), // FL
-        (Vec3::new(half_width, 0.0, -half_length), true, false), // FR
-        (Vec3::new(-half_width, 0.0, half_length), false, true), // RL
-        (Vec3::new(half_width, 0.0, half_length), false, false), // RR
-    ];
-
-    let filter = SpatialQueryFilter::from_excluded_entities([car_entity]);
-    let ray_dir = transform.rotation * -Vec3::Y;
-    let ray_dir_dir = Dir3::new(ray_dir).unwrap_or(Dir3::NEG_Y);
-
-    let max_torque = drive_state.engine_hp * 30.0;
-    let engine_torque = drive_state.avg_accelerate * max_torque;
-    let steer_angle = drive_state.current_steer_integrated * 30.0f32.to_radians();
-
-    for (offset, is_front, is_left) in wheels_offsets {
-        let suspension_len = if is_front {
-            drive_state.suspension_height_front
-        } else {
-            drive_state.suspension_height_back
-        };
-        let world_attach = transform.transform_point(offset);
-
-        let mut visual_len = suspension_len;
-
-        if let Some(hit) = spatial_query.cast_ray(
-            world_attach,
-            ray_dir_dir,
-            suspension_len + wheel_radius,
-            true,
-            &filter,
-        ) {
-            visual_len = (hit.distance - wheel_radius).max(0.0);
-            let compression = (suspension_len - visual_len).clamp(0.0, suspension_len);
-
-            // Spring force
-            let spring_force = compression * drive_state.suspension_stiffness;
-
-            // Damping force
-            let point_velocity = forces.velocity_at_point(world_attach);
-            let vel_along_suspension = point_velocity.dot(ray_dir);
-            let damping = drive_state.suspension_stiffness * 0.06;
-            let damping_force = vel_along_suspension * damping;
-
-            let total_force = (spring_force + damping_force).max(0.0);
-
-            // Apply upward push force to chassis
-            let force_vec = -ray_dir * total_force;
-            forces.apply_force_at_point(force_vec, world_attach);
-
-            // Apply FWD engine torque on front wheels
-            if is_front {
-                let local_wheel_forward = Quat::from_rotation_y(steer_angle) * Vec3::NEG_Z;
-                let world_wheel_forward = transform.rotation * local_wheel_forward;
-
-                let traction_force = engine_torque / wheel_radius;
-                let max_traction = total_force * 0.8;
-                let final_traction = traction_force.clamp(-max_traction, max_traction);
-
-                forces.apply_force_at_point(world_wheel_forward * final_traction, world_attach);
-            }
-
-            // Apply Braking force
-            if drive_state.avg_brake > 0.0 {
-                let wheel_forward = if is_front {
-                    let local_f = Quat::from_rotation_y(steer_angle) * Vec3::NEG_Z;
-                    transform.rotation * local_f
-                } else {
-                    transform.rotation * Vec3::NEG_Z
-                };
-                let wheel_vel = forces.velocity_at_point(world_attach);
-                let speed_along_wheel = wheel_vel.dot(wheel_forward);
-
-                let brake_force = -wheel_forward
-                    * speed_along_wheel.signum()
-                    * drive_state.avg_brake
-                    * total_force
-                    * 0.8;
-                forces.apply_force_at_point(brake_force, world_attach);
-            }
-        }
-
-        // Store visual suspension lengths
-        if is_front {
-            if is_left {
-                drive_state.visual_len_fl = visual_len;
-            } else {
-                drive_state.visual_len_fr = visual_len;
-            }
-        } else {
-            if is_left {
-                drive_state.visual_len_rl = visual_len;
-            } else {
-                drive_state.visual_len_rr = visual_len;
-            }
-        }
-    }
-
-    // Update wheel spin angles based on actual local speeds
-    let front_wheel_forward =
-        transform.rotation * (Quat::from_rotation_y(steer_angle) * Vec3::NEG_Z);
-    let rear_wheel_forward = transform.rotation * Vec3::NEG_Z;
-
-    let speed_fl = forces
-        .velocity_at_point(transform.transform_point(Vec3::new(-half_width, 0.0, -half_length)))
-        .dot(front_wheel_forward);
-    let speed_fr = forces
-        .velocity_at_point(transform.transform_point(Vec3::new(half_width, 0.0, -half_length)))
-        .dot(front_wheel_forward);
-    let speed_rl = forces
-        .velocity_at_point(transform.transform_point(Vec3::new(-half_width, 0.0, half_length)))
-        .dot(rear_wheel_forward);
-    let speed_rr = forces
-        .velocity_at_point(transform.transform_point(Vec3::new(half_width, 0.0, half_length)))
-        .dot(rear_wheel_forward);
-
-    drive_state.wheel_spin_fl -= (speed_fl / wheel_radius) * dt;
-    drive_state.wheel_spin_fr -= (speed_fr / wheel_radius) * dt;
-    drive_state.wheel_spin_rl -= (speed_rl / wheel_radius) * dt;
-    drive_state.wheel_spin_rr -= (speed_rr / wheel_radius) * dt;
-
-    // Apply per-wheel lateral friction
-    for (offset, is_front, _) in wheels_offsets {
-        let world_attach = transform.transform_point(offset);
-        let wheel_right = if is_front {
-            let local_r = Quat::from_rotation_y(steer_angle) * Vec3::X;
-            transform.rotation * local_r
-        } else {
-            transform.rotation * Vec3::X
-        };
-
-        let wheel_vel = forces.velocity_at_point(world_attach);
-        let lateral_vel = wheel_vel.dot(wheel_right) * wheel_right;
-        let lateral_damping_force = -lateral_vel * 350.0; // mass / 4 * friction factor
-        forces.apply_force_at_point(lateral_damping_force, world_attach);
-    }
-
-    // Yaw/Angular damping
-    let angular_damping_torque = -forces.angular_velocity() * 1200.0 * 1.5;
-    forces.apply_torque(angular_damping_torque);
-
-    // Constant drag force
-    let drag_force = -forces.linear_velocity() * 50.0;
-    forces.apply_force(drag_force);
 }
 
-pub fn draw_car_gizmos(mut gizmos: Gizmos, q_car: Query<(&Transform, &CarDriveState), With<Car>>) {
-    let Ok((transform, drive_state)) = q_car.single() else {
+pub fn update_vehicle_physics(
+    q_car: Query<(Entity, &CarDriveState), With<Car>>,
+    mut q_suspension: Query<(&mut PrismaticJoint, &SuspensionJoint)>,
+    mut q_steering: Query<(&mut RevoluteJoint, &SteeringJoint), Without<AxleJoint>>,
+    mut q_axle: Query<(&mut RevoluteJoint, &AxleJoint)>,
+) {
+    for (car_entity, drive_state) in q_car.iter() {
+        // 1. Update suspension joints parameters (stiffness & height)
+        for (mut joint, susp) in q_suspension.iter_mut() {
+            if susp.car_entity == car_entity {
+                let height = if susp.is_front {
+                    drive_state.suspension_height_front
+                } else {
+                    drive_state.suspension_height_back
+                };
+                
+                // Map stiffness to frequency
+                // k = mass * (2 * pi * f)^2 => f = sqrt(k / mass) / (2 * pi)
+                // mass per wheel is about 300.0kg
+                let frequency = (drive_state.suspension_stiffness / 300.0).sqrt() / 6.283185;
+                
+                // Update limits
+                joint.limits = Some(DistanceLimit::new(0.0, height));
+                
+                // Update motor target and frequency
+                joint.motor.target_position = height;
+                if let MotorModel::SpringDamper { frequency: ref mut f, .. } = joint.motor.motor_model {
+                    *f = frequency;
+                }
+            }
+        }
+
+        // 2. Update steering joints (front wheels only)
+        for (mut joint, steer) in q_steering.iter_mut() {
+            if steer.car_entity == car_entity {
+                // target steering angle
+                // positive steer_integrated rotates counter-clockwise (turns left), negative rotates clockwise (turns right).
+                // To turn right, target_position must be negative.
+                let target_angle = -drive_state.current_steer_integrated * 30.0f32.to_radians();
+                joint.motor.target_position = target_angle;
+            }
+        }
+
+        // 3. Update axle joints (driving & braking)
+        for (mut joint, axle) in q_axle.iter_mut() {
+            if axle.car_entity == car_entity {
+                // Max angular speed: 63.5 rad/s (approx 80 km/h)
+                let max_ang_vel = 63.5;
+                
+                if drive_state.avg_brake > 0.0 {
+                    // Apply brakes: target speed 0, high torque
+                    joint.motor.target_velocity = 0.0;
+                    joint.motor.max_torque = drive_state.avg_brake * 2000.0;
+                } else if drive_state.avg_accelerate > 0.0 {
+                    // Apply throttle
+                    joint.motor.target_velocity = drive_state.avg_accelerate * max_ang_vel;
+                    joint.motor.max_torque = drive_state.engine_hp * 5.0;
+                } else {
+                    // Coasting: neutral engine drag
+                    joint.motor.target_velocity = 0.0;
+                    joint.motor.max_torque = 5.0; // small drag
+                }
+            }
+        }
+    }
+}
+
+pub fn draw_car_gizmos(mut gizmos: Gizmos, q_car: Query<&Transform, With<Car>>) {
+    let Ok(transform) = q_car.single() else {
         return;
     };
 
     let half_width = 0.9f32;
     let half_height = 0.4f32;
     let half_length = 1.8f32;
-    let wheel_radius = 0.35f32; // wheel radius
-    let wheel_width = 0.25f32; // wheel width
 
     // 1. Draw car bbox in white
     let cuboid = Cuboid::from_size(Vec3::new(
@@ -495,70 +444,6 @@ pub fn draw_car_gizmos(mut gizmos: Gizmos, q_car: Query<(&Transform, &CarDriveSt
     ));
     let isometry = Isometry3d::new(transform.translation, transform.rotation);
     gizmos.primitive_3d(&cuboid, isometry, Color::WHITE);
-
-    // 2. Draw wheels and suspension lines
-    let wheels_offsets = [
-        (Vec3::new(-half_width, 0.0, -half_length), true, true), // FL
-        (Vec3::new(half_width, 0.0, -half_length), true, false), // FR
-        (Vec3::new(-half_width, 0.0, half_length), false, true), // RL
-        (Vec3::new(half_width, 0.0, half_length), false, false), // RR
-    ];
-
-    let steer_angle = drive_state.current_steer_integrated * 30.0f32.to_radians();
-    let ray_dir = transform.rotation * -Vec3::Y;
-
-    for (offset, is_front, is_left) in wheels_offsets {
-        let world_attach = transform.transform_point(offset);
-        let visual_len = if is_front {
-            if is_left {
-                drive_state.visual_len_fl
-            } else {
-                drive_state.visual_len_fr
-            }
-        } else {
-            if is_left {
-                drive_state.visual_len_rl
-            } else {
-                drive_state.visual_len_rr
-            }
-        };
-
-        let wheel_center = world_attach + ray_dir * visual_len;
-
-        // Draw suspension line (green)
-        gizmos.line(world_attach, wheel_center, Color::srgb(0.0, 1.0, 0.0));
-
-        // Draw wheel (yellow cylinder)
-        let spin = if is_front {
-            if is_left {
-                drive_state.wheel_spin_fl
-            } else {
-                drive_state.wheel_spin_fr
-            }
-        } else {
-            if is_left {
-                drive_state.wheel_spin_rl
-            } else {
-                drive_state.wheel_spin_rr
-            }
-        };
-
-        let steer_quat = if is_front {
-            Quat::from_rotation_y(steer_angle)
-        } else {
-            Quat::IDENTITY
-        };
-        let spin_quat = Quat::from_rotation_x(spin);
-
-        // Cylinder default axis is Y, rotate by 90 deg around Z to point along local X (axle)
-        let axle_quat = Quat::from_rotation_z(90.0f32.to_radians());
-        let local_wheel_rot = steer_quat * spin_quat * axle_quat;
-        let world_wheel_rot = transform.rotation * local_wheel_rot;
-
-        let cylinder = Cylinder::new(wheel_radius, wheel_width);
-        let wheel_isometry = Isometry3d::new(wheel_center, world_wheel_rot);
-        gizmos.primitive_3d(&cylinder, wheel_isometry, Color::srgb(1.0, 1.0, 0.0));
-    }
 }
 
 pub fn driving_ui(mut contexts: EguiContexts) {
@@ -722,7 +607,7 @@ pub fn speedometer_ui(
                                 );
                             });
                         });
-
+                        
                         ui.allocate_space(egui::Vec2::new(1.0, 5.0));
 
                         // Speedometer and input meters sharing the same row!

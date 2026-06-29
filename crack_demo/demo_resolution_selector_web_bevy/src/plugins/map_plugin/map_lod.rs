@@ -61,7 +61,11 @@ fn spawn_node_tiles(
             avian3d::prelude::RigidBody::Static,
             avian3d::prelude::ColliderConstructorHierarchy::new(
                 avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
-            ),
+            )
+            .with_default_layers(CollisionLayers::new(
+                [GamePhysicsLayer::Map],
+                [GamePhysicsLayer::Map, GamePhysicsLayer::Car, GamePhysicsLayer::Wheel],
+            )),
             avian3d::prelude::Restitution::ZERO
                 .with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
             CollisionLayers::new(

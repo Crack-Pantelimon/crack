@@ -24,6 +24,7 @@ pub struct UiState {
     pub smooth: bool,
     pub show_settings: bool,
     pub draw_map_bboxes: bool,
+    pub draw_physics_debug: bool,
     pub show_lod_configurator: bool,
     pub show_geojson_database: bool,
 }
@@ -35,6 +36,7 @@ impl Default for UiState {
             smooth: true,
             show_settings: false,
             draw_map_bboxes: false,
+            draw_physics_debug: false,
             show_lod_configurator: false,
             show_geojson_database: false,
         }
@@ -141,6 +143,7 @@ fn ui_example_system(
 
                 ui.allocate_space(egui::Vec2::new(1.0, 5.0));
                 ui.checkbox(&mut ui_state.draw_map_bboxes, "Draw Map BBoxes");
+                ui.checkbox(&mut ui_state.draw_physics_debug, "Draw Physics Debug");
 
                 ui.allocate_space(egui::Vec2::new(1.0, 10.0));
 
