@@ -70,12 +70,24 @@ pub fn spawn_car_request_event_observer(
     mut commands: Commands,
     current_state: Res<State<GameControlState>>,
     mut next_state: ResMut<NextState<GameControlState>>,
+    spatial_query: avian3d::prelude::SpatialQuery,
 ) {
     if current_state.get() != &GameControlState::MapFreecam {
         return;
     }
     let mut pos = spawn_car_event.position;
-    pos.y += 1.0;
+
+    // Raycast down from pos.y + 100.0 to find exact ground height
+    let start_y = pos.y + 100.0;
+    let ray_origin = Vec3::new(pos.x, start_y, pos.z);
+    let filter = avian3d::prelude::SpatialQueryFilter::default();
+
+    if let Some(hit) = spatial_query.cast_ray(ray_origin, bevy::prelude::Dir3::NEG_Y, 1000.0, true, &filter) {
+        let ground_y = start_y - hit.distance;
+        pos.y = ground_y + 9.0;
+    } else {
+        pos.y += 9.0;
+    }
 
     let handle = get_car_asset(&spawn_car_event.car_type, &asset_server);
 
