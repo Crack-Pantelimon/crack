@@ -9,7 +9,8 @@ use bevy::{
     window::WindowResolution,
     world_serialization::WorldAssetRoot,
 };
-use avian3d::prelude::{CollisionLayers, Restitution, RigidBody, Mass, Collider, LinearVelocity, AngularVelocity};
+use avian3d::prelude::{CollisionLayers, Restitution, RigidBody, Mass, Collider, LinearVelocity, AngularVelocity, LockedAxes};
+use bevy_egui::{egui, EguiContexts};
 
 use demo_resolution_selector_web_bevy::{
     plugins::{
@@ -22,6 +23,52 @@ use demo_resolution_selector_web_bevy::{
 
 #[derive(Component)]
 struct Pedestrian;
+
+#[derive(Component)]
+struct PedestrianVisual;
+
+#[derive(Component)]
+struct Torso;
+
+#[derive(Component)]
+struct Head;
+
+#[derive(Component)]
+struct LeftArm;
+
+#[derive(Component)]
+struct RightArm;
+
+#[derive(Component)]
+struct LeftLeg;
+
+#[derive(Component)]
+struct RightLeg;
+
+#[derive(Component, Default)]
+struct PedestrianAnimator {
+    phase: f32,
+    bob: f32,
+    sway: f32,
+    lean: f32,
+}
+
+#[derive(Resource)]
+struct PedestrianSettings {
+    model_type: PedestrianModelType,
+    swing_amplitude: f32,
+    walk_speed: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PedestrianModelType {
+    GlbModel,
+    ProceduralPuppet,
+    RiggedGlb,
+}
+
+#[derive(Component)]
+struct BoneBaseRotation(Quat);
 
 fn main() {
     #[cfg(feature = "web")]
@@ -53,10 +100,24 @@ fn main() {
         )
         .add_plugins(bevy_egui::EguiPlugin::default())
         .init_resource::<UiState>() // Satisfies PhysicsPlugin's sync_physics_debug_config
+        .insert_resource(PedestrianSettings {
+            model_type: PedestrianModelType::GlbModel,
+            swing_amplitude: 0.6,
+            walk_speed: 2.5,
+        })
         .add_plugins(PhysicsPlugin)
         .add_plugins(GameStatesPlugin)
         .add_systems(Startup, setup_scene)
-        .add_systems(Update, (move_pedestrian, camera_follows_pedestrian))
+        .add_systems(bevy_egui::EguiPrimaryContextPass, draw_pedestrian_ui)
+        .add_systems(
+            Update,
+            (
+                move_pedestrian,
+                camera_follows_pedestrian,
+                animate_pedestrian,
+                init_bone_base_rotations,
+            ),
+        )
         .run();
 }
 
@@ -107,7 +168,7 @@ fn setup_scene(
     ];
 
     for (center, (gray1, gray2)) in cubes_info {
-        let tile_repeat: f32 = 1.0 + rand::random::<f32>() * 2.0; // around 1 to 3 meters
+        let tile_repeat: f32 = 1.0 + rand::random::<f32>() * 2.0;
 
         let mut mesh = Mesh::from(Cuboid::from_size(Vec3::new(500.0, 500.0, 500.0)));
         let repeat = 500.0 / tile_repeat;
@@ -165,7 +226,7 @@ fn setup_scene(
         Transform::from_xyz(200.0, 400.0, 200.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
-    // 4. Load & Spawn Pedestrian with Physics
+    // 4. Spawn Pedestrian with Physics & GLB visual child (default)
     let base_url = demo_resolution_selector_web_bevy::config::DATA_BASE_URL.trim_end_matches('/');
     let pedestrian_url = format!(
         "{}/3d_data/3d_slop_models_clean/pedestrian/armin-1b.glb",
@@ -174,22 +235,34 @@ fn setup_scene(
     let pedestrian_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(pedestrian_url));
 
     commands.spawn((
-        WorldAssetRoot(pedestrian_handle),
         Transform::from_xyz(0.0, 2.0, 0.0),
         Pedestrian,
+        PedestrianAnimator::default(),
         RigidBody::Dynamic,
         Collider::cuboid(0.6, 1.8, 0.6),
+        LockedAxes::new().lock_rotation_x().lock_rotation_z(),
         Mass(100.0),
         CollisionLayers::new(
             [GamePhysicsLayer::Car],
             [GamePhysicsLayer::Map],
         ),
-    ));
+        Visibility::default(),
+        InheritedVisibility::default(),
+    )).with_children(|parent| {
+        parent.spawn((
+            WorldAssetRoot(pedestrian_handle),
+            Transform::from_xyz(0.0, -0.9, 0.0),
+            PedestrianVisual,
+            Visibility::default(),
+            InheritedVisibility::default(),
+        ));
+    });
 }
 
 fn move_pedestrian(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    settings: Res<PedestrianSettings>,
     mut query: Query<(&Transform, &mut LinearVelocity, &mut AngularVelocity), With<Pedestrian>>,
 ) {
     let Ok((transform, mut lin_vel, mut ang_vel)) = query.single_mut() else {
@@ -198,36 +271,54 @@ fn move_pedestrian(
 
     let dt = time.delta_secs();
 
-    // 1. Translation forces via WASD/arrows (moving at 1m/s targets, let's accelerate with 10.0 m/s^2 force)
-    let mut move_direction = Vec3::ZERO;
-    if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
-        move_direction += *transform.forward();
-    }
-    if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
-        move_direction += *transform.back();
-    }
+    // 1. Rotation (yaw) via A/D or ArrowLeft/ArrowRight or Q/E
+    let mut rotation_input = 0.0;
     if keyboard.pressed(KeyCode::KeyA) || keyboard.pressed(KeyCode::ArrowLeft) {
-        move_direction += *transform.left();
+        rotation_input += 1.0;
     }
     if keyboard.pressed(KeyCode::KeyD) || keyboard.pressed(KeyCode::ArrowRight) {
-        move_direction += *transform.right();
+        rotation_input -= 1.0;
     }
-
-    if move_direction != Vec3::ZERO {
-        let direction = move_direction.normalize();
-        lin_vel.0 += direction * 8.0 * dt; // Apply acceleration force
-    }
-
-    // 2. Rotation torque via Q/E
-    let mut torque = 0.0;
     if keyboard.pressed(KeyCode::KeyQ) {
-        torque += 15.0; // spin left
+        rotation_input += 1.0;
     }
     if keyboard.pressed(KeyCode::KeyE) {
-        torque -= 15.0; // spin right
+        rotation_input -= 1.0;
     }
-    if torque != 0.0 {
-        ang_vel.0.y += torque * dt; // Apply angular acceleration
+
+    if rotation_input != 0.0 {
+        let target_ang_vel = rotation_input * 3.0;
+        ang_vel.0.y = target_ang_vel;
+    } else {
+        ang_vel.0.y = 0.0;
+    }
+
+    // 2. Translation (forward/backward) via W/S or ArrowUp/ArrowDown
+    let mut move_input = 0.0;
+    if keyboard.pressed(KeyCode::KeyW) || keyboard.pressed(KeyCode::ArrowUp) {
+        move_input += 1.0;
+    }
+    if keyboard.pressed(KeyCode::KeyS) || keyboard.pressed(KeyCode::ArrowDown) {
+        move_input -= 1.0;
+    }
+
+    let speed_multiplier = if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight) {
+        2.2
+    } else {
+        1.0
+    };
+
+    if move_input != 0.0 {
+        let forward = transform.forward();
+        let target_lin_vel = forward * move_input * settings.walk_speed * speed_multiplier;
+        
+        let accel_rate = 10.0;
+        lin_vel.x += (target_lin_vel.x - lin_vel.x) * accel_rate * dt;
+        lin_vel.z += (target_lin_vel.z - lin_vel.z) * accel_rate * dt;
+    } else {
+        let decelerate_rate = 12.0;
+        lin_vel.x += (0.0 - lin_vel.x) * decelerate_rate * dt;
+        lin_vel.z += (0.0 - lin_vel.z) * decelerate_rate * dt;
     }
 }
 
@@ -242,10 +333,301 @@ fn camera_follows_pedestrian(
         return;
     };
 
-    // Position camera slightly behind and above the pedestrian
     let back_dir = *pedestrian_transform.back();
     let target_position = pedestrian_transform.translation + back_dir * 6.0 + Vec3::Y * 3.0;
 
     camera_transform.translation = target_position;
     camera_transform.look_at(pedestrian_transform.translation + Vec3::Y * 1.0, Vec3::Y);
+}
+
+fn animate_pedestrian(
+    time: Res<Time>,
+    settings: Res<PedestrianSettings>,
+    mut pedestrian_query: Query<(&LinearVelocity, &Children, &mut PedestrianAnimator), With<Pedestrian>>,
+    mut transform_query: Query<(
+        &mut Transform,
+        Option<&Name>,
+        Option<&BoneBaseRotation>,
+        Option<&PedestrianVisual>,
+        Option<&LeftLeg>,
+        Option<&RightLeg>,
+        Option<&LeftArm>,
+        Option<&RightArm>,
+    )>,
+) {
+    let dt = time.delta_secs();
+
+    let Ok((lin_vel, children, mut animator)) = pedestrian_query.single_mut() else {
+        return;
+    };
+
+    let speed = Vec3::new(lin_vel.x, 0.0, lin_vel.z).length();
+    
+    let target_bob;
+    let target_sway;
+    let target_lean;
+    
+    if speed > 0.1 {
+        let walk_frequency = 12.0; 
+        animator.phase += speed * walk_frequency * dt;
+        if animator.phase > std::f32::consts::TAU * 100.0 {
+            animator.phase -= std::f32::consts::TAU * 100.0;
+        }
+        
+        target_bob = -0.9 + (animator.phase * 2.0).sin().abs() * 0.08;
+        target_sway = animator.phase.sin() * 0.06;
+        target_lean = (speed * 0.02).min(0.12);
+    } else {
+        animator.phase = 0.0;
+        target_bob = -0.9;
+        target_sway = 0.0;
+        target_lean = 0.0;
+    }
+    
+    let lerp_speed = 8.0;
+    animator.bob += (target_bob - animator.bob) * lerp_speed * dt;
+    animator.sway += (target_sway - animator.sway) * lerp_speed * dt;
+    animator.lean += (target_lean - animator.lean) * lerp_speed * dt;
+
+    // 1. Animate Visual Root (bob, sway, lean)
+    for child in children.iter() {
+        if let Ok((mut child_transform, _, _, Some(_), _, _, _, _)) = transform_query.get_mut(child) {
+            child_transform.translation.y = animator.bob;
+            child_transform.rotation = Quat::from_euler(
+                EulerRot::YXZ,
+                0.0,
+                -animator.lean,
+                animator.sway,
+            );
+        }
+    }
+
+    // 2. Animate Limbs if using ProceduralPuppet
+    if settings.model_type == PedestrianModelType::ProceduralPuppet {
+        let swing_angle = if speed > 0.1 {
+            animator.phase.sin() * settings.swing_amplitude
+        } else {
+            0.0
+        };
+
+        let swing_lerp_speed = 10.0;
+
+        for (mut transform, _, _, _, left_leg, right_leg, left_arm, right_arm) in &mut transform_query {
+            if left_leg.is_some() {
+                let target_rot = Quat::from_rotation_x(swing_angle);
+                transform.rotation = transform.rotation.slerp(target_rot, swing_lerp_speed * dt);
+            } else if right_leg.is_some() {
+                let target_rot = Quat::from_rotation_x(-swing_angle);
+                transform.rotation = transform.rotation.slerp(target_rot, swing_lerp_speed * dt);
+            } else if left_arm.is_some() {
+                let target_rot = Quat::from_rotation_x(-swing_angle * 0.8);
+                transform.rotation = transform.rotation.slerp(target_rot, swing_lerp_speed * dt);
+            } else if right_arm.is_some() {
+                let target_rot = Quat::from_rotation_x(swing_angle * 0.8);
+                transform.rotation = transform.rotation.slerp(target_rot, swing_lerp_speed * dt);
+            }
+        }
+    }
+
+    // 3. Animate Rigged GLB bones if using RiggedGlb
+    if settings.model_type == PedestrianModelType::RiggedGlb {
+        let swing_angle = if speed > 0.1 {
+            animator.phase.sin() * settings.swing_amplitude
+        } else {
+            0.0
+        };
+
+        let swing_lerp_speed = 10.0;
+
+        for (mut transform, name, base_rot, _, _, _, _, _) in &mut transform_query {
+            if let (Some(name), Some(base_rot)) = (name, base_rot) {
+                let name_str = name.as_str();
+                let swing = if name_str == "leg_joint_L_1" {
+                    swing_angle
+                } else if name_str == "leg_joint_R_1" {
+                    -swing_angle
+                } else if name_str == "Skeleton_arm_joint_L__4_" {
+                    -swing_angle * 0.8
+                } else if name_str == "Skeleton_arm_joint_R" {
+                    swing_angle * 0.8
+                } else {
+                    0.0
+                };
+                
+                // Rotation around local X axis of the bone
+                let target_rot = base_rot.0 * Quat::from_rotation_x(swing);
+                transform.rotation = transform.rotation.slerp(target_rot, swing_lerp_speed * dt);
+            }
+        }
+    }
+}
+
+fn init_bone_base_rotations(
+    mut commands: Commands,
+    query: Query<(Entity, &Name, &Transform), Without<BoneBaseRotation>>,
+) {
+    for (entity, name, transform) in &query {
+        let name_str = name.as_str();
+        if name_str == "leg_joint_L_1"
+            || name_str == "leg_joint_R_1"
+            || name_str == "Skeleton_arm_joint_L__4_"
+            || name_str == "Skeleton_arm_joint_R"
+        {
+            commands.entity(entity).insert(BoneBaseRotation(transform.rotation));
+        }
+    }
+}
+
+fn draw_pedestrian_ui(
+    mut contexts: EguiContexts,
+    mut settings: ResMut<PedestrianSettings>,
+    mut pedestrian_query: Query<(Entity, Option<&Children>), With<Pedestrian>>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    egui::Window::new("Pedestrian Animation Settings")
+        .default_pos(egui::pos2(12.0, 50.0))
+        .show(ctx, |ui| {
+            ui.label("Choose how the pedestrian moves:");
+            
+            let old_type = settings.model_type;
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut settings.model_type, PedestrianModelType::GlbModel, "Static GLB Model");
+                ui.selectable_value(&mut settings.model_type, PedestrianModelType::ProceduralPuppet, "Jointed Puppet");
+                ui.selectable_value(&mut settings.model_type, PedestrianModelType::RiggedGlb, "Rigged GLB Model");
+            });
+
+            if settings.model_type != old_type {
+                for (entity, children) in &mut pedestrian_query {
+                    if let Some(children) = children {
+                        for child in children.iter() {
+                            commands.entity(child).despawn();
+                        }
+                    }
+                    
+                    match settings.model_type {
+                        PedestrianModelType::GlbModel => {
+                            let base_url = demo_resolution_selector_web_bevy::config::DATA_BASE_URL.trim_end_matches('/');
+                            let pedestrian_url = format!("{}/3d_data/3d_slop_models_clean/pedestrian/armin-1b.glb", base_url);
+                            let pedestrian_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(pedestrian_url));
+                            
+                            commands.entity(entity).with_children(|parent| {
+                                parent.spawn((
+                                    WorldAssetRoot(pedestrian_handle),
+                                    Transform::from_xyz(0.0, -0.9, 0.0),
+                                    PedestrianVisual,
+                                    Visibility::default(),
+                                    InheritedVisibility::default(),
+                                ));
+                            });
+                        }
+                        PedestrianModelType::RiggedGlb => {
+                            let base_url = demo_resolution_selector_web_bevy::config::DATA_BASE_URL.trim_end_matches('/');
+                            let pedestrian_url = format!("{}/3d_data/3d_slop_models_clean/pedestrian/cesium_man.glb", base_url);
+                            let pedestrian_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(pedestrian_url));
+                            
+                            commands.entity(entity).with_children(|parent| {
+                                parent.spawn((
+                                    WorldAssetRoot(pedestrian_handle),
+                                    Transform::from_xyz(0.0, -0.9, 0.0),
+                                    PedestrianVisual,
+                                    Visibility::default(),
+                                    InheritedVisibility::default(),
+                                ));
+                            });
+                        }
+                        PedestrianModelType::ProceduralPuppet => {
+                            commands.entity(entity).with_children(|parent| {
+                                parent.spawn((
+                                    Transform::from_xyz(0.0, -0.9, 0.0),
+                                    PedestrianVisual,
+                                    Visibility::default(),
+                                    InheritedVisibility::default(),
+                                )).with_children(|vis_root| {
+                                    let torso_id = vis_root.spawn((
+                                        Mesh3d(meshes.add(Cuboid::new(0.38, 0.65, 0.22))),
+                                        MeshMaterial3d(materials.add(Color::srgb(0.2, 0.6, 0.86))),
+                                        Transform::from_xyz(0.0, 0.95, 0.0),
+                                        Torso,
+                                    )).id();
+                                    
+                                    vis_root.commands().entity(torso_id).with_children(|torso| {
+                                        torso.spawn((
+                                            Mesh3d(meshes.add(Sphere::new(0.18))),
+                                            MeshMaterial3d(materials.add(Color::srgb(0.95, 0.80, 0.69))),
+                                            Transform::from_xyz(0.0, 0.48, 0.0),
+                                            Head,
+                                        ));
+                                        
+                                        torso.spawn((
+                                            Transform::from_xyz(-0.25, 0.22, 0.0),
+                                            LeftArm,
+                                            Visibility::default(),
+                                            InheritedVisibility::default(),
+                                        )).with_children(|arm| {
+                                            arm.spawn((
+                                                Mesh3d(meshes.add(Capsule3d::new(0.06, 0.35))),
+                                                MeshMaterial3d(materials.add(Color::srgb(0.2, 0.6, 0.86))),
+                                                Transform::from_xyz(0.0, -0.175, 0.0),
+                                            ));
+                                        });
+                                        
+                                        torso.spawn((
+                                            Transform::from_xyz(0.25, 0.22, 0.0),
+                                            RightArm,
+                                            Visibility::default(),
+                                            InheritedVisibility::default(),
+                                        )).with_children(|arm| {
+                                            arm.spawn((
+                                                Mesh3d(meshes.add(Capsule3d::new(0.06, 0.35))),
+                                                MeshMaterial3d(materials.add(Color::srgb(0.2, 0.6, 0.86))),
+                                                Transform::from_xyz(0.0, -0.175, 0.0),
+                                            ));
+                                        });
+                                        
+                                        torso.spawn((
+                                            Transform::from_xyz(-0.11, -0.32, 0.0),
+                                            LeftLeg,
+                                            Visibility::default(),
+                                            InheritedVisibility::default(),
+                                        )).with_children(|leg| {
+                                            leg.spawn((
+                                                Mesh3d(meshes.add(Capsule3d::new(0.08, 0.45))),
+                                                MeshMaterial3d(materials.add(Color::srgb(0.15, 0.15, 0.15))),
+                                                Transform::from_xyz(0.0, -0.225, 0.0),
+                                            ));
+                                        });
+                                        
+                                        torso.spawn((
+                                            Transform::from_xyz(0.11, -0.32, 0.0),
+                                            RightLeg,
+                                            Visibility::default(),
+                                            InheritedVisibility::default(),
+                                        )).with_children(|leg| {
+                                            leg.spawn((
+                                                Mesh3d(meshes.add(Capsule3d::new(0.08, 0.45))),
+                                                MeshMaterial3d(materials.add(Color::srgb(0.15, 0.15, 0.15))),
+                                                Transform::from_xyz(0.0, -0.225, 0.0),
+                                            ));
+                                        });
+                                    });
+                                });
+                            });
+                        }
+                    }
+                }
+            }
+
+            ui.separator();
+            ui.add(egui::Slider::new(&mut settings.swing_amplitude, 0.1..=1.2).text("Swing Angle (Rad)"));
+            ui.add(egui::Slider::new(&mut settings.walk_speed, 1.0..=6.0).text("Walk Speed"));
+            
+            ui.allocate_space(egui::Vec2::new(1.0, 5.0));
+            ui.label("Controls:\n- WASD / Arrows to Walk/Steer\n- Left Shift to Run");
+        });
 }
