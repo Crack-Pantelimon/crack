@@ -76,6 +76,7 @@ fn ui_example_system(
     >,
     loading_status: Option<Res<crate::plugins::geojson::GameLoadingStatus>>,
     tooltip_state: Option<Res<crate::plugins::geojson::TooltipNotificationState>>,
+    mut osm_overlay: Option<ResMut<crate::plugins::geojson::OsmOverlayState>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         tracing::error!("no ctx in ui_example_system");
@@ -223,6 +224,12 @@ fn ui_example_system(
                     if ui.button("GeoJson Database").clicked() {
                         ui_state.show_geojson_database = !ui_state.show_geojson_database;
                         ui.close();
+                    }
+                    if let Some(ref mut osm) = osm_overlay {
+                        if ui.button("OSM Overlays").clicked() {
+                            osm.show_window = !osm.show_window;
+                            ui.close();
+                        }
                     }
                 } else {
                     ui.add_enabled(false, egui::Button::new("GeoJson Database (loading...)"));

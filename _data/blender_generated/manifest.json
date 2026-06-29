@@ -1,0 +1,40 @@
+{
+  "assets": [
+    {
+      "name": "bus_335",
+      "input_image": "images/8170086299_2a8157c6bc_z.jpg",
+      "script": "scripts/models/bus_335.py",
+      "blend_path": "_data/blender_generated/bus_335/bus_335.blend",
+      "glb_path": "_data/blender_generated/bus_335/bus_335.glb",
+      "version": "1.1.0",
+      "description": "Mercedes Citaro 335 Bus with custom drawn textures"
+    },
+    {
+      "name": "kebab_shop",
+      "input_image": "images/IMG-20170701-WA0024.webp",
+      "script": "scripts/models/kebab_shop.py",
+      "blend_path": "_data/blender_generated/kebab_shop/kebab_shop.blend",
+      "glb_path": "_data/blender_generated/kebab_shop/kebab_shop.glb",
+      "version": "1.0.0",
+      "description": "Socului Kebab shop interior room with 3D text and furniture"
+    },
+    {
+      "name": "superbet_shop",
+      "input_image": "images/superbet-interior.jpg",
+      "script": "scripts/models/superbet_shop.py",
+      "blend_path": "_data/blender_generated/superbet_shop/superbet_shop.blend",
+      "glb_path": "_data/blender_generated/superbet_shop/superbet_shop.glb",
+      "version": "1.0.0",
+      "description": "Superbet sports betting shop retail interior with counters, TVs, and seating"
+    },
+    {
+      "name": "terasa_obor",
+      "input_image": "images/terasa-obor-1-scaled.webp",
+      "script": "scripts/models/terasa_obor.py",
+      "blend_path": "_data/blender_generated/terasa_obor/terasa_obor.blend",
+      "glb_path": "_data/blender_generated/terasa_obor/terasa_obor.glb",
+      "version": "1.0.0",
+      "description": "Terasa Obor open-air Romanian market restaurant canopy, tables, and grill cart"
+    }
+  ]
+}

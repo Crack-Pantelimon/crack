@@ -1,6 +1,6 @@
 use crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
 use crate::plugins::map_plugin::{BBox, MapLODState, MapTileAssetId, MapTree, MapTreeNodePath};
-use crate::plugins::states::InitialMapLoadFinished;
+use crate::plugins::states::{InitialMapLoadFinished, OsmDatabaseLoadFinished};
 use _crack_utils::get_timestamp_now_ms;
 use avian3d::collision::collider::CollisionMargin;
 use avian3d::prelude::CollisionLayers;
@@ -595,6 +595,7 @@ pub fn check_map_loaded_status(
     loading_status: Option<ResMut<crate::plugins::geojson::GameLoadingStatus>>,
     tooltip_state: Option<ResMut<crate::plugins::geojson::TooltipNotificationState>>,
     mut next_state: ResMut<NextState<InitialMapLoadFinished>>,
+    mut osm_state: ResMut<NextState<OsmDatabaseLoadFinished>>,
 ) {
     let Some(mut loading_status) = loading_status else {
         return;
@@ -616,5 +617,6 @@ pub fn check_map_loaded_status(
             loaded_count, target
         );
         next_state.set(InitialMapLoadFinished::Finished);
+        osm_state.set(OsmDatabaseLoadFinished::MapFinished);
     }
 }
