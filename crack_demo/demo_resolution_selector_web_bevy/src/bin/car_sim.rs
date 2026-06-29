@@ -1,26 +1,22 @@
+use avian3d::math::*;
+use avian3d::prelude::{
+    AngularMotor, Collider, CollisionLayers, DistanceJoint, FixedJoint, JointBasis, LinearMotor,
+    MassPropertiesBundle, MotorModel, PrismaticJoint, Restitution, RevoluteJoint, RigidBody,
+    SleepingDisabled,
+};
 use bevy::{
     asset::RenderAssetUsages,
     prelude::*,
     render::{
+        RenderPlugin,
         render_resource::{Extent3d, TextureDimension, TextureFormat},
         settings::{Backends, WgpuSettings},
-        RenderPlugin,
     },
     window::WindowResolution,
 };
-use avian3d::math::*;
-use avian3d::prelude::{
-    CollisionLayers, Collider, Restitution, RigidBody,
-    PrismaticJoint, RevoluteJoint, DistanceJoint,
-    LinearMotor, AngularMotor, MotorModel,
-    MassPropertiesBundle, SleepingDisabled,
-};
 use demo_resolution_selector_web_bevy::{
     plugins::{
-        cars_driving::{
-            driving_plugin::GamePhysicsLayer,
-        },
-        physics_plugin::PhysicsPlugin,
+        cars_driving::driving_plugin::GamePhysicsLayer, physics_plugin::PhysicsPlugin,
         states::GameStatesPlugin,
     },
     ui_egui::UiState,
@@ -73,7 +69,10 @@ pub struct FunnyCarControls {
     pub steer: f32,
 }
 
-fn listen_for_wasd_update_controls(mut controls: ResMut<FunnyCarControls>, keyboard_input: Res<ButtonInput<KeyCode>>) {
+fn listen_for_wasd_update_controls(
+    mut controls: ResMut<FunnyCarControls>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+) {
     if keyboard_input.pressed(KeyCode::ArrowUp) {
         controls.accelerate = 1.0;
     } else if keyboard_input.pressed(KeyCode::ArrowDown) {
@@ -94,7 +93,11 @@ fn create_grayscale_texture(gray1: u8, gray2: u8) -> Image {
     let mut texture_data = vec![0; 32 * 32 * 4];
     for y in 0..32 {
         for x in 0..32 {
-            let color = if (x / 4 + y / 4) % 2 == 0 { gray1 } else { gray2 };
+            let color = if (x / 4 + y / 4) % 2 == 0 {
+                gray1
+            } else {
+                gray2
+            };
             let offset = (y * 32 + x) * 4;
             texture_data[offset] = color;
             texture_data[offset + 1] = color;
@@ -168,7 +171,11 @@ fn setup_scene(
             Restitution::ZERO.with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
             CollisionLayers::new(
                 [GamePhysicsLayer::Map],
-                [GamePhysicsLayer::Map, GamePhysicsLayer::Car, GamePhysicsLayer::Wheel],
+                [
+                    GamePhysicsLayer::Map,
+                    GamePhysicsLayer::Car,
+                    GamePhysicsLayer::Wheel,
+                ],
             ),
         ));
     }
@@ -176,7 +183,7 @@ fn setup_scene(
     // 2. Spawn camera with AmbientLight component
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(-30.0, 15.0, -30.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(-4.0, 3.0, -4.0).looking_at(Vec3::ZERO, Vec3::Y),
         AmbientLight {
             color: Color::srgb(0.8, 0.85, 1.0),
             brightness: 1000.0,
@@ -206,17 +213,15 @@ fn setup_scene(
 //     }
 // }
 
-
-
 const SUSPENSION_MIN: f32 = 0.1;
 const SUSPENSION_MAX: f32 = 0.5;
 const SUSPENSION_REST: f32 = 0.3;
-const SUSPENSION_STIFFNESS: f32 = 40.0;
+const SUSPENSION_STIFFNESS: f32 = 400.0;
 const SUSPENSION_DAMPING: f32 = 2.0;
 
-const CAR_MASS: f32 = 1400.0;
+const CAR_MASS: f32 = 700.0;
 const WHEEL_MASS: f32 = 150.0;
-const HUB_MASS: f32 = 1.0;
+const HUB_MASS: f32 = 10.0;
 
 const CAR_HALF_WIDTH: f32 = 0.9;
 const CAR_HALF_LENGTH: f32 = 2.2;
@@ -226,11 +231,8 @@ const WHEEL_RADIUS: f32 = 0.35;
 const WHEEL_WIDTH: f32 = 0.25;
 
 const MAX_STEER_ANGLE: f32 = 0.5;
-const MAX_WHEEL_SPEED: f32 = 30.0;
-const MAX_WHEEL_TORQUE: f32 = 5000.0;
-
-const STEER_MOTOR_STIFFNESS: f32 = 10.0;
-const STEER_MOTOR_DAMPING: f32 = 2.0;
+const MAX_WHEEL_SPEED: f32 = 50.0;
+const MAX_WHEEL_TORQUE: f32 = 500000.0;
 
 const WHEEL_MOTOR_STIFFNESS: f32 = 0.0;
 const WHEEL_MOTOR_DAMPING: f32 = 1.0;
@@ -260,47 +262,88 @@ fn spawn_funny_car(
     let car_pos = Vec3::new(0.0, 4.0, 0.0);
 
     let car_body_mass = CAR_MASS;
-    let car_body_volume = (CAR_HALF_WIDTH * 2.0) * (CAR_HALF_HEIGHT * 2.0) * (CAR_HALF_LENGTH * 2.0);
-    
-    let car_body = commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(CAR_HALF_WIDTH * 2.0, CAR_HALF_HEIGHT * 2.0, CAR_HALF_LENGTH * 2.0))),
-        MeshMaterial3d(materials.add(Color::srgb(0.2, 0.3, 0.8))),
-        Transform::from_translation(car_pos).with_rotation(car_rot),
-        RigidBody::Dynamic,
-        MassPropertiesBundle::from_shape(
-            &Cuboid::new(CAR_HALF_WIDTH * 2.0, CAR_HALF_HEIGHT * 2.0, CAR_HALF_LENGTH * 2.0),
-            car_body_mass / car_body_volume,
-        ),
-        avian3d::prelude::Collider::cuboid(CAR_HALF_WIDTH * 2.0, CAR_HALF_HEIGHT * 2.0, CAR_HALF_LENGTH * 2.0),
-        CollisionLayers::new(
-            [GamePhysicsLayer::Car],
-            [GamePhysicsLayer::Map, GamePhysicsLayer::Car],
-        ),
-        SleepingDisabled,
-    )).id();
+    let car_body_volume =
+        (CAR_HALF_WIDTH * 2.0) * (CAR_HALF_HEIGHT * 2.0) * (CAR_HALF_LENGTH * 2.0);
+
+    let car_body = commands
+        .spawn((
+            Mesh3d(meshes.add(Cuboid::new(
+                CAR_HALF_WIDTH * 2.0,
+                CAR_HALF_HEIGHT * 2.0,
+                CAR_HALF_LENGTH * 2.0,
+            ))),
+            MeshMaterial3d(materials.add(Color::srgb(0.2, 0.3, 0.8))),
+            Transform::from_translation(car_pos).with_rotation(car_rot),
+            RigidBody::Dynamic,
+            MassPropertiesBundle::from_shape(
+                &Cuboid::new(
+                    CAR_HALF_WIDTH * 2.0,
+                    CAR_HALF_HEIGHT * 2.0,
+                    CAR_HALF_LENGTH * 2.0,
+                ),
+                car_body_mass / car_body_volume,
+            ),
+            avian3d::prelude::Collider::cuboid(
+                CAR_HALF_WIDTH * 2.0,
+                CAR_HALF_HEIGHT * 2.0,
+                CAR_HALF_LENGTH * 2.0,
+            ),
+            CollisionLayers::new(
+                [GamePhysicsLayer::Car],
+                [GamePhysicsLayer::Map, GamePhysicsLayer::Car],
+            ),
+            SleepingDisabled,
+        ))
+        .id();
 
     let wheel_offsets_and_steer = [
         // Front (steers normal)
-        (Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, CAR_HALF_LENGTH - 0.3), true, false), // Left
-        (Vec3::new(CAR_HALF_WIDTH + 0.1,  -CAR_HALF_HEIGHT, CAR_HALF_LENGTH - 0.3), true, false), // Right
+        (
+            Vec3::new(-CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, CAR_HALF_LENGTH),
+            true,
+            false,
+        ), // Left
+        (
+            Vec3::new(CAR_HALF_WIDTH + 0.1, -CAR_HALF_HEIGHT, CAR_HALF_LENGTH),
+            true,
+            false,
+        ), // Right
         // Middle (no steer)
-        (Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, 0.0), false, false), // Left
-        (Vec3::new(CAR_HALF_WIDTH + 0.1,  -CAR_HALF_HEIGHT, 0.0), false, false), // Right
+        (
+            Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, 0.0),
+            false,
+            false,
+        ), // Left
+        (
+            Vec3::new(CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, 0.0),
+            false,
+            false,
+        ), // Right
         // Back (steers inverted)
-        (Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH - 0.3)), false, true), // Left
-        (Vec3::new(CAR_HALF_WIDTH + 0.1,  -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH - 0.3)), false, true), // Right
+        (
+            Vec3::new(-CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH)),
+            false,
+            true,
+        ), // Left
+        (
+            Vec3::new(CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH)),
+            false,
+            true,
+        ), // Right
     ];
 
     for (offset, is_front, is_rear) in wheel_offsets_and_steer {
         let world_offset = car_rot * offset;
         let hub_pos = car_pos + world_offset;
 
-        let suspension_hub = commands.spawn((
-            Transform::from_translation(hub_pos).with_rotation(car_rot),
-            RigidBody::Dynamic,
-            MassPropertiesBundle::from_shape(&Cuboid::from_length(0.1), HUB_MASS / 0.001),
-            SleepingDisabled,
-        )).id();
+        let suspension_hub = commands
+            .spawn((
+                Transform::from_translation(hub_pos).with_rotation(car_rot),
+                RigidBody::Dynamic,
+                MassPropertiesBundle::from_shape(&Cuboid::from_length(0.1), HUB_MASS / 0.001),
+                SleepingDisabled,
+            ))
+            .id();
 
         commands.spawn((
             PrismaticJoint::new(car_body, suspension_hub)
@@ -315,6 +358,7 @@ fn spawn_funny_car(
                     .with_target_position(SUSPENSION_REST)
                     .with_max_force(Scalar::MAX),
                 ),
+                
             SuspensionJoint,
         ));
 
@@ -322,28 +366,27 @@ fn spawn_funny_car(
             DistanceJoint::new(car_body, suspension_hub)
                 .with_local_anchor1(Vector::new(offset.x, offset.y, offset.z))
                 .with_limits(SUSPENSION_MIN, SUSPENSION_MAX)
-                .with_compliance(1.0 / 10000.0), // very stiff
         );
 
-        let steering_hub = commands.spawn((
-            Transform::from_translation(hub_pos).with_rotation(car_rot),
-            RigidBody::Dynamic,
-            MassPropertiesBundle::from_shape(&Cuboid::from_length(0.1), HUB_MASS / 0.001),
-            SleepingDisabled,
-        )).id();
 
+        // Steering hub: same Z rotation as wheel so revolute joint axes align.
+        let wheel_rot = car_rot * Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+        let steering_hub = commands
+            .spawn((
+                Transform::from_translation(hub_pos).with_rotation(wheel_rot),
+                RigidBody::Dynamic,
+                MassPropertiesBundle::from_shape(&Cuboid::from_length(0.1), HUB_MASS / 0.001),
+                SleepingDisabled,
+            ))
+            .id();
+
+        // FixedJoint for steering: we change frame2.basis at runtime to steer.
+        // The initial basis on body2 accounts for the Z rotation offset between
+        // suspension_hub (car_rot) and steering_hub (car_rot * rot_z(PI/2)).
+        let initial_steer_basis = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
         let mut steering_joint = commands.spawn(
-            RevoluteJoint::new(suspension_hub, steering_hub)
-                .with_hinge_axis(Vector::Y) // rotate around vertical = steering
-                .with_angle_limits(-MAX_STEER_ANGLE, MAX_STEER_ANGLE)
-                .with_motor(
-                    AngularMotor::new(MotorModel::SpringDamper {
-                        frequency: STEER_MOTOR_STIFFNESS,
-                        damping_ratio: STEER_MOTOR_DAMPING,
-                    })
-                    .with_target_position(0.0)
-                    .with_max_torque(Scalar::MAX),
-                )
+            FixedJoint::new(suspension_hub, steering_hub)
+                .with_local_basis2(initial_steer_basis),
         );
 
         if is_front {
@@ -354,32 +397,29 @@ fn spawn_funny_car(
             steering_joint.insert(NoSteering);
         }
 
+        // Wheel: standalone entity, no parenting. Same rotation as steering_hub.
         let wheel_volume = std::f32::consts::PI * WHEEL_RADIUS * WHEEL_RADIUS * WHEEL_WIDTH;
-        let wheel_mesh = meshes.add(Cylinder::new(WHEEL_RADIUS, WHEEL_WIDTH));
-        let wheel_material = materials.add(Color::srgb(0.15, 0.15, 0.15));
-        // Wheel entity has SAME rotation as hub so the revolute joint doesn't fight it.
-        // The visual mesh is a child with a local rotation to lay the cylinder on its side.
-        let wheel = commands.spawn((
-            Transform::from_translation(hub_pos).with_rotation(car_rot),
-            RigidBody::Dynamic,
-            MassPropertiesBundle::from_shape(&Cylinder::new(WHEEL_RADIUS, WHEEL_WIDTH), WHEEL_MASS / wheel_volume),
-            Collider::cylinder(WHEEL_RADIUS, WHEEL_WIDTH),
-            CollisionLayers::new(
-                [GamePhysicsLayer::Wheel],
-                [GamePhysicsLayer::Map],
-            ),
-            SleepingDisabled,
-        )).with_children(|parent| {
-            parent.spawn((
-                Mesh3d(wheel_mesh),
-                MeshMaterial3d(wheel_material),
-                Transform::from_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
-            ));
-        }).id();
+        let wheel = commands
+            .spawn((
+                Mesh3d(meshes.add(Cylinder::new(WHEEL_RADIUS, WHEEL_WIDTH))),
+                MeshMaterial3d(materials.add(Color::srgb(0.15, 0.15, 0.15))),
+                Transform::from_translation(hub_pos).with_rotation(wheel_rot),
+                RigidBody::Dynamic,
+                MassPropertiesBundle::from_shape(
+                    &Cylinder::new(WHEEL_RADIUS, WHEEL_WIDTH),
+                    WHEEL_MASS / wheel_volume,
+                ),
+                Collider::cylinder(WHEEL_RADIUS, WHEEL_WIDTH),
+                CollisionLayers::new([GamePhysicsLayer::Wheel], [GamePhysicsLayer::Map]),
+                SleepingDisabled,
+            ))
+            .id();
 
+        // Wheel spin: revolute joint around Y (cylinder's natural axis).
+        // Both steering_hub and wheel share the same rotation, so Y aligns.
         commands.spawn((
             RevoluteJoint::new(steering_hub, wheel)
-                .with_hinge_axis(Vector::X) // Spin around lateral axis
+                .with_hinge_axis(Vector::Y)
                 .with_motor(AngularMotor {
                     target_velocity: 0.0,
                     max_torque: MAX_WHEEL_TORQUE,
@@ -394,23 +434,52 @@ fn spawn_funny_car(
     }
 }
 
-
 fn apply_physics_for_funny_controls(
     controls: Res<FunnyCarControls>,
-    mut front_steer: Query<&mut RevoluteJoint, (With<FrontSteering>, Without<RearSteering>, Without<NoSteering>, Without<WheelMotorJoint>)>,
-    mut rear_steer: Query<&mut RevoluteJoint, (With<RearSteering>, Without<FrontSteering>, Without<NoSteering>, Without<WheelMotorJoint>)>,
-    mut no_steer: Query<&mut RevoluteJoint, (With<NoSteering>, Without<FrontSteering>, Without<RearSteering>, Without<WheelMotorJoint>)>,
-    mut wheels: Query<&mut RevoluteJoint, (With<WheelMotorJoint>, Without<FrontSteering>, Without<RearSteering>, Without<NoSteering>)>,
+    mut front_steer: Query<
+        &mut FixedJoint,
+        (
+            With<FrontSteering>,
+            Without<RearSteering>,
+            Without<NoSteering>,
+        ),
+    >,
+    mut rear_steer: Query<
+        &mut FixedJoint,
+        (
+            With<RearSteering>,
+            Without<FrontSteering>,
+            Without<NoSteering>,
+        ),
+    >,
+    mut no_steer: Query<
+        &mut FixedJoint,
+        (
+            With<NoSteering>,
+            Without<FrontSteering>,
+            Without<RearSteering>,
+        ),
+    >,
+    mut wheels: Query<&mut RevoluteJoint, With<WheelMotorJoint>>,
 ) {
+    // The base Z rotation that aligns suspension_hub frame with the steering_hub frame.
+    let base_rot = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+
+    // Front wheels: steer normally
     for mut joint in &mut front_steer {
-        joint.motor.target_position = controls.steer * MAX_STEER_ANGLE;
+        let steer_rot = Quat::from_rotation_y(controls.steer * MAX_STEER_ANGLE);
+        joint.frame2.basis = JointBasis::Local(base_rot * steer_rot);
     }
+    // Rear wheels: steer inverted (forklift)
     for mut joint in &mut rear_steer {
-        joint.motor.target_position = -controls.steer * MAX_STEER_ANGLE;
+        let steer_rot = Quat::from_rotation_y(-controls.steer * MAX_STEER_ANGLE);
+        joint.frame2.basis = JointBasis::Local(base_rot * steer_rot);
     }
+    // Middle wheels: no steer, keep base rotation
     for mut joint in &mut no_steer {
-        joint.motor.target_position = 0.0;
+        joint.frame2.basis = JointBasis::Local(base_rot);
     }
+    // All wheels: set drive speed (AWD)
     for mut joint in &mut wheels {
         joint.motor.target_velocity = controls.accelerate * MAX_WHEEL_SPEED;
     }
