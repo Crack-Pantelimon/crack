@@ -1,16 +1,18 @@
 use crate::plugins::{
     cars_driving::{
         car_info::{get_car_asset, get_random_car_type},
-        driving_plugin::{CarDriveState, GamePhysicsLayer, Wheel, SuspensionJoint, SteeringJoint, AxleJoint},
+        driving_plugin::{
+            AxleJoint, CarDriveState, GamePhysicsLayer, SuspensionJoint, Wheel, Strut,
+        },
     },
     states::GameControlState,
 };
+use avian3d::prelude::{
+    AngularMotor, CoefficientCombine, CollisionLayers, Friction, LinearMotor, Mass,
+    MotorModel, PrismaticJoint, Restitution, RevoluteJoint, RigidBody, SleepingDisabled, SweptCcd,
+};
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
-use avian3d::prelude::{
-    RigidBody, Mass, CollisionLayers, SweptCcd, SleepingDisabled, PrismaticJoint, RevoluteJoint,
-    AngularMotor, LinearMotor, MotorModel, Friction, CoefficientCombine, Restitution
-};
 
 pub fn handle_click_raycast_spawn_car(
     mut commands: Commands,
@@ -66,6 +68,7 @@ pub struct SpawnCarRequestEvent {
 #[derive(Component)]
 pub struct Car {
     pub _car_type: String,
+    pub physics_children: Vec<Entity>,
 }
 
 pub fn spawn_car_request_event_observer(
@@ -88,7 +91,13 @@ pub fn spawn_car_request_event_observer(
     let ray_origin = Vec3::new(pos.x, start_y, pos.z);
     let filter = avian3d::prelude::SpatialQueryFilter::default();
 
-    if let Some(hit) = spatial_query.cast_ray(ray_origin, bevy::prelude::Dir3::NEG_Y, 1000.0, true, &filter) {
+    if let Some(hit) = spatial_query.cast_ray(
+        ray_origin,
+        bevy::prelude::Dir3::NEG_Y,
+        1000.0,
+        true,
+        &filter,
+    ) {
         let ground_y = start_y - hit.distance;
         pos.y = ground_y + 9.0;
     } else {
@@ -97,30 +106,29 @@ pub fn spawn_car_request_event_observer(
 
     let handle = get_car_asset(&spawn_car_event.car_type, &asset_server);
 
-    let car_entity = commands.spawn((
-        WorldAssetRoot(handle.clone()),
-        Transform::from_translation(pos),
-        Car {
-            _car_type: spawn_car_event.car_type.clone(),
-        },
-        RigidBody::Dynamic,
-        avian3d::prelude::ColliderConstructorHierarchy::new(
-            avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
-        )
-        .with_default_layers(CollisionLayers::new(
-            [GamePhysicsLayer::Car],
-            [GamePhysicsLayer::Map],
-        )),
-        Restitution::ZERO
-            .with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
-        Mass(1200.0),
-        CollisionLayers::new(
-            [GamePhysicsLayer::Car],
-            [GamePhysicsLayer::Map],
-        ),
-        SweptCcd::default(),
-        CarDriveState::default(),
-    )).id();
+    let car_entity = commands
+        .spawn((
+            
+            WorldAssetRoot(handle.clone()),
+            Transform::from_translation(pos),
+            RigidBody::Dynamic,
+            avian3d::prelude::ColliderConstructorHierarchy::new(
+                avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
+            )
+            .with_default_layers(CollisionLayers::new(
+                [GamePhysicsLayer::Car],
+                [GamePhysicsLayer::Map],
+            )),
+            Restitution::ZERO.with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
+            Mass(1200.0),
+            CollisionLayers::new([GamePhysicsLayer::Car], [GamePhysicsLayer::Map]),
+            SweptCcd::default(),
+            CarDriveState {
+                spawn_position: Some(pos),
+                ..default()
+            },
+        ))
+        .id();
 
     // Wheel dimensions
     let wheel_radius = 0.35f32;
@@ -139,136 +147,117 @@ pub fn spawn_car_request_event_observer(
 
     // Y-coordinate attach point is 0.3 relative to car center
     let wheels_offsets = [
-        (Vec3::new(-half_width, 0.3, -half_length), true, true),   // FL
-        (Vec3::new(half_width, 0.3, -half_length), true, false),  // FR
-        (Vec3::new(-half_width, 0.3, half_length), false, true),  // RL
+        (Vec3::new(-half_width, 0.3, -half_length), true, true), // FL
+        (Vec3::new(half_width, 0.3, -half_length), true, false), // FR
+        (Vec3::new(-half_width, 0.3, half_length), false, true), // RL
         (Vec3::new(half_width, 0.3, half_length), false, false), // RR
     ];
+
+    let mut physics_children = Vec::new();
 
     for (offset, is_front, is_left) in wheels_offsets {
         let suspension_len = 0.3f32; // base rest length
 
-        // 1. Spawn Strut (pure kinematic connector for vertical motion)
-        let strut_entity = commands.spawn((
-            Transform::from_translation(pos + offset),
-            RigidBody::Dynamic,
-            Mass(1.0),
-            SleepingDisabled,
-        )).id();
-        commands.entity(car_entity).add_child(strut_entity);
-
-        // 2. Suspension joint (Chassis <-> Strut)
-        // Spring pushing chassis up by pushing strut down (along NEG_Y).
-        let susp_joint_entity = commands.spawn((
-            PrismaticJoint::new(car_entity, strut_entity)
-                .with_local_anchor1(offset)
-                .with_local_anchor2(Vec3::ZERO)
-                .with_slider_axis(Vec3::NEG_Y)
-                .with_limits(0.0, suspension_len)
-                .with_motor(
-                    LinearMotor::new(MotorModel::SpringDamper {
-                        frequency: 4.0,
-                        damping_ratio: 0.5,
-                    })
-                    .with_target_position(suspension_len)
-                    .with_max_force(10000.0),
-                ),
-            SuspensionJoint {
-                car_entity,
-                is_front,
-                is_left,
-            },
-        )).id();
-        commands.entity(car_entity).add_child(susp_joint_entity);
-
-        // 3. For Front wheels, we add a steering knuckle. For Rear wheels, the parent is the Strut.
-        let wheel_parent_entity = if is_front {
-            // Spawn Knuckle (pure dynamic connector for steering rotation)
-            let knuckle_entity = commands.spawn((
-                Transform::from_translation(pos + offset),
+        // 1. Spawn Strut (lightweight invisible intermediary — decouples wheel angular freedom from chassis)
+        // Spawned as root-level entity using its initial global position
+        let strut_pos = pos + offset - Vec3::Y * suspension_len;
+        let strut_entity = commands
+            .spawn((
+                Transform::from_translation(strut_pos),
                 RigidBody::Dynamic,
                 Mass(1.0),
                 SleepingDisabled,
-            )).id();
-            commands.entity(car_entity).add_child(knuckle_entity);
+                Strut { is_front, is_left },
+            ))
+            .id();
+        physics_children.push(strut_entity);
 
-            // Steering joint (Strut <-> Knuckle)
-            let steer_joint_entity = commands.spawn((
-                RevoluteJoint::new(strut_entity, knuckle_entity)
-                    .with_local_anchor1(Vec3::ZERO)
+        // 2. Suspension joint (Chassis <-> Strut)
+        // PrismaticJoint constrains strut to slide vertically relative to chassis.
+        // Spawned as root-level joint entity.
+        let susp_joint_entity = commands
+            .spawn((
+                PrismaticJoint::new(car_entity, strut_entity)
+                    .with_local_anchor1(offset)
                     .with_local_anchor2(Vec3::ZERO)
-                    .with_hinge_axis(Vec3::Y)
-                    .with_angle_limits(-30.0f32.to_radians(), 30.0f32.to_radians())
+                    .with_slider_axis(Vec3::NEG_Y)
+                    .with_limits(0.0, suspension_len)
                     .with_motor(
-                        AngularMotor::new(MotorModel::SpringDamper {
-                            frequency: 15.0,
-                            damping_ratio: 1.0,
+                        LinearMotor::new(MotorModel::SpringDamper {
+                            frequency: 6.0,
+                            damping_ratio: 0.6,
                         })
-                        .with_target_position(0.0)
-                        .with_max_torque(5000.0),
+                        .with_target_position(suspension_len)
+                        .with_max_force(200000.0),
                     ),
-                SteeringJoint {
+                Mass(1.0),
+                SuspensionJoint {
                     car_entity,
+                    is_front,
                     is_left,
                 },
-            )).id();
-            commands.entity(car_entity).add_child(steer_joint_entity);
+            ))
+            .id();
+        physics_children.push(susp_joint_entity);
 
-            knuckle_entity
-        } else {
-            strut_entity
-        };
+        // 3. Spawn Wheel entity (dynamic rigid body with collider on child)
+        // Spawned as root-level entity using its initial global position
+        let wheel_entity = commands
+            .spawn((
+                Transform::from_translation(strut_pos),
+                RigidBody::Dynamic,
+                Mass(120.0),
+                SleepingDisabled,
+                Wheel { is_front, is_left },
+            ))
+            // Child has the collider + visual mesh + physics material params
+            .with_child((
+                Mesh3d(wheel_mesh.clone()),
+                MeshMaterial3d(wheel_material.clone()),
+                avian3d::prelude::Collider::cylinder(wheel_radius, wheel_width),
+                CollisionLayers::new([GamePhysicsLayer::Wheel], [GamePhysicsLayer::Map]),
+                Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
+                Friction::new(0.8).with_combine_rule(CoefficientCombine::Max),
+                Mass(120.0),
+                SweptCcd::default(),
+                // Rotate 90 degrees around Z so cylinder rolls along local X axis
+                Transform::from_rotation(Quat::from_rotation_z(90.0f32.to_radians())),
+            ))
+            .id();
+        physics_children.push(wheel_entity);
 
-        // 4. Spawn Wheel entity (cylinder collider, black visual mesh)
-        // Position wheel at the bottom of the suspension (offset - NEG_Y * suspension_len)
-        let wheel_pos = pos + offset - Vec3::Y * suspension_len;
-
-        let wheel_entity = commands.spawn((
-            Transform::from_translation(wheel_pos),
-            RigidBody::Dynamic,
-            Mass(120.0),
-            CollisionLayers::new(
-                [GamePhysicsLayer::Wheel],
-                [GamePhysicsLayer::Map],
-            ),
-            Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
-            Friction::new(0.8).with_combine_rule(CoefficientCombine::Max),
-            SweptCcd::default(),
-            SleepingDisabled,
-            Wheel { is_front, is_left },
-        ))
-        .with_child((
-            Mesh3d(wheel_mesh.clone()),
-            MeshMaterial3d(wheel_material.clone()),
-            avian3d::prelude::Collider::cylinder(wheel_radius, wheel_width),
-            // Rotate visual and collider 90 degrees around Z so it rolls along local Z axis
-            Transform::from_rotation(Quat::from_rotation_z(90.0f32.to_radians())),
-        ))
-        .id();
-        commands.entity(car_entity).add_child(wheel_entity);
-
-        // 5. Axle/Drive joint (Knuckle/Strut <-> Wheel)
-        let axle_joint_entity = commands.spawn((
-            RevoluteJoint::new(wheel_parent_entity, wheel_entity)
-                .with_local_anchor1(Vec3::ZERO)
-                .with_local_anchor2(Vec3::ZERO)
-                .with_hinge_axis(Vec3::X)
-                .with_motor(
-                    AngularMotor::new(MotorModel::AccelerationBased {
-                        stiffness: 0.0,
-                        damping: 0.3,
-                    })
-                    .with_target_velocity(0.0)
-                    .with_max_torque(500.0),
-                ),
-            AxleJoint {
-                car_entity,
-                is_front,
-                is_left,
-            },
-        )).id();
-        commands.entity(car_entity).add_child(axle_joint_entity);
+        // 4. Axle/Drive joint (Strut <-> Wheel) for spinning
+        // RevoluteJoint allows the wheel to spin on its axle relative to the strut.
+        // Spawned as root-level joint entity.
+        let axle_joint_entity = commands
+            .spawn((
+                RevoluteJoint::new(strut_entity, wheel_entity)
+                    .with_local_anchor1(Vec3::ZERO)
+                    .with_local_anchor2(Vec3::ZERO)
+                    .with_hinge_axis(Vec3::X)
+                    .with_motor(
+                        AngularMotor::new(MotorModel::AccelerationBased {
+                            stiffness: 0.0,
+                            damping: 0.3,
+                        })
+                        .with_target_velocity(0.0)
+                        .with_max_torque(500.0),
+                    ),
+                Mass(1.0),
+                AxleJoint {
+                    car_entity,
+                    is_front,
+                    is_left,
+                },
+            ))
+            .id();
+        physics_children.push(axle_joint_entity);
     }
+
+    commands.entity(car_entity).insert(Car {
+        _car_type: spawn_car_event.car_type.clone(),
+        physics_children,
+    });
 
     next_state.set(GameControlState::DrivingCar);
 }

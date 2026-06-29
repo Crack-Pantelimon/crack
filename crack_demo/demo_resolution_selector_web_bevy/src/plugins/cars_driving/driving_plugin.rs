@@ -1,11 +1,11 @@
 use bevy::prelude::*;
-use bevy::ecs::relationship::Relationship;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use avian3d::prelude::{
-    SpatialQuery, SpatialQueryFilter, PhysicsLayer, LinearVelocity, AngularVelocity,
+    PhysicsLayer, LinearVelocity, AngularVelocity,
     PrismaticJoint, RevoluteJoint, MotorModel, DistanceLimit
 };
 use crate::plugins::cars_driving::click_spawn_select_controls::Car;
+
 
 #[derive(PhysicsLayer, Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GamePhysicsLayer {
@@ -22,17 +22,19 @@ pub struct Wheel {
 }
 
 #[derive(Component)]
+pub struct Strut {
+    pub is_front: bool,
+    pub is_left: bool,
+}
+
+#[derive(Component)]
 pub struct SuspensionJoint {
     pub car_entity: Entity,
     pub is_front: bool,
     pub is_left: bool,
 }
 
-#[derive(Component)]
-pub struct SteeringJoint {
-    pub car_entity: Entity,
-    pub is_left: bool,
-}
+
 
 #[derive(Component)]
 pub struct AxleJoint {
@@ -63,17 +65,9 @@ pub struct CarDriveState {
     pub suspension_height_front: f32,
     pub suspension_height_back: f32,
 
-    // Wheel spin angles
-    pub wheel_spin_fl: f32,
-    pub wheel_spin_fr: f32,
-    pub wheel_spin_rl: f32,
-    pub wheel_spin_rr: f32,
-
-    // Current visual suspension lengths (to place wheels correctly)
-    pub visual_len_fl: f32,
-    pub visual_len_fr: f32,
-    pub visual_len_rl: f32,
-    pub visual_len_rr: f32,
+    
+    // Spawn position for reset functionality
+    pub spawn_position: Option<Vec3>,
 }
 
 impl Default for CarDriveState {
@@ -84,18 +78,11 @@ impl Default for CarDriveState {
             avg_accelerate: 0.0,
             avg_brake: 0.0,
             avg_steer: 0.0,
-            suspension_stiffness: 45000.0,
+            suspension_stiffness: 80000.0,
             engine_hp: 150.0,
             suspension_height_front: 0.3,
             suspension_height_back: 0.3,
-            wheel_spin_fl: 0.0,
-            wheel_spin_fr: 0.0,
-            wheel_spin_rl: 0.0,
-            wheel_spin_rr: 0.0,
-            visual_len_fl: 0.3,
-            visual_len_fr: 0.3,
-            visual_len_rl: 0.3,
-            visual_len_rr: 0.3,
+            spawn_position: None,
         }
     }
 }
@@ -114,6 +101,7 @@ impl<S: States> Plugin for DrivingPlugin<S> {
                 draw_car_gizmos,
                 cap_car_velocities,
                 update_vehicle_physics,
+                steer_front_wheels,
             ).run_if(in_state(self.state.clone())),
         );
         app.add_systems(
@@ -209,29 +197,29 @@ pub fn keybinds_control_car(
             &mut Transform,
             &mut LinearVelocity,
             &mut AngularVelocity,
+            &CarDriveState,
+            &Car,
         ),
         With<Car>,
     >,
-    spatial_query: SpatialQuery,
+    mut q_struts: Query<(&mut Transform, &mut LinearVelocity, &mut AngularVelocity, &Strut), (Without<Car>, Without<Wheel>)>,
+    mut q_wheels: Query<(&mut Transform, &mut LinearVelocity, &mut AngularVelocity, &Wheel), (Without<Car>, Without<Strut>)>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<crate::plugins::states::GameControlState>>,
-    q_children: Query<(Entity, &ChildOf)>,
 ) {
     // If escape or F is pressed, exit car
     if keyboard.just_pressed(KeyCode::Escape) || keyboard.just_pressed(KeyCode::KeyF) {
         next_state.set(crate::plugins::states::GameControlState::MapFreecam);
-        if let Ok((car_entity, _, _, _)) = q_car.single() {
-            for (child_entity, parent) in q_children.iter() {
-                if parent.get() == car_entity {
-                    commands.entity(child_entity).despawn();
-                }
+        if let Ok((car_entity, _, _, _, _, car)) = q_car.single() {
+            for &child_entity in &car.physics_children {
+                commands.entity(child_entity).despawn();
             }
             commands.entity(car_entity).despawn();
         }
         return;
     }
 
-    let Ok((car_entity, mut transform, mut lin_vel, mut ang_vel)) = q_car.single_mut() else {
+    let Ok((car_entity, mut transform, mut lin_vel, mut ang_vel, drive_state, _car)) = q_car.single_mut() else {
         return;
     };
 
@@ -240,16 +228,39 @@ pub fn keybinds_control_car(
         lin_vel.0 = Vec3::ZERO;
         ang_vel.0 = Vec3::ZERO;
         transform.rotation = Quat::IDENTITY;
+        if let Some(spawn_pos) = drive_state.spawn_position {
+            transform.translation = spawn_pos;
+            
+            // Define geometry variables
+            let half_width = 0.9f32;
+            let half_length = 1.8f32;
+            let suspension_len = 0.3f32;
 
-        let start_y = transform.translation.y + 100.0;
-        let ray_origin = Vec3::new(transform.translation.x, start_y, transform.translation.z);
-        let filter = SpatialQueryFilter::from_excluded_entities([car_entity]);
+            // Reset all struts
+            for (mut s_transform, mut s_lin_vel, mut s_ang_vel, strut) in q_struts.iter_mut() {
+                let x = if strut.is_left { -half_width } else { half_width };
+                let y = 0.3;
+                let z = if strut.is_front { -half_length } else { half_length };
+                let offset = Vec3::new(x, y, z);
+                
+                s_transform.translation = spawn_pos + offset - Vec3::Y * suspension_len;
+                s_transform.rotation = Quat::IDENTITY;
+                s_lin_vel.0 = Vec3::ZERO;
+                s_ang_vel.0 = Vec3::ZERO;
+            }
 
-        if let Some(hit) = spatial_query.cast_ray(ray_origin, Dir3::NEG_Y, 1000.0, true, &filter) {
-            let ground_y = start_y - hit.distance;
-            transform.translation.y = ground_y + 9.0;
-        } else {
-            transform.translation.y += 9.0;
+            // Reset all wheels
+            for (mut w_transform, mut w_lin_vel, mut w_ang_vel, wheel) in q_wheels.iter_mut() {
+                let x = if wheel.is_left { -half_width } else { half_width };
+                let y = 0.3;
+                let z = if wheel.is_front { -half_length } else { half_length };
+                let offset = Vec3::new(x, y, z);
+                
+                w_transform.translation = spawn_pos + offset - Vec3::Y * suspension_len;
+                w_transform.rotation = Quat::IDENTITY;
+                w_lin_vel.0 = Vec3::ZERO;
+                w_ang_vel.0 = Vec3::ZERO;
+            }
         }
     }
 
@@ -363,7 +374,6 @@ pub fn car_drive_observer(
 pub fn update_vehicle_physics(
     q_car: Query<(Entity, &CarDriveState), With<Car>>,
     mut q_suspension: Query<(&mut PrismaticJoint, &SuspensionJoint)>,
-    mut q_steering: Query<(&mut RevoluteJoint, &SteeringJoint), Without<AxleJoint>>,
     mut q_axle: Query<(&mut RevoluteJoint, &AxleJoint)>,
 ) {
     for (car_entity, drive_state) in q_car.iter() {
@@ -392,22 +402,13 @@ pub fn update_vehicle_physics(
             }
         }
 
-        // 2. Update steering joints (front wheels only)
-        for (mut joint, steer) in q_steering.iter_mut() {
-            if steer.car_entity == car_entity {
-                // target steering angle
-                // positive steer_integrated rotates counter-clockwise (turns left), negative rotates clockwise (turns right).
-                // To turn right, target_position must be negative.
-                let target_angle = -drive_state.current_steer_integrated * 30.0f32.to_radians();
-                joint.motor.target_position = target_angle;
-            }
-        }
-
-        // 3. Update axle joints (driving & braking)
+        // 2. Update axle joints (driving & braking)
         for (mut joint, axle) in q_axle.iter_mut() {
             if axle.car_entity == car_entity {
                 // Max angular speed: 63.5 rad/s (approx 80 km/h)
-                let max_ang_vel = 63.5;
+                // Negative because Bevy's coordinate system: +Z is backward,
+                // so forward motion requires negative angular velocity around +X axis
+                let max_ang_vel = -63.5;
                 
                 if drive_state.avg_brake > 0.0 {
                     // Apply brakes: target speed 0, high torque
@@ -422,6 +423,25 @@ pub fn update_vehicle_physics(
                     joint.motor.target_velocity = 0.0;
                     joint.motor.max_torque = 5.0; // small drag
                 }
+            }
+        }
+    }
+}
+
+/// Directly rotates front wheel transforms to achieve steering.
+/// No physics joint needed — we just set the Y-axis rotation on front wheel entities.
+pub fn steer_front_wheels(
+    q_car: Query<(Entity, &CarDriveState), With<Car>>,
+    mut q_wheels: Query<(&mut Transform, &Wheel)>,
+) {
+    for (_car_entity, drive_state) in q_car.iter() {
+        let steer_angle = drive_state.current_steer_integrated * 30.0f32.to_radians();
+        
+        for (mut transform, wheel) in q_wheels.iter_mut() {
+            if wheel.is_front {
+                // Apply steering rotation around Y axis
+                // Preserve the wheel's existing translation, only change rotation
+                transform.rotation = Quat::from_rotation_y(steer_angle);
             }
         }
     }
