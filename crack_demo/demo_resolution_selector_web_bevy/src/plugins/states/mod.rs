@@ -11,7 +11,8 @@ pub enum InitialMapLoadFinished {
 pub enum OsmDatabaseLoadFinished {
     #[default]
     Loading,
-    Finished,
+    MapFinished,
+    OsmFinished,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, States)]

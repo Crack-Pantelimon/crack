@@ -21,9 +21,10 @@ impl Plugin for GeoJsonPlugin {
             .init_resource::<GeoJsonLoaderState>()
             .init_resource::<GameLoadingStatus>()
             .init_resource::<TooltipNotificationState>()
+            .init_resource::<OsmOverlayState>()
             .add_systems(
                 EguiPrimaryContextPass,
-                (geojson_ui_system, geojson_text_labels_system),
+                (geojson_ui_system, geojson_text_labels_system, osm_overlay_ui_system),
             )
             .add_systems(
                 Update,
@@ -34,6 +35,9 @@ impl Plugin for GeoJsonPlugin {
                     geojson_gizmos_system,
                     update_geojson_loading_finished,
                     update_tooltip_timers,
+                    osm_overlay_gizmos_system,
+                    init_bus_route,
+                    move_bus_system,
                 ),
             );
         info!("done loading: GeoJsonPlugin");
@@ -407,6 +411,7 @@ fn query_point_ground_y(
 pub enum RawFeatureGeometry {
     Point((f64, f64)), // (lat, lon)
     LineString(Vec<(f64, f64)>),
+    MultiLineString(Vec<Vec<(f64, f64)>>),
     Polygon(Vec<Vec<(f64, f64)>>),
 }
 
@@ -423,6 +428,7 @@ pub struct RawGeoJsonFeature {
 pub enum FeatureGeometry {
     Point(Vec3),
     LineString(Vec<Vec3>),
+    MultiLineString(Vec<Vec<Vec3>>),
     Polygon(Vec<Vec<Vec3>>),
 }
 
@@ -495,8 +501,9 @@ fn trigger_geojson_loading(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut loading_status: ResMut<GameLoadingStatus>,
+    current_state: Res<State<OsmDatabaseLoadFinished>>,
 ) {
-    if loading_status.map_loaded && !loading_status.geojson_loading_started {
+    if current_state.get() == &OsmDatabaseLoadFinished::MapFinished && !loading_status.geojson_loading_started {
         let bbox_url = format!(
             "{}3d_data_v2/data_in/zone-bbox.txt",
             crate::config::DATA_BASE_URL
@@ -532,7 +539,7 @@ fn update_geojson_loading_finished(
     if database.parsed && !loading_status.geojson_loaded {
         loading_status.geojson_loaded = true;
         tooltip_state.geojson_loaded_timer = 3.0;
-        next_state.set(OsmDatabaseLoadFinished::Finished);
+        next_state.set(OsmDatabaseLoadFinished::OsmFinished);
         info!("GeoJSON loading is fully completed!");
     }
 }
@@ -739,6 +746,22 @@ fn parse_raw_geojson_feature(val: &serde_json::Value) -> Option<RawGeoJsonFeatur
             }
             RawFeatureGeometry::LineString(pts)
         }
+        "MultiLineString" => {
+            let arr = coords.as_array()?;
+            let mut lines = Vec::new();
+            for line_val in arr {
+                let line_arr = line_val.as_array()?;
+                let mut line = Vec::new();
+                for pt_val in line_arr {
+                    let pt_arr = pt_val.as_array()?;
+                    let lon = pt_arr.get(0)?.as_f64()?;
+                    let lat = pt_arr.get(1)?.as_f64()?;
+                    line.push((lat, lon));
+                }
+                lines.push(line);
+            }
+            RawFeatureGeometry::MultiLineString(lines)
+        }
         "Polygon" => {
             let arr = coords.as_array()?;
             let mut rings = Vec::new();
@@ -794,24 +817,54 @@ fn project_geojson_coordinates(
         for raw in raw_features {
             let geometry = match &raw.raw_geometry {
                 RawFeatureGeometry::Point((lat, lon)) => {
+                    if find_tile_for_lat_lon(*lat, *lon, &map_tree).is_none() {
+                        continue;
+                    }
                     FeatureGeometry::Point(project_point(*lat, *lon, &map_tree, &coord))
                 }
                 RawFeatureGeometry::LineString(pts) => {
-                    let projected_pts = pts
+                    let projected_pts: Vec<Vec3> = pts
                         .iter()
+                        .filter(|&&(lat, lon)| find_tile_for_lat_lon(lat, lon, &map_tree).is_some())
                         .map(|&(lat, lon)| project_point(lat, lon, &map_tree, &coord))
                         .collect();
+                    if projected_pts.len() < 2 {
+                        continue;
+                    }
                     FeatureGeometry::LineString(projected_pts)
                 }
+                RawFeatureGeometry::MultiLineString(lines) => {
+                    let mut projected_lines = Vec::new();
+                    for pts in lines {
+                        let projected_pts: Vec<Vec3> = pts
+                            .iter()
+                            .filter(|&&(lat, lon)| find_tile_for_lat_lon(lat, lon, &map_tree).is_some())
+                            .map(|&(lat, lon)| project_point(lat, lon, &map_tree, &coord))
+                            .collect();
+                        if projected_pts.len() >= 2 {
+                            projected_lines.push(projected_pts);
+                        }
+                    }
+                    if projected_lines.is_empty() {
+                        continue;
+                    }
+                    FeatureGeometry::MultiLineString(projected_lines)
+                }
                 RawFeatureGeometry::Polygon(rings) => {
-                    let projected_rings = rings
-                        .iter()
-                        .map(|ring| {
-                            ring.iter()
-                                .map(|&(lat, lon)| project_point(lat, lon, &map_tree, &coord))
-                                .collect()
-                        })
-                        .collect();
+                    let mut projected_rings = Vec::new();
+                    for ring in rings {
+                        let projected_ring: Vec<Vec3> = ring
+                            .iter()
+                            .filter(|&&(lat, lon)| find_tile_for_lat_lon(lat, lon, &map_tree).is_some())
+                            .map(|&(lat, lon)| project_point(lat, lon, &map_tree, &coord))
+                            .collect();
+                        if projected_ring.len() >= 3 {
+                            projected_rings.push(projected_ring);
+                        }
+                    }
+                    if projected_rings.is_empty() {
+                        continue;
+                    }
                     FeatureGeometry::Polygon(projected_rings)
                 }
             };
@@ -827,6 +880,21 @@ fn project_geojson_coordinates(
                         for p in pts {
                             min = min.min(*p);
                             max = max.max(*p);
+                        }
+                        (min, max)
+                    }
+                }
+                FeatureGeometry::MultiLineString(lines) => {
+                    if lines.is_empty() || lines[0].is_empty() {
+                        (Vec3::ZERO, Vec3::ZERO)
+                    } else {
+                        let mut min = lines[0][0];
+                        let mut max = lines[0][0];
+                        for line in lines {
+                            for p in line {
+                                min = min.min(*p);
+                                max = max.max(*p);
+                            }
                         }
                         (min, max)
                     }
@@ -1041,7 +1109,7 @@ fn select_and_animate(
                 .looking_at(*p, Vec3::Y)
                 .rotation;
         }
-        FeatureGeometry::LineString(_) | FeatureGeometry::Polygon(_) => {
+        FeatureGeometry::LineString(_) | FeatureGeometry::MultiLineString(_) | FeatureGeometry::Polygon(_) => {
             let center = feature.center;
             let size = feature.bbox_max - feature.bbox_min;
             let dist = size.x.max(size.z).max(10.0) * 1.5;
@@ -1118,6 +1186,14 @@ fn geojson_text_labels_system(
             for (node_idx, pt) in pts.iter().enumerate() {
                 let node_id_name = format!("Node #{}", node_idx);
                 target_points.push((*pt, node_id_name));
+            }
+        }
+        FeatureGeometry::MultiLineString(lines) => {
+            for (line_idx, pts) in lines.iter().enumerate() {
+                for (node_idx, pt) in pts.iter().enumerate() {
+                    let node_id_name = format!("L{} Node #{}", line_idx, node_idx);
+                    target_points.push((*pt, node_id_name));
+                }
             }
         }
         FeatureGeometry::Polygon(_) => {
@@ -1342,6 +1418,52 @@ fn geojson_gizmos_system(
             }
         }
 
+        FeatureGeometry::MultiLineString(lines) => {
+            for pts in lines {
+                // Project each point to ground Y
+                let mut grounded_pts = Vec::new();
+                for pt in pts {
+                    let mut gp = *pt;
+                    gp.y = query_point_ground_y(gp.x, gp.z, &map_tree, &spatial_query) + 0.1;
+                    grounded_pts.push(gp);
+                }
+
+                // Draw a little star at each node
+                for pt in &grounded_pts {
+                    draw_star_marker(&mut gizmos, *pt);
+                }
+
+                // Connect path nodes with lines and repeat at different Y levels
+                if grounded_pts.len() >= 2 {
+                    let mut min_y = f32::INFINITY;
+                    let mut max_y = -f32::INFINITY;
+                    for pt in &grounded_pts {
+                        min_y = min_y.min(pt.y);
+                        max_y = max_y.max(pt.y);
+                    }
+
+                    let steps = 10;
+                    for step in 0..=steps {
+                        let y_level = if max_y > min_y {
+                            min_y + (step as f32 / steps as f32) * (max_y - min_y)
+                        } else {
+                            min_y
+                        };
+
+                        for window in grounded_pts.windows(2) {
+                            let p1 = Vec3::new(window[0].x, y_level, window[0].z);
+                            let p2 = Vec3::new(window[1].x, y_level, window[1].z);
+                            gizmos.line(p1, p2, red);
+                        }
+
+                        if max_y <= min_y {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         FeatureGeometry::Polygon(rings) => {
             // Draw polygon stack repeated 15 times from min Y to max Y of map bbox
             let min_y = map_tree.bbox.min.y;
@@ -1420,6 +1542,325 @@ fn geojson_gizmos_system(
                         gizmos.line(ground_pts[idx], roof_pts[idx], Color::srgb(1.0, 0.5, 0.0));
                     }
                 }
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------
+// OSM Overlays Debug Settings
+// ----------------------------------------------------
+
+#[derive(Resource, Debug, Clone)]
+pub struct OsmOverlayState {
+    pub show_window: bool,
+    pub show_roads: bool,
+    pub show_bus_routes: bool,
+    pub show_businesses: bool,
+    pub show_railways: bool,
+    pub show_waterways: bool,
+    pub show_buildings: bool,
+}
+
+impl Default for OsmOverlayState {
+    fn default() -> Self {
+        Self {
+            show_window: false,
+            show_roads: false,
+            show_bus_routes: false,
+            show_businesses: false,
+            show_railways: false,
+            show_waterways: false,
+            show_buildings: false,
+        }
+    }
+}
+
+fn osm_overlay_ui_system(
+    mut contexts: EguiContexts,
+    mut osm_overlay: ResMut<OsmOverlayState>,
+) {
+    if !osm_overlay.show_window {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    let mut show_window = osm_overlay.show_window;
+    let mut show_roads = osm_overlay.show_roads;
+    let mut show_bus_routes = osm_overlay.show_bus_routes;
+    let mut show_businesses = osm_overlay.show_businesses;
+    let mut show_railways = osm_overlay.show_railways;
+    let mut show_waterways = osm_overlay.show_waterways;
+    let mut show_buildings = osm_overlay.show_buildings;
+
+    egui::Window::new("OSM Overlays")
+        .open(&mut show_window)
+        .show(ctx, |ui| {
+            ui.checkbox(&mut show_roads, "Show Roads (Streets)");
+            ui.checkbox(&mut show_bus_routes, "Show Bus Routes");
+            ui.checkbox(&mut show_businesses, "Show Businesses (Shops/Amenities/Offices/Craft)");
+            ui.checkbox(&mut show_railways, "Show Railways");
+            ui.checkbox(&mut show_waterways, "Show Waterways");
+            ui.checkbox(&mut show_buildings, "Show Buildings");
+        });
+
+    osm_overlay.show_window = show_window;
+    osm_overlay.show_roads = show_roads;
+    osm_overlay.show_bus_routes = show_bus_routes;
+    osm_overlay.show_businesses = show_businesses;
+    osm_overlay.show_railways = show_railways;
+    osm_overlay.show_waterways = show_waterways;
+    osm_overlay.show_buildings = show_buildings;
+}
+
+fn osm_overlay_gizmos_system(
+    mut gizmos: Gizmos,
+    database: Res<GeoJsonDatabase>,
+    osm_overlay: Res<OsmOverlayState>,
+    map_tree: Res<crate::plugins::map_plugin::MapTree>,
+    spatial_query: avian3d::prelude::SpatialQuery,
+) {
+    if !database.parsed {
+        return;
+    }
+
+    let road_color = Color::srgb(0.9, 0.9, 0.9);
+    let bus_route_color = Color::srgb(0.1, 0.4, 0.9);
+    let business_color = Color::srgb(0.9, 0.1, 0.6);
+    let railway_color = Color::srgb(0.5, 0.5, 0.5);
+    let waterway_color = Color::srgb(0.0, 0.3, 0.9);
+    let building_color = Color::srgb(1.0, 0.5, 0.0);
+
+    let query_y = |x: f32, z: f32| -> f32 {
+        query_point_ground_y(x, z, &map_tree, &spatial_query) + 0.2
+    };
+
+    let draw_lines = |gizmos: &mut Gizmos, pts: &[Vec3], color: Color| {
+        if pts.len() < 2 { return; }
+        let mut grounded = Vec::with_capacity(pts.len());
+        for pt in pts {
+            grounded.push(Vec3::new(pt.x, query_y(pt.x, pt.z), pt.z));
+        }
+        for window in grounded.windows(2) {
+            gizmos.line(window[0], window[1], color);
+        }
+    };
+
+    let draw_polygon = |gizmos: &mut Gizmos, rings: &[Vec<Vec3>], color: Color| {
+        for ring in rings {
+            if ring.is_empty() { continue; }
+            let mut grounded = Vec::with_capacity(ring.len());
+            for pt in ring {
+                grounded.push(Vec3::new(pt.x, query_y(pt.x, pt.z), pt.z));
+            }
+            for window in grounded.windows(2) {
+                gizmos.line(window[0], window[1], color);
+            }
+            if grounded.len() >= 3 {
+                gizmos.line(grounded[grounded.len() - 1], grounded[0], color);
+            }
+        }
+    };
+
+    if osm_overlay.show_roads {
+        if let Some(features) = database.categories.get("roads") {
+            for feature in features {
+                match &feature.geometry {
+                    FeatureGeometry::LineString(pts) => {
+                        draw_lines(&mut gizmos, pts, road_color);
+                    }
+                    FeatureGeometry::MultiLineString(lines) => {
+                        for pts in lines {
+                            draw_lines(&mut gizmos, pts, road_color);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if osm_overlay.show_bus_routes {
+        if let Some(features) = database.categories.get("routes") {
+            for feature in features {
+                let is_bus = feature.tags.get("route").map(|r| r == "bus").unwrap_or(false);
+                if !is_bus { continue; }
+
+                match &feature.geometry {
+                    FeatureGeometry::LineString(pts) => {
+                        draw_lines(&mut gizmos, pts, bus_route_color);
+                    }
+                    FeatureGeometry::MultiLineString(lines) => {
+                        for pts in lines {
+                            draw_lines(&mut gizmos, pts, bus_route_color);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if osm_overlay.show_businesses {
+        for cat in &["shops", "amenities", "offices", "craft"] {
+            if let Some(features) = database.categories.get(*cat) {
+                for feature in features {
+                    let mut pos = feature.center;
+                    pos.y = query_y(pos.x, pos.z);
+                    let sphere = Sphere::new(1.0);
+                    gizmos.primitive_3d(&sphere, Isometry3d::from_translation(pos), business_color);
+                }
+            }
+        }
+    }
+
+    if osm_overlay.show_railways {
+        if let Some(features) = database.categories.get("railways") {
+            for feature in features {
+                match &feature.geometry {
+                    FeatureGeometry::LineString(pts) => {
+                        draw_lines(&mut gizmos, pts, railway_color);
+                    }
+                    FeatureGeometry::MultiLineString(lines) => {
+                        for pts in lines {
+                            draw_lines(&mut gizmos, pts, railway_color);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if osm_overlay.show_waterways {
+        if let Some(features) = database.categories.get("waterways") {
+            for feature in features {
+                match &feature.geometry {
+                    FeatureGeometry::LineString(pts) => {
+                        draw_lines(&mut gizmos, pts, waterway_color);
+                    }
+                    FeatureGeometry::MultiLineString(lines) => {
+                        for pts in lines {
+                            draw_lines(&mut gizmos, pts, waterway_color);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if osm_overlay.show_buildings {
+        if let Some(features) = database.categories.get("buildings") {
+            for feature in features {
+                match &feature.geometry {
+                    FeatureGeometry::Polygon(rings) => {
+                        draw_polygon(&mut gizmos, rings, building_color);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------
+// Bus 335 Path Following Animation
+// ----------------------------------------------------
+
+#[derive(Component)]
+pub struct Bus335Marker;
+
+#[derive(Component)]
+pub struct MovingBus {
+    pub points: Vec<Vec3>,
+    pub current_index: usize,
+    pub speed: f32,
+}
+
+fn init_bus_route(
+    mut commands: Commands,
+    database: Res<GeoJsonDatabase>,
+    current_state: Res<State<OsmDatabaseLoadFinished>>,
+    query: Query<(Entity, &Transform), (With<Bus335Marker>, Without<MovingBus>)>,
+) {
+    if current_state.get() != &OsmDatabaseLoadFinished::OsmFinished {
+        return;
+    }
+    let Some((entity, _transform)) = query.iter().next() else {
+        return;
+    };
+
+    let mut bus_route_points = Vec::new();
+    if let Some(features) = database.categories.get("routes") {
+        for feature in features {
+            if feature.tags.get("ref").map(|s| s == "335").unwrap_or(false) {
+                match &feature.geometry {
+                    FeatureGeometry::LineString(pts) => {
+                        if pts.len() > bus_route_points.len() {
+                            bus_route_points = pts.clone();
+                        }
+                    }
+                    FeatureGeometry::MultiLineString(lines) => {
+                        for line in lines {
+                            if line.len() > bus_route_points.len() {
+                                bus_route_points = line.clone();
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if !bus_route_points.is_empty() {
+        info!("Successfully found Bus 335 route with {} points! Initializing movement.", bus_route_points.len());
+        commands.entity(entity).insert(MovingBus {
+            points: bus_route_points,
+            current_index: 0,
+            speed: 25.0,
+        });
+    } else {
+        warn!("Failed to find Bus 335 route in loaded geojson databases!");
+    }
+}
+
+fn move_bus_system(
+    time: Res<Time>,
+    mut query: Query<(&mut Transform, &mut MovingBus)>,
+    map_tree: Res<crate::plugins::map_plugin::MapTree>,
+    spatial_query: avian3d::prelude::SpatialQuery,
+) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+    for (mut transform, mut bus) in &mut query {
+        if bus.points.is_empty() {
+            continue;
+        }
+        let mut target = bus.points[bus.current_index];
+        target.y = query_point_ground_y(target.x, target.z, &map_tree, &spatial_query) + 1.4;
+
+        let diff = target - transform.translation;
+        let dist = diff.length();
+
+        let step = bus.speed * dt;
+        if dist <= step {
+            transform.translation = target;
+            bus.current_index = (bus.current_index + 1) % bus.points.len();
+        } else {
+            let direction = diff / dist;
+            transform.translation += direction * step;
+
+            if direction.length_squared() > 0.001 {
+                let look_target = transform.translation + direction;
+                let target_rotation = Transform::from_translation(transform.translation)
+                    .looking_at(look_target, Vec3::Y)
+                    .rotation;
+                transform.rotation = transform.rotation.lerp(target_rotation, 5.0 * dt);
             }
         }
     }
