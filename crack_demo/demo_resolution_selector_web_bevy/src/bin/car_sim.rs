@@ -2,7 +2,7 @@ use avian3d::math::*;
 use avian3d::prelude::{
     AngularMotor, Collider, CollisionLayers, DistanceJoint, FixedJoint, JointBasis, LinearMotor,
     MassPropertiesBundle, MotorModel, PrismaticJoint, Restitution, RevoluteJoint, RigidBody,
-    SleepingDisabled,
+    SleepingDisabled, SubstepCount, Friction,
 };
 use bevy::{
     asset::RenderAssetUsages,
@@ -53,6 +53,7 @@ fn main() {
         .add_plugins(bevy_egui::EguiPlugin::default())
         .insert_resource(UiState::with_physics_debug()) // Satisfies PhysicsPlugin's sync_physics_debug_config
         .add_plugins(PhysicsPlugin)
+        .insert_resource(SubstepCount(50))
         .add_plugins(GameStatesPlugin)
         .add_systems(Startup, setup_scene)
         // .add_systems(Update, spawn_car_first_frame)
@@ -60,10 +61,11 @@ fn main() {
         .insert_resource(FunnyCarControls::default())
         .add_systems(First, listen_for_wasd_update_controls)
         .add_systems(PreUpdate, apply_physics_for_funny_controls)
+        .add_systems(PostUpdate, camera_look_at_car)
         .run();
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Clone)]
 pub struct FunnyCarControls {
     pub accelerate: f32,
     pub steer: f32,
@@ -73,20 +75,23 @@ fn listen_for_wasd_update_controls(
     mut controls: ResMut<FunnyCarControls>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
 ) {
-    if keyboard_input.pressed(KeyCode::ArrowUp) {
+    let controls2 = controls.clone();
+    if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
         controls.accelerate = 1.0;
-    } else if keyboard_input.pressed(KeyCode::ArrowDown) {
+    } else if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
         controls.accelerate = -1.0;
     } else {
         controls.accelerate = 0.0;
     }
-    if keyboard_input.pressed(KeyCode::ArrowLeft) {
+    if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
         controls.steer = -1.0;
-    } else if keyboard_input.pressed(KeyCode::ArrowRight) {
+    } else if keyboard_input.pressed(KeyCode::ArrowRight) || keyboard_input.pressed(KeyCode::KeyD) {
         controls.steer = 1.0;
     } else {
         controls.steer = 0.0;
     }
+    controls.steer = (controls.steer + controls2.steer) / 2.0;
+    controls.accelerate = (controls.accelerate + controls2.accelerate) / 2.0;
 }
 
 fn create_grayscale_texture(gray1: u8, gray2: u8) -> Image {
@@ -169,6 +174,7 @@ fn setup_scene(
             RigidBody::Static,
             Collider::cuboid(500.0, 500.0, 500.0),
             Restitution::ZERO.with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
+            Friction::new(0.9),
             CollisionLayers::new(
                 [GamePhysicsLayer::Map],
                 [
@@ -215,27 +221,28 @@ fn setup_scene(
 
 const SUSPENSION_MIN: f32 = 0.1;
 const SUSPENSION_MAX: f32 = 0.5;
-const SUSPENSION_REST: f32 = 0.3;
-const SUSPENSION_STIFFNESS: f32 = 8.0;
+const SUSPENSION_REST: f32 = 0.4;
+const SUSPENSION_STIFFNESS: f32 = 12.0;
 const SUSPENSION_DAMPING: f32 = 0.8;
 
 const CAR_MASS: f32 = 1200.0;
 const WHEEL_MASS: f32 = 25.0;
-const HUB_MASS: f32 = 1.0;
+const HUB_MASS: f32 = 1.9;
 
 const CAR_HALF_WIDTH: f32 = 0.9;
 const CAR_HALF_LENGTH: f32 = 2.2;
 const CAR_HALF_HEIGHT: f32 = 0.6;
 
-const WHEEL_RADIUS: f32 = 0.35;
-const WHEEL_WIDTH: f32 = 0.25;
+const WHEEL_RADIUS: f32 = 0.45;
+const WHEEL_WIDTH: f32 = 0.35;
 
-const MAX_STEER_ANGLE: f32 = 0.5;
-const MAX_WHEEL_SPEED: f32 = 50.0;
-const MAX_WHEEL_TORQUE: f32 = 3000.0;
+const MAX_STEER_ANGLE: f32 = 0.35;
+const MAX_WHEEL_SPEED: f32 = 1000.0;
+const MAX_WHEEL_TORQUE: f32 = 10000.0;
 
-const WHEEL_MOTOR_STIFFNESS: f32 = 0.0;
-const WHEEL_MOTOR_DAMPING: f32 = 1.0;
+
+#[derive(Component)]
+struct CarBody;
 
 #[derive(Component)]
 struct SuspensionJoint;
@@ -292,6 +299,7 @@ fn spawn_funny_car(
                 [GamePhysicsLayer::Car],
                 [GamePhysicsLayer::Map, GamePhysicsLayer::Car],
             ),
+            CarBody,
             SleepingDisabled,
         ))
         .id();
@@ -309,26 +317,26 @@ fn spawn_funny_car(
             false,
         ), // Right
         // Middle (no steer)
-        (
-            Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, 0.0),
-            false,
-            false,
-        ), // Left
-        (
-            Vec3::new(CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, 0.0),
-            false,
-            false,
-        ), // Right
+        // (
+        //     Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, 0.0),
+        //     false,
+        //     false,
+        // ), // Left
+        // (
+        //     Vec3::new(CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, 0.0),
+        //     false,
+        //     false,
+        // ), // Right
         // Back (steers inverted)
         (
             Vec3::new(-CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH)),
             false,
-            true,
+            false,
         ), // Left
         (
             Vec3::new(CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH)),
             false,
-            true,
+            false,
         ), // Right
     ];
 
@@ -411,6 +419,7 @@ fn spawn_funny_car(
                 ),
                 Collider::cylinder(WHEEL_RADIUS, WHEEL_WIDTH),
                 CollisionLayers::new([GamePhysicsLayer::Wheel], [GamePhysicsLayer::Map]),
+                Friction::new(0.9),
                 SleepingDisabled,
             ))
             .id();
@@ -423,10 +432,7 @@ fn spawn_funny_car(
                 .with_motor(AngularMotor {
                     target_velocity: 0.0,
                     max_torque: MAX_WHEEL_TORQUE,
-                    motor_model: MotorModel::AccelerationBased {
-                        stiffness: WHEEL_MOTOR_STIFFNESS,
-                        damping: WHEEL_MOTOR_DAMPING,
-                    },
+                    motor_model: MotorModel::SpringDamper { frequency: 10.0, damping_ratio: 0.707 },
                     ..default()
                 }),
             WheelMotorJoint,
@@ -465,22 +471,37 @@ fn apply_physics_for_funny_controls(
     // The base Z rotation that aligns suspension_hub frame with the steering_hub frame.
     let base_rot = Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2);
 
-    // Front wheels: steer normally
+    // Front wheels: steer around Y axis of suspension_hub (car's vertical axis)
     for mut joint in &mut front_steer {
-        let steer_rot = Quat::from_rotation_y(controls.steer * MAX_STEER_ANGLE);
-        joint.frame2.basis = JointBasis::Local(base_rot * steer_rot);
+        joint.frame1.basis = JointBasis::Local(Quat::from_rotation_y(controls.steer * MAX_STEER_ANGLE));
+        joint.frame2.basis = JointBasis::Local(base_rot);
     }
     // Rear wheels: steer inverted (forklift)
     for mut joint in &mut rear_steer {
-        let steer_rot = Quat::from_rotation_y(-controls.steer * MAX_STEER_ANGLE);
-        joint.frame2.basis = JointBasis::Local(base_rot * steer_rot);
+        joint.frame1.basis = JointBasis::Local(Quat::from_rotation_y(-controls.steer * MAX_STEER_ANGLE));
+        joint.frame2.basis = JointBasis::Local(base_rot);
     }
     // Middle wheels: no steer, keep base rotation
     for mut joint in &mut no_steer {
+        joint.frame1.basis = JointBasis::Local(Quat::IDENTITY);
         joint.frame2.basis = JointBasis::Local(base_rot);
     }
-    // All wheels: set drive speed (AWD)
+    // All wheels: set drive speed (AWD). Note: positive target_velocity spins wheel
+    // backwards, so we negate it to move forwards when controls.accelerate is positive.
     for mut joint in &mut wheels {
-        joint.motor.target_velocity = controls.accelerate * MAX_WHEEL_SPEED;
+        joint.motor.target_velocity = -controls.accelerate * MAX_WHEEL_SPEED;
+        tracing::info!("target_velocity {}", joint.motor.target_velocity);
+    }
+}
+
+fn camera_look_at_car(
+    mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<CarBody>)>,
+    car_query: Query<&Transform, (With<CarBody>, Without<Camera3d>)>,
+) {
+    let Ok(car_transform) = car_query.single() else {
+        return;
+    };
+    for mut camera_transform in &mut camera_query {
+        camera_transform.look_at(car_transform.translation, Vec3::Y);
     }
 }
