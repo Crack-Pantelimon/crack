@@ -1271,21 +1271,32 @@ fn geojson_text_labels_system(
         }
     }
 
-    // 2.2 Bus Routes
+    // 2.2 Bus/Tram/Trolleybus Routes
     if osm_overlay.show_bus_routes {
         if let Some(features) = database.categories.get("routes") {
             for feat in features {
-                let is_bus = feat.tags.get("route").map(|r| r == "bus").unwrap_or(false);
-                if !is_bus { continue; }
+                let route_type = feat.tags.get("route").map(|s| s.as_str()).unwrap_or("");
+                let is_public_transport = route_type == "bus" || route_type == "tram" || route_type == "trolleybus" || route_type == "trolley" || route_type == "tramway";
+                if !is_public_transport { continue; }
                 let ref_name = feat.tags.get("ref").cloned()
                     .or_else(|| feat.name.clone())
-                    .unwrap_or_else(|| "Bus".to_string());
-                
+                    .unwrap_or_else(|| "Line".to_string());
+
+                let label_text = if route_type == "bus" {
+                    format!("Bus {}", ref_name)
+                } else if route_type == "tram" || route_type == "tramway" {
+                    format!("Tram {}", ref_name)
+                } else if route_type == "trolleybus" || route_type == "trolley" {
+                    format!("Trolley {}", ref_name)
+                } else {
+                    ref_name
+                };
+
                 match &feat.geometry {
                     FeatureGeometry::LineString(pts) => {
                         for (idx, pt) in pts.iter().enumerate() {
                             if idx == 0 || idx % 6 == 0 || idx == pts.len() - 1 {
-                                label_candidates.push((*pt, ref_name.clone(), "route".to_string()));
+                                label_candidates.push((*pt, label_text.clone(), "route".to_string()));
                             }
                         }
                     }
@@ -1293,13 +1304,13 @@ fn geojson_text_labels_system(
                         for pts in lines {
                             for (idx, pt) in pts.iter().enumerate() {
                                 if idx == 0 || idx % 6 == 0 || idx == pts.len() - 1 {
-                                    label_candidates.push((*pt, ref_name.clone(), "route".to_string()));
+                                    label_candidates.push((*pt, label_text.clone(), "route".to_string()));
                                 }
                             }
                         }
                     }
                     FeatureGeometry::Point(pt) => {
-                        label_candidates.push((*pt, ref_name.clone(), "route".to_string()));
+                        label_candidates.push((*pt, label_text.clone(), "route".to_string()));
                     }
                     _ => {}
                 }
@@ -1373,13 +1384,13 @@ fn geojson_text_labels_system(
         if let Some(street) = street_name {
             if !bus_routes.is_empty() {
                 let routes_str = bus_routes.into_iter().collect::<Vec<_>>().join(", ");
-                parts.push(format!("{} (Bus: {})", street, routes_str));
+                parts.push(format!("{} ({})", street, routes_str));
             } else {
                 parts.push(street);
             }
         } else if !bus_routes.is_empty() {
             let routes_str = bus_routes.into_iter().collect::<Vec<_>>().join(", ");
-            parts.push(format!("Bus: {}", routes_str));
+            parts.push(routes_str);
         }
 
         for biz in &business_names {
@@ -1746,6 +1757,7 @@ pub struct OsmOverlayState {
     pub show_railways: bool,
     pub show_waterways: bool,
     pub show_buildings: bool,
+    pub show_lanes: bool,
 }
 
 impl Default for OsmOverlayState {
@@ -1758,6 +1770,7 @@ impl Default for OsmOverlayState {
             show_railways: false,
             show_waterways: false,
             show_buildings: false,
+            show_lanes: false,
         }
     }
 }
@@ -1779,12 +1792,14 @@ fn osm_overlay_ui_system(
     let mut show_railways = osm_overlay.show_railways;
     let mut show_waterways = osm_overlay.show_waterways;
     let mut show_buildings = osm_overlay.show_buildings;
+    let mut show_lanes = osm_overlay.show_lanes;
 
     egui::Window::new("OSM Overlays")
         .open(&mut show_window)
         .show(ctx, |ui| {
             ui.checkbox(&mut show_roads, "Show Roads (Streets)");
-            ui.checkbox(&mut show_bus_routes, "Show Bus Routes");
+            ui.checkbox(&mut show_lanes, "Show Street Lanes");
+            ui.checkbox(&mut show_bus_routes, "Show Public Transport Routes (Bus/Tram/Trolley)");
             ui.checkbox(&mut show_businesses, "Show Businesses (Shops/Amenities/Offices/Craft)");
             ui.checkbox(&mut show_railways, "Show Railways");
             ui.checkbox(&mut show_waterways, "Show Waterways");
@@ -1798,6 +1813,7 @@ fn osm_overlay_ui_system(
     osm_overlay.show_railways = show_railways;
     osm_overlay.show_waterways = show_waterways;
     osm_overlay.show_buildings = show_buildings;
+    osm_overlay.show_lanes = show_lanes;
 }
 
 fn osm_overlay_gizmos_system(
@@ -1812,7 +1828,7 @@ fn osm_overlay_gizmos_system(
     }
 
     let road_color = Color::srgb(0.9, 0.9, 0.9);
-    let bus_route_color = Color::srgb(0.1, 0.4, 0.9);
+    let bus_route_color = Color::srgb(0.1, 0.45, 0.9);
     let business_color = Color::srgb(0.9, 0.1, 0.6);
     let railway_color = Color::srgb(0.5, 0.5, 0.5);
     let waterway_color = Color::srgb(0.0, 0.3, 0.9);
@@ -1822,6 +1838,7 @@ fn osm_overlay_gizmos_system(
         query_point_ground_y(x, z, &map_tree, &spatial_query) + 0.2
     };
 
+    // Draw parallel segments to create thick lines
     let draw_lines = |gizmos: &mut Gizmos, pts: &[Vec3], color: Color| {
         if pts.len() < 2 { return; }
         let mut grounded = Vec::with_capacity(pts.len());
@@ -1829,7 +1846,35 @@ fn osm_overlay_gizmos_system(
             grounded.push(Vec3::new(pt.x, query_y(pt.x, pt.z), pt.z));
         }
         for window in grounded.windows(2) {
-            gizmos.line(window[0], window[1], color);
+            let p1 = window[0];
+            let p2 = window[1];
+            gizmos.line(p1, p2, color);
+
+            // Left/Right parallel lines offset by 0.4 meters for thickness
+            let diff = p2 - p1;
+            let dir = diff.normalize_or_zero();
+            let perp = Vec3::new(-dir.z, 0.0, dir.x).normalize_or_zero() * 0.4;
+
+            gizmos.line(p1 - perp, p2 - perp, color);
+            gizmos.line(p1 + perp, p2 + perp, color);
+        }
+    };
+
+    let draw_dashed_line = |gizmos: &mut Gizmos, p1: Vec3, p2: Vec3, color: Color| {
+        let diff = p2 - p1;
+        let dist = diff.length();
+        let dir = diff.normalize_or_zero();
+
+        let dash_len = 4.0;
+        let gap_len = 4.0;
+        let step = dash_len + gap_len;
+
+        let mut current = 0.0;
+        while current < dist {
+            let start = p1 + dir * current;
+            let end = p1 + dir * (current + dash_len).min(dist);
+            gizmos.line(start, end, color);
+            current += step;
         }
     };
 
@@ -1867,19 +1912,111 @@ fn osm_overlay_gizmos_system(
         }
     }
 
-    if osm_overlay.show_bus_routes {
-        if let Some(features) = database.categories.get("routes") {
+    if osm_overlay.show_lanes {
+        if let Some(features) = database.categories.get("roads") {
+            let border_color = Color::srgb(0.7, 0.7, 0.7); // Solid gray borders
+            let divider_color = Color::srgb(0.9, 0.9, 0.0); // Dashed yellow dividers
+
             for feature in features {
-                let is_bus = feature.tags.get("route").map(|r| r == "bus").unwrap_or(false);
-                if !is_bus { continue; }
+                let lanes = feature.tags.get("lanes")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(2);
+                let lane_width = 3.0;
+                let total_width = lanes as f32 * lane_width;
 
                 match &feature.geometry {
                     FeatureGeometry::LineString(pts) => {
-                        draw_lines(&mut gizmos, pts, bus_route_color);
+                        if pts.len() < 2 { continue; }
+                        let mut grounded = Vec::with_capacity(pts.len());
+                        for pt in pts {
+                            grounded.push(Vec3::new(pt.x, query_y(pt.x, pt.z), pt.z));
+                        }
+                        for window in grounded.windows(2) {
+                            let p1 = window[0];
+                            let p2 = window[1];
+                            let dir = (p2 - p1).normalize_or_zero();
+                            let perp = Vec3::new(-dir.z, 0.0, dir.x).normalize_or_zero();
+
+                            // Draw outer solid borders
+                            let left_p1 = p1 - perp * (total_width / 2.0);
+                            let left_p2 = p2 - perp * (total_width / 2.0);
+                            gizmos.line(left_p1, left_p2, border_color);
+
+                            let right_p1 = p1 + perp * (total_width / 2.0);
+                            let right_p2 = p2 + perp * (total_width / 2.0);
+                            gizmos.line(right_p1, right_p2, border_color);
+
+                            // Draw dashed lane dividers
+                            for i in 1..lanes {
+                                let offset = (i as f32 * lane_width) - (total_width / 2.0);
+                                let div_p1 = p1 + perp * offset;
+                                let div_p2 = p2 + perp * offset;
+                                draw_dashed_line(&mut gizmos, div_p1, div_p2, divider_color);
+                            }
+                        }
                     }
                     FeatureGeometry::MultiLineString(lines) => {
                         for pts in lines {
-                            draw_lines(&mut gizmos, pts, bus_route_color);
+                            if pts.len() < 2 { continue; }
+                            let mut grounded = Vec::with_capacity(pts.len());
+                            for pt in pts {
+                                grounded.push(Vec3::new(pt.x, query_y(pt.x, pt.z), pt.z));
+                            }
+                            for window in grounded.windows(2) {
+                                let p1 = window[0];
+                                let p2 = window[1];
+                                let dir = (p2 - p1).normalize_or_zero();
+                                let perp = Vec3::new(-dir.z, 0.0, dir.x).normalize_or_zero();
+
+                                // Draw outer solid borders
+                                let left_p1 = p1 - perp * (total_width / 2.0);
+                                let left_p2 = p2 - perp * (total_width / 2.0);
+                                gizmos.line(left_p1, left_p2, border_color);
+
+                                let right_p1 = p1 + perp * (total_width / 2.0);
+                                let right_p2 = p2 + perp * (total_width / 2.0);
+                                gizmos.line(right_p1, right_p2, border_color);
+
+                                // Draw dashed lane dividers
+                                for i in 1..lanes {
+                                    let offset = (i as f32 * lane_width) - (total_width / 2.0);
+                                    let div_p1 = p1 + perp * offset;
+                                    let div_p2 = p2 + perp * offset;
+                                    draw_dashed_line(&mut gizmos, div_p1, div_p2, divider_color);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if osm_overlay.show_bus_routes {
+        if let Some(features) = database.categories.get("routes") {
+            for feature in features {
+                let route_type = feature.tags.get("route").map(|s| s.as_str()).unwrap_or("");
+                let is_public_transport = route_type == "bus" || route_type == "tram" || route_type == "trolleybus" || route_type == "trolley" || route_type == "tramway";
+                if !is_public_transport { continue; }
+
+                let color = if route_type == "bus" {
+                    bus_route_color
+                } else if route_type == "tram" || route_type == "tramway" {
+                    Color::srgb(0.9, 0.3, 0.15) // Red/Orange for Trams
+                } else if route_type == "trolleybus" || route_type == "trolley" {
+                    Color::srgb(0.65, 0.15, 0.85) // Purple for Trolleybuses
+                } else {
+                    Color::srgb(0.9, 0.8, 0.1) // Yellow for others
+                };
+
+                match &feature.geometry {
+                    FeatureGeometry::LineString(pts) => {
+                        draw_lines(&mut gizmos, pts, color);
+                    }
+                    FeatureGeometry::MultiLineString(lines) => {
+                        for pts in lines {
+                            draw_lines(&mut gizmos, pts, color);
                         }
                     }
                     _ => {}
