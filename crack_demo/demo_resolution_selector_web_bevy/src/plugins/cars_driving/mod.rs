@@ -1,12 +1,11 @@
 pub mod car_info;
 pub mod click_spawn_select_controls;
 pub mod driving_plugin;
-
 use bevy::{app::App, prelude::*};
 
 use crate::plugins::{
     cars_driving::{
-        click_spawn_select_controls::spawn_car_request_event_observer,
+        driving_plugin::spawn_car::spawn_car_request_event_observer,
         driving_plugin::{car_drive_observer, DrivingPlugin},
     },
     states::GameControlState,

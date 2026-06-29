@@ -8,13 +8,13 @@ use bevy::{
     },
     window::WindowResolution,
 };
-use avian3d::prelude::{CollisionLayers, Restitution, RigidBody};
+use avian3d::{debug_render::PhysicsDebugPlugin, prelude::{CollisionLayers, Restitution, RigidBody}};
 
 use demo_resolution_selector_web_bevy::{
     plugins::{
         cars_driving::{
             car_info::get_random_car_type,
-            click_spawn_select_controls::SpawnCarRequestEvent,
+            driving_plugin::spawn_car::SpawnCarRequestEvent,
             driving_plugin::GamePhysicsLayer,
         },
         physics_plugin::PhysicsPlugin,
@@ -52,7 +52,7 @@ fn main() {
                 }),
         )
         .add_plugins(bevy_egui::EguiPlugin::default())
-        .init_resource::<UiState>() // Satisfies PhysicsPlugin's sync_physics_debug_config
+        .insert_resource(UiState::with_physics_debug()) // Satisfies PhysicsPlugin's sync_physics_debug_config
         .add_plugins(PhysicsPlugin)
         .add_plugins(demo_resolution_selector_web_bevy::plugins::cars_driving::CarsAndDrivingPlugin)
         .add_plugins(GameStatesPlugin)

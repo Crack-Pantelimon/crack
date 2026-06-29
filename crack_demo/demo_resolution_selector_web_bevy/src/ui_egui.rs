@@ -42,6 +42,20 @@ impl Default for UiState {
         }
     }
 }
+impl  UiState {
+    pub fn with_physics_debug() -> Self {
+                Self {
+            resolution: 75,
+            ui_scale: 125,
+            smooth: true,
+            show_settings: false,
+            draw_map_bboxes: false,
+            draw_physics_debug: true,
+            show_lod_configurator: false,
+            show_geojson_database: false,
+        }
+    }
+}
 
 impl UiState {
     fn get_scale_factor_override(&self) -> Option<f32> {
