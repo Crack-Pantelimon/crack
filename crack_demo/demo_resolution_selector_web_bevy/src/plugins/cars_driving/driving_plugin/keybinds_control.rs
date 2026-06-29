@@ -2,7 +2,12 @@ use bevy::prelude::*;
 use avian3d::prelude::{
     LinearVelocity, AngularVelocity
 };
-use crate::plugins::cars_driving::{driving_plugin::spawn_car::Car, driving_plugin::{CarDriveState, Drive, Strut, Wheel}, };
+use crate::plugins::cars_driving::{
+    driving_plugin::spawn_car::Car,
+    driving_plugin::{
+        CarDriveState, Drive, Wheel,
+    },
+};
 
 pub fn keybinds_control_car(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -17,8 +22,7 @@ pub fn keybinds_control_car(
         ),
         With<Car>,
     >,
-    mut q_struts: Query<(&mut Transform, &mut LinearVelocity, &mut AngularVelocity, &Strut), (Without<Car>, Without<Wheel>)>,
-    mut q_wheels: Query<(&mut Transform, &mut LinearVelocity, &mut AngularVelocity, &Wheel), (Without<Car>, Without<Strut>)>,
+    mut q_wheels: Query<(&mut Transform, &mut LinearVelocity, &mut AngularVelocity, &Wheel), (Without<Car>,)>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<crate::plugins::states::GameControlState>>,
 ) {
@@ -46,34 +50,21 @@ pub fn keybinds_control_car(
         if let Some(spawn_pos) = drive_state.spawn_position {
             transform.translation = spawn_pos;
             
-            // Define geometry variables
-            let half_width = 0.9f32;
-            let half_length = 1.8f32;
-            let suspension_len = 0.3f32;
+            let car_half_width = drive_state.car_half_width;
+            let car_half_length = drive_state.car_half_length;
+            let car_half_height = drive_state.car_half_height;
 
-            // Reset all struts
-            for (mut s_transform, mut s_lin_vel, mut s_ang_vel, strut) in q_struts.iter_mut() {
-                let x = if strut.is_left { -half_width } else { half_width };
-                let y = 0.3;
-                let z = if strut.is_front { -half_length } else { half_length };
-                let offset = Vec3::new(x, y, z);
-                
-                s_transform.translation = spawn_pos + offset - Vec3::Y * suspension_len;
-                s_transform.rotation = Quat::IDENTITY;
-                s_lin_vel.0 = Vec3::ZERO;
-                s_ang_vel.0 = Vec3::ZERO;
-            }
-
+            let wheel_rot = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
 
             // Reset all wheels
             for (mut w_transform, mut w_lin_vel, mut w_ang_vel, wheel) in q_wheels.iter_mut() {
-                let x = if wheel.is_left { -half_width } else { half_width };
-                let y = 0.3;
-                let z = if wheel.is_front { -half_length } else { half_length };
-                let offset = Vec3::new(x, y, z);
+                let x_offset = if wheel.is_left { -car_half_width } else { car_half_width + if wheel.is_front { 0.1 } else { 0.0 } };
+                let y_offset = -car_half_height + drive_state.wheel_y_offset;
+                let z_offset = if wheel.is_front { car_half_length } else { -car_half_length };
+                let offset = Vec3::new(x_offset, y_offset, z_offset);
                 
-                w_transform.translation = spawn_pos + offset - Vec3::Y * suspension_len;
-                w_transform.rotation = Quat::IDENTITY;
+                w_transform.translation = spawn_pos + offset;
+                w_transform.rotation = wheel_rot;
                 w_lin_vel.0 = Vec3::ZERO;
                 w_ang_vel.0 = Vec3::ZERO;
             }

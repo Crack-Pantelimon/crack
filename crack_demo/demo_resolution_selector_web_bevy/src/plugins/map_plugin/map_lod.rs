@@ -68,6 +68,7 @@ fn spawn_node_tiles(
             )),
             avian3d::prelude::Restitution::ZERO
                 .with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
+            avian3d::prelude::Friction::new(0.9),
             CollisionLayers::new(
                 [GamePhysicsLayer::Map],
                 [GamePhysicsLayer::Map, GamePhysicsLayer::Car, GamePhysicsLayer::Wheel],
