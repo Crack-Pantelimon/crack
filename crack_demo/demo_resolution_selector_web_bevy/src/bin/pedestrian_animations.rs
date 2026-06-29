@@ -9,6 +9,13 @@ use bevy::{
     window::WindowResolution,
     world_serialization::WorldAssetRoot,
 };
+use bevy::prelude::{AnimationGraph, AnimationNodeIndex, AnimationGraphHandle};
+
+#[derive(Resource)]
+struct RiggedGlbAnimation {
+    graph: Handle<AnimationGraph>,
+    node_index: AnimationNodeIndex,
+}
 use avian3d::prelude::{CollisionLayers, Restitution, RigidBody, Mass, Collider, LinearVelocity, AngularVelocity, LockedAxes};
 use bevy_egui::{egui, EguiContexts};
 
@@ -68,7 +75,11 @@ enum PedestrianModelType {
 }
 
 #[derive(Component)]
-struct BoneBaseRotation(Quat);
+#[allow(dead_code)]
+struct BoneBaseRotation {
+    base_rotation: Quat,
+    local_lateral_axis: Vec3,
+}
 
 fn main() {
     #[cfg(feature = "web")]
@@ -115,8 +126,12 @@ fn main() {
                 move_pedestrian,
                 camera_follows_pedestrian,
                 animate_pedestrian,
-                init_bone_base_rotations,
+                play_rigged_glb_animation,
             ),
+        )
+        .add_systems(
+            PostUpdate,
+            init_bone_base_rotations.after(bevy::transform::TransformSystems::Propagate),
         )
         .run();
 }
@@ -158,6 +173,7 @@ fn setup_scene(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
+    mut graphs: ResMut<Assets<AnimationGraph>>,
 ) {
     // 1. Spawning 4 ground cubes of size 500x500x500
     let cubes_info = [
@@ -257,6 +273,17 @@ fn setup_scene(
             InheritedVisibility::default(),
         ));
     });
+
+    // 5. Initialize RiggedGlbAnimation resource
+    let base_url = demo_resolution_selector_web_bevy::config::DATA_BASE_URL.trim_end_matches('/');
+    let pedestrian_url = format!("{}/3d_data/3d_slop_models_clean/pedestrian/cesium_man.glb", base_url);
+    let walk_animation = asset_server.load(GltfAssetLabel::Animation(0).from_asset(pedestrian_url));
+    let (graph, node_index) = AnimationGraph::from_clip(walk_animation);
+    let graph_handle = graphs.add(graph);
+    commands.insert_resource(RiggedGlbAnimation {
+        graph: graph_handle,
+        node_index,
+    });
 }
 
 fn move_pedestrian(
@@ -354,6 +381,7 @@ fn animate_pedestrian(
         Option<&LeftArm>,
         Option<&RightArm>,
     )>,
+    mut player_query: Query<&mut AnimationPlayer>,
 ) {
     let dt = time.delta_secs();
 
@@ -392,13 +420,18 @@ fn animate_pedestrian(
     // 1. Animate Visual Root (bob, sway, lean)
     for child in children.iter() {
         if let Ok((mut child_transform, _, _, Some(_), _, _, _, _)) = transform_query.get_mut(child) {
-            child_transform.translation.y = animator.bob;
-            child_transform.rotation = Quat::from_euler(
-                EulerRot::YXZ,
-                0.0,
-                -animator.lean,
-                animator.sway,
-            );
+            if settings.model_type == PedestrianModelType::RiggedGlb {
+                child_transform.translation.y = -0.9;
+                child_transform.rotation = Quat::from_rotation_y(std::f32::consts::PI);
+            } else {
+                child_transform.translation.y = animator.bob;
+                child_transform.rotation = Quat::from_euler(
+                    EulerRot::YXZ,
+                    0.0,
+                    -animator.lean,
+                    animator.sway,
+                );
+            }
         }
     }
 
@@ -429,34 +462,19 @@ fn animate_pedestrian(
         }
     }
 
-    // 3. Animate Rigged GLB bones if using RiggedGlb
+    // 3. Animate Rigged GLB using pre-baked animation player speed controls
     if settings.model_type == PedestrianModelType::RiggedGlb {
-        let swing_angle = if speed > 0.1 {
-            animator.phase.sin() * settings.swing_amplitude
-        } else {
-            0.0
-        };
-
-        let swing_lerp_speed = 10.0;
-
-        for (mut transform, name, base_rot, _, _, _, _, _) in &mut transform_query {
-            if let (Some(name), Some(base_rot)) = (name, base_rot) {
-                let name_str = name.as_str();
-                let swing = if name_str == "leg_joint_L_1" {
-                    swing_angle
-                } else if name_str == "leg_joint_R_1" {
-                    -swing_angle
-                } else if name_str == "Skeleton_arm_joint_L__4_" {
-                    -swing_angle * 0.8
-                } else if name_str == "Skeleton_arm_joint_R" {
-                    swing_angle * 0.8
-                } else {
-                    0.0
-                };
-                
-                // Rotation around local X axis of the bone
-                let target_rot = base_rot.0 * Quat::from_rotation_x(swing);
-                transform.rotation = transform.rotation.slerp(target_rot, swing_lerp_speed * dt);
+        for mut player in &mut player_query {
+            let anim_speed = if speed > 0.1 {
+                speed * 0.4
+            } else {
+                0.0
+            };
+            let playing_ids: Vec<AnimationNodeIndex> = player.playing_animations().map(|(&idx, _)| idx).collect();
+            for playing_animation_index in playing_ids {
+                if let Some(playing_animation) = player.animation_mut(playing_animation_index) {
+                    playing_animation.set_speed(anim_speed);
+                }
             }
         }
     }
@@ -464,17 +482,44 @@ fn animate_pedestrian(
 
 fn init_bone_base_rotations(
     mut commands: Commands,
-    query: Query<(Entity, &Name, &Transform), Without<BoneBaseRotation>>,
+    bone_query: Query<(Entity, &Name, &Transform, &GlobalTransform), Without<BoneBaseRotation>>,
+    pedestrian_query: Query<&GlobalTransform, With<Pedestrian>>,
 ) {
-    for (entity, name, transform) in &query {
+    let Ok(pedestrian_global) = pedestrian_query.single() else {
+        return;
+    };
+    for (entity, name, transform, bone_global) in &bone_query {
         let name_str = name.as_str();
         if name_str == "leg_joint_L_1"
             || name_str == "leg_joint_R_1"
             || name_str == "Skeleton_arm_joint_L__4_"
             || name_str == "Skeleton_arm_joint_R"
         {
-            commands.entity(entity).insert(BoneBaseRotation(transform.rotation));
+            let pedestrian_transform = pedestrian_global.compute_transform();
+            let char_right = *pedestrian_transform.right();
+            let bone_transform = bone_global.compute_transform();
+            let local_lateral_axis = bone_transform.rotation.inverse().mul_vec3(char_right);
+
+            commands.entity(entity).insert(BoneBaseRotation {
+                base_rotation: transform.rotation,
+                local_lateral_axis,
+            });
         }
+    }
+}
+
+fn play_rigged_glb_animation(
+    mut commands: Commands,
+    animation: Res<RiggedGlbAnimation>,
+    mut player_query: Query<(Entity, &mut AnimationPlayer), (Without<AnimationGraphHandle>, Added<AnimationPlayer>)>,
+    settings: Res<PedestrianSettings>,
+) {
+    if settings.model_type != PedestrianModelType::RiggedGlb {
+        return;
+    }
+    for (player_entity, mut player) in &mut player_query {
+        commands.entity(player_entity).insert(AnimationGraphHandle(animation.graph.clone()));
+        player.play(animation.node_index).repeat();
     }
 }
 
@@ -534,7 +579,11 @@ fn draw_pedestrian_ui(
                             commands.entity(entity).with_children(|parent| {
                                 parent.spawn((
                                     WorldAssetRoot(pedestrian_handle),
-                                    Transform::from_xyz(0.0, -0.9, 0.0),
+                                    Transform {
+                                        translation: Vec3::new(0.0, -0.9, 0.0),
+                                        rotation: Quat::from_rotation_y(std::f32::consts::PI),
+                                        ..default()
+                                    },
                                     PedestrianVisual,
                                     Visibility::default(),
                                     InheritedVisibility::default(),
