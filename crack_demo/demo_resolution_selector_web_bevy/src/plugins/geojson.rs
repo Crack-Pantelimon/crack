@@ -1147,6 +1147,7 @@ fn geojson_text_labels_system(
     camera_query: Query<(&Camera, &GlobalTransform)>,
     map_tree: Res<crate::plugins::map_plugin::MapTree>,
     spatial_query: avian3d::prelude::SpatialQuery,
+    osm_overlay: Res<OsmOverlayState>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -1154,60 +1155,201 @@ fn geojson_text_labels_system(
     if !database.parsed {
         return;
     }
-    let Some((cat_name, idx)) = &selection.selected else {
-        return;
-    };
-    let Some(features) = database.categories.get(cat_name) else {
-        return;
-    };
-    let Some(feature) = features.get(*idx) else {
-        return;
-    };
     let Some((camera, camera_transform)) = camera_query.iter().next() else {
         return;
     };
 
-    let raw_name = feature
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("ID: {}", feature.id.unwrap_or(0)));
-    let mut name_15 = raw_name.chars().take(15).collect::<String>();
-    if raw_name.chars().count() > 15 {
-        name_15.push_str("...");
-    }
+    // 1. Draw Selected Feature labels (if any selected)
+    if let Some((cat_name, idx)) = &selection.selected {
+        if let Some(features) = database.categories.get(cat_name) {
+            if let Some(feature) = features.get(*idx) {
+                let raw_name = feature
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("ID: {}", feature.id.unwrap_or(0)));
+                let mut name_15 = raw_name.chars().take(15).collect::<String>();
+                if raw_name.chars().count() > 15 {
+                    name_15.push_str("...");
+                }
 
-    // Determine target points and label texts
-    let mut target_points = Vec::new();
-    match &feature.geometry {
-        FeatureGeometry::Point(p) => {
-            target_points.push((*p, name_15));
-        }
-        FeatureGeometry::LineString(pts) => {
-            for (node_idx, pt) in pts.iter().enumerate() {
-                let node_id_name = format!("Node #{}", node_idx);
-                target_points.push((*pt, node_id_name));
-            }
-        }
-        FeatureGeometry::MultiLineString(lines) => {
-            for (line_idx, pts) in lines.iter().enumerate() {
-                for (node_idx, pt) in pts.iter().enumerate() {
-                    let node_id_name = format!("L{} Node #{}", line_idx, node_idx);
-                    target_points.push((*pt, node_id_name));
+                // Determine target points and label texts
+                let mut target_points = Vec::new();
+                match &feature.geometry {
+                    FeatureGeometry::Point(p) => {
+                        target_points.push((*p, name_15));
+                    }
+                    FeatureGeometry::LineString(pts) => {
+                        for (node_idx, pt) in pts.iter().enumerate() {
+                            let node_id_name = format!("Node #{}", node_idx);
+                            target_points.push((*pt, node_id_name));
+                        }
+                    }
+                    FeatureGeometry::MultiLineString(lines) => {
+                        for (line_idx, pts) in lines.iter().enumerate() {
+                            for (node_idx, pt) in pts.iter().enumerate() {
+                                let node_id_name = format!("L{} Node #{}", line_idx, node_idx);
+                                target_points.push((*pt, node_id_name));
+                            }
+                        }
+                    }
+                    FeatureGeometry::Polygon(_) => {
+                        target_points.push((feature.center, name_15));
+                    }
+                }
+
+                for (pt, label) in target_points {
+                    let mut pos = pt;
+                    pos.y = query_point_ground_y(pos.x, pos.z, &map_tree, &spatial_query) + 0.1;
+
+                    if cat_name == "amenities" || cat_name == "shops" {
+                        pos.y += 50.0;
+                    }
+
+                    if let Ok(p_center) = camera.world_to_viewport(camera_transform, pos) {
+                        let camera_right = camera_transform.right();
+                        let sphere_radius = 3.0;
+                        if let Ok(p_edge) =
+                            camera.world_to_viewport(camera_transform, pos + camera_right * sphere_radius)
+                        {
+                            let r_screen = p_center.distance(p_edge);
+                            let font_size = (r_screen * 3.0).clamp(11.0, 36.0);
+
+                            egui::Area::new(egui::Id::new(format!("lbl_{:?}_{}", pos, label)))
+                                .fixed_pos(egui::pos2(p_center.x - 20.0, p_center.y - font_size - 8.0))
+                                .show(ctx, |ui| {
+                                    ui.label(
+                                        egui::RichText::new(&label)
+                                            .color(egui::Color32::from_rgb(255, 60, 60))
+                                            .size(font_size)
+                                            .strong()
+                                            .background_color(egui::Color32::from_rgba_premultiplied(
+                                                0, 0, 0, 180,
+                                            )),
+                                    );
+                                });
+                        }
+                    }
                 }
             }
         }
-        FeatureGeometry::Polygon(_) => {
-            target_points.push((feature.center, name_15));
+    }
+
+    // 2. Draw active overlays names (composing overlapping roads and bus routes)
+    let mut label_candidates = Vec::new();
+
+    // 2.1 Roads (Streets)
+    if osm_overlay.show_roads {
+        if let Some(features) = database.categories.get("roads") {
+            for feat in features {
+                if let Some(name) = &feat.name {
+                    if !name.trim().is_empty() {
+                        label_candidates.push((feat.center, name.clone(), "road".to_string()));
+                    }
+                }
+            }
         }
     }
 
-    for (pt, label) in target_points {
-        let mut pos = pt;
-        pos.y = query_point_ground_y(pos.x, pos.z, &map_tree, &spatial_query) + 0.1;
-
-        if cat_name == "amenities" || cat_name == "shops" {
-            pos.y += 50.0;
+    // 2.2 Bus Routes
+    if osm_overlay.show_bus_routes {
+        if let Some(features) = database.categories.get("routes") {
+            for feat in features {
+                let is_bus = feat.tags.get("route").map(|r| r == "bus").unwrap_or(false);
+                if !is_bus { continue; }
+                let ref_name = feat.tags.get("ref").cloned()
+                    .or_else(|| feat.name.clone())
+                    .unwrap_or_else(|| "Bus".to_string());
+                label_candidates.push((feat.center, ref_name, "route".to_string()));
+            }
         }
+    }
+
+    // 2.3 Businesses (Shops/Amenities/Offices/Craft)
+    if osm_overlay.show_businesses {
+        for cat in &["shops", "amenities", "offices", "craft"] {
+            if let Some(features) = database.categories.get(*cat) {
+                for feat in features {
+                    if let Some(name) = &feat.name {
+                        if !name.trim().is_empty() {
+                            label_candidates.push((feat.center, name.clone(), "business".to_string()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let cam_translation = camera_transform.translation();
+    let mut close_candidates = Vec::new();
+    for (pos, name, type_) in label_candidates {
+        let dist = cam_translation.distance(pos);
+        if dist < 400.0 { // only show labels within 400 meters of camera to avoid screen clutter
+            close_candidates.push((pos, name, type_, dist));
+        }
+    }
+
+    // Cluster close label candidates
+    let mut clusters: Vec<(Vec3, Vec<(String, String)>)> = Vec::new(); // average_pos, Vec<(name, type)>
+    for (pos, name, type_, _dist) in close_candidates {
+        let mut found_cluster_idx = None;
+        for (idx, (c_pos, _)) in clusters.iter().enumerate() {
+            let d_xz = Vec2::new(pos.x - c_pos.x, pos.z - c_pos.z).length();
+            if d_xz < 40.0 { // 40m grouping radius
+                found_cluster_idx = Some(idx);
+                break;
+            }
+        }
+        if let Some(idx) = found_cluster_idx {
+            let count = clusters[idx].1.len() as f32;
+            clusters[idx].0 = (clusters[idx].0 * count + pos) / (count + 1.0);
+            clusters[idx].1.push((name, type_));
+        } else {
+            clusters.push((pos, vec![(name, type_)]));
+        }
+    }
+
+    // Draw composed overlays
+    for (mut pos, items) in clusters {
+        let mut street_name = None;
+        let mut bus_routes = std::collections::BTreeSet::new();
+        let mut business_names = Vec::new();
+
+        for (name, type_) in items {
+            if type_ == "road" {
+                street_name = Some(name);
+            } else if type_ == "route" {
+                bus_routes.insert(name);
+            } else if type_ == "business" {
+                if !business_names.contains(&name) {
+                    business_names.push(name);
+                }
+            }
+        }
+
+        let mut parts = Vec::new();
+        if let Some(street) = street_name {
+            if !bus_routes.is_empty() {
+                let routes_str = bus_routes.into_iter().collect::<Vec<_>>().join(", ");
+                parts.push(format!("{} (Bus: {})", street, routes_str));
+            } else {
+                parts.push(street);
+            }
+        } else if !bus_routes.is_empty() {
+            let routes_str = bus_routes.into_iter().collect::<Vec<_>>().join(", ");
+            parts.push(format!("Bus: {}", routes_str));
+        }
+
+        for biz in &business_names {
+            parts.push(biz.clone());
+        }
+
+        if parts.is_empty() {
+            continue;
+        }
+
+        let final_label = parts.join(" | ");
+
+        pos.y = query_point_ground_y(pos.x, pos.z, &map_tree, &spatial_query) + 2.0;
 
         if let Ok(p_center) = camera.world_to_viewport(camera_transform, pos) {
             let camera_right = camera_transform.right();
@@ -1216,18 +1358,19 @@ fn geojson_text_labels_system(
                 camera.world_to_viewport(camera_transform, pos + camera_right * sphere_radius)
             {
                 let r_screen = p_center.distance(p_edge);
-                let font_size = (r_screen * 3.0).clamp(11.0, 36.0);
+                let font_size = (r_screen * 3.0).clamp(11.0, 24.0);
 
-                egui::Area::new(egui::Id::new(format!("lbl_{:?}_{}", pos, label)))
-                    .fixed_pos(egui::pos2(p_center.x - 20.0, p_center.y - font_size - 8.0))
+                let unique_id = format!("osm_lbl_{:?}_{}", pos, final_label);
+                egui::Area::new(egui::Id::new(unique_id))
+                    .fixed_pos(egui::pos2(p_center.x - 40.0, p_center.y - font_size - 8.0))
                     .show(ctx, |ui| {
                         ui.label(
-                            egui::RichText::new(&label)
-                                .color(egui::Color32::from_rgb(255, 60, 60))
+                            egui::RichText::new(&final_label)
+                                .color(egui::Color32::from_rgb(255, 235, 120)) // Gold text
                                 .size(font_size)
                                 .strong()
                                 .background_color(egui::Color32::from_rgba_premultiplied(
-                                    0, 0, 0, 180,
+                                    0, 0, 0, 200,
                                 )),
                         );
                     });
