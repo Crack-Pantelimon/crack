@@ -1,4 +1,5 @@
 use crate::plugins::map_plugin::MapTree;
+use crate::plugins::states::GameControlState;
 use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
@@ -18,7 +19,11 @@ pub struct ActiveCameraAnimation {
 
 impl Plugin for CameraControlsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (camera_movement_system, animate_camera_system));
+        app.add_systems(
+            Update,
+            (camera_movement_system, animate_camera_system)
+                .run_if(in_state(GameControlState::MapFreecam)),
+        );
     }
 }
 

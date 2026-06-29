@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use rand::{random, seq::IndexedRandom};
+use rand::seq::IndexedRandom;
 
 use crate::config::DATA_BASE_URL;
 

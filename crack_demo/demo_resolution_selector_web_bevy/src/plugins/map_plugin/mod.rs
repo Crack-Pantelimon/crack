@@ -37,7 +37,6 @@ impl Plugin for MapPlugin {
                 (
                     check_and_parse_parquet,
                     draw_tree_bboxes,
-                    // handle_click_raycast,
                     draw_reference_points_gizmos,
                     spawn_root_map_tiles,
                     recompute_lod_mark_changes,

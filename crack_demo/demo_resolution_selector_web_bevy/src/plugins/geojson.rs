@@ -5,7 +5,8 @@ use bevy_egui::EguiPrimaryContextPass;
 use bevy_egui::{EguiContexts, egui};
 use std::collections::BTreeMap;
 
-use crate::plugins::camera_controls::ActiveCameraAnimation;
+use crate::plugins::game_freecam::camera_controls::ActiveCameraAnimation;
+use crate::plugins::states::OsmDatabaseLoadFinished;
 
 pub struct GeoJsonPlugin;
 
@@ -526,10 +527,12 @@ fn update_geojson_loading_finished(
     database: Res<GeoJsonDatabase>,
     mut loading_status: ResMut<GameLoadingStatus>,
     mut tooltip_state: ResMut<TooltipNotificationState>,
+    mut next_state: ResMut<NextState<OsmDatabaseLoadFinished>>
 ) {
     if database.parsed && !loading_status.geojson_loaded {
         loading_status.geojson_loaded = true;
         tooltip_state.geojson_loaded_timer = 3.0;
+        next_state.set(OsmDatabaseLoadFinished::Finished);
         info!("GeoJSON loading is fully completed!");
     }
 }

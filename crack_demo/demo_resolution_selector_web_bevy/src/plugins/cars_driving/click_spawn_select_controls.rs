@@ -1,11 +1,8 @@
-use crate::plugins::{
-    cars_driving::car_info::{get_car_asset, get_random_car_type},
-    map_plugin::MapLODState,
-};
+use crate::plugins::{cars_driving::car_info::{get_car_asset, get_random_car_type}, states::GameControlState};
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
-pub fn handle_click_raycast(
+pub fn handle_click_raycast_spawn_car(
     mut commands: Commands,
     mouse_button: Res<ButtonInput<MouseButton>>,
     window_query: Query<&Window>,
@@ -58,14 +55,19 @@ pub struct SpawnCarRequestEvent {
 
 #[derive(Component)]
 pub struct Car {
-    pub car_type: String,
+    pub _car_type: String,
 }
 
 pub fn spawn_car_request_event_observer(
     spawn_car_event: On<SpawnCarRequestEvent>,
     asset_server: Res<AssetServer>,
     mut commands: Commands,
+    current_state: Res<State<GameControlState>>,
+    mut next_state: ResMut<NextState<GameControlState>>,
 ) {
+    if current_state.get() != &GameControlState::MapFreecam {
+        return;
+    }
     let mut pos = spawn_car_event.position;
     pos.y += 1.0;
 
@@ -75,7 +77,7 @@ pub fn spawn_car_request_event_observer(
         WorldAssetRoot(handle.clone()),
         Transform::from_translation(pos),
         Car {
-            car_type: spawn_car_event.car_type.clone(),
+            _car_type: spawn_car_event.car_type.clone(),
         },
         avian3d::prelude::RigidBody::Dynamic,
         avian3d::prelude::ColliderConstructorHierarchy::new(
@@ -84,4 +86,5 @@ pub fn spawn_car_request_event_observer(
         avian3d::prelude::Restitution::ZERO
             .with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
     ));
+    next_state.set(GameControlState::DrivingCar);
 }
