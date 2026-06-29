@@ -8,13 +8,16 @@ use bevy::{
     },
     window::WindowResolution,
 };
-use avian3d::{debug_render::PhysicsDebugPlugin, prelude::{CollisionLayers, Restitution, RigidBody}};
-
+use avian3d::math::*;
+use avian3d::prelude::{
+    CollisionLayers, Collider, Restitution, RigidBody,
+    PrismaticJoint, RevoluteJoint, DistanceJoint,
+    LinearMotor, AngularMotor, MotorModel,
+    MassPropertiesBundle, SleepingDisabled,
+};
 use demo_resolution_selector_web_bevy::{
     plugins::{
         cars_driving::{
-            car_info::get_random_car_type,
-            driving_plugin::spawn_car::SpawnCarRequestEvent,
             driving_plugin::GamePhysicsLayer,
         },
         physics_plugin::PhysicsPlugin,
@@ -54,11 +57,37 @@ fn main() {
         .add_plugins(bevy_egui::EguiPlugin::default())
         .insert_resource(UiState::with_physics_debug()) // Satisfies PhysicsPlugin's sync_physics_debug_config
         .add_plugins(PhysicsPlugin)
-        .add_plugins(demo_resolution_selector_web_bevy::plugins::cars_driving::CarsAndDrivingPlugin)
         .add_plugins(GameStatesPlugin)
         .add_systems(Startup, setup_scene)
-        .add_systems(Update, spawn_car_first_frame)
+        // .add_systems(Update, spawn_car_first_frame)
+        .add_systems(PostStartup, spawn_funny_car)
+        .insert_resource(FunnyCarControls::default())
+        .add_systems(First, listen_for_wasd_update_controls)
+        .add_systems(PreUpdate, apply_physics_for_funny_controls)
         .run();
+}
+
+#[derive(Resource, Default)]
+pub struct FunnyCarControls {
+    pub accelerate: f32,
+    pub steer: f32,
+}
+
+fn listen_for_wasd_update_controls(mut controls: ResMut<FunnyCarControls>, keyboard_input: Res<ButtonInput<KeyCode>>) {
+    if keyboard_input.pressed(KeyCode::ArrowUp) {
+        controls.accelerate = 1.0;
+    } else if keyboard_input.pressed(KeyCode::ArrowDown) {
+        controls.accelerate = -1.0;
+    } else {
+        controls.accelerate = 0.0;
+    }
+    if keyboard_input.pressed(KeyCode::ArrowLeft) {
+        controls.steer = -1.0;
+    } else if keyboard_input.pressed(KeyCode::ArrowRight) {
+        controls.steer = 1.0;
+    } else {
+        controls.steer = 0.0;
+    }
 }
 
 fn create_grayscale_texture(gray1: u8, gray2: u8) -> Image {
@@ -135,7 +164,7 @@ fn setup_scene(
             MeshMaterial3d(material_handle),
             Transform::from_translation(center),
             RigidBody::Static,
-            avian3d::prelude::Collider::cuboid(500.0, 500.0, 500.0),
+            Collider::cuboid(500.0, 500.0, 500.0),
             Restitution::ZERO.with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
             CollisionLayers::new(
                 [GamePhysicsLayer::Map],
@@ -147,7 +176,7 @@ fn setup_scene(
     // 2. Spawn camera with AmbientLight component
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 15.0, -30.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(-30.0, 15.0, -30.0).looking_at(Vec3::ZERO, Vec3::Y),
         AmbientLight {
             color: Color::srgb(0.8, 0.85, 1.0),
             brightness: 1000.0,
@@ -166,13 +195,223 @@ fn setup_scene(
     ));
 }
 
-fn spawn_car_first_frame(mut commands: Commands, mut run_once: Local<bool>) {
-    if !*run_once {
-        *run_once = true;
-        info!("Triggering SpawnCarRequestEvent at 0,0,0 with random car type");
-        commands.trigger(SpawnCarRequestEvent {
-            position: Vec3::ZERO,
-            car_type: get_random_car_type().to_string(),
-        });
+// fn spawn_car_first_frame(mut commands: Commands, mut run_once: Local<bool>) {
+//     if !*run_once {
+//         *run_once = true;
+//         info!("Triggering SpawnCarRequestEvent at 0,0,0 with random car type");
+//         commands.trigger(SpawnCarRequestEvent {
+//             position: Vec3::ZERO,
+//             car_type: get_random_car_type().to_string(),
+//         });
+//     }
+// }
+
+
+
+const SUSPENSION_MIN: f32 = 0.1;
+const SUSPENSION_MAX: f32 = 0.5;
+const SUSPENSION_REST: f32 = 0.3;
+const SUSPENSION_STIFFNESS: f32 = 40.0;
+const SUSPENSION_DAMPING: f32 = 2.0;
+
+const CAR_MASS: f32 = 1400.0;
+const WHEEL_MASS: f32 = 150.0;
+const HUB_MASS: f32 = 1.0;
+
+const CAR_HALF_WIDTH: f32 = 0.9;
+const CAR_HALF_LENGTH: f32 = 2.2;
+const CAR_HALF_HEIGHT: f32 = 0.6;
+
+const WHEEL_RADIUS: f32 = 0.35;
+const WHEEL_WIDTH: f32 = 0.25;
+
+const MAX_STEER_ANGLE: f32 = 0.5;
+const MAX_WHEEL_SPEED: f32 = 30.0;
+const MAX_WHEEL_TORQUE: f32 = 5000.0;
+
+const STEER_MOTOR_STIFFNESS: f32 = 10.0;
+const STEER_MOTOR_DAMPING: f32 = 2.0;
+
+const WHEEL_MOTOR_STIFFNESS: f32 = 0.0;
+const WHEEL_MOTOR_DAMPING: f32 = 1.0;
+
+#[derive(Component)]
+struct SuspensionJoint;
+
+#[derive(Component)]
+struct FrontSteering;
+
+#[derive(Component)]
+struct RearSteering;
+
+#[derive(Component)]
+struct NoSteering;
+
+#[derive(Component)]
+struct WheelMotorJoint;
+
+fn spawn_funny_car(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let random_angle = rand::random::<f32>() * std::f32::consts::TAU;
+    let car_rot = Quat::from_rotation_y(random_angle);
+    let car_pos = Vec3::new(0.0, 4.0, 0.0);
+
+    let car_body_mass = CAR_MASS;
+    let car_body_volume = (CAR_HALF_WIDTH * 2.0) * (CAR_HALF_HEIGHT * 2.0) * (CAR_HALF_LENGTH * 2.0);
+    
+    let car_body = commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(CAR_HALF_WIDTH * 2.0, CAR_HALF_HEIGHT * 2.0, CAR_HALF_LENGTH * 2.0))),
+        MeshMaterial3d(materials.add(Color::srgb(0.2, 0.3, 0.8))),
+        Transform::from_translation(car_pos).with_rotation(car_rot),
+        RigidBody::Dynamic,
+        MassPropertiesBundle::from_shape(
+            &Cuboid::new(CAR_HALF_WIDTH * 2.0, CAR_HALF_HEIGHT * 2.0, CAR_HALF_LENGTH * 2.0),
+            car_body_mass / car_body_volume,
+        ),
+        avian3d::prelude::Collider::cuboid(CAR_HALF_WIDTH * 2.0, CAR_HALF_HEIGHT * 2.0, CAR_HALF_LENGTH * 2.0),
+        CollisionLayers::new(
+            [GamePhysicsLayer::Car],
+            [GamePhysicsLayer::Map, GamePhysicsLayer::Car],
+        ),
+        SleepingDisabled,
+    )).id();
+
+    let wheel_offsets_and_steer = [
+        // Front (steers normal)
+        (Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, CAR_HALF_LENGTH - 0.3), true, false), // Left
+        (Vec3::new(CAR_HALF_WIDTH + 0.1,  -CAR_HALF_HEIGHT, CAR_HALF_LENGTH - 0.3), true, false), // Right
+        // Middle (no steer)
+        (Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, 0.0), false, false), // Left
+        (Vec3::new(CAR_HALF_WIDTH + 0.1,  -CAR_HALF_HEIGHT, 0.0), false, false), // Right
+        // Back (steers inverted)
+        (Vec3::new(-CAR_HALF_WIDTH - 0.1, -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH - 0.3)), false, true), // Left
+        (Vec3::new(CAR_HALF_WIDTH + 0.1,  -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH - 0.3)), false, true), // Right
+    ];
+
+    for (offset, is_front, is_rear) in wheel_offsets_and_steer {
+        let world_offset = car_rot * offset;
+        let hub_pos = car_pos + world_offset;
+
+        let suspension_hub = commands.spawn((
+            Transform::from_translation(hub_pos).with_rotation(car_rot),
+            RigidBody::Dynamic,
+            MassPropertiesBundle::from_shape(&Cuboid::from_length(0.1), HUB_MASS / 0.001),
+            SleepingDisabled,
+        )).id();
+
+        commands.spawn((
+            PrismaticJoint::new(car_body, suspension_hub)
+                .with_local_anchor1(Vector::new(offset.x, offset.y, offset.z))
+                .with_slider_axis(Vector::NEG_Y) // slides downward relative to body
+                .with_limits(SUSPENSION_MIN, SUSPENSION_MAX)
+                .with_motor(
+                    LinearMotor::new(MotorModel::SpringDamper {
+                        frequency: SUSPENSION_STIFFNESS,
+                        damping_ratio: SUSPENSION_DAMPING,
+                    })
+                    .with_target_position(SUSPENSION_REST)
+                    .with_max_force(Scalar::MAX),
+                ),
+            SuspensionJoint,
+        ));
+
+        commands.spawn(
+            DistanceJoint::new(car_body, suspension_hub)
+                .with_local_anchor1(Vector::new(offset.x, offset.y, offset.z))
+                .with_limits(SUSPENSION_MIN, SUSPENSION_MAX)
+                .with_compliance(1.0 / 10000.0), // very stiff
+        );
+
+        let steering_hub = commands.spawn((
+            Transform::from_translation(hub_pos).with_rotation(car_rot),
+            RigidBody::Dynamic,
+            MassPropertiesBundle::from_shape(&Cuboid::from_length(0.1), HUB_MASS / 0.001),
+            SleepingDisabled,
+        )).id();
+
+        let mut steering_joint = commands.spawn(
+            RevoluteJoint::new(suspension_hub, steering_hub)
+                .with_hinge_axis(Vector::Y) // rotate around vertical = steering
+                .with_angle_limits(-MAX_STEER_ANGLE, MAX_STEER_ANGLE)
+                .with_motor(
+                    AngularMotor::new(MotorModel::SpringDamper {
+                        frequency: STEER_MOTOR_STIFFNESS,
+                        damping_ratio: STEER_MOTOR_DAMPING,
+                    })
+                    .with_target_position(0.0)
+                    .with_max_torque(Scalar::MAX),
+                )
+        );
+
+        if is_front {
+            steering_joint.insert(FrontSteering);
+        } else if is_rear {
+            steering_joint.insert(RearSteering);
+        } else {
+            steering_joint.insert(NoSteering);
+        }
+
+        let wheel_volume = std::f32::consts::PI * WHEEL_RADIUS * WHEEL_RADIUS * WHEEL_WIDTH;
+        let wheel_mesh = meshes.add(Cylinder::new(WHEEL_RADIUS, WHEEL_WIDTH));
+        let wheel_material = materials.add(Color::srgb(0.15, 0.15, 0.15));
+        // Wheel entity has SAME rotation as hub so the revolute joint doesn't fight it.
+        // The visual mesh is a child with a local rotation to lay the cylinder on its side.
+        let wheel = commands.spawn((
+            Transform::from_translation(hub_pos).with_rotation(car_rot),
+            RigidBody::Dynamic,
+            MassPropertiesBundle::from_shape(&Cylinder::new(WHEEL_RADIUS, WHEEL_WIDTH), WHEEL_MASS / wheel_volume),
+            Collider::cylinder(WHEEL_RADIUS, WHEEL_WIDTH),
+            CollisionLayers::new(
+                [GamePhysicsLayer::Wheel],
+                [GamePhysicsLayer::Map],
+            ),
+            SleepingDisabled,
+        )).with_children(|parent| {
+            parent.spawn((
+                Mesh3d(wheel_mesh),
+                MeshMaterial3d(wheel_material),
+                Transform::from_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
+            ));
+        }).id();
+
+        commands.spawn((
+            RevoluteJoint::new(steering_hub, wheel)
+                .with_hinge_axis(Vector::X) // Spin around lateral axis
+                .with_motor(AngularMotor {
+                    target_velocity: 0.0,
+                    max_torque: MAX_WHEEL_TORQUE,
+                    motor_model: MotorModel::AccelerationBased {
+                        stiffness: WHEEL_MOTOR_STIFFNESS,
+                        damping: WHEEL_MOTOR_DAMPING,
+                    },
+                    ..default()
+                }),
+            WheelMotorJoint,
+        ));
+    }
+}
+
+
+fn apply_physics_for_funny_controls(
+    controls: Res<FunnyCarControls>,
+    mut front_steer: Query<&mut RevoluteJoint, (With<FrontSteering>, Without<RearSteering>, Without<NoSteering>, Without<WheelMotorJoint>)>,
+    mut rear_steer: Query<&mut RevoluteJoint, (With<RearSteering>, Without<FrontSteering>, Without<NoSteering>, Without<WheelMotorJoint>)>,
+    mut no_steer: Query<&mut RevoluteJoint, (With<NoSteering>, Without<FrontSteering>, Without<RearSteering>, Without<WheelMotorJoint>)>,
+    mut wheels: Query<&mut RevoluteJoint, (With<WheelMotorJoint>, Without<FrontSteering>, Without<RearSteering>, Without<NoSteering>)>,
+) {
+    for mut joint in &mut front_steer {
+        joint.motor.target_position = controls.steer * MAX_STEER_ANGLE;
+    }
+    for mut joint in &mut rear_steer {
+        joint.motor.target_position = -controls.steer * MAX_STEER_ANGLE;
+    }
+    for mut joint in &mut no_steer {
+        joint.motor.target_position = 0.0;
+    }
+    for mut joint in &mut wheels {
+        joint.motor.target_velocity = controls.accelerate * MAX_WHEEL_SPEED;
     }
 }

@@ -2,17 +2,19 @@ use crate::plugins::{
     cars_driving::{
         car_info::get_car_asset,
         driving_plugin::{
-            AxleJoint, CarDriveState, GamePhysicsLayer, SuspensionJoint, Wheel, Strut,
+            AxleJoint, CarDriveState, GamePhysicsLayer, Strut, SuspensionJoint, Wheel,
         },
     },
     states::GameControlState,
 };
-use avian3d::prelude::{
-    AngularMotor, CoefficientCombine, CollisionLayers, Friction, LinearMotor, Mass,
-    MotorModel, PrismaticJoint, Restitution, RevoluteJoint, RigidBody, SleepingDisabled, SweptCcd,
+use avian3d::{
+    dynamics::rigid_body::mass_properties::components::MassPropertiesBundle,
+    prelude::{
+        AngularMotor, CoefficientCombine, CollisionLayers, Friction, LinearMotor, Mass, MotorModel,
+        PrismaticJoint, Restitution, RevoluteJoint, RigidBody, SleepingDisabled, SweptCcd,
+    },
 };
 use bevy::prelude::*;
-
 
 #[derive(Event)]
 pub struct SpawnCarRequestEvent {
@@ -25,8 +27,6 @@ pub struct Car {
     pub _car_type: String,
     pub physics_children: Vec<Entity>,
 }
-
-
 
 pub fn spawn_car_request_event_observer(
     spawn_car_event: On<SpawnCarRequestEvent>,
@@ -65,7 +65,6 @@ pub fn spawn_car_request_event_observer(
 
     let car_entity = commands
         .spawn((
-            
             WorldAssetRoot(handle.clone()),
             Transform::from_translation(pos),
             RigidBody::Dynamic,
@@ -102,12 +101,29 @@ pub fn spawn_car_request_event_observer(
     let half_width = 0.9f32;
     let half_length = 1.8f32;
 
-    // Y-coordinate attach point is 0.3 relative to car center
+    // Y-coordinate attach point is relative to car center
+    let wheel_y_offset: f32 = 0.1;
     let wheels_offsets = [
-        (Vec3::new(-half_width, 0.3, -half_length), true, true), // FL
-        (Vec3::new(half_width, 0.3, -half_length), true, false), // FR
-        (Vec3::new(-half_width, 0.3, half_length), false, true), // RL
-        (Vec3::new(half_width, 0.3, half_length), false, false), // RR
+        (
+            Vec3::new(-half_width, wheel_y_offset, -half_length),
+            true,
+            true,
+        ), // FL
+        (
+            Vec3::new(half_width, wheel_y_offset, -half_length),
+            true,
+            false,
+        ), // FR
+        (
+            Vec3::new(-half_width, wheel_y_offset, half_length),
+            false,
+            true,
+        ), // RL
+        (
+            Vec3::new(half_width, wheel_y_offset, half_length),
+            false,
+            false,
+        ), // RR
     ];
 
     let mut physics_children = Vec::new();
@@ -122,7 +138,7 @@ pub fn spawn_car_request_event_observer(
             .spawn((
                 Transform::from_translation(strut_pos),
                 RigidBody::Dynamic,
-                Mass(1.0),
+                MassPropertiesBundle::from_shape(&Sphere::new(0.5), 0.1),
                 SleepingDisabled,
                 Strut { is_front, is_left },
             ))
@@ -147,7 +163,7 @@ pub fn spawn_car_request_event_observer(
                         .with_target_position(suspension_len)
                         .with_max_force(200000.0),
                     ),
-                Mass(1.0),
+                MassPropertiesBundle::from_shape(&Sphere::new(0.5), 0.1),
                 SuspensionJoint {
                     car_entity,
                     is_front,
@@ -200,7 +216,7 @@ pub fn spawn_car_request_event_observer(
                         .with_target_velocity(0.0)
                         .with_max_torque(500.0),
                     ),
-                Mass(1.0),
+                MassPropertiesBundle::from_shape(&Sphere::new(0.5), 0.1),
                 AxleJoint {
                     car_entity,
                     is_front,
