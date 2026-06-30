@@ -118,20 +118,20 @@ impl Default for CarDriveState {
 
             suspension_min: 0.1,
             suspension_max: 0.5,
-            suspension_rest: 0.4,
-            suspension_stiffness: 12.0,
+            suspension_rest: 0.3,
+            suspension_stiffness: 8.0,
             suspension_damping: 0.8,
 
             car_mass: 1200.0,
             wheel_mass: 25.0,
 
             car_half_width: 0.9,
-            car_half_length: 2.2,
-            car_half_height: 0.6,
+            car_half_length: 1.52,
+            car_half_height: 0.5,
 
             wheel_radius: 0.45,
             wheel_width: 0.35,
-            wheel_y_offset: 0.0,
+            wheel_y_offset: 0.9,
         }
     }
 }
@@ -262,7 +262,7 @@ pub fn update_vehicle_physics_from_tuning(
             let is_left = prism.is_left;
             let x_offset = if is_left { -drive_state.car_half_width } else { drive_state.car_half_width + if is_front { 0.1 } else { 0.0 } };
             let y_offset = -drive_state.car_half_height + drive_state.wheel_y_offset;
-            let z_offset = if is_front { drive_state.car_half_length } else { -drive_state.car_half_length };
+            let z_offset = if is_front { -drive_state.car_half_length } else { drive_state.car_half_length };
             let anchor1 = Vec3::new(x_offset, y_offset, z_offset);
 
             joint.frame1.anchor = avian3d::prelude::JointAnchor::Local(anchor1);
@@ -280,7 +280,7 @@ pub fn update_vehicle_physics_from_tuning(
             let is_left = dist.is_left;
             let x_offset = if is_left { -drive_state.car_half_width } else { drive_state.car_half_width + if is_front { 0.1 } else { 0.0 } };
             let y_offset = -drive_state.car_half_height + drive_state.wheel_y_offset;
-            let z_offset = if is_front { drive_state.car_half_length } else { -drive_state.car_half_length };
+            let z_offset = if is_front { -drive_state.car_half_length } else { drive_state.car_half_length };
             let anchor1 = Vec3::new(x_offset, y_offset, z_offset);
 
             joint.anchor1 = avian3d::prelude::JointAnchor::Local(anchor1);
@@ -299,11 +299,11 @@ pub fn apply_car_steering_and_drive(
     };
 
     let speed = car_velocity.length();
-    let max_steer = 0.6 / (1.0 + 0.3 * speed);
+    let max_steer = 1.2 / (1.0 + 0.3 * speed);
     
-    // Use integrated steering and reverse steering direction (negated)
-    let steer_angle = -drive_state.current_steer_integrated * max_steer;
-    let steer_dir_world = car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, steer_angle.cos());
+    // Use integrated steering
+    let steer_angle = drive_state.current_steer_integrated * max_steer;
+    let steer_dir_world = car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, -steer_angle.cos());
 
     // Drive target velocity / throttle
     let throttle = drive_state.avg_accelerate - drive_state.avg_brake;
@@ -316,19 +316,30 @@ pub fn apply_car_steering_and_drive(
     }
 
     // Force control
+    let total_mass = drive_state.car_mass + 4.0 * drive_state.wheel_mass;
+
+    // Lateral friction to prevent sliding/spinning
+    let steer_side_world = Vec3::new(-steer_dir_world.z, 0.0, steer_dir_world.x).normalize_or_zero();
+    let slide_speed = car_velocity.dot(steer_side_world);
+    let total_lateral_force = -steer_side_world * (slide_speed * total_mass * 5.0);
+    let lateral_force_per_wheel = total_lateral_force / 4.0;
+
+    // Forward drive force
+    let mut drive_force_per_wheel = Vec3::ZERO;
     if throttle > 0.0 {
         let target_speed = 120.0f32 / 3.6f32; // ~33.33 m/s
         let current_speed = car_velocity.dot(steer_dir_world);
         let acc = ((target_speed - current_speed) / 4.0f32).max(0.0f32);
-        let total_mass = drive_state.car_mass + 4.0 * drive_state.wheel_mass;
-        let force_per_wheel = steer_dir_world * (total_mass * acc / 2.0f32) * throttle;
+        drive_force_per_wheel = steer_dir_world * (total_mass * acc / 2.0f32) * throttle;
+    }
 
-        for (wheel_entity, wheel, _) in &q_wheels {
+    for (wheel_entity, wheel, _) in &q_wheels {
+        if let Ok(mut wheel_forces) = forces.get_mut(wheel_entity) {
+            let mut wheel_force = lateral_force_per_wheel;
             if wheel.is_front {
-                if let Ok(mut wheel_forces) = forces.get_mut(wheel_entity) {
-                    wheel_forces.apply_force(force_per_wheel);
-                }
+                wheel_force += drive_force_per_wheel;
             }
+            wheel_forces.apply_force(wheel_force);
         }
     }
 }
@@ -344,9 +355,9 @@ pub fn draw_car_gizmos(
 
     // Green steer direction lines
     let speed = car_velocity.length();
-    let max_steer = 0.6 / (1.0 + 0.3 * speed);
-    let steer_angle = -drive_state.current_steer_integrated * max_steer;
-    let steer_dir_world = car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, steer_angle.cos());
+    let max_steer = 1.2 / (1.0 + 0.3 * speed);
+    let steer_angle = drive_state.current_steer_integrated * max_steer;
+    let steer_dir_world = car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, -steer_angle.cos());
 
     for (wheel, wheel_transform) in &q_wheels {
         if wheel.is_front {

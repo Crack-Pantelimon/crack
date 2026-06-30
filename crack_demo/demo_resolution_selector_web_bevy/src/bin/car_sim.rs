@@ -295,20 +295,20 @@ fn spawn_funny_car(
     let wheel_offsets_and_steer = [
         // Front (steers normal)
         (
-            Vec3::new(-CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, CAR_HALF_LENGTH),
+            Vec3::new(-CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, -CAR_HALF_LENGTH),
             true,
         ), // Left
         (
-            Vec3::new(CAR_HALF_WIDTH + 0.1, -CAR_HALF_HEIGHT, CAR_HALF_LENGTH),
+            Vec3::new(CAR_HALF_WIDTH + 0.1, -CAR_HALF_HEIGHT, -CAR_HALF_LENGTH),
             true,
         ), // Right
         // Back
         (
-            Vec3::new(-CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH)),
+            Vec3::new(-CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, CAR_HALF_LENGTH),
             false,
         ), // Left
         (
-            Vec3::new(CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, -(CAR_HALF_LENGTH)),
+            Vec3::new(CAR_HALF_WIDTH, -CAR_HALF_HEIGHT, CAR_HALF_LENGTH),
             false,
         ), // Right
     ];
@@ -375,10 +375,10 @@ fn apply_physics_for_funny_controls(
     };
 
     let speed = car_velocity.length();
-    let max_steer = 0.6 / (1.0 + 0.3 * speed);
-    let steer_angle = -controls.steer * max_steer;
+    let max_steer = 1.2 / (1.0 + 0.3 * speed);
+    let steer_angle = controls.steer * max_steer;
 
-    let steer_dir_world = car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, steer_angle.cos());
+    let steer_dir_world = car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, -steer_angle.cos());
 
     // Friction control
     let target_friction = if controls.accelerate < 0.0 { 0.9 } else { 0.05 };
@@ -387,20 +387,31 @@ fn apply_physics_for_funny_controls(
         friction.static_coefficient = target_friction;
     }
 
-    // Acceleration control
+    // Force control
+    let total_mass = CAR_MASS + 4.0 * WHEEL_MASS;
+
+    // Lateral friction to prevent sliding/spinning
+    let steer_side_world = Vec3::new(-steer_dir_world.z, 0.0, steer_dir_world.x).normalize_or_zero();
+    let slide_speed = car_velocity.dot(steer_side_world);
+    let total_lateral_force = -steer_side_world * (slide_speed * total_mass * 5.0);
+    let lateral_force_per_wheel = total_lateral_force / 4.0;
+
+    // Acceleration control / forward drive force
+    let mut drive_force_per_wheel = Vec3::ZERO;
     if controls.accelerate > 0.0 {
         let target_speed = 120.0f32 / 3.6f32; // ~33.33 m/s
         let current_speed = car_velocity.dot(steer_dir_world);
         let acc = ((target_speed - current_speed) / 4.0f32).max(0.0f32);
-        let total_mass = CAR_MASS + 4.0 * WHEEL_MASS;
-        let force_per_wheel = steer_dir_world * (total_mass * acc / 2.0f32);
+        drive_force_per_wheel = steer_dir_world * (total_mass * acc / 2.0f32);
+    }
 
-        for (wheel_entity, wheel, _, _) in &wheels_query {
+    for (wheel_entity, wheel, _, _) in &wheels_query {
+        if let Ok(mut wheel_forces) = forces.get_mut(wheel_entity) {
+            let mut wheel_force = lateral_force_per_wheel;
             if wheel.is_front {
-                if let Ok(mut wheel_forces) = forces.get_mut(wheel_entity) {
-                    wheel_forces.apply_force(force_per_wheel);
-                }
+                wheel_force += drive_force_per_wheel;
             }
+            wheel_forces.apply_force(wheel_force);
         }
     }
 

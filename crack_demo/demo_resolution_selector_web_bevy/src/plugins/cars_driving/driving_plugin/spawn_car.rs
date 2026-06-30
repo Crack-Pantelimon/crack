@@ -80,6 +80,7 @@ pub fn spawn_car_request_event_observer(
     let suspension_rest = default_drive_state.suspension_rest;
     let suspension_stiffness = default_drive_state.suspension_stiffness;
     let suspension_damping = default_drive_state.suspension_damping;
+    let wheel_y_offset = default_drive_state.wheel_y_offset;
 
     let car_body_volume = (car_half_width * 2.0) * (car_half_height * 2.0) * (car_half_length * 2.0);
 
@@ -100,6 +101,8 @@ pub fn spawn_car_request_event_observer(
                 ),
                 car_mass / car_body_volume,
             ),
+
+            WorldAssetRoot(car_asset_handle),
             ColliderConstructorHierarchy::new(ColliderConstructor::ConvexDecompositionFromMesh)
                 .with_default_layers(CollisionLayers::new(
                     [GamePhysicsLayer::Car],
@@ -114,14 +117,13 @@ pub fn spawn_car_request_event_observer(
             Visibility::default(),
             InheritedVisibility::default(),
         ))
-        .with_children(|parent| {
-            parent.spawn((
-                WorldAssetRoot(car_asset_handle),
-                Transform::IDENTITY,
-                Visibility::default(),
-                InheritedVisibility::default(),
-            ));
-        })
+        // .with_children(|parent| {
+        //     parent.spawn((
+        //         Transform::IDENTITY,
+        //         Visibility::default(),
+        //         InheritedVisibility::default(),
+        //     ));
+        // })
         .id();
 
     // Wheel offsets:
@@ -129,26 +131,26 @@ pub fn spawn_car_request_event_observer(
     let wheel_offsets_and_steer = [
         // Front (steers normal)
         (
-            Vec3::new(-car_half_width, -car_half_height, car_half_length),
+            Vec3::new(-car_half_width, -car_half_height, -car_half_length),
             true,
             true,
             false,
         ), // FL
         (
-            Vec3::new(car_half_width + 0.1, -car_half_height, car_half_length),
+            Vec3::new(car_half_width + 0.1, -car_half_height, -car_half_length),
             true,
             false,
             false,
         ), // FR
         // Back (no steer)
         (
-            Vec3::new(-car_half_width, -car_half_height, -car_half_length),
+            Vec3::new(-car_half_width, -car_half_height, car_half_length),
             false,
             true,
             false,
         ), // RL
         (
-            Vec3::new(car_half_width, -car_half_height, -car_half_length),
+            Vec3::new(car_half_width, -car_half_height, car_half_length),
             false,
             false,
             false,
@@ -156,7 +158,9 @@ pub fn spawn_car_request_event_observer(
     ];
 
     for (offset, is_front, is_left, _is_rear) in wheel_offsets_and_steer {
-        let world_offset = car_rot * offset;
+        let mut adjusted_offset = offset;
+        adjusted_offset.y += wheel_y_offset;
+        let world_offset = car_rot * adjusted_offset;
         let wheel_pos = pos + world_offset;
 
         // Wheel: standalone entity, connected to car body.
@@ -181,10 +185,12 @@ pub fn spawn_car_request_event_observer(
             .id();
         physics_children.push(wheel);
 
+        let anchor_y = offset.y + wheel_y_offset;
+
         // Prismatic suspension joint connecting wheel directly to body
         let prismatic_joint = commands.spawn((
             PrismaticJoint::new(car_entity, wheel)
-                .with_local_anchor1(Vector::new(offset.x, offset.y, offset.z))
+                .with_local_anchor1(Vector::new(offset.x, anchor_y, offset.z))
                 .with_slider_axis(Vector::NEG_Y)
                 .with_local_basis2(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
                 .with_limits(suspension_min, suspension_max)
@@ -203,7 +209,7 @@ pub fn spawn_car_request_event_observer(
         // Distance joint
         let distance_joint = commands.spawn((
             DistanceJoint::new(car_entity, wheel)
-                .with_local_anchor1(Vector::new(offset.x, offset.y, offset.z))
+                .with_local_anchor1(Vector::new(offset.x, anchor_y, offset.z))
                 .with_limits(suspension_min, suspension_max),
             SuspensionDistanceJoint { is_front, is_left },
         )).id();

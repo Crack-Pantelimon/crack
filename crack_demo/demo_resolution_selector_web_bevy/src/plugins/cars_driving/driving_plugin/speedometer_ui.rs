@@ -75,7 +75,7 @@ pub fn speedometer_ui(
                                 });
                                 ui.horizontal(|ui| {
                                     ui.label(egui::RichText::new("Wheel Y Off:").size(9.0));
-                                    ui.add(egui::Slider::new(&mut drive_state.wheel_y_offset, -1.0..=1.0).text("m").step_by(0.05));
+                                    ui.add(egui::Slider::new(&mut drive_state.wheel_y_offset, -1.0..=2.0).text("m").step_by(0.05));
                                 });
                             });
 

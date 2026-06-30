@@ -60,7 +60,7 @@ pub fn keybinds_control_car(
             for (mut w_transform, mut w_lin_vel, mut w_ang_vel, wheel) in q_wheels.iter_mut() {
                 let x_offset = if wheel.is_left { -car_half_width } else { car_half_width + if wheel.is_front { 0.1 } else { 0.0 } };
                 let y_offset = -car_half_height + drive_state.wheel_y_offset;
-                let z_offset = if wheel.is_front { car_half_length } else { -car_half_length };
+                let z_offset = if wheel.is_front { -car_half_length } else { car_half_length };
                 let offset = Vec3::new(x_offset, y_offset, z_offset);
                 
                 w_transform.translation = spawn_pos + offset;
