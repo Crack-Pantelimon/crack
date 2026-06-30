@@ -10,7 +10,7 @@ use avian3d::prelude::{
     PhysicsLayer, LinearVelocity, AngularVelocity,
     PrismaticJoint, MotorModel,
     DistanceJoint, LinearMotor,
-    Collider, Friction, Forces, WriteRigidBodyForces,
+    Collider, Friction, Forces, WriteRigidBodyForces, ReadRigidBodyForces,
     Mass, AngularInertia, CenterOfMass,
     ComputeMassProperties3d, MassPropertiesExt
 };
@@ -83,6 +83,7 @@ pub struct CarDriveState {
     pub avg_accelerate: f32,
     pub avg_brake: f32,
     pub avg_steer: f32,
+    pub is_reverse: bool,
     
     // Spawn position for reset functionality
     pub spawn_position: Option<Vec3>,
@@ -114,6 +115,7 @@ impl Default for CarDriveState {
             avg_accelerate: 0.0,
             avg_brake: 0.0,
             avg_steer: 0.0,
+            is_reverse: false,
             spawn_position: None,
 
             suspension_min: 0.1,
@@ -290,11 +292,12 @@ pub fn update_vehicle_physics_from_tuning(
 }
 
 pub fn apply_car_steering_and_drive(
-    q_car: Query<(&Transform, &LinearVelocity, &CarDriveState), With<Car>>,
-    mut q_wheels: Query<(Entity, &Wheel, &mut Friction)>,
+    mut q_car: Query<(&Transform, &mut LinearVelocity, &CarDriveState), With<Car>>,
+    mut q_wheels: Query<(Entity, &Wheel, &mut Friction), Without<Car>>,
     mut forces: Query<Forces, Without<Car>>,
+    time: Res<Time>,
 ) {
-    let Ok((car_transform, car_velocity, drive_state)) = q_car.single() else {
+    let Ok((car_transform, mut car_velocity, drive_state)) = q_car.single_mut() else {
         return;
     };
 
@@ -318,24 +321,61 @@ pub fn apply_car_steering_and_drive(
     // Force control
     let total_mass = drive_state.car_mass + 4.0 * drive_state.wheel_mass;
 
-    // Lateral friction to prevent sliding/spinning
-    let steer_side_world = Vec3::new(-steer_dir_world.z, 0.0, steer_dir_world.x).normalize_or_zero();
-    let slide_speed = car_velocity.dot(steer_side_world);
-    let total_lateral_force = -steer_side_world * (slide_speed * total_mass * 5.0);
-    let lateral_force_per_wheel = total_lateral_force / 4.0;
+    // Determine target driving direction (forward or reverse)
+    let drive_dir = if drive_state.is_reverse {
+        -steer_dir_world
+    } else {
+        steer_dir_world
+    };
 
-    // Forward drive force
-    let mut drive_force_per_wheel = Vec3::ZERO;
-    if throttle > 0.0 {
-        let target_speed = 120.0f32 / 3.6f32; // ~33.33 m/s
-        let current_speed = car_velocity.dot(steer_dir_world);
-        let acc = ((target_speed - current_speed) / 4.0f32).max(0.0f32);
-        drive_force_per_wheel = steer_dir_world * (total_mass * acc / 2.0f32) * throttle;
+    // Rotate speed vector to align more with the steering/drive direction to reduce the "on ice" feel
+    if speed > 0.5 {
+        let vel_xz = Vec3::new(car_velocity.0.x, 0.0, car_velocity.0.z);
+        if vel_xz.length_squared() > 0.001 {
+            let speed_xz = vel_xz.length();
+            let vel_dir_xz = vel_xz / speed_xz;
+            let drive_xz = Vec3::new(drive_dir.x, 0.0, drive_dir.z).normalize_or_zero();
+            let dt = time.delta_secs().min(0.1);
+            let correction_factor = 4.5;
+            let new_dir_xz = Vec3::lerp(vel_dir_xz, drive_xz, correction_factor * dt).normalize_or_zero();
+            let new_vel_xz = new_dir_xz * speed_xz;
+            car_velocity.0.x = new_vel_xz.x;
+            car_velocity.0.z = new_vel_xz.z;
+        }
     }
 
+    // Forward/reverse drive force per wheel
+    let mut drive_force_per_wheel = Vec3::ZERO;
+    if throttle > 0.0 {
+        let target_speed = if drive_state.is_reverse {
+            40.0f32 / 3.6f32 // Max speed: 40 km/h in reverse
+        } else {
+            120.0f32 / 3.6f32 // Max speed: 120 km/h forward
+        };
+        let current_speed = car_velocity.0.dot(drive_dir);
+        let acc = ((target_speed - current_speed) / 4.0f32).max(0.0f32);
+        drive_force_per_wheel = drive_dir * (total_mass * acc / 2.0f32) * throttle;
+    }
+
+    // Apply anti-skid forces individually per wheel and drive forces to front wheels
     for (wheel_entity, wheel, _) in &q_wheels {
         if let Ok(mut wheel_forces) = forces.get_mut(wheel_entity) {
-            let mut wheel_force = lateral_force_per_wheel;
+            // Retrieve the wheel's linear velocity directly from wheel_forces (implementing ReadRigidBodyForces)
+            let wheel_velocity = wheel_forces.linear_velocity();
+
+            // Determine wheel steer angle: front wheels steer, rear wheels are straight
+            let wheel_steer_angle = if wheel.is_front { steer_angle } else { 0.0 };
+            
+            // Calculate wheel direction and its lateral axis
+            let wheel_dir_world = car_transform.rotation * Vec3::new(wheel_steer_angle.sin(), 0.0, -wheel_steer_angle.cos());
+            let wheel_side_world = Vec3::new(-wheel_dir_world.z, 0.0, wheel_dir_world.x).normalize_or_zero();
+
+            // Compute lateral velocity of the wheel and counter it individually
+            let wheel_slide_speed = wheel_velocity.dot(wheel_side_world);
+            let wheel_mass_val = drive_state.wheel_mass + (drive_state.car_mass / 4.0);
+            let mut wheel_force = -wheel_side_world * (wheel_slide_speed * wheel_mass_val * 6.5);
+
+            // Add drive force to front wheels
             if wheel.is_front {
                 wheel_force += drive_force_per_wheel;
             }

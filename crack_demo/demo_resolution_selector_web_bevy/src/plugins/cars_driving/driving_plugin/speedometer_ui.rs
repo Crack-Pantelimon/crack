@@ -122,12 +122,22 @@ pub fn speedometer_ui(
                             // Left Column: Speedometer Readout
                             ui.vertical_centered(|ui| {
                                 ui.allocate_space(egui::Vec2::new(1.0, 5.0));
-                                ui.label(
-                                    egui::RichText::new(format!("{:.1}", speed_kmh))
-                                        .color(egui::Color32::WHITE)
-                                        .size(36.0)
-                                        .strong(),
-                                );
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!("{:.1}", speed_kmh))
+                                            .color(egui::Color32::WHITE)
+                                            .size(36.0)
+                                            .strong(),
+                                    );
+                                    if drive_state.is_reverse {
+                                        ui.label(
+                                            egui::RichText::new("R")
+                                                .color(egui::Color32::from_rgb(220, 50, 50))
+                                                .size(36.0)
+                                                .strong(),
+                                        );
+                                    }
+                                });
                                 ui.label(
                                     egui::RichText::new("km/h")
                                         .color(egui::Color32::GRAY)
