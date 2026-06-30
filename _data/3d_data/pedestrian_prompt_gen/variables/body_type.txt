@@ -1,0 +1,12 @@
+slim build
+average build
+athletic build
+muscular build
+heavyset build
+stocky build
+lean build
+skinny build
+broad-shouldered build
+chubby build
+fit build
+overweight build

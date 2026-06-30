@@ -1,0 +1,6 @@
+very rich
+somewhat rich
+middle class
+low class
+very poor
+beggar
