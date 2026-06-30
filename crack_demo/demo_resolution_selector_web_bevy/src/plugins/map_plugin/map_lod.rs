@@ -1,6 +1,7 @@
 use crate::plugins::map_plugin::{BBox, MapLODState, MapTileAssetId, MapTree, MapTreeNodePath};
 use crate::plugins::states::InitialMapLoadFinished;
 use _crack_utils::get_timestamp_now_ms;
+use avian3d::collision::collider::CollisionMargin;
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use bevy_egui::egui::emath::OrderedFloat;
@@ -60,12 +61,14 @@ fn spawn_node_tiles(
             },
             avian3d::prelude::RigidBody::Static,
             avian3d::prelude::ColliderConstructorHierarchy::new(
-                avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
+                avian3d::prelude::ColliderConstructor::TrimeshFromMesh, 
+                // avian3d::prelude::ColliderConstructor::ConvexDecompositionFromMesh, 
             )
             .with_default_layers(CollisionLayers::new(
                 [GamePhysicsLayer::Map],
                 [GamePhysicsLayer::Map, GamePhysicsLayer::Car, GamePhysicsLayer::Wheel],
             )),
+            CollisionMargin(0.1),
             avian3d::prelude::Restitution::ZERO
                 .with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
             avian3d::prelude::Friction::new(0.9),

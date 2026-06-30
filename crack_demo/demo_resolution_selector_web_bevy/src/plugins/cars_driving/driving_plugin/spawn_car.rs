@@ -5,11 +5,9 @@ use crate::plugins::{
     },
     states::GameControlState,
 };
-use avian3d::prelude::{
-    Collider, CollisionLayers, DistanceJoint, LinearMotor,
-    MassPropertiesBundle, MotorModel, PrismaticJoint, RigidBody,
-    SleepingDisabled, Friction, ColliderConstructorHierarchy, ColliderConstructor,
-};
+use avian3d::{dynamics::ccd::SweptCcd, prelude::{
+    Collider, ColliderConstructor, ColliderConstructorHierarchy, CollisionLayers, DistanceJoint, Friction, LinearMotor, MassPropertiesBundle, MotorModel, PrismaticJoint, RigidBody, SleepingDisabled,
+}};
 use avian3d::math::{Scalar, Vector};
 use bevy::prelude::*;
 use bevy::world_serialization::WorldAssetRoot;
@@ -113,6 +111,7 @@ pub fn spawn_car_request_event_observer(
                 [GamePhysicsLayer::Map, GamePhysicsLayer::Car],
             ),
             SleepingDisabled,
+            SweptCcd::default(),
             default_drive_state,
             Visibility::default(),
             InheritedVisibility::default(),
@@ -178,6 +177,8 @@ pub fn spawn_car_request_event_observer(
                 ),
                 Collider::cylinder(wheel_radius, wheel_width),
                 CollisionLayers::new([GamePhysicsLayer::Wheel], [GamePhysicsLayer::Map]),
+            SweptCcd::default(),
+
                 Friction::new(0.05).with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
                 SleepingDisabled,
                 Wheel { is_front, is_left },
