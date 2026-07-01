@@ -12,7 +12,7 @@ pub fn get_car_asset(car_type: &str, asset_server: &AssetServer) -> Handle<World
 }
 
 pub fn car_list() -> &'static [&'static str] {
-    &["dacie-1b", "dacie-2b", "dacie-3b"]
+    &["dacia-1c", "dacia-2c", "dacia-3c"]
 }
 
 pub fn get_random_car_type() -> &'static str {
