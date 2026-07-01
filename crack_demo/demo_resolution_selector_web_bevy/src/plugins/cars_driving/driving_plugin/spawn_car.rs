@@ -2,17 +2,19 @@ use crate::plugins::cars_driving::car_info::{get_car_asset, get_random_car_type}
 use crate::plugins::{
     cars_driving::driving_plugin::{
         CarDriveState, GamePhysicsLayer, SuspensionDistanceJoint, SuspensionPrismaticJoint, Wheel,
-        WheelContactData,
+        WheelContactData, WheelRevoluteJoint,
     },
     states::GameControlState,
 };
+use avian3d::collision::collider::CollisionMargin;
+use avian3d::dynamics::rigid_body::Restitution;
 use avian3d::math::{Scalar, Vector};
 use avian3d::{
     dynamics::ccd::SweptCcd,
     prelude::{
         Collider, ColliderConstructor, ColliderConstructorHierarchy, CollisionLayers,
         DistanceJoint, Friction, LinearMotor, MassPropertiesBundle, MotorModel, PrismaticJoint,
-        RigidBody, SleepingDisabled, RevoluteJoint,
+        RigidBody, SleepingDisabled, RevoluteJoint, AngularMotor,
     },
 };
 use bevy::prelude::*;
@@ -117,7 +119,7 @@ pub fn spawn_car_request_event_observer(
             ),
             SleepingDisabled,
             SweptCcd::default(),
-            default_drive_state,
+            default_drive_state.clone(),
             Visibility::default(),
             InheritedVisibility::default(),
         ))
@@ -183,6 +185,9 @@ pub fn spawn_car_request_event_observer(
                 Collider::cylinder(wheel_radius, wheel_width),
                 CollisionLayers::new([GamePhysicsLayer::Wheel], [GamePhysicsLayer::Map]),
                 SweptCcd::default(),
+
+            CollisionMargin(0.05),
+                Restitution::ZERO.with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
                 Friction::new(0.85).with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
                 SleepingDisabled,
                 Wheel { is_front, is_left },
@@ -227,11 +232,19 @@ pub fn spawn_car_request_event_observer(
 
         // Revolute joint for wheel spinning
         let revolute_joint = commands
-            .spawn(
+            .spawn((
                 RevoluteJoint::new(car_entity, wheel)
                     .with_local_anchor1(Vector::new(offset.x, anchor_y, offset.z))
-                    .with_hinge_axis(Vector::X),
-            )
+                    .with_hinge_axis(Vector::X)
+                    .with_motor(
+                        AngularMotor::new(MotorModel::SpringDamper {
+                            frequency: default_drive_state.revolute_frequency as Scalar,
+                            damping_ratio: default_drive_state.revolute_damping as Scalar,
+                        })
+                        .with_max_torque(default_drive_state.revolute_max_torque as Scalar),
+                    ),
+                WheelRevoluteJoint { is_front, is_left },
+            ))
             .id();
         physics_children.push(revolute_joint);
     }

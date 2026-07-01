@@ -218,6 +218,66 @@ pub fn speedometer_ui(
                                     });
                                 },
                             );
+
+                            ui.collapsing(
+                                egui::RichText::new("Limits")
+                                    .size(9.0)
+                                    .color(egui::Color32::LIGHT_GRAY),
+                                |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("Max Speed:").size(9.0));
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut drive_state.car_max_speed,
+                                                40.0..=300.0,
+                                            )
+                                            .text("km/h")
+                                            .step_by(5.0),
+                                        );
+                                    });
+                                },
+                            );
+
+                            ui.collapsing(
+                                egui::RichText::new("Revolute Motors")
+                                    .size(9.0)
+                                    .color(egui::Color32::LIGHT_GRAY),
+                                |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("Frequency:").size(9.0));
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut drive_state.revolute_frequency,
+                                                0.5..=50.0,
+                                            )
+                                            .text("Hz")
+                                            .step_by(0.5),
+                                        );
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("Damping:").size(9.0));
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut drive_state.revolute_damping,
+                                                0.0..=5.0,
+                                            )
+                                            .text("ratio")
+                                            .step_by(0.1),
+                                        );
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("Max Torque:").size(9.0));
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut drive_state.revolute_max_torque,
+                                                10.0..=5000.0,
+                                            )
+                                            .text("N·m")
+                                            .step_by(50.0),
+                                        );
+                                    });
+                                },
+                            );
                         });
 
                         ui.allocate_space(egui::Vec2::new(1.0, 5.0));

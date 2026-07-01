@@ -11,9 +11,10 @@ use avian3d::prelude::{
     AngularInertia, AngularVelocity, CenterOfMass, Collider, ComputeMassProperties3d,
     DistanceJoint, Forces, Friction, LinearMotor, LinearVelocity, Mass, MassPropertiesExt,
     MotorModel, PhysicsLayer, PrismaticJoint, ReadRigidBodyForces, WriteRigidBodyForces,
-    SpatialQuery, SpatialQueryFilter,
+    SpatialQuery, SpatialQueryFilter, RevoluteJoint,
 };
 use bevy::prelude::*;
+use avian3d::debug_render::{PhysicsGizmos, PhysicsGizmoExt};
 use bevy_egui::EguiPrimaryContextPass;
 use {keybinds_control::keybinds_control_car, speedometer_ui::speedometer_ui};
 
@@ -32,6 +33,7 @@ impl<S: States> Plugin for DrivingPlugin<S> {
                 update_wheel_contact_normals,
                 apply_car_steering_and_drive,
                 draw_car_gizmos,
+                always_debug_render_wheels,
                 cap_car_velocities,
                 update_vehicle_physics_from_tuning,
             )
@@ -97,6 +99,12 @@ pub struct SuspensionDistanceJoint {
     pub is_left: bool,
 }
 
+#[derive(Component, Clone, Copy)]
+pub struct WheelRevoluteJoint {
+    pub is_front: bool,
+    pub is_left: bool,
+}
+
 #[derive(EntityEvent, Clone, Debug)]
 pub struct Drive {
     pub entity: Entity,
@@ -134,6 +142,11 @@ pub struct CarDriveState {
     pub wheel_radius: f32,
     pub wheel_width: f32,
     pub wheel_y_offset: f32,
+
+    pub revolute_frequency: f32,
+    pub revolute_damping: f32,
+    pub revolute_max_torque: f32,
+    pub car_max_speed: f32,
 }
 
 impl Default for CarDriveState {
@@ -163,16 +176,21 @@ impl Default for CarDriveState {
             wheel_radius: 0.45,
             wheel_width: 0.35,
             wheel_y_offset: 0.9,
+
+            revolute_frequency: 10.0,
+            revolute_damping: 1.0,
+            revolute_max_torque: 800.0,
+            car_max_speed: 120.0,
         }
     }
 }
 
 pub fn cap_car_velocities(
-    mut q_car: Query<(&mut LinearVelocity, &mut AngularVelocity), With<Car>>,
+    mut q_car: Query<(&mut LinearVelocity, &mut AngularVelocity, &CarDriveState), With<Car>>,
 ) {
-    for (mut lin_vel, mut ang_vel) in q_car.iter_mut() {
-        // Max speed: 80 km/h = 22.22 m/s
-        let max_speed = 22.222;
+    for (mut lin_vel, mut ang_vel, drive_state) in q_car.iter_mut() {
+        // Max speed: dynamic based on slider in km/h -> m/s
+        let max_speed = drive_state.car_max_speed / 3.6;
         let speed = lin_vel.0.length();
         if speed > max_speed {
             lin_vel.0 = lin_vel.0.normalize_or_zero() * max_speed;
@@ -253,6 +271,7 @@ pub fn update_vehicle_physics_from_tuning(
     q_car: Query<(Entity, &CarDriveState), Changed<CarDriveState>>,
     mut q_prismatic: Query<(&mut PrismaticJoint, &SuspensionPrismaticJoint)>,
     mut q_distance: Query<(&mut DistanceJoint, &SuspensionDistanceJoint)>,
+    mut q_revolute: Query<(&mut RevoluteJoint, &WheelRevoluteJoint)>,
     mut q_body: Query<
         (&mut Mass, &mut AngularInertia, &mut CenterOfMass),
         (With<Car>, Without<Wheel>),
@@ -370,6 +389,31 @@ pub fn update_vehicle_physics_from_tuning(
                 drive_state.suspension_max,
             );
         }
+
+        // 4. Update Revolute joints (motor parameters and anchors)
+        for (mut joint, rev) in q_revolute.iter_mut() {
+            let is_front = rev.is_front;
+            let is_left = rev.is_left;
+            let x_offset = if is_left {
+                -drive_state.car_half_width
+            } else {
+                drive_state.car_half_width + if is_front { 0.1 } else { 0.0 }
+            };
+            let y_offset = -drive_state.car_half_height + drive_state.wheel_y_offset;
+            let z_offset = if is_front {
+                -drive_state.car_half_length
+            } else {
+                drive_state.car_half_length
+            };
+            let anchor1 = Vec3::new(x_offset, y_offset, z_offset);
+
+            joint.frame1.anchor = avian3d::prelude::JointAnchor::Local(anchor1);
+            joint.motor.max_torque = drive_state.revolute_max_torque as Scalar;
+            joint.motor.motor_model = MotorModel::SpringDamper {
+                frequency: drive_state.revolute_frequency as Scalar,
+                damping_ratio: drive_state.revolute_damping as Scalar,
+            };
+        }
     }
 }
 
@@ -377,11 +421,27 @@ pub fn apply_car_steering_and_drive(
     mut q_car: Query<(&Transform, &mut LinearVelocity, &CarDriveState), With<Car>>,
     mut q_wheels: Query<(Entity, &Wheel, &mut Friction, &WheelContactData), Without<Car>>,
     mut forces: Query<Forces, Without<Car>>,
+    mut q_revolute: Query<&mut RevoluteJoint, With<WheelRevoluteJoint>>,
     time: Res<Time>,
 ) {
     let Ok((car_transform, mut car_velocity, drive_state)) = q_car.single_mut() else {
         return;
     };
+
+    // Synchronize wheel motor target velocity with desired speed (km/h)
+    let signed_speed_kmh = car_velocity.0.dot(car_transform.rotation * Vec3::NEG_Z) * 3.6;
+    let acc_term = if drive_state.avg_accelerate > 0.0 { 0.5 } else { 0.0 };
+    let desired_speed_kmh = if drive_state.is_reverse {
+        signed_speed_kmh - acc_term
+    } else {
+        signed_speed_kmh + acc_term
+    };
+    let desired_speed_mps = desired_speed_kmh / 3.6;
+    let target_ang_vel = desired_speed_mps / drive_state.wheel_radius;
+
+    for mut joint in &mut q_revolute {
+        joint.motor.target_velocity = target_ang_vel as Scalar;
+    }
 
     let speed = car_velocity.length();
     let max_steer = 1.2 / (1.0 + 0.3 * speed);
@@ -624,6 +684,22 @@ pub fn draw_car_gizmos(
             gizmos.line(start, end, Color::srgb(0.0, 1.0, 0.0));
         }
 
+        // Draw cylinder wireframe and rotation indicator line for each wheel
+        let wheel_cylinder = Cylinder::new(drive_state.wheel_radius, drive_state.wheel_width);
+        gizmos.primitive_3d(
+            &wheel_cylinder,
+            Isometry3d::new(wheel_transform.translation, wheel_transform.rotation),
+            Color::srgb(0.2, 0.6, 1.0),
+        );
+
+        let radial_point_local = Vec3::new(0.0, drive_state.wheel_radius, 0.0);
+        let radial_point_world = wheel_transform.transform_point(radial_point_local);
+        gizmos.line(
+            wheel_transform.translation,
+            radial_point_world,
+            Color::srgb(1.0, 0.0, 1.0),
+        );
+
         // Draw orange lines for 4 rays
         let ray_color = Color::srgb(1.0, 0.5, 0.0);
         let star_color = Color::srgb(0.0, 0.0, 1.0);
@@ -689,5 +765,16 @@ pub fn draw_car_gizmos(
             Isometry3d::new(plane_center, plane_rotation),
             box_color,
         );
+    }
+}
+
+pub fn always_debug_render_wheels(
+    q_wheels: Query<(&Collider, &GlobalTransform), With<Wheel>>,
+    mut gizmos: Gizmos<PhysicsGizmos>,
+) {
+    for (collider, transform) in &q_wheels {
+        let position = avian3d::prelude::Position::from(transform);
+        let rotation = avian3d::prelude::Rotation::from(transform);
+        gizmos.draw_collider(collider, position, rotation, Color::srgb(0.2, 0.6, 1.0));
     }
 }
