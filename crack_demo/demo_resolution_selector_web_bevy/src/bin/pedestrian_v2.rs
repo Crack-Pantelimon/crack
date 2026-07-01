@@ -24,6 +24,32 @@ use demo_resolution_selector_web_bevy::plugins::{
     states::GameControlState,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum BoneLabel {
+    Head,
+    Neck,
+    Spine,
+    Midgroin,
+    LeftArm,
+    RightArm,
+    LeftLeg,
+    RightLeg,
+}
+
+impl BoneLabel {
+    fn color(&self) -> Color {
+        match self {
+            BoneLabel::Head | BoneLabel::Neck => Color::srgb(1.0, 0.4, 0.7), // Pink
+            BoneLabel::Spine => Color::srgb(0.0, 0.5, 1.0), // Blue
+            BoneLabel::Midgroin => Color::srgb(1.0, 1.0, 0.0), // Yellow
+            BoneLabel::LeftArm => Color::srgb(0.6, 0.2, 0.8), // Purple
+            BoneLabel::RightArm => Color::srgb(1.0, 0.6, 0.0), // Orange
+            BoneLabel::LeftLeg => Color::srgb(1.0, 0.2, 0.2), // Red
+            BoneLabel::RightLeg => Color::srgb(0.2, 1.0, 0.2), // Green
+        }
+    }
+}
+
 #[derive(Component)]
 struct ModelRoot {
     index: usize,
@@ -35,6 +61,11 @@ struct ModelRoot {
 struct NeedAlignment {
     target_position: Vec3,
     scale: f32,
+}
+
+#[derive(Component)]
+struct PedestrianSkeleton {
+    joint_labels: std::collections::HashMap<Entity, BoneLabel>,
 }
 
 #[derive(Event, Clone)]
@@ -61,6 +92,8 @@ struct SelectedModel {
 struct HoveredModel {
     entity: Option<Entity>,
 }
+
+
 
 #[derive(Asset, TypePath, Debug, Clone)]
 pub struct TextAsset {
@@ -91,6 +124,13 @@ impl AssetLoader for TextAssetLoader {
     fn extensions(&self) -> &[&str] {
         &["txt"]
     }
+}
+
+struct JointData {
+    entity: Entity,
+    _name: String,
+    pos: Vec3,
+    parent: Option<Entity>,
 }
 
 fn main() {
@@ -138,6 +178,7 @@ fn main() {
         .init_asset_loader::<TextAssetLoader>()
         .init_resource::<SelectedModel>()
         .init_resource::<HoveredModel>()
+
         .add_observer(spawn_pedestrian_observer)
         .add_systems(Startup, setup_scene)
         .add_systems(
@@ -148,11 +189,13 @@ fn main() {
                 draw_skeletons_system,
                 picker_system,
                 draw_hovered_bbox_system,
+
             ),
         )
         .add_systems(EguiPrimaryContextPass, draw_gui_system)
         .run();
 }
+
 
 fn spawn_pedestrian_observer(
     trigger: On<SpawnPedestrianRequest>,
@@ -170,7 +213,7 @@ fn spawn_pedestrian_observer(
         },
         NeedAlignment {
             target_position: req.position,
-            scale: rand::random::<f32>() * 0.2 + 1.3, // 1.3 to 1.5 of initial scale
+            scale: rand::random::<f32>() * 0.2 + 1.3,
         },
     ))
     .with_children(|parent| {
@@ -226,11 +269,9 @@ fn setup_scene(
     asset_server: Res<AssetServer>,
     mut gizmo_store: ResMut<GizmoConfigStore>,
 ) {
-    // Configure default gizmos depth bias to always show skeleton through mesh
     let (config, _) = gizmo_store.config_mut::<DefaultGizmoConfigGroup>();
     config.depth_bias = -1.0;
 
-    // Spawning 4 ground cubes of size 500x500x500
     let cubes_info = [
         (Vec3::new(250.0, -250.0, 250.0), (50, 70)),
         (Vec3::new(-250.0, -250.0, 250.0), (90, 110)),
@@ -280,7 +321,6 @@ fn setup_scene(
         ));
     }
 
-    // Spawn camera diagonally looking at the grid center
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(10.0, 10.0, 15.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
@@ -291,7 +331,6 @@ fn setup_scene(
         },
     ));
 
-    // Spawn DirectionalLight (the sun)
     commands.spawn((
         DirectionalLight {
             illuminance: 10000.0,
@@ -301,7 +340,6 @@ fn setup_scene(
         Transform::from_xyz(200.0, 400.0, 200.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
-    // Load manifest
     let base_url = demo_resolution_selector_web_bevy::config::DATA_BASE_URL.trim_end_matches('/');
     let manifest_url = format!("{}/3d_data/pedestrian_3d_gen/manifest.txt", base_url);
     let handle = asset_server.load::<TextAsset>(manifest_url);
@@ -360,9 +398,9 @@ fn load_manifest_system(
                 let col = idx % cols;
                 let row = idx / cols;
 
-                const grid_size: f32 = 1.6;
-                let x = (col as f32 - (cols - 1) as f32 / 2.0) * grid_size;
-                let z = (row as f32 - (((count as f32 / cols as f32).ceil() - 1.0) / 2.0)) * grid_size;
+                const GRID_SIZE: f32 = 1.6;
+                let x = (col as f32 - (cols - 1) as f32 / 2.0) * GRID_SIZE;
+                let z = (row as f32 - (((count as f32 / cols as f32).ceil() - 1.0) / 2.0)) * GRID_SIZE;
                 let y = 1.0;
 
                 let model_name = line.split('/').last().unwrap_or(line).replace(".glb", "");
@@ -404,6 +442,8 @@ fn align_pedestrians_system(
     global_transform_query: Query<&GlobalTransform>,
     mut transform_query: Query<&mut Transform>,
     mut model_root_query: Query<&mut ModelRoot>,
+    parent_query: Query<&ChildOf>,
+    name_query: Query<&Name>,
     meshes: Res<Assets<Mesh>>,
 ) {
     for (root_entity, need_align, children) in query.iter() {
@@ -465,10 +505,8 @@ fn align_pedestrians_system(
 
         let center = (min + max) / 2.0;
         let size = max - min;
-
         let s = need_align.scale;
 
-        // Position root at center of scaled model (offset up by half scale-height)
         let root_pos = need_align.target_position + s * Vec3::new(0.0, size.y / 2.0, 0.0);
 
         if let Ok(mut root_transform) = transform_query.get_mut(root_entity) {
@@ -476,7 +514,6 @@ fn align_pedestrians_system(
             root_transform.scale = Vec3::splat(s);
         }
 
-        // Center visual child at -center relative to root
         for child in children.iter() {
             if let Ok(mut child_transform) = transform_query.get_mut(child) {
                 child_transform.translation = -center;
@@ -488,20 +525,56 @@ fn align_pedestrians_system(
             RigidBody::Static,
         ));
 
+        let mut root_idx = 0;
+        let mut model_name = "".to_string();
         if let Ok(mut root) = model_root_query.get_mut(root_entity) {
             root.size = size * s;
+            root_idx = root.index;
+            model_name = root.name.clone();
         }
+
+        // Perform skeleton classification
+        let mut nodes_raw = Vec::new();
+        traverse_hierarchy_raw(
+            root_entity,
+            &children_query,
+            &name_query,
+            &global_transform_query,
+            &mut nodes_raw,
+        );
+
+        let mut joints = Vec::new();
+        for (ent, name, world_pos) in &nodes_raw {
+            let rel_pos = root_inv.transform_point3(*world_pos);
+            let parent_ent = parent_query.get(*ent).ok().map(|p| p.get());
+            joints.push(JointData {
+                entity: *ent,
+                _name: name.clone(),
+                pos: rel_pos,
+                parent: parent_ent,
+            });
+        }
+        
+        let classification = classify_skeleton(root_entity, &joints);
+        
+        if root_idx == 0 {
+            print_classification_results(&model_name, &joints, &classification);
+        }
+        
+        commands.entity(root_entity).insert(PedestrianSkeleton {
+            joint_labels: classification,
+        });
 
         commands.entity(root_entity).remove::<NeedAlignment>();
 
         info!(
-            "Aligned pedestrian root {:?} at target {:?}, original size: {:?}, original center: {:?}",
-            root_entity, need_align.target_position, size, center
+            "Aligned and classified pedestrian root {:?} at target {:?}",
+            root_entity, need_align.target_position
         );
     }
 }
 
-fn traverse_hierarchy(
+fn traverse_hierarchy_raw(
     entity: Entity,
     children_query: &Query<&Children>,
     name_query: &Query<&Name>,
@@ -524,14 +597,334 @@ fn traverse_hierarchy(
 
     if let Ok(children) = children_query.get(entity) {
         for child in children.iter() {
-            traverse_hierarchy(child, children_query, name_query, transform_query, nodes);
+            traverse_hierarchy_raw(child, children_query, name_query, transform_query, nodes);
         }
     }
 }
 
+fn classify_skeleton(
+    root_entity: Entity,
+    joints: &[JointData],
+) -> std::collections::HashMap<Entity, BoneLabel> {
+    let mut labels = std::collections::HashMap::new();
+    if joints.is_empty() {
+        return labels;
+    }
+
+    let coccis_entity = joints[0].entity;
+    labels.insert(coccis_entity, BoneLabel::Midgroin);
+
+    let mut head_idx = 0;
+    let mut max_y = joints[0].pos.y;
+    for (idx, joint) in joints.iter().enumerate() {
+        if joint.pos.y > max_y {
+            max_y = joint.pos.y;
+            head_idx = idx;
+        }
+    }
+    let head_entity = joints[head_idx].entity;
+    labels.insert(head_entity, BoneLabel::Head);
+
+    let mut neck_entity = None;
+    if let Some(parent) = joints[head_idx].parent {
+        if parent != root_entity {
+            labels.insert(parent, BoneLabel::Neck);
+            neck_entity = Some(parent);
+        }
+    }
+
+    let mut current = neck_entity.unwrap_or(head_entity);
+    while current != coccis_entity && current != root_entity {
+        if let Some(parent) = find_parent_of(current, joints) {
+            if parent == coccis_entity {
+                break;
+            }
+            labels.insert(parent, BoneLabel::Spine);
+            current = parent;
+        } else {
+            break;
+        }
+    }
+
+    let is_left = |pos: Vec3| pos.x > 0.01;
+    let is_right = |pos: Vec3| pos.x < -0.01;
+
+    let mut left_heel_entity = None;
+    let mut left_min_y = f32::MAX;
+    let mut right_heel_entity = None;
+    let mut right_min_y = f32::MAX;
+
+    for joint in joints {
+        if is_left(joint.pos) && joint.pos.y < left_min_y {
+            left_min_y = joint.pos.y;
+            left_heel_entity = Some(joint.entity);
+        }
+        if is_right(joint.pos) && joint.pos.y < right_min_y {
+            right_min_y = joint.pos.y;
+            right_heel_entity = Some(joint.entity);
+        }
+    }
+
+    let mut left_hand_tip_entity = None;
+    let mut left_max_x = -f32::MAX;
+    let mut right_hand_tip_entity = None;
+    let mut right_min_x = f32::MAX;
+
+    for joint in joints {
+        if is_left(joint.pos) && joint.pos.x > left_max_x {
+            left_max_x = joint.pos.x;
+            left_hand_tip_entity = Some(joint.entity);
+        }
+        if is_right(joint.pos) && joint.pos.x < right_min_x {
+            right_min_x = joint.pos.x;
+            right_hand_tip_entity = Some(joint.entity);
+        }
+    }
+
+    classify_leg(left_heel_entity, coccis_entity, root_entity, joints, &mut labels, BoneLabel::LeftLeg);
+    classify_leg(right_heel_entity, coccis_entity, root_entity, joints, &mut labels, BoneLabel::RightLeg);
+
+    classify_arm(left_hand_tip_entity, coccis_entity, root_entity, joints, &mut labels, BoneLabel::LeftArm);
+    classify_arm(right_hand_tip_entity, coccis_entity, root_entity, joints, &mut labels, BoneLabel::RightArm);
+
+    labels
+}
+
+fn find_parent_of(entity: Entity, joints: &[JointData]) -> Option<Entity> {
+    for joint in joints {
+        if joint.entity == entity {
+            return joint.parent;
+        }
+    }
+    None
+}
+
+fn find_pos_of(entity: Entity, joints: &[JointData]) -> Option<Vec3> {
+    for joint in joints {
+        if joint.entity == entity {
+            return Some(joint.pos);
+        }
+    }
+    None
+}
+
+fn classify_leg(
+    heel_entity: Option<Entity>,
+    coccis_entity: Entity,
+    root_entity: Entity,
+    joints: &[JointData],
+    labels: &mut std::collections::HashMap<Entity, BoneLabel>,
+    leg_label: BoneLabel,
+) {
+    let Some(heel) = heel_entity else { return; };
+    
+    let mut path = Vec::new();
+    let mut current = heel;
+    while current != coccis_entity && current != root_entity {
+        path.push(current);
+        if let Some(parent) = find_parent_of(current, joints) {
+            current = parent;
+        } else {
+            break;
+        }
+    }
+    
+    if path.len() < 2 {
+        labels.insert(heel, leg_label);
+        return;
+    }
+    
+    let hip = path[path.len() - 1];
+    let heel_pos = find_pos_of(heel, joints).unwrap_or(Vec3::ZERO);
+    let hip_pos = find_pos_of(hip, joints).unwrap_or(Vec3::ZERO);
+    let midpoint_y = (heel_pos.y + hip_pos.y) / 2.0;
+    
+    let mut _knee = path[path.len() / 2];
+    let mut min_diff = f32::MAX;
+    for &node in &path {
+        if let Some(pos) = find_pos_of(node, joints) {
+            let diff = (pos.y - midpoint_y).abs();
+            if diff < min_diff {
+                min_diff = diff;
+                _knee = node;
+            }
+        }
+    }
+    
+    for &node in &path {
+        labels.insert(node, leg_label);
+    }
+}
+
+fn classify_arm(
+    hand_tip_entity: Option<Entity>,
+    coccis_entity: Entity,
+    root_entity: Entity,
+    joints: &[JointData],
+    labels: &mut std::collections::HashMap<Entity, BoneLabel>,
+    arm_label: BoneLabel,
+) {
+    let Some(hand_tip) = hand_tip_entity else { return; };
+    
+    let mut path = Vec::new();
+    let mut current = hand_tip;
+    while current != coccis_entity && current != root_entity {
+        path.push(current);
+        if let Some(parent) = find_parent_of(current, joints) {
+            current = parent;
+        } else {
+            break;
+        }
+    }
+    
+    if path.len() < 2 {
+        labels.insert(hand_tip, arm_label);
+        return;
+    }
+    
+    let mut shoulder = path[path.len() - 1];
+    let mut max_y = -f32::MAX;
+    for &node in &path {
+        if let Some(pos) = find_pos_of(node, joints) {
+            if pos.y > max_y {
+                max_y = pos.y;
+                shoulder = node;
+            }
+        }
+    }
+    
+    let wrist = if path.len() > 1 { path[1] } else { path[0] };
+    
+    let shoulder_pos = find_pos_of(shoulder, joints).unwrap_or(Vec3::ZERO);
+    let wrist_pos = find_pos_of(wrist, joints).unwrap_or(Vec3::ZERO);
+    let midpoint = (shoulder_pos + wrist_pos) / 2.0;
+    
+    let mut _elbow = path[path.len() / 2];
+    let mut min_diff = f32::MAX;
+    for &node in &path {
+        if let Some(pos) = find_pos_of(node, joints) {
+            let diff = pos.distance(midpoint);
+            if diff < min_diff {
+                min_diff = diff;
+                _elbow = node;
+            }
+        }
+    }
+    
+    for &node in &path {
+        labels.insert(node, arm_label);
+    }
+}
+
+fn print_classification_results(
+    model_name: &str,
+    joints: &[JointData],
+    labels: &std::collections::HashMap<Entity, BoneLabel>,
+) {
+    println!("Character Bone Identification Results for {}:", model_name);
+    
+    let print_joint = |label_name: &str, target_label: BoneLabel| {
+        let mut found = None;
+        for (ent, label) in labels {
+            if *label == target_label {
+                for joint in joints {
+                    if joint.entity == *ent {
+                        found = Some(joint.pos);
+                        break;
+                    }
+                }
+            }
+        }
+        if let Some(pos) = found {
+            println!("  {}: Identified at {:?}", label_name, pos);
+        } else {
+            println!("  {}: Not Identified", label_name);
+        }
+    };
+    
+    print_joint("Head", BoneLabel::Head);
+    print_joint("Neck", BoneLabel::Neck);
+    print_joint("Midgroin", BoneLabel::Midgroin);
+    
+    let spine_count = labels.values().filter(|&l| *l == BoneLabel::Spine).count();
+    println!("  Spine: Identified, count: {}", spine_count);
+    
+    let print_specific_joint = |side_prefix: &str, is_left_side: bool, target_label: BoneLabel| {
+        let leg_nodes: Vec<&JointData> = joints.iter().filter(|j| {
+            if labels.get(&j.entity) == Some(&target_label) {
+                if is_left_side { j.pos.x > 0.01 } else { j.pos.x < -0.01 }
+            } else {
+                false
+            }
+        }).collect();
+        
+        if leg_nodes.is_empty() {
+            println!("  {} Hip: Not Identified", side_prefix);
+            println!("  {} Knee: Not Identified", side_prefix);
+            println!("  {} Heel: Not Identified", side_prefix);
+            return;
+        }
+        
+        let heel = leg_nodes.iter().min_by(|a, b| a.pos.y.partial_cmp(&b.pos.y).unwrap()).unwrap();
+        let hip = leg_nodes.iter().max_by(|a, b| a.pos.y.partial_cmp(&b.pos.y).unwrap()).unwrap();
+        let midpoint_y = (heel.pos.y + hip.pos.y) / 2.0;
+        let knee = leg_nodes.iter().min_by(|a, b| {
+            let diff_a = (a.pos.y - midpoint_y).abs();
+            let diff_b = (b.pos.y - midpoint_y).abs();
+            diff_a.partial_cmp(&diff_b).unwrap()
+        }).unwrap();
+        
+        println!("  {} Hip: Identified at {:?}", side_prefix, hip.pos);
+        println!("  {} Knee: Identified at {:?}", side_prefix, knee.pos);
+        println!("  {} Heel: Identified at {:?}", side_prefix, heel.pos);
+    };
+    
+    print_specific_joint("Left", true, BoneLabel::LeftLeg);
+    print_specific_joint("Right", false, BoneLabel::RightLeg);
+    
+    let print_specific_arm_joint = |side_prefix: &str, is_left_side: bool, target_label: BoneLabel| {
+        let arm_nodes: Vec<&JointData> = joints.iter().filter(|j| {
+            if labels.get(&j.entity) == Some(&target_label) {
+                if is_left_side { j.pos.x > 0.01 } else { j.pos.x < -0.01 }
+            } else {
+                false
+            }
+        }).collect();
+        
+        if arm_nodes.is_empty() {
+            println!("  {} Shoulder: Not Identified", side_prefix);
+            println!("  {} Elbow: Not Identified", side_prefix);
+            println!("  {} Wrist: Not Identified", side_prefix);
+            return;
+        }
+        
+        let shoulder = arm_nodes.iter().max_by(|a, b| a.pos.y.partial_cmp(&b.pos.y).unwrap()).unwrap();
+        let hand_tip = arm_nodes.iter().max_by(|a, b| a.pos.x.abs().partial_cmp(&b.pos.x.abs()).unwrap()).unwrap();
+        let wrist = arm_nodes.iter()
+            .filter(|n| n.entity != hand_tip.entity)
+            .max_by(|a, b| a.pos.x.abs().partial_cmp(&b.pos.x.abs()).unwrap())
+            .unwrap_or(hand_tip);
+            
+        let midpoint = (shoulder.pos + wrist.pos) / 2.0;
+        let elbow = arm_nodes.iter().min_by(|a, b| {
+            let diff_a = a.pos.distance(midpoint);
+            let diff_b = b.pos.distance(midpoint);
+            diff_a.partial_cmp(&diff_b).unwrap()
+        }).unwrap();
+        
+        println!("  {} Shoulder: Identified at {:?}", side_prefix, shoulder.pos);
+        println!("  {} Elbow: Identified at {:?}", side_prefix, elbow.pos);
+        println!("  {} Wrist: Identified at {:?}", side_prefix, wrist.pos);
+    };
+    
+    print_specific_arm_joint("Left", true, BoneLabel::LeftArm);
+    print_specific_arm_joint("Right", false, BoneLabel::RightArm);
+}
+
 fn draw_skeletons_system(
     mut gizmos: Gizmos,
-    model_roots: Query<(Entity, &ModelRoot)>,
+    model_roots: Query<(Entity, &ModelRoot, &GlobalTransform)>,
+    skeletons: Query<&PedestrianSkeleton>,
     children_query: Query<&Children>,
     name_query: Query<&Name>,
     transform_query: Query<&GlobalTransform>,
@@ -547,9 +940,9 @@ fn draw_skeletons_system(
         return;
     };
 
-    for (root_entity, _root) in model_roots.iter() {
+    for (root_entity, root, root_gt) in model_roots.iter() {
         let mut nodes = Vec::new();
-        traverse_hierarchy(
+        traverse_hierarchy_raw(
             root_entity,
             &children_query,
             &name_query,
@@ -563,22 +956,45 @@ fn draw_skeletons_system(
             .map(|(idx, &(ent, _, pos))| (ent, (idx, pos)))
             .collect();
 
+        let skeleton = skeletons.get(root_entity).ok();
+
+        // Draw pointing direction arrow above the head
+        let arrow_start = root_gt.translation() + Vec3::new(0.0, root.size.y / 2.0 + 0.3, 0.0);
+        let arrow_end = arrow_start + Vec3::new(0.0, 0.0, -0.4);
+        gizmos.line(arrow_start, arrow_end, Color::srgb(1.0, 0.0, 0.0));
+        let wing_left = arrow_end + Vec3::new(0.08, 0.0, 0.08);
+        let wing_right = arrow_end + Vec3::new(-0.08, 0.0, 0.08);
+        gizmos.line(arrow_end, wing_left, Color::srgb(1.0, 0.0, 0.0));
+        gizmos.line(arrow_end, wing_right, Color::srgb(1.0, 0.0, 0.0));
+
         for (idx, &(ent, _, pos)) in nodes.iter().enumerate() {
-            // Render bones (green lines)
+            let label = skeleton.and_then(|s| s.joint_labels.get(&ent));
+            let color = label.map(|l| l.color()).unwrap_or(Color::srgb(0.5, 0.5, 0.5));
+
             if let Ok(parent) = parent_query.get(ent) {
                 if let Some(&(_, parent_pos)) = entity_to_info.get(&parent.get()) {
-                    gizmos.line(parent_pos, pos, Color::srgb(0.0, 1.0, 0.0));
+                    gizmos.line(parent_pos, pos, color);
                 }
             }
 
-            // Render index alongside node using screen-space projection and egui Area
             if let Ok(viewport_pos) = camera.world_to_viewport(camera_transform, pos) {
+                let egui_color = if let Some(l) = label {
+                    let c = l.color().to_linear();
+                    egui::Color32::from_rgb(
+                        (c.red * 255.0) as u8,
+                        (c.green * 255.0) as u8,
+                        (c.blue * 255.0) as u8,
+                    )
+                } else {
+                    egui::Color32::GRAY
+                };
+
                 egui::Area::new(egui::Id::new(format!("joint_lbl_{:?}_{}", pos, idx)))
                     .fixed_pos(egui::pos2(viewport_pos.x - 6.0, viewport_pos.y - 6.0))
                     .show(ctx, |ui| {
                         ui.label(
                             egui::RichText::new(format!("{}", idx))
-                                .color(egui::Color32::WHITE)
+                                .color(egui_color)
                                 .size(9.0)
                                 .background_color(egui::Color32::from_rgba_premultiplied(
                                     0, 0, 0, 120,
@@ -658,14 +1074,19 @@ fn picker_system(
                 selected.entity = Some(root_ent);
                 info!("Selected model: {} (entity: {:?})", model_idx, root_ent);
 
-                if let Ok((_, _, root_gt)) = model_root_query.get(root_ent) {
+                if let Ok((_, root, root_gt)) = model_root_query.get(root_ent) {
                     let model_pos = root_gt.translation();
+                    let head_height = root.size.y;
 
                     let start_pos = camera_transform.translation();
                     let start_rot = camera_transform.rotation();
 
-                    let target_pos = model_pos + Vec3::new(2.5, 2.0, 3.5);
-                    let target_dir = (model_pos + Vec3::Y * 0.5 - target_pos).normalize();
+                    // Camera position in front of pedestrian (facing away towards -Z means front is at -Z)
+                    let target_pos = model_pos + Vec3::new(0.0, head_height / 2.0 + 0.3, -1.8);
+                    
+                    // Look back at the pedestrian's upper chest / face
+                    let look_target = model_pos + Vec3::new(0.0, head_height / 4.0, 0.0);
+                    let target_dir = (look_target - target_pos).normalize();
                     let target_rot = Quat::from_rotation_arc(Vec3::NEG_Z, target_dir);
 
                     commands.insert_resource(ActiveCameraAnimation {
@@ -695,7 +1116,7 @@ fn draw_hovered_bbox_system(
             gizmos.primitive_3d(
                 &cuboid,
                 Isometry3d::from_translation(center),
-                Color::srgb(1.0, 1.0, 0.0), // Yellow bounding box
+                Color::srgb(1.0, 1.0, 0.0),
             );
         }
     }
@@ -719,6 +1140,26 @@ fn draw_gui_system(
             ui.label("- Left Drag: Rotate Camera");
             ui.label("- Hover a pedestrian to show bbox");
             ui.label("- Click a pedestrian to focus/center");
+
+            ui.separator();
+            ui.heading("Skeleton Bone Color Legend:");
+            
+            let mut show_legend = |label: &str, color: egui::Color32| {
+                ui.horizontal(|ui| {
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 2.0, color);
+                    ui.label(label);
+                });
+            };
+            
+            show_legend("Head & Neck", egui::Color32::from_rgb(255, 102, 178));
+            show_legend("Spinal Column", egui::Color32::from_rgb(0, 128, 255));
+            show_legend("Midgroin / Hips", egui::Color32::from_rgb(255, 255, 0));
+            show_legend("Left Arm", egui::Color32::from_rgb(153, 51, 204));
+            show_legend("Right Arm", egui::Color32::from_rgb(255, 153, 0));
+            show_legend("Left Leg", egui::Color32::from_rgb(255, 51, 51));
+            show_legend("Right Leg", egui::Color32::from_rgb(51, 255, 51));
+            show_legend("Unclassified (Gray)", egui::Color32::GRAY);
 
             ui.separator();
             if let Some(selected_ent) = selected.entity {
