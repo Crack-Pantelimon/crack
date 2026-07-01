@@ -9,13 +9,7 @@ use bevy::{
     window::WindowResolution,
     world_serialization::WorldAssetRoot,
 };
-use bevy::prelude::{AnimationGraph, AnimationNodeIndex, AnimationGraphHandle};
 
-#[derive(Resource)]
-struct RiggedGlbAnimation {
-    graph: Handle<AnimationGraph>,
-    node_index: AnimationNodeIndex,
-}
 use avian3d::prelude::{CollisionLayers, Restitution, RigidBody, Mass, Collider, LinearVelocity, AngularVelocity, LockedAxes};
 use bevy_egui::{egui, EguiContexts};
 
@@ -58,6 +52,9 @@ struct PedestrianAnimator {
     bob: f32,
     sway: f32,
     lean: f32,
+    jump_timer: Option<f32>,
+    punch_timer: Option<f32>,
+    is_ragdoll: bool,
 }
 
 #[derive(Resource)]
@@ -79,6 +76,7 @@ enum PedestrianModelType {
 struct BoneBaseRotation {
     base_rotation: Quat,
     local_lateral_axis: Vec3,
+    local_vertical_axis: Vec3,
 }
 
 fn main() {
@@ -112,7 +110,7 @@ fn main() {
         .add_plugins(bevy_egui::EguiPlugin::default())
         .init_resource::<UiState>() // Satisfies PhysicsPlugin's sync_physics_debug_config
         .insert_resource(PedestrianSettings {
-            model_type: PedestrianModelType::GlbModel,
+            model_type: PedestrianModelType::RiggedGlb,
             swing_amplitude: 0.6,
             walk_speed: 2.5,
         })
@@ -126,7 +124,6 @@ fn main() {
                 move_pedestrian,
                 camera_follows_pedestrian,
                 animate_pedestrian,
-                play_rigged_glb_animation,
             ),
         )
         .add_systems(
@@ -173,7 +170,6 @@ fn setup_scene(
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
-    mut graphs: ResMut<Assets<AnimationGraph>>,
 ) {
     // 1. Spawning 4 ground cubes of size 500x500x500
     let cubes_info = [
@@ -242,10 +238,10 @@ fn setup_scene(
         Transform::from_xyz(200.0, 400.0, 200.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
-    // 4. Spawn Pedestrian with Physics & GLB visual child (default)
+    // 4. Spawn Pedestrian with Physics & Rigged GLB visual child (default)
     let base_url = demo_resolution_selector_web_bevy::config::DATA_BASE_URL.trim_end_matches('/');
     let pedestrian_url = format!(
-        "{}/3d_data/3d_slop_models_clean/pedestrian/armin-1b.glb",
+        "{}/3d_data/3d_slop_models_clean/pedestrian/armin_rigged.glb",
         base_url
     );
     let pedestrian_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(pedestrian_url));
@@ -267,36 +263,74 @@ fn setup_scene(
     )).with_children(|parent| {
         parent.spawn((
             WorldAssetRoot(pedestrian_handle),
-            Transform::from_xyz(0.0, -0.9, 0.0),
+            Transform {
+                translation: Vec3::new(0.0, -0.9, 0.0),
+                rotation: Quat::from_rotation_y(std::f32::consts::PI),
+                scale: Vec3::splat(2.0),
+            },
             PedestrianVisual,
             Visibility::default(),
             InheritedVisibility::default(),
         ));
     });
 
-    // 5. Initialize RiggedGlbAnimation resource
-    let base_url = demo_resolution_selector_web_bevy::config::DATA_BASE_URL.trim_end_matches('/');
-    let pedestrian_url = format!("{}/3d_data/3d_slop_models_clean/pedestrian/cesium_man.glb", base_url);
-    let walk_animation = asset_server.load(GltfAssetLabel::Animation(0).from_asset(pedestrian_url));
-    let (graph, node_index) = AnimationGraph::from_clip(walk_animation);
-    let graph_handle = graphs.add(graph);
-    commands.insert_resource(RiggedGlbAnimation {
-        graph: graph_handle,
-        node_index,
-    });
 }
 
 fn move_pedestrian(
     keyboard: Res<ButtonInput<KeyCode>>,
+    mouse_button: Res<ButtonInput<MouseButton>>,
     time: Res<Time>,
     settings: Res<PedestrianSettings>,
-    mut query: Query<(&Transform, &mut LinearVelocity, &mut AngularVelocity), With<Pedestrian>>,
+    mut query: Query<(
+        &mut Transform,
+        &mut LinearVelocity,
+        &mut AngularVelocity,
+        &mut LockedAxes,
+        &mut PedestrianAnimator,
+    ), With<Pedestrian>>,
 ) {
-    let Ok((transform, mut lin_vel, mut ang_vel)) = query.single_mut() else {
+    let Ok((mut transform, mut lin_vel, mut ang_vel, mut locked_axes, mut animator)) = query.single_mut() else {
         return;
     };
 
     let dt = time.delta_secs();
+
+    // Handle Ragdoll Toggle
+    if keyboard.just_pressed(KeyCode::KeyR) {
+        animator.is_ragdoll = !animator.is_ragdoll;
+        if animator.is_ragdoll {
+            *locked_axes = LockedAxes::new();
+        } else {
+            *locked_axes = LockedAxes::new().lock_rotation_x().lock_rotation_z();
+            // Reset upright position
+            let euler = transform.rotation.to_euler(EulerRot::YXZ);
+            transform.rotation = Quat::from_rotation_y(euler.0);
+            transform.translation.y += 0.5; // boost slightly to avoid clipping floor
+        }
+    }
+
+    // Handle Jump
+    if keyboard.just_pressed(KeyCode::Space) && !animator.is_ragdoll && animator.jump_timer.is_none() {
+        animator.jump_timer = Some(0.0);
+        lin_vel.y = 6.5;
+    }
+
+    // Handle Punch
+    if (keyboard.just_pressed(KeyCode::KeyF) || mouse_button.just_pressed(MouseButton::Left))
+        && !animator.is_ragdoll
+        && animator.punch_timer.is_none()
+    {
+        animator.punch_timer = Some(0.0);
+    }
+
+    if animator.is_ragdoll {
+        // In ragdoll mode, decay normal linear velocity so physics takes over completely
+        let decelerate_rate = 2.0;
+        lin_vel.x += (0.0 - lin_vel.x) * decelerate_rate * dt;
+        lin_vel.z += (0.0 - lin_vel.z) * decelerate_rate * dt;
+        ang_vel.0.y = 0.0;
+        return;
+    }
 
     // 1. Rotation (yaw) via A/D or ArrowLeft/ArrowRight or Q/E
     let mut rotation_input = 0.0;
@@ -381,13 +415,31 @@ fn animate_pedestrian(
         Option<&LeftArm>,
         Option<&RightArm>,
     )>,
-    mut player_query: Query<&mut AnimationPlayer>,
 ) {
     let dt = time.delta_secs();
 
     let Ok((lin_vel, children, mut animator)) = pedestrian_query.single_mut() else {
         return;
     };
+
+    // Update action timers
+    if let Some(t) = animator.jump_timer {
+        let next_t = t + dt;
+        if next_t > 0.8 {
+            animator.jump_timer = None;
+        } else {
+            animator.jump_timer = Some(next_t);
+        }
+    }
+
+    if let Some(t) = animator.punch_timer {
+        let next_t = t + dt;
+        if next_t > 0.35 {
+            animator.punch_timer = None;
+        } else {
+            animator.punch_timer = Some(next_t);
+        }
+    }
 
     let speed = Vec3::new(lin_vel.x, 0.0, lin_vel.z).length();
     
@@ -421,8 +473,18 @@ fn animate_pedestrian(
     for child in children.iter() {
         if let Ok((mut child_transform, _, _, Some(_), _, _, _, _)) = transform_query.get_mut(child) {
             if settings.model_type == PedestrianModelType::RiggedGlb {
-                child_transform.translation.y = -0.9;
-                child_transform.rotation = Quat::from_rotation_y(std::f32::consts::PI);
+                if animator.is_ragdoll {
+                    child_transform.translation.y = -0.9;
+                    child_transform.rotation = Quat::from_rotation_y(std::f32::consts::PI);
+                } else {
+                    child_transform.translation.y = animator.bob;
+                    child_transform.rotation = Quat::from_rotation_y(std::f32::consts::PI) * Quat::from_euler(
+                        EulerRot::YXZ,
+                        0.0,
+                        -animator.lean,
+                        animator.sway,
+                    );
+                }
             } else {
                 child_transform.translation.y = animator.bob;
                 child_transform.rotation = Quat::from_euler(
@@ -462,19 +524,144 @@ fn animate_pedestrian(
         }
     }
 
-    // 3. Animate Rigged GLB using pre-baked animation player speed controls
+    // 3. Animate Rigged GLB procedurally
     if settings.model_type == PedestrianModelType::RiggedGlb {
-        for mut player in &mut player_query {
-            let anim_speed = if speed > 0.1 {
-                speed * 0.4
-            } else {
-                0.0
-            };
-            let playing_ids: Vec<AnimationNodeIndex> = player.playing_animations().map(|(&idx, _)| idx).collect();
-            for playing_animation_index in playing_ids {
-                if let Some(playing_animation) = player.animation_mut(playing_animation_index) {
-                    playing_animation.set_speed(anim_speed);
-                }
+        let is_moving = speed > 0.1;
+
+        // Elbow bend increases with speed (running/walking vs idle)
+        let base_elbow_bend = 0.25 + (speed * 0.15).min(0.85);
+        let left_elbow_bend = (base_elbow_bend + animator.phase.cos() * 0.15).max(0.05);
+        let right_elbow_bend = (base_elbow_bend - animator.phase.cos() * 0.15).max(0.05);
+
+        // Knee bend: knees flex when the leg swings forward to clear the ground (peaks at phase = 0, straight at landing)
+        let left_knee_flex = if is_moving {
+            animator.phase.cos().max(0.0) * settings.swing_amplitude * 1.1
+        } else {
+            0.0
+        };
+        let right_knee_flex = if is_moving {
+            (-animator.phase.cos()).max(0.0) * settings.swing_amplitude * 1.1
+        } else {
+            0.0
+        };
+
+        // Idle breathing and shoulder sway
+        let breathing_phase = time.elapsed_secs() * 1.8;
+        let breathing_angle = breathing_phase.sin() * 0.02;
+        let idle_arm_sway = breathing_phase.cos() * 0.03;
+
+        let swing_angle = if is_moving {
+            animator.phase.sin() * settings.swing_amplitude
+        } else {
+            0.0
+        };
+
+        let swing_lerp_speed = 10.0;
+
+        for (mut transform, name, base_rot, _, _, _, _, _) in &mut transform_query {
+            if let (Some(name), Some(base_rot)) = (name, base_rot) {
+                let name_str = name.as_str();
+
+                let target_rot = if animator.is_ragdoll {
+                    // Ragdoll flailing math
+                    let t_val = time.elapsed_secs();
+                    match name_str {
+                        "bone_20" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, 0.4 * (t_val * 8.0).sin()),
+                        "bone_24" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, 0.4 * (t_val * 8.0 + 2.0).sin()),
+                        "bone_21" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, -0.8 * (t_val * 10.0).cos().abs() - 0.1),
+                        "bone_25" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, -0.8 * (t_val * 10.0 + 2.0).cos().abs() - 0.1),
+                        "bone_7" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, 0.9 * (t_val * 7.0).sin()),
+                        "bone_14" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, 0.9 * (t_val * 7.0 + 2.0).sin()),
+                        "bone_8" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, 0.9 * (t_val * 9.0).cos().abs() + 0.1),
+                        "bone_15" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, 0.9 * (t_val * 9.0 + 2.0).cos().abs() + 0.1),
+                        "bone_2" | "bone_3" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, 0.15 * (t_val * 5.0).sin()),
+                        _ => base_rot.base_rotation,
+                    }
+                } else {
+                    // Normal movements (walk/idle, jump, punch blended)
+                    // 1. Calculate walk/idle rotation angles
+                    let mut hip_swing_l = swing_angle;
+                    let mut hip_swing_r = -swing_angle;
+                    let mut knee_flex_l = left_knee_flex;
+                    let mut knee_flex_r = right_knee_flex;
+                    let mut arm_swing_l = if is_moving { -swing_angle * 0.8 } else { idle_arm_sway };
+                    let mut arm_swing_r = if is_moving { swing_angle * 0.8 } else { -idle_arm_sway };
+                    let mut elbow_bend_l = left_elbow_bend;
+                    let mut elbow_bend_r = right_elbow_bend;
+                    let mut spine_lean = if is_moving { (speed * 0.025).min(0.12) } else { breathing_angle };
+                    let mut spine_twist = 0.0;
+                    let shoulder_twist_l = 0.0;
+                    let mut shoulder_twist_r = 0.0;
+
+                    // 2. Blend jump pose (overrides/blends lower body and raises arms)
+                    if let Some(jump_t) = animator.jump_timer {
+                        let tuck_w = if jump_t < 0.2 {
+                            jump_t / 0.2
+                        } else if jump_t < 0.5 {
+                            1.0
+                        } else {
+                            ((0.8 - jump_t) / 0.3).max(0.0)
+                        };
+
+                        // Blend legs into jump tuck pose (symmetrically swinging both hips forward)
+                        hip_swing_l = hip_swing_l * (1.0 - tuck_w) + (0.7 * tuck_w);
+                        hip_swing_r = hip_swing_r * (1.0 - tuck_w) + (0.7 * tuck_w);
+                        knee_flex_l = knee_flex_l * (1.0 - tuck_w) + (1.2 * tuck_w);
+                        knee_flex_r = knee_flex_r * (1.0 - tuck_w) + (1.2 * tuck_w);
+
+                        // Blend arms up in the air
+                        arm_swing_l = arm_swing_l * (1.0 - tuck_w) + (-1.2 * tuck_w);
+                        arm_swing_r = arm_swing_r * (1.0 - tuck_w) + (-1.2 * tuck_w);
+                        elbow_bend_l = elbow_bend_l * (1.0 - tuck_w) + (0.8 * tuck_w);
+                        elbow_bend_r = elbow_bend_r * (1.0 - tuck_w) + (0.8 * tuck_w);
+                    }
+
+                    // 3. Blend punch pose (affects spine, right arm extension, left arm retraction)
+                    if let Some(punch_t) = animator.punch_timer {
+                        let punch_w = if punch_t < 0.08 {
+                            punch_t / 0.08 // fast extension (80ms)
+                        } else {
+                            ((0.35 - punch_t) / 0.27).max(0.0) // slower retraction (270ms)
+                        };
+
+                        // Right arm extension (very clear, straight forward punch)
+                        arm_swing_r = arm_swing_r * (1.0 - punch_w) + (-1.6 * punch_w);
+                        shoulder_twist_r = shoulder_twist_r * (1.0 - punch_w) + (0.5 * punch_w);
+                        elbow_bend_r = elbow_bend_r * (1.0 - punch_w) + (0.0 * punch_w); // fully straighten
+
+                        // Torso twist and lean forward (dramatic, visible movement)
+                        spine_lean += 0.25 * punch_w;
+                        spine_twist += -0.6 * punch_w; // twist chest left to push right arm forward
+                    }
+
+                    // 4. Construct final bone Quaternions
+                    match name_str {
+                        "bone_20" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, hip_swing_l),
+                        "bone_24" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, hip_swing_r),
+                        "bone_21" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, -knee_flex_l),
+                        "bone_25" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, -knee_flex_r),
+                        "bone_7" => {
+                            base_rot.base_rotation
+                                * Quat::from_axis_angle(base_rot.local_lateral_axis, arm_swing_l)
+                                * Quat::from_axis_angle(base_rot.local_vertical_axis, shoulder_twist_l)
+                        }
+                        "bone_14" => {
+                            base_rot.base_rotation
+                                * Quat::from_axis_angle(base_rot.local_lateral_axis, arm_swing_r)
+                                * Quat::from_axis_angle(base_rot.local_vertical_axis, shoulder_twist_r)
+                        }
+                        "bone_8" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, elbow_bend_l),
+                        "bone_15" => base_rot.base_rotation * Quat::from_axis_angle(base_rot.local_lateral_axis, elbow_bend_r),
+                        "bone_2" | "bone_3" => {
+                            base_rot.base_rotation
+                                * Quat::from_axis_angle(base_rot.local_lateral_axis, spine_lean)
+                                * Quat::from_axis_angle(base_rot.local_vertical_axis, spine_twist)
+                        }
+                        _ => base_rot.base_rotation,
+                    }
+                };
+
+                transform.rotation = transform.rotation.slerp(target_rot, swing_lerp_speed * dt);
             }
         }
     }
@@ -494,39 +681,44 @@ fn init_bone_base_rotations(
             || name_str == "leg_joint_R_1"
             || name_str == "Skeleton_arm_joint_L__4_"
             || name_str == "Skeleton_arm_joint_R"
+            || name_str == "bone_20"
+            || name_str == "bone_24"
+            || name_str == "bone_21"
+            || name_str == "bone_25"
+            || name_str == "bone_7"
+            || name_str == "bone_14"
+            || name_str == "bone_8"
+            || name_str == "bone_15"
+            || name_str == "bone_2"
+            || name_str == "bone_3"
         {
             let pedestrian_transform = pedestrian_global.compute_transform();
             let char_right = *pedestrian_transform.right();
+            let char_up = *pedestrian_transform.up();
             let bone_transform = bone_global.compute_transform();
             let local_lateral_axis = bone_transform.rotation.inverse().mul_vec3(char_right);
+            let local_vertical_axis = bone_transform.rotation.inverse().mul_vec3(char_up);
 
             commands.entity(entity).insert(BoneBaseRotation {
                 base_rotation: transform.rotation,
                 local_lateral_axis,
+                local_vertical_axis,
             });
         }
-    }
-}
-
-fn play_rigged_glb_animation(
-    mut commands: Commands,
-    animation: Res<RiggedGlbAnimation>,
-    mut player_query: Query<(Entity, &mut AnimationPlayer), (Without<AnimationGraphHandle>, Added<AnimationPlayer>)>,
-    settings: Res<PedestrianSettings>,
-) {
-    if settings.model_type != PedestrianModelType::RiggedGlb {
-        return;
-    }
-    for (player_entity, mut player) in &mut player_query {
-        commands.entity(player_entity).insert(AnimationGraphHandle(animation.graph.clone()));
-        player.play(animation.node_index).repeat();
     }
 }
 
 fn draw_pedestrian_ui(
     mut contexts: EguiContexts,
     mut settings: ResMut<PedestrianSettings>,
-    mut pedestrian_query: Query<(Entity, Option<&Children>), With<Pedestrian>>,
+    mut pedestrian_query: Query<(
+        Entity,
+        Option<&Children>,
+        &mut PedestrianAnimator,
+        &mut LinearVelocity,
+        &mut LockedAxes,
+        &mut Transform,
+    ), With<Pedestrian>>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -548,7 +740,7 @@ fn draw_pedestrian_ui(
             });
 
             if settings.model_type != old_type {
-                for (entity, children) in &mut pedestrian_query {
+                for (entity, children, _, _, _, _) in &mut pedestrian_query {
                     if let Some(children) = children {
                         for child in children.iter() {
                             commands.entity(child).despawn();
@@ -573,7 +765,7 @@ fn draw_pedestrian_ui(
                         }
                         PedestrianModelType::RiggedGlb => {
                             let base_url = demo_resolution_selector_web_bevy::config::DATA_BASE_URL.trim_end_matches('/');
-                            let pedestrian_url = format!("{}/3d_data/3d_slop_models_clean/pedestrian/cesium_man.glb", base_url);
+                            let pedestrian_url = format!("{}/3d_data/3d_slop_models_clean/pedestrian/armin_rigged.glb", base_url);
                             let pedestrian_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(pedestrian_url));
                             
                             commands.entity(entity).with_children(|parent| {
@@ -582,7 +774,7 @@ fn draw_pedestrian_ui(
                                     Transform {
                                         translation: Vec3::new(0.0, -0.9, 0.0),
                                         rotation: Quat::from_rotation_y(std::f32::consts::PI),
-                                        ..default()
+                                        scale: Vec3::splat(2.0),
                                     },
                                     PedestrianVisual,
                                     Visibility::default(),
@@ -673,10 +865,39 @@ fn draw_pedestrian_ui(
             }
 
             ui.separator();
+            ui.label("Actions:");
+            ui.horizontal(|ui| {
+                let mut p_query = pedestrian_query;
+                if let Ok((_, _, mut animator, mut lin_vel, mut locked_axes, mut transform)) = p_query.single_mut() {
+                    let is_ragdoll = animator.is_ragdoll;
+                    if ui.button(if is_ragdoll { "Stand Up" } else { "Ragdoll (R)" }).clicked() {
+                        animator.is_ragdoll = !animator.is_ragdoll;
+                        if animator.is_ragdoll {
+                            *locked_axes = LockedAxes::new();
+                        } else {
+                            *locked_axes = LockedAxes::new().lock_rotation_x().lock_rotation_z();
+                            let euler = transform.rotation.to_euler(EulerRot::YXZ);
+                            transform.rotation = Quat::from_rotation_y(euler.0);
+                            transform.translation.y += 0.5;
+                        }
+                    }
+
+                    if ui.add_enabled(!is_ragdoll && animator.jump_timer.is_none(), egui::Button::new("Jump (Space)")).clicked() {
+                        animator.jump_timer = Some(0.0);
+                        lin_vel.y = 6.5;
+                    }
+
+                    if ui.add_enabled(!is_ragdoll && animator.punch_timer.is_none(), egui::Button::new("Punch (F)")).clicked() {
+                        animator.punch_timer = Some(0.0);
+                    }
+                }
+            });
+
+            ui.separator();
             ui.add(egui::Slider::new(&mut settings.swing_amplitude, 0.1..=1.2).text("Swing Angle (Rad)"));
             ui.add(egui::Slider::new(&mut settings.walk_speed, 1.0..=6.0).text("Walk Speed"));
             
             ui.allocate_space(egui::Vec2::new(1.0, 5.0));
-            ui.label("Controls:\n- WASD / Arrows to Walk/Steer\n- Left Shift to Run");
+            ui.label("Controls:\n- WASD / Arrows to Walk/Steer\n- Left Shift to Run\n- Space to Jump\n- F / Left Click to Punch\n- R to Toggle Ragdoll");
         });
 }

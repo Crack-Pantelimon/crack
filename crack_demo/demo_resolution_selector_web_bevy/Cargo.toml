@@ -7,7 +7,33 @@ authors = [
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.19.0", features = ["http", "https", "jpeg"] }
+bevy = { version = "0.19.0", default-features = false, features = [
+    # default_app
+    "default_app",
+    # default_platform (WITHOUT bevy_gilrs)
+    "std",
+    "bevy_winit",
+    "bevy_clipboard",
+    "default_font",
+    "multi_threaded",
+    "webgl2",
+    "x11",
+    "wayland",
+    "custom_cursor",
+    "sysinfo_plugin",
+    # renderers
+    "2d_bevy_render",
+    "3d_bevy_render",
+    "ui_bevy_render",
+    # scene, picking, UI widgets
+    "scene",
+    "picking",
+    "bevy_ui_widgets",
+    # HTTP/HTTPS & formats
+    "http",
+    "https",
+    "jpeg",
+] }
 bevy_egui = "0.40.0"
 avian3d = { git = "https://github.com/avianphysics/avian", branch = "main" }
 # bevy_atmosphere = "0.12.2"
