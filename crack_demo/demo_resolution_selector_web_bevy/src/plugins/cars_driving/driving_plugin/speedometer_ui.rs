@@ -142,17 +142,6 @@ pub fn speedometer_ui(
                                             .step_by(50.0),
                                         );
                                     });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Wheel:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.wheel_mass,
-                                                8.33..=75.0,
-                                            )
-                                            .text("kg")
-                                            .step_by(1.0),
-                                        );
-                                    });
                                 },
                             );
 
@@ -161,62 +150,72 @@ pub fn speedometer_ui(
                                     .size(9.0)
                                     .color(egui::Color32::LIGHT_GRAY),
                                 |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Min:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_min,
-                                                0.033..=0.3,
-                                            )
-                                            .text("m")
-                                            .step_by(0.01),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Max:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_max,
-                                                0.166..=1.5,
-                                            )
-                                            .text("m")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Rest:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_rest,
-                                                0.133..=1.2,
-                                            )
-                                            .text("m")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Stiffness:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_stiffness,
-                                                4.0..=36.0,
-                                            )
-                                            .text("Hz")
-                                            .step_by(0.5),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Damping:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_damping,
-                                                0.266..=2.4,
-                                            )
-                                            .text("ratio")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                },
+                                     ui.horizontal(|ui| {
+                                         ui.label(egui::RichText::new("Min:").size(9.0));
+                                         ui.add(
+                                             egui::Slider::new(
+                                                 &mut drive_state.suspension_min,
+                                                 0.033..=0.3,
+                                             )
+                                             .text("m")
+                                             .step_by(0.01),
+                                         );
+                                     });
+                                     ui.horizontal(|ui| {
+                                         ui.label(egui::RichText::new("Rest:").size(9.0));
+                                         ui.add(
+                                             egui::Slider::new(
+                                                 &mut drive_state.suspension_rest,
+                                                 0.133..=1.2,
+                                             )
+                                             .text("m")
+                                             .step_by(0.05),
+                                         );
+                                     });
+                                     ui.horizontal(|ui| {
+                                         ui.label(egui::RichText::new("Extra Len:").size(9.0));
+                                         ui.add(
+                                             egui::Slider::new(
+                                                 &mut drive_state.extra_spring_length,
+                                                 0.2..=2.0,
+                                             )
+                                             .text("m")
+                                             .step_by(0.05),
+                                         );
+                                     });
+                                     ui.horizontal(|ui| {
+                                         ui.label(egui::RichText::new("Stiffness:").size(9.0));
+                                         ui.add(
+                                             egui::Slider::new(
+                                                 &mut drive_state.suspension_stiffness,
+                                                 4.0..=36.0,
+                                             )
+                                             .text("Hz")
+                                             .step_by(0.5),
+                                         );
+                                     });
+                                     ui.horizontal(|ui| {
+                                         ui.label(egui::RichText::new("Damping:").size(9.0));
+                                         ui.add(
+                                             egui::Slider::new(
+                                                 &mut drive_state.suspension_damping,
+                                                 0.266..=2.4,
+                                             )
+                                             .text("ratio")
+                                             .step_by(0.05),
+                                         );
+                                     });
+                                     ui.horizontal(|ui| {
+                                         ui.label(
+                                             egui::RichText::new(format!(
+                                                 "Avg Height: {:.2} m",
+                                                 drive_state.avg_suspension_height
+                                             ))
+                                             .size(9.0)
+                                             .color(egui::Color32::LIGHT_GREEN),
+                                         );
+                                     });
+                                 },
                             );
 
                             ui.collapsing(
@@ -235,45 +234,15 @@ pub fn speedometer_ui(
                                             .step_by(5.0),
                                         );
                                     });
-                                },
-                            );
-
-                            ui.collapsing(
-                                egui::RichText::new("Revolute Motors")
-                                    .size(9.0)
-                                    .color(egui::Color32::LIGHT_GRAY),
-                                |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Frequency:").size(9.0));
+                                        ui.label(egui::RichText::new("Horsepower:").size(9.0));
                                         ui.add(
                                             egui::Slider::new(
-                                                &mut drive_state.revolute_frequency,
-                                                0.5..=50.0,
+                                                &mut drive_state.horsepower,
+                                                50.0..=1000.0,
                                             )
-                                            .text("Hz")
-                                            .step_by(0.5),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Damping:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.revolute_damping,
-                                                0.0..=5.0,
-                                            )
-                                            .text("ratio")
-                                            .step_by(0.1),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Max Torque:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.revolute_max_torque,
-                                                10.0..=5000.0,
-                                            )
-                                            .text("N·m")
-                                            .step_by(50.0),
+                                            .text("HP")
+                                            .step_by(10.0),
                                         );
                                     });
                                 },
@@ -289,22 +258,24 @@ pub fn speedometer_ui(
                                 ui.allocate_space(egui::Vec2::new(1.0, 5.0));
                                 ui.horizontal(|ui| {
                                     ui.label(
-                                        egui::RichText::new(format!("{:.1}", speed_kmh))
+                                        egui::RichText::new(format!("{:.0}", speed_kmh))
                                             .color(egui::Color32::WHITE)
                                             .size(36.0)
                                             .strong(),
                                     );
-                                    if drive_state.is_reverse {
-                                        ui.label(
-                                            egui::RichText::new("R")
-                                                .color(egui::Color32::from_rgb(220, 50, 50))
-                                                .size(36.0)
-                                                .strong(),
-                                        );
-                                    }
+                                    ui.label(
+                                        egui::RichText::new(if drive_state.is_reverse {
+                                            "R".to_string()
+                                        } else {
+                                            format!("G{}", drive_state.current_gear)
+                                        })
+                                        .color(egui::Color32::from_rgb(0, 220, 255))
+                                        .size(36.0)
+                                        .strong(),
+                                    );
                                 });
                                 ui.label(
-                                    egui::RichText::new("km/h")
+                                    egui::RichText::new("km/h  /  gear")
                                         .color(egui::Color32::GRAY)
                                         .size(10.0),
                                 );
@@ -312,8 +283,28 @@ pub fn speedometer_ui(
 
                             ui.allocate_space(egui::Vec2::new(10.0, 1.0)); // spacing
 
-                            // Right Column: Input Progress Bars
+                            // Right Column: Input Progress Bars & RPM
                             ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("RPM")
+                                            .size(9.0)
+                                            .color(egui::Color32::LIGHT_GRAY),
+                                    );
+                                    let rpm_ratio = (drive_state.engine_rpm / 6500.0).clamp(0.0, 1.0);
+                                    let rpm_color = if drive_state.engine_rpm > 5500.0 {
+                                        egui::Color32::from_rgb(220, 50, 50)
+                                    } else if drive_state.engine_rpm > 4500.0 {
+                                        egui::Color32::from_rgb(220, 220, 50)
+                                    } else {
+                                        egui::Color32::from_rgb(50, 220, 100)
+                                    };
+                                    ui.add(
+                                        egui::ProgressBar::new(rpm_ratio)
+                                            .text(format!("{:.0} RPM", drive_state.engine_rpm))
+                                            .fill(rpm_color),
+                                    );
+                                });
                                 ui.horizontal(|ui| {
                                     ui.label(
                                         egui::RichText::new("ACC")

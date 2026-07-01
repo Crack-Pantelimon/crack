@@ -1,5 +1,5 @@
 use avian3d::prelude::{
-    Collider, CollisionLayers, Friction, Restitution, RigidBody, SubstepCount,
+    Collider, CollisionLayers, Friction, LinearVelocity, Restitution, RigidBody,
 };
 use bevy::{
     asset::RenderAssetUsages,
@@ -22,6 +22,23 @@ use demo_resolution_selector_web_bevy::{
     },
     ui_egui::UiState,
 };
+use demo_resolution_selector_web_bevy::plugins::cars_driving::driving_plugin::CarWheelsContactData;
+use demo_resolution_selector_web_bevy::plugins::cars_driving::driving_plugin::spawn_car::Car;
+
+#[derive(Resource)]
+struct SimLogTimer {
+    total_time: f32,
+    last_log_time: f32,
+}
+
+impl Default for SimLogTimer {
+    fn default() -> Self {
+        Self {
+            total_time: 0.0,
+            last_log_time: 0.0,
+        }
+    }
+}
 
 fn main() {
     #[cfg(feature = "web")]
@@ -53,13 +70,60 @@ fn main() {
         )
         .add_plugins(bevy_egui::EguiPlugin::default())
         .insert_resource(UiState::with_physics_debug()) // Satisfies PhysicsPlugin's sync_physics_debug_config
+        .insert_resource(SimLogTimer::default())
         .add_plugins(PhysicsPlugin)
         // .insert_resource(SubstepCount(50))
         .add_plugins(GameStatesPlugin)
         .add_plugins(CarsAndDrivingPlugin)
         .add_systems(Startup, setup_scene)
-        .add_systems(Update, spawn_car_first_frame)
+        .add_systems(Update, (spawn_car_first_frame, log_car_state))
         .run();
+}
+
+fn log_car_state(
+    time: Res<Time>,
+    mut log_timer: ResMut<SimLogTimer>,
+    q_car: Query<(&Transform, &LinearVelocity, &CarWheelsContactData), With<Car>>,
+) {
+    let dt = time.delta_secs();
+    log_timer.total_time += dt;
+
+    if log_timer.total_time > 5.0 {
+        return;
+    }
+
+    if log_timer.total_time - log_timer.last_log_time >= 0.25 {
+        log_timer.last_log_time = log_timer.total_time;
+        if let Some((transform, velocity, contact_data)) = q_car.iter().next() {
+            let pos = transform.translation;
+            let speed = velocity.0.length();
+
+            let mut susp_lengths = [0.0f32; 4];
+            for wheel_idx in 0..4 {
+                let w_contact = &contact_data.wheels[wheel_idx];
+                let mut sum_dist = 0.0f32;
+                let mut engaged_rays = 0;
+                for &d in &w_contact.ray_distances {
+                    if d <= 1.0f32 {
+                        sum_dist += d;
+                        engaged_rays += 1;
+                    }
+                }
+                let avg_length = if engaged_rays > 0 {
+                    sum_dist / engaged_rays as f32
+                } else {
+                    1.0f32
+                };
+                susp_lengths[wheel_idx] = avg_length;
+            }
+
+            info!(
+                "TIME: {:.2}s | POS: ({:.2}, {:.2}, {:.2}) | SPEED: {:.2} m/s | SUSP: [FL: {:.2}m, FR: {:.2}m, RL: {:.2}m, RR: {:.2}m]",
+                log_timer.total_time, pos.x, pos.y, pos.z, speed,
+                susp_lengths[0], susp_lengths[1], susp_lengths[2], susp_lengths[3]
+            );
+        }
+    }
 }
 
 fn spawn_car_first_frame(mut commands: Commands, mut run_once: Local<bool>) {
