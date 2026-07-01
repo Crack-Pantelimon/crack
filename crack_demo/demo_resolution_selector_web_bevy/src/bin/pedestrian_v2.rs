@@ -646,8 +646,16 @@ fn classify_skeleton(
         }
     }
 
-    let is_left = |pos: Vec3| pos.x > 0.01;
-    let is_right = |pos: Vec3| pos.x < -0.01;
+    let mut joints_min_x = f32::MAX;
+    let mut joints_max_x = -f32::MAX;
+    for joint in joints {
+        joints_min_x = joints_min_x.min(joint.pos.x);
+        joints_max_x = joints_max_x.max(joint.pos.x);
+    }
+    let joints_center_x = (joints_min_x + joints_max_x) / 2.0;
+
+    let is_left = |pos: Vec3| pos.x > joints_center_x;
+    let is_right = |pos: Vec3| pos.x < joints_center_x;
 
     let mut left_heel_entity = None;
     let mut left_min_y = f32::MAX;
@@ -821,6 +829,14 @@ fn print_classification_results(
     joints: &[JointData],
     labels: &std::collections::HashMap<Entity, BoneLabel>,
 ) {
+    let mut joints_min_x = f32::MAX;
+    let mut joints_max_x = -f32::MAX;
+    for joint in joints {
+        joints_min_x = joints_min_x.min(joint.pos.x);
+        joints_max_x = joints_max_x.max(joint.pos.x);
+    }
+    let joints_center_x = (joints_min_x + joints_max_x) / 2.0;
+
     println!("Character Bone Identification Results for {}:", model_name);
     
     let print_joint = |label_name: &str, target_label: BoneLabel| {
@@ -852,7 +868,7 @@ fn print_classification_results(
     let print_specific_joint = |side_prefix: &str, is_left_side: bool, target_label: BoneLabel| {
         let leg_nodes: Vec<&JointData> = joints.iter().filter(|j| {
             if labels.get(&j.entity) == Some(&target_label) {
-                if is_left_side { j.pos.x > 0.01 } else { j.pos.x < -0.01 }
+                if is_left_side { j.pos.x > joints_center_x } else { j.pos.x < joints_center_x }
             } else {
                 false
             }
@@ -885,7 +901,7 @@ fn print_classification_results(
     let print_specific_arm_joint = |side_prefix: &str, is_left_side: bool, target_label: BoneLabel| {
         let arm_nodes: Vec<&JointData> = joints.iter().filter(|j| {
             if labels.get(&j.entity) == Some(&target_label) {
-                if is_left_side { j.pos.x > 0.01 } else { j.pos.x < -0.01 }
+                if is_left_side { j.pos.x > joints_center_x } else { j.pos.x < joints_center_x }
             } else {
                 false
             }
@@ -1086,8 +1102,9 @@ fn picker_system(
                     
                     // Look back at the pedestrian's upper chest / face
                     let look_target = model_pos + Vec3::new(0.0, head_height / 4.0, 0.0);
-                    let target_dir = (look_target - target_pos).normalize();
-                    let target_rot = Quat::from_rotation_arc(Vec3::NEG_Z, target_dir);
+                    let target_rot = Transform::from_translation(target_pos)
+                        .looking_at(look_target, Vec3::Y)
+                        .rotation;
 
                     commands.insert_resource(ActiveCameraAnimation {
                         start_pos,
