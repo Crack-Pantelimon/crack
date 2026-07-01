@@ -8,7 +8,7 @@ impl Plugin for MapMaterialEditPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MapMaterialEditState>()
             .add_systems(EguiPrimaryContextPass, (map_material_edit_ui,));
-        app.add_systems(Update, auto_apply_new_materials);
+        app.add_systems(Update, (auto_apply_new_materials, auto_apply_nearest_sampling_to_images));
     }
 }
 
@@ -20,6 +20,7 @@ pub struct MapMaterialEditState {
     pub metallic: f32,
     pub roughness: f32,
     pub reflectance: f32,
+    pub ior: f32,
 
     // Lighting settings
     pub dir_light_illuminance: f32,
@@ -32,13 +33,14 @@ impl Default for MapMaterialEditState {
         Self {
             show_window: false,
             // Defaults to matte and non-reflective outdoor materials
-            metallic: 0.0,
-            roughness: 0.99,
+            metallic: 1.0,
+            roughness: 1.00,
             reflectance: 0.0,
+            ior: 1.0,
             // Lighting defaults without HDR
-            dir_light_illuminance: 2000.0,
-            ambient_light_brightness: 1000.0,
-            skybox_brightness: 1000.0,
+            dir_light_illuminance: 2500.0,
+            ambient_light_brightness: 800.0,
+            skybox_brightness: 800.0,
         }
     }
 }
@@ -72,6 +74,7 @@ fn map_material_edit_ui(
             ui.add(egui::Slider::new(&mut state.roughness, 0.0..=1.0).text("Roughness"));
 
             ui.add(egui::Slider::new(&mut state.reflectance, 0.0..=1.0).text("Reflectance"));
+            ui.add(egui::Slider::new(&mut state.ior, 1.0..=2.0).text("IOR"));
 
             ui.separator();
             ui.heading("Lighting Settings");
@@ -101,6 +104,7 @@ fn map_material_edit_ui(
                     material.metallic = state.metallic;
                     material.perceptual_roughness = state.roughness;
                     material.reflectance = state.reflectance;
+                    material.ior = state.ior;
                 }
 
                 // 2. Update directional lights
@@ -126,8 +130,10 @@ fn map_material_edit_ui(
 fn auto_apply_new_materials(
     mut events: MessageReader<AssetEvent<StandardMaterial>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
     state: Res<MapMaterialEditState>,
 ) {
+    use bevy::image::{ImageSampler, ImageSamplerDescriptor, ImageFilterMode};
     for event in events.read() {
         if let AssetEvent::Added { id } = event {
             let asset_id = *id;
@@ -136,6 +142,37 @@ fn auto_apply_new_materials(
                 material.metallic = state.metallic;
                 material.perceptual_roughness = state.roughness;
                 material.reflectance = state.reflectance;
+                material.ior = state.ior;
+
+                if let Some(ref texture_handle) = material.base_color_texture {
+                    if let Some(mut image) = images.get_mut(texture_handle.id()) {
+                        image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+                            mag_filter: ImageFilterMode::Nearest,
+                            min_filter: ImageFilterMode::Nearest,
+                            mipmap_filter: ImageFilterMode::Nearest,
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn auto_apply_nearest_sampling_to_images(
+    mut events: MessageReader<AssetEvent<Image>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    use bevy::image::{ImageSampler, ImageSamplerDescriptor, ImageFilterMode};
+    for event in events.read() {
+        if let AssetEvent::Added { id } = event {
+            if let Some(mut image) = images.get_mut(*id) {
+                image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+                    mag_filter: ImageFilterMode::Nearest,
+                    min_filter: ImageFilterMode::Nearest,
+                    mipmap_filter: ImageFilterMode::Nearest,
+                    ..Default::default()
+                });
             }
         }
     }
