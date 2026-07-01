@@ -66,6 +66,24 @@ struct NeedAlignment {
 #[derive(Component)]
 struct PedestrianSkeleton {
     joint_labels: std::collections::HashMap<Entity, BoneLabel>,
+    right_shoulder: Option<Entity>,
+    _right_elbow: Option<Entity>,
+    right_arm_local_dir: Vec3,
+}
+
+#[derive(Resource)]
+struct ArmControl {
+    forward_angle: f32,
+    right_angle: f32,
+}
+
+impl Default for ArmControl {
+    fn default() -> Self {
+        Self {
+            forward_angle: 0.0,
+            right_angle: 10.0, // Leisure position: 10 degrees outwards
+        }
+    }
 }
 
 #[derive(Event, Clone)]
@@ -178,7 +196,7 @@ fn main() {
         .init_asset_loader::<TextAssetLoader>()
         .init_resource::<SelectedModel>()
         .init_resource::<HoveredModel>()
-
+        .init_resource::<ArmControl>()
         .add_observer(spawn_pedestrian_observer)
         .add_systems(Startup, setup_scene)
         .add_systems(
@@ -186,10 +204,10 @@ fn main() {
             (
                 load_manifest_system,
                 align_pedestrians_system,
+                control_arms_system,
                 draw_skeletons_system,
                 picker_system,
                 draw_hovered_bbox_system,
-
             ),
         )
         .add_systems(EguiPrimaryContextPass, draw_gui_system)
@@ -555,7 +573,14 @@ fn align_pedestrians_system(
             });
         }
         
-        let classification = classify_skeleton(root_entity, &joints);
+        let (classification, right_shoulder, right_elbow) = classify_skeleton(root_entity, &joints);
+        
+        let mut right_arm_local_dir = Vec3::NEG_Y;
+        if let (Some(_s), Some(e)) = (right_shoulder, right_elbow) {
+            if let Ok(elbow_trans) = transform_query.get(e) {
+                right_arm_local_dir = elbow_trans.translation;
+            }
+        }
         
         if root_idx == 0 {
             print_classification_results(&model_name, &joints, &classification);
@@ -563,6 +588,9 @@ fn align_pedestrians_system(
         
         commands.entity(root_entity).insert(PedestrianSkeleton {
             joint_labels: classification,
+            right_shoulder,
+            _right_elbow: right_elbow,
+            right_arm_local_dir,
         });
 
         commands.entity(root_entity).remove::<NeedAlignment>();
@@ -605,10 +633,14 @@ fn traverse_hierarchy_raw(
 fn classify_skeleton(
     root_entity: Entity,
     joints: &[JointData],
-) -> std::collections::HashMap<Entity, BoneLabel> {
+) -> (
+    std::collections::HashMap<Entity, BoneLabel>,
+    Option<Entity>, // right shoulder
+    Option<Entity>, // right elbow
+) {
     let mut labels = std::collections::HashMap::new();
     if joints.is_empty() {
-        return labels;
+        return (labels, None, None);
     }
 
     let coccis_entity = joints[0].entity;
@@ -693,9 +725,14 @@ fn classify_skeleton(
     classify_leg(right_heel_entity, coccis_entity, root_entity, joints, &mut labels, BoneLabel::RightLeg);
 
     classify_arm(left_hand_tip_entity, coccis_entity, root_entity, joints, &mut labels, BoneLabel::LeftArm);
-    classify_arm(right_hand_tip_entity, coccis_entity, root_entity, joints, &mut labels, BoneLabel::RightArm);
+    let right_arm_info = classify_arm(right_hand_tip_entity, coccis_entity, root_entity, joints, &mut labels, BoneLabel::RightArm);
+    
+    let (right_shoulder, right_elbow) = match right_arm_info {
+        Some((s, e)) => (Some(s), Some(e)),
+        None => (None, None),
+    };
 
-    labels
+    (labels, right_shoulder, right_elbow)
 }
 
 fn find_parent_of(entity: Entity, joints: &[JointData]) -> Option<Entity> {
@@ -771,8 +808,8 @@ fn classify_arm(
     joints: &[JointData],
     labels: &mut std::collections::HashMap<Entity, BoneLabel>,
     arm_label: BoneLabel,
-) {
-    let Some(hand_tip) = hand_tip_entity else { return; };
+) -> Option<(Entity, Entity)> {
+    let hand_tip = hand_tip_entity?;
     
     let mut path = Vec::new();
     let mut current = hand_tip;
@@ -787,7 +824,7 @@ fn classify_arm(
     
     if path.len() < 2 {
         labels.insert(hand_tip, arm_label);
-        return;
+        return None;
     }
     
     let mut shoulder = path[path.len() - 1];
@@ -822,6 +859,8 @@ fn classify_arm(
     for &node in &path {
         labels.insert(node, arm_label);
     }
+    
+    Some((shoulder, _elbow))
 }
 
 fn print_classification_results(
@@ -1143,6 +1182,7 @@ fn draw_gui_system(
     mut contexts: EguiContexts,
     selected: Res<SelectedModel>,
     model_roots: Query<&ModelRoot>,
+    mut arm_control: ResMut<ArmControl>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -1190,4 +1230,57 @@ fn draw_gui_system(
                 ui.label("No pedestrian selected");
             }
         });
+
+    egui::Window::new("Right Arm Joint Control")
+        .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-12.0, -12.0))
+        .default_size(egui::vec2(250.0, 120.0))
+        .show(ctx, |ui| {
+            ui.label("Rotate Right Shoulder Joint:");
+            ui.add(egui::Slider::new(&mut arm_control.forward_angle, -90.0..=90.0).text("Forward/Back (X-axis)"));
+            ui.add(egui::Slider::new(&mut arm_control.right_angle, -90.0..=90.0).text("Out/In (Z-axis)"));
+            if ui.button("Reset to Leisure (10° Out)").clicked() {
+                arm_control.forward_angle = 0.0;
+                arm_control.right_angle = 10.0;
+            }
+        });
+}
+
+fn control_arms_system(
+    arm_control: Res<ArmControl>,
+    skeletons: Query<(Entity, &PedestrianSkeleton)>,
+    model_roots: Query<&GlobalTransform, With<ModelRoot>>,
+    parent_query: Query<&ChildOf>,
+    global_transform_query: Query<&GlobalTransform>,
+    mut transform_query: Query<&mut Transform>,
+) {
+    let rot_right = Quat::from_rotation_z(arm_control.right_angle.to_radians());
+    let rot_forward = Quat::from_rotation_x(arm_control.forward_angle.to_radians());
+    let target_dir_model = rot_forward * rot_right * Vec3::NEG_Y;
+
+    for (root_entity, skeleton) in skeletons.iter() {
+        let Some(shoulder_ent) = skeleton.right_shoulder else {
+            continue;
+        };
+        
+        let Ok(root_gt) = model_roots.get(root_entity) else {
+            continue;
+        };
+        let (_, r_root, _) = root_gt.to_scale_rotation_translation();
+        
+        let mut r_parent = Quat::IDENTITY;
+        if let Ok(parent_childof) = parent_query.get(shoulder_ent) {
+            let parent_ent = parent_childof.get();
+            if let Ok(parent_gt) = global_transform_query.get(parent_ent) {
+                let (_, r_p, _) = parent_gt.to_scale_rotation_translation();
+                r_parent = r_p;
+            }
+        }
+        
+        let target_dir_parent = r_parent.inverse() * r_root * target_dir_model;
+        let shoulder_rot = Quat::from_rotation_arc(skeleton.right_arm_local_dir.normalize(), target_dir_parent.normalize());
+        
+        if let Ok(mut transform) = transform_query.get_mut(shoulder_ent) {
+            transform.rotation = shoulder_rot;
+        }
+    }
 }
