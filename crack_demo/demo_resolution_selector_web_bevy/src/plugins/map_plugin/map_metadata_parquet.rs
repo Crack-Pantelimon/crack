@@ -340,6 +340,8 @@ pub fn check_and_parse_parquet(
     lod_state.lod_budget = budget as u32;
     let timeout = 0.1 + rand::random::<f32>() * 0.1;
     lod_state.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
+    lod_state.max_lod = 24;
+    lod_state.tiles_per_diagonal = 1.30;
 
     commands.remove_resource::<ParquetHandles>();
 }

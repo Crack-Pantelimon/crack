@@ -114,6 +114,24 @@ pub fn tree_navigator_ui(
                 lod_state.lod_budget = budget;
             }
 
+            let mut max_lod = lod_state.max_lod;
+            ui.horizontal(|ui| {
+                ui.label("Max LOD:");
+                ui.add(egui::Slider::new(&mut max_lod, 16..=24).text(""));
+            });
+            if max_lod != lod_state.max_lod {
+                lod_state.max_lod = max_lod;
+            }
+
+            let mut tiles_per_diagonal = lod_state.tiles_per_diagonal;
+            ui.horizontal(|ui| {
+                ui.label("Tiles per diagonal:");
+                ui.add(egui::Slider::new(&mut tiles_per_diagonal, 0.3..=2.5).text(""));
+            });
+            if tiles_per_diagonal != lod_state.tiles_per_diagonal {
+                lod_state.tiles_per_diagonal = tiles_per_diagonal;
+            }
+
             ui.separator();
 
             ui.heading("Reference Points");

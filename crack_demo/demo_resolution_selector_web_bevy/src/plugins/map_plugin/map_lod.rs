@@ -119,7 +119,7 @@ fn compute_distance_to_aabb(bbox: &BBox, p: Vec3) -> f32 {
         (bbox.min.y + bbox.max.y) / 2.0,
         (bbox.min.z + bbox.max.z) / 2.0,
     );
-    d1 + p.distance(middle)
+    (d1 + p.distance(middle)) / 2.0
 }
 
 #[derive(Component, Debug)]
@@ -211,7 +211,30 @@ pub fn recompute_lod_mark_changes(
         // negative, so it's max-score
         let score = -distance / bbox_diagonal;
         score_cache.insert(node_path.clone(), score);
+
+        // if the tile max lod is bigger than
         score
+    };
+    let is_valid_split = |node_path: &MapTreeNodePath| -> bool {
+        if node_path.0.len() as i32 > lod_state.max_lod {
+            // tracing::info!("REJECT TILE : {:?}, max_lod={}", node_path, lod_state.max_lod);
+            return false;
+        }
+        let bbox = tile_bbox(node_path);
+        let bbox_diagonal = bbox.min.distance(bbox.max).clamp(0.00001, 100000.0);
+        let mut distance = f32::INFINITY;
+        for point in refs.iter() {
+            distance = distance.min(compute_distance_to_aabb(&bbox, *point));
+        }
+        distance += 0.01;
+
+        let tile_value = bbox_diagonal / distance;
+        if tile_value < 1.0 / (0.01 + lod_state.tiles_per_diagonal) {
+            // tracing::info!("REJECT TILE : {:?}, value={}", node_path, tile_value);
+            return false;
+        }
+
+        return true;
     };
 
     let parents = data_res.roots.clone();
@@ -267,7 +290,7 @@ pub fn recompute_lod_mark_changes(
                     .unwrap_or(0);
             }
             let new_budget = current_budget - parent_cost + children_cost;
-            if new_budget <= budget as usize {
+            if new_budget <= budget as usize && is_valid_split(&node_path) {
                 proposed_nodes.remove(&node_path);
                 proposed_splits.insert(node_path.clone());
                 current_budget = new_budget;
@@ -605,7 +628,7 @@ pub fn check_map_loaded_status(
     }
 
     let loaded_count = tiles_query.iter().count();
-    let target = (lod_state.lod_budget / 2) as usize;
+    let target = 1 + (lod_state.lod_budget / 15) as usize;
 
     if loaded_count >= target && target > 0 {
         loading_status.map_loaded = true;

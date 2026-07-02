@@ -118,4 +118,6 @@ pub struct MapLODState {
     pub reference_points: Vec<Vec3>,
     pub lod_budget: u32,
     pub lod_timer: Option<Timer>,
+    pub max_lod: i32,
+    pub tiles_per_diagonal: f32,
 }
