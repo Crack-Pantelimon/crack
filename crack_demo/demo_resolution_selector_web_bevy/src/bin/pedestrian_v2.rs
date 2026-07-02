@@ -1,5 +1,5 @@
 use avian3d::prelude::{
-    Collider, CollisionLayers, Restitution, RigidBody, PhysicsPlugins, PhysicsDebugPlugin,
+    Collider, CollisionLayers, Restitution, RigidBody, PhysicsPlugins,
     SpatialQuery, SpatialQueryFilter,
 };
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
@@ -107,6 +107,17 @@ impl Default for ArmControl {
 #[derive(Resource, Default)]
 struct FrameCounter(u64);
 
+#[derive(Resource)]
+struct SkeletonVisuals {
+    show_skeleton: bool,
+}
+
+impl Default for SkeletonVisuals {
+    fn default() -> Self {
+        Self { show_skeleton: false }
+    }
+}
+
 #[derive(Event, Clone)]
 struct SpawnPedestrianRequest {
     position: Vec3,
@@ -202,7 +213,6 @@ fn main() {
         )
         .add_plugins(EguiPlugin::default())
         .add_plugins(PhysicsPlugins::default())
-        .add_plugins(PhysicsDebugPlugin::default())
         .init_state::<GameControlState>()
         .insert_resource(MapTree {
             parsed: true,
@@ -219,6 +229,7 @@ fn main() {
         .init_resource::<HoveredModel>()
         .init_resource::<ArmControl>()
         .init_resource::<FrameCounter>()
+        .init_resource::<SkeletonVisuals>()
         .add_observer(spawn_pedestrian_observer)
         .add_systems(Startup, setup_scene)
         .add_systems(
@@ -363,7 +374,7 @@ fn setup_scene(
 
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(10.0, 10.0, 15.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
+        Transform::from_xyz(-10.0, 2.0, -15.0).looking_at(Vec3::new(0.0, 1.0, 0.0), Vec3::Y),
         AmbientLight {
             color: Color::srgb(0.8, 0.85, 1.0),
             brightness: 1000.0,
@@ -441,7 +452,7 @@ fn load_manifest_system(
                 const GRID_SIZE: f32 = 1.6;
                 let x = (col as f32 - (cols - 1) as f32 / 2.0) * GRID_SIZE;
                 let z = (row as f32 - (((count as f32 / cols as f32).ceil() - 1.0) / 2.0)) * GRID_SIZE;
-                let y = 1.0;
+                let y = 0.0;
 
                 let model_name = line.split('/').last().unwrap_or(line).replace(".glb", "");
 
@@ -524,6 +535,9 @@ fn align_pedestrians_system(
             };
 
             if let Some(mesh) = meshes.get(mesh_handle) {
+                if let Some(collider) = Collider::trimesh_from_mesh(mesh) {
+                    commands.entity(*ent).insert(collider);
+                }
                 if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(positions)) =
                     mesh.attribute(Mesh::ATTRIBUTE_POSITION)
                 {
@@ -560,10 +574,7 @@ fn align_pedestrians_system(
             }
         }
 
-        commands.entity(root_entity).insert((
-            Collider::cuboid(size.x * s, size.y * s, size.z * s),
-            RigidBody::Static,
-        ));
+
 
         if let Ok(mut root) = model_root_query.get_mut(root_entity) {
             root.size = size * s;
@@ -1048,6 +1059,7 @@ fn print_classification_results(
 }
 
 fn draw_skeletons_system(
+    skeleton_visuals: Res<SkeletonVisuals>,
     mut gizmos: Gizmos,
     model_roots: Query<(Entity, &ModelRoot, &GlobalTransform)>,
     skeletons: Query<&PedestrianSkeleton>,
@@ -1055,18 +1067,12 @@ fn draw_skeletons_system(
     name_query: Query<&Name>,
     transform_query: Query<&GlobalTransform>,
     parent_query: Query<&ChildOf>,
-    camera_query: Query<(&Camera, &GlobalTransform)>,
-    mut contexts: EguiContexts,
 ) {
-    let Ok(ctx) = contexts.ctx_mut() else {
+    if !skeleton_visuals.show_skeleton {
         return;
-    };
+    }
 
-    let Some((camera, camera_transform)) = camera_query.iter().next() else {
-        return;
-    };
-
-    for (root_entity, root, root_gt) in model_roots.iter() {
+    for (root_entity, _root, _root_gt) in model_roots.iter() {
         let mut skeleton_root = root_entity;
         let mut queue = vec![root_entity];
         while let Some(ent) = queue.pop() {
@@ -1100,16 +1106,7 @@ fn draw_skeletons_system(
 
         let skeleton = skeletons.get(root_entity).ok();
 
-        // Draw pointing direction arrow above the head
-        let arrow_start = root_gt.translation() + Vec3::new(0.0, root.size.y / 2.0 + 0.3, 0.0);
-        let arrow_end = arrow_start + Vec3::new(0.0, 0.0, -0.4);
-        gizmos.line(arrow_start, arrow_end, Color::srgb(1.0, 0.0, 0.0));
-        let wing_left = arrow_end + Vec3::new(0.08, 0.0, 0.08);
-        let wing_right = arrow_end + Vec3::new(-0.08, 0.0, 0.08);
-        gizmos.line(arrow_end, wing_left, Color::srgb(1.0, 0.0, 0.0));
-        gizmos.line(arrow_end, wing_right, Color::srgb(1.0, 0.0, 0.0));
-
-        for (idx, &(ent, _, pos)) in nodes.iter().enumerate() {
+        for &(ent, _, pos) in &nodes {
             let label = skeleton.and_then(|s| s.joint_labels.get(&ent));
             let color = label.map(|l| l.color()).unwrap_or(Color::srgb(0.5, 0.5, 0.5));
 
@@ -1117,32 +1114,6 @@ fn draw_skeletons_system(
                 if let Some(&(_, parent_pos)) = entity_to_info.get(&parent.get()) {
                     gizmos.line(parent_pos, pos, color);
                 }
-            }
-
-            if let Ok(viewport_pos) = camera.world_to_viewport(camera_transform, pos) {
-                let egui_color = if let Some(l) = label {
-                    let c = l.color().to_linear();
-                    egui::Color32::from_rgb(
-                        (c.red * 255.0) as u8,
-                        (c.green * 255.0) as u8,
-                        (c.blue * 255.0) as u8,
-                    )
-                } else {
-                    egui::Color32::GRAY
-                };
-
-                egui::Area::new(egui::Id::new(format!("joint_lbl_{:?}_{}", pos, idx)))
-                    .fixed_pos(egui::pos2(viewport_pos.x - 6.0, viewport_pos.y - 6.0))
-                    .show(ctx, |ui| {
-                        ui.label(
-                            egui::RichText::new(format!("{}", idx))
-                                .color(egui_color)
-                                .size(9.0)
-                                .background_color(egui::Color32::from_rgba_premultiplied(
-                                    0, 0, 0, 120,
-                                )),
-                        );
-                    });
             }
         }
     }
@@ -1270,6 +1241,7 @@ fn draw_gui_system(
     selected: Res<SelectedModel>,
     model_roots: Query<&ModelRoot>,
     mut arm_control: ResMut<ArmControl>,
+    mut skeleton_visuals: ResMut<SkeletonVisuals>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -1284,6 +1256,9 @@ fn draw_gui_system(
             ui.label("- Left Drag: Rotate Camera");
             ui.label("- Hover a pedestrian to show bbox");
             ui.label("- Click a pedestrian to focus/center");
+
+            ui.separator();
+            ui.checkbox(&mut skeleton_visuals.show_skeleton, "Show Skeleton Graph");
 
             ui.separator();
             ui.heading("Skeleton Bone Color Legend:");
