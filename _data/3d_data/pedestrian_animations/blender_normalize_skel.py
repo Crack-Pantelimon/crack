@@ -417,6 +417,405 @@ def stage_1_rotate_model(armature):
     final_bone_mapping = classify_skeleton(final_joints, armature.name)
     return final_bone_mapping
 
+def identify_key_bones(armature, bone_mapping):
+    # Helper to resolve bone list
+    def resolve_list(label):
+        val = bone_mapping.get(label)
+        if not val:
+            return []
+        if isinstance(val, list):
+            return val
+        return [val]
+
+    key_bones = {}
+
+    # Neck
+    neck_list = resolve_list('Neck')
+    if neck_list:
+        key_bones['neck'] = neck_list[0]
+    else:
+        key_bones['neck'] = None
+
+    # Legs & Arms
+    for side in ['Left', 'Right']:
+        # Legs
+        foot_label_bones = resolve_list(f'{side}Foot')
+        leg_label_bones = resolve_list(f'{side}Leg')
+        midgroin_label_bones = resolve_list('Midgroin')
+
+        hip_bone = None
+        knee_bone = None
+        foot_bone = None
+
+        # Find chain Hip -> Knee -> Foot
+        for f in leg_label_bones:
+            bone_f = armature.data.bones.get(f)
+            if bone_f and bone_f.parent and bone_f.parent.name in leg_label_bones:
+                k = bone_f.parent.name
+                bone_k = armature.data.bones.get(k)
+                if bone_k and bone_k.parent and bone_k.parent.name in midgroin_label_bones:
+                    h = bone_k.parent.name
+                    # Make sure hip is not the armature name
+                    if h != armature.name:
+                        hip_bone = h
+                        knee_bone = k
+                        foot_bone = f
+                        break
+        
+        key_bones[f'{side.lower()}_hip'] = hip_bone
+        key_bones[f'{side.lower()}_knee'] = knee_bone
+        key_bones[f'{side.lower()}_foot'] = foot_bone
+
+        # Find child bone (toe/physical foot)
+        child_bone = None
+        if foot_bone:
+            for f_child in foot_label_bones:
+                bone_fc = armature.data.bones.get(f_child)
+                if bone_fc and bone_fc.parent and bone_fc.parent.name == foot_bone:
+                    child_bone = f_child
+                    break
+        key_bones[f'{side.lower()}_foot_child'] = child_bone
+
+        # Arms
+        hand_label_bones = resolve_list(f'{side}Hand')
+        arm_label_bones = resolve_list(f'{side}Arm')
+        shoulder_label_bones = resolve_list(f'{side}Shoulder')
+
+        arm_bone = None
+        forearm_bone = None
+        wrist_bone = None
+
+        # Find chain Arm -> Forearm -> Wrist
+        for w in arm_label_bones:
+            bone_w = armature.data.bones.get(w)
+            if bone_w and bone_w.parent and bone_w.parent.name in arm_label_bones:
+                f_arm = bone_w.parent.name
+                bone_f_arm = armature.data.bones.get(f_arm)
+                if bone_f_arm and bone_f_arm.parent and bone_f_arm.parent.name in shoulder_label_bones:
+                    a = bone_f_arm.parent.name
+                    if a != armature.name:
+                        arm_bone = a
+                        forearm_bone = f_arm
+                        wrist_bone = w
+                        break
+
+        key_bones[f'{side.lower()}_arm'] = arm_bone
+        key_bones[f'{side.lower()}_forearm'] = forearm_bone
+        key_bones[f'{side.lower()}_wrist'] = wrist_bone
+
+    return key_bones
+
+def apply_pose_to_skin_and_armature(armature):
+    print("Applying pose to meshes/skin and armature rest pose...")
+    if bpy.context.object and bpy.context.object.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+        
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    
+    # 1. Extract evaluated mesh data for all child meshes to permanently bake pose deformation into vertices
+    child_meshes = []
+    for obj in bpy.data.objects:
+        if obj.type == 'MESH' and (obj.parent == armature or any(m.type == 'ARMATURE' and m.object == armature for m in obj.modifiers)):
+            child_meshes.append(obj)
+            
+    for mesh_obj in child_meshes:
+        mesh_eval = mesh_obj.evaluated_get(depsgraph)
+        new_mesh_data = bpy.data.meshes.new_from_object(mesh_eval)
+        
+        old_data = mesh_obj.data
+        mesh_obj.data = new_mesh_data
+        if old_data.users == 0:
+            bpy.data.meshes.remove(old_data)
+            
+        for mod in list(mesh_obj.modifiers):
+            if mod.type == 'ARMATURE':
+                mesh_obj.modifiers.remove(mod)
+                
+    # 2. Apply pose as rest pose on armature
+    bpy.ops.object.select_all(action='DESELECT')
+    armature.select_set(True)
+    bpy.context.view_layer.objects.active = armature
+    bpy.ops.object.mode_set(mode='POSE')
+    bpy.ops.pose.armature_apply()
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    # 3. Add new Armature modifier back to child meshes pointing to armature
+    for mesh_obj in child_meshes:
+        mod = mesh_obj.modifiers.new(name="Armature", type='ARMATURE')
+        mod.object = armature
+        print(f"Added new armature modifier to mesh {mesh_obj.name}")
+
+def get_segment_direction(armature, bone_name, next_bone_name=None, is_pose=False):
+    if is_pose:
+        pb = armature.pose.bones.get(bone_name)
+        if not pb:
+            return None
+        if next_bone_name:
+            pb_next = armature.pose.bones.get(next_bone_name)
+            if pb_next:
+                dir_vec = pb_next.head - pb.head
+                if dir_vec.length > 1e-6:
+                    return dir_vec.normalized()
+        dir_vec = pb.tail - pb.head
+        if dir_vec.length > 1e-6:
+            return dir_vec.normalized()
+        return mathutils.Vector((0, 1, 0))
+    else:
+        b = armature.data.bones.get(bone_name)
+        if not b:
+            return None
+        if next_bone_name:
+            b_next = armature.data.bones.get(next_bone_name)
+            if b_next:
+                dir_vec = b_next.head_local - b.head_local
+                if dir_vec.length > 1e-6:
+                    return dir_vec.normalized()
+        dir_vec = b.tail_local - b.head_local
+        if dir_vec.length > 1e-6:
+            return dir_vec.normalized()
+        return mathutils.Vector((0, 1, 0))
+
+def print_bone_debug_data(title, target_armature, target_key_bones, ref_debug_info):
+    print(f"\n=================== Bone Alignment Debug: {title} ===================")
+    
+    # Define joint chains (current_bone, next_bone, label)
+    debug_chains = [
+        ('left_arm', 'left_forearm', 'Left Arm (Upper: Shoulder->Elbow)'),
+        ('left_forearm', 'left_wrist', 'Left Forearm (Elbow->Wrist)'),
+        ('left_wrist', None, 'Left Wrist (Wrist->HandTip)'),
+        ('right_arm', 'right_forearm', 'Right Arm (Upper: Shoulder->Elbow)'),
+        ('right_forearm', 'right_wrist', 'Right Forearm (Elbow->Wrist)'),
+        ('right_wrist', None, 'Right Wrist (Wrist->HandTip)'),
+        ('left_hip', 'left_knee', 'Left Thigh (Hip->Knee)'),
+        ('left_knee', 'left_foot_child', 'Left Calf (Knee->Ankle)'),
+        ('left_foot_child', None, 'Left Foot (Ankle->Toes)'),
+        ('right_hip', 'right_knee', 'Right Thigh (Hip->Knee)'),
+        ('right_knee', 'right_foot_child', 'Right Calf (Knee->Ankle)'),
+        ('right_foot_child', None, 'Right Foot (Ankle->Toes)'),
+        ('neck', None, 'Neck (Neck->Head)')
+    ]
+    
+    def angle_between_vectors(v1, v2):
+        import math
+        dot = max(-1.0, min(1.0, v1.dot(v2)))
+        return math.acos(dot) * 180 / math.pi
+        
+    for k_curr, k_next, label in debug_chains:
+        t_name = target_key_bones.get(k_curr)
+        t_next = target_key_bones.get(k_next) if k_next else None
+        
+        ref_info = ref_debug_info.get(k_curr)
+        
+        t_dir_str = "N/A"
+        r_dir_str = "N/A"
+        diff_angle = "N/A"
+        
+        if ref_info:
+            r_dir = ref_info['dir']
+            r_dir_str = f"({r_dir.x:.4f}, {r_dir.y:.4f}, {r_dir.z:.4f})"
+            
+        if t_name:
+            t_dir = get_segment_direction(target_armature, t_name, t_next, is_pose=False)
+            if t_dir:
+                t_dir_str = f"({t_dir.x:.4f}, {t_dir.y:.4f}, {t_dir.z:.4f})"
+                if ref_info and ref_info.get('dir'):
+                    diff_angle = f"{angle_between_vectors(t_dir, ref_info['dir']):.1f}°"
+        
+        ref_bone_name = ref_info['name'] if ref_info else 'None'
+        print(f"  {label} (Target: {t_name} | Ref: {ref_bone_name}):")
+        print(f"    Target Segment Dir: {t_dir_str}")
+        print(f"    Ref Segment Dir:    {r_dir_str}")
+        if diff_angle != "N/A":
+            print(f"    Direction Angle Difference: {diff_angle}")
+    print("=====================================================================\n")
+
+def stage_2_align_hands_feet_head(target_armature, target_bone_mapping, ref_key_bones, ref_segment_dirs):
+    print("Executing Stage 2: Aligning hands, feet, head/neck orientations using segment vector matching...")
+    
+    target_key_bones = identify_key_bones(target_armature, target_bone_mapping)
+    print(f"Target key bones identified: {target_key_bones}")
+    
+    # Categories to align (zipped in order: upper -> lower -> end)
+    category_pairs = [
+        # Left Arm: [UpperArm, LowerArm, Wrist]
+        (
+            [target_key_bones.get('left_arm'), target_key_bones.get('left_forearm'), target_key_bones.get('left_wrist')],
+            [ref_key_bones.get('left_arm'), ref_key_bones.get('left_forearm'), ref_key_bones.get('left_wrist')]
+        ),
+        # Right Arm: [UpperArm, LowerArm, Wrist]
+        (
+            [target_key_bones.get('right_arm'), target_key_bones.get('right_forearm'), target_key_bones.get('right_wrist')],
+            [ref_key_bones.get('right_arm'), ref_key_bones.get('right_forearm'), ref_key_bones.get('right_wrist')]
+        ),
+        # Left Leg: [Thigh, Calf, Foot]
+        (
+            [target_key_bones.get('left_hip'), target_key_bones.get('left_knee'), target_key_bones.get('left_foot_child') or target_key_bones.get('left_foot')],
+            [ref_key_bones.get('left_hip'), ref_key_bones.get('left_knee'), ref_key_bones.get('left_foot')]
+        ),
+        # Right Leg: [Thigh, Calf, Foot]
+        (
+            [target_key_bones.get('right_hip'), target_key_bones.get('right_knee'), target_key_bones.get('right_foot_child') or target_key_bones.get('right_foot')],
+            [ref_key_bones.get('right_hip'), ref_key_bones.get('right_knee'), ref_key_bones.get('right_foot')]
+        ),
+        # Neck: [Neck]
+        (
+            [target_key_bones.get('neck')],
+            [ref_key_bones.get('neck')]
+        )
+    ]
+
+    # Switch target armature to POSE mode
+    bpy.context.view_layer.objects.active = target_armature
+    bpy.ops.object.mode_set(mode='POSE')
+    
+    # Clear active pose transforms
+    for pb in target_armature.pose.bones:
+        pb.matrix_basis = mathutils.Matrix.Identity(4)
+    bpy.context.view_layer.update()
+
+    # Align bone chains top-down using segment vector matching (3 convergence passes)
+    for _pass in range(3):
+        for target_chain, ref_chain in category_pairs:
+            t_chain = [b for b in target_chain if b]
+            r_chain = [b for b in ref_chain if b]
+            
+            for i in range(min(len(t_chain), len(r_chain))):
+                t_name = t_chain[i]
+                r_name = r_chain[i]
+                
+                v_ref = ref_segment_dirs.get(r_name)
+                if not v_ref:
+                    continue
+                    
+                t_next = t_chain[i+1] if i + 1 < len(t_chain) else None
+                v_target = get_segment_direction(target_armature, t_name, t_next, is_pose=True)
+                
+                if not v_target:
+                    continue
+                    
+                # Compute minimal rotation difference to align target segment to reference segment
+                Q = v_target.rotation_difference(v_ref)
+                
+                pb = target_armature.pose.bones.get(t_name)
+                if pb:
+                    # If t_name is a child bone whose parent is an intermediate bone (e.g. bone_22 for bone_23), apply rotation to parent
+                    target_pb = pb
+                    if pb.parent and pb.parent.name not in t_chain and pb.parent.name != target_armature.name:
+                        target_pb = pb.parent
+                        
+                    loc, rot, scale = target_pb.matrix.decompose()
+                    q_rot = Q
+                    new_rot = q_rot @ rot
+                    target_pb.matrix = mathutils.Matrix.Translation(loc) @ new_rot.to_matrix().to_4x4() @ mathutils.Matrix.Scale(1.0, 4, (1,0,0))
+                    bpy.context.view_layer.update()
+
+    # Apply pose as rest pose to both skin meshes and armature
+    apply_pose_to_skin_and_armature(target_armature)
+    print("Stage 2 vector orientation alignment complete.")
+    return target_bone_mapping
+
+def render_stage2_preview(output_jpg_path):
+    print(f"Rendering Stage 2 256x256 preview image to: {output_jpg_path}")
+    scene = bpy.context.scene
+    scene.render.engine = 'BLENDER_WORKBENCH'
+    
+    # Configure resolution
+    scene.render.resolution_x = 256
+    scene.render.resolution_y = 256
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = 'JPEG'
+    scene.render.filepath = output_jpg_path
+    
+    # Add light if needed
+    light_data = bpy.data.lights.new(name="PreviewLight", type='SUN')
+    light_object = bpy.data.objects.new(name="PreviewLight", object_data=light_data)
+    scene.collection.objects.link(light_object)
+    light_object.location = (0, -5, 5)
+    light_object.rotation_euler = (0.7854, 0, 0)
+    
+    # Set camera
+    camera_data = bpy.data.cameras.new(name='PreviewCamera')
+    camera_object = bpy.data.objects.new('PreviewCamera', camera_data)
+    scene.collection.objects.link(camera_object)
+    scene.camera = camera_object
+    
+    # Position camera to look at center of model (Z=1.0, Y=-3.0, X=0) looking towards +Y
+    camera_object.location = mathutils.Vector((0.0, -3.2, 1.0))
+    camera_object.rotation_euler = mathutils.Euler((1.5708, 0, 0), 'XYZ')
+    
+    if hasattr(scene, 'display'):
+        scene.display.shading.type = 'SOLID'
+        scene.display.shading.light = 'STUDIO'
+        
+    bpy.ops.render.render(write_still=True)
+    print("Stage 2 preview render complete.")
+
+def stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones, ref_actions):
+    print("Executing Stage 3: Applying and retargeting animations...")
+    
+    # Identify key bones in target model
+    target_key_bones = identify_key_bones(target_armature, target_bone_mapping)
+    print(f"Target key bones identified: {target_key_bones}")
+    
+    # Regular expression to parse bone name and property path
+    import re
+    pattern = re.compile(r'^pose\.bones\["([^"]+)"\]\.(.+)$')
+    
+    target_actions = []
+    
+    for ref_action in ref_actions:
+        print(f"Retargeting animation: {ref_action.name}")
+        # Duplicate action
+        target_action = ref_action.copy()
+        target_action.name = f"{ref_action.name}_retargeted"
+        
+        # Iterate over layers, strips, channelbags in target_action
+        for layer in target_action.layers:
+            for strip in layer.strips:
+                for cb in strip.channelbags:
+                    fcurves_to_remove = []
+                    
+                    for fc in cb.fcurves:
+                        match = pattern.match(fc.data_path)
+                        if match:
+                            ref_bone_name = match.group(1)
+                            prop = match.group(2)
+                            
+                            # Check if ref_bone_name maps to any of our key bones
+                            found_key = None
+                            for key, name in ref_key_bones.items():
+                                if name == ref_bone_name:
+                                    found_key = key
+                                    break
+                                    
+                            if found_key and prop in ['rotation_quaternion', 'rotation_euler', 'rotation_axis_angle']:
+                                t_bone_name = target_key_bones.get(found_key)
+                                if t_bone_name:
+                                    fc.data_path = f'pose.bones["{t_bone_name}"].{prop}'
+                                else:
+                                    fcurves_to_remove.append(fc)
+                            else:
+                                fcurves_to_remove.append(fc)
+                        else:
+                            fcurves_to_remove.append(fc)
+                            
+                    for fc in fcurves_to_remove:
+                        cb.fcurves.remove(fc)
+            
+        # Push retargeted action to target armature's NLA tracks
+        if not target_armature.animation_data:
+            target_armature.animation_data_create()
+            
+        track = target_armature.animation_data.nla_tracks.new()
+        track.name = target_action.name
+        
+        # Create strip
+        start_frame = target_action.frame_range[0]
+        track.strips.new(name=target_action.name, start=int(start_frame), action=target_action)
+        target_actions.append(target_action)
+        
+    print(f"Retargeted {len(target_actions)} animations.")
+
 def main():
     # Parse arguments after '--'
     try:
@@ -442,37 +841,13 @@ def main():
     # Define JSON output file paths
     flag_bones_json_path = os.path.join(out_dir, f"{input_name_no_ext}_flag_bones.json")
     ref_bones_json_path = os.path.join(out_dir, f"{input_name_no_ext}_reference_bones.json")
-    output_glb_path = os.path.join(out_dir, input_basename)
     
-    # 1. Process Input GLB: Rotate, Identify, Align, Ground, Scale & Save
-    clear_scene()
-    print(f"Importing input model: {input_glb_path}")
-    bpy.ops.import_scene.gltf(filepath=input_glb_path)
+    # Define Stage-specific GLB output paths
+    output_stage_1_path = os.path.join(out_dir, f"{input_name_no_ext}_stage_1.glb")
+    output_stage_2_path = os.path.join(out_dir, f"{input_name_no_ext}_stage_2.glb")
+    output_stage_3_path = os.path.join(out_dir, f"{input_name_no_ext}_stage_3.glb")
     
-    armature = get_armature_object()
-    if not armature:
-        print("Error: No armature found in input model")
-        sys.exit(1)
-        
-    # Execute stage_1_rotate_model pipeline
-    input_bone_mapping = stage_1_rotate_model(armature)
-    
-    # Save input bone mapping to JSON
-    with open(flag_bones_json_path, 'w') as f:
-        json.dump(input_bone_mapping, f, indent=2)
-    print(f"Saved input bones JSON to {flag_bones_json_path}")
-        
-    # Export aligned model
-    print(f"Exporting aligned model to: {output_glb_path}")
-    # Deselect all, then select only Armature and Meshes to export
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in bpy.data.objects:
-        if obj.type in ['ARMATURE', 'MESH']:
-            obj.select_set(True)
-    bpy.ops.export_scene.gltf(filepath=output_glb_path, use_selection=True)
-    print("Export complete.")
-    
-    # 2. Process Reference GLB: Identify Bones
+    # 1. Process Reference GLB: Identify Bones & Animations
     clear_scene()
     print(f"Importing reference model: {ref_glb_path}")
     bpy.ops.import_scene.gltf(filepath=ref_glb_path)
@@ -482,6 +857,9 @@ def main():
         print("Error: No armature found in reference model")
         sys.exit(1)
         
+    # Apply reference transforms to make bone matrices absolute to origin
+    apply_transforms_safe(ref_armature)
+        
     print("Classifying reference model bones...")
     ref_joints = build_joints_list(ref_armature)
     ref_bone_mapping = classify_skeleton(ref_joints, ref_armature.name)
@@ -490,6 +868,115 @@ def main():
     with open(ref_bones_json_path, 'w') as f:
         json.dump(ref_bone_mapping, f, indent=2)
     print(f"Saved reference bones JSON to {ref_bones_json_path}")
+    
+    # Identify reference key bones and segment directions
+    ref_key_bones = identify_key_bones(ref_armature, ref_bone_mapping)
+    ref_key_matrices = {}
+    ref_debug_info = {}
+    ref_segment_dirs = {}
+    
+    # Categories for capturing reference segment directions
+    ref_categories = [
+        [ref_key_bones.get('left_arm'), ref_key_bones.get('left_forearm'), ref_key_bones.get('left_wrist')],
+        [ref_key_bones.get('right_arm'), ref_key_bones.get('right_forearm'), ref_key_bones.get('right_wrist')],
+        [ref_key_bones.get('left_hip'), ref_key_bones.get('left_knee'), ref_key_bones.get('left_foot')],
+        [ref_key_bones.get('right_hip'), ref_key_bones.get('right_knee'), ref_key_bones.get('right_foot')],
+        [ref_key_bones.get('neck'), 'Head']
+    ]
+    
+    for chain in ref_categories:
+        c_chain = [b for b in chain if b]
+        for i in range(len(c_chain)):
+            b_name = c_chain[i]
+            b_next = c_chain[i+1] if i + 1 < len(c_chain) else None
+            v_dir = get_segment_direction(ref_armature, b_name, b_next, is_pose=False)
+            if v_dir:
+                ref_segment_dirs[b_name] = v_dir
+                
+    for key, b_name in ref_key_bones.items():
+        if b_name:
+            bone = ref_armature.data.bones.get(b_name)
+            if bone:
+                ref_key_matrices[key] = bone.matrix_local.copy()
+                r_dir = ref_segment_dirs.get(b_name) or (bone.tail_local - bone.head_local).normalized()
+                ref_debug_info[key] = {
+                    'name': b_name,
+                    'dir': r_dir,
+                    'rot': bone.matrix_local.to_euler()
+                }
+                
+    # Capture and protect animations (Actions) from the reference model
+    ref_actions = list(bpy.data.actions)
+    for action in ref_actions:
+        action.use_fake_user = True
+    print(f"Protected {len(ref_actions)} reference actions.")
+    
+    # 2. Process Input GLB: Stage 1 (Rotate, Ground, Scale)
+    clear_scene()
+    print(f"Importing input model: {input_glb_path}")
+    bpy.ops.import_scene.gltf(filepath=input_glb_path)
+    
+    target_armature = get_armature_object()
+    if not target_armature:
+        print("Error: No armature found in input model")
+        sys.exit(1)
+        
+    # Execute stage_1_rotate_model pipeline
+    target_bone_mapping = stage_1_rotate_model(target_armature)
+    
+    # Save target bone mapping to JSON
+    with open(flag_bones_json_path, 'w') as f:
+        json.dump(target_bone_mapping, f, indent=2)
+    print(f"Saved target bones JSON to {flag_bones_json_path}")
+    
+    # Identify target key bones
+    target_key_bones = identify_key_bones(target_armature, target_bone_mapping)
+        
+    # Export Stage 1 GLB
+    print(f"Exporting Stage 1 model to: {output_stage_1_path}")
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in bpy.data.objects:
+        if obj.type in ['ARMATURE', 'MESH']:
+            obj.select_set(True)
+    bpy.ops.export_scene.gltf(filepath=output_stage_1_path, use_selection=True)
+    print("Stage 1 export complete.")
+    
+    # Print debug data BEFORE Stage 2 alignment
+    print_bone_debug_data("BEFORE STAGE 2 ALIGNMENT", target_armature, target_key_bones, ref_debug_info)
+    
+    # 3. Process Stage 2 (Align hand/foot/neck orientations)
+    target_bone_mapping = stage_2_align_hands_feet_head(target_armature, target_bone_mapping, ref_key_bones, ref_segment_dirs)
+    
+    # Identify target key bones after alignment
+    target_key_bones_after = identify_key_bones(target_armature, target_bone_mapping)
+    
+    # Print debug data AFTER Stage 2 alignment
+    print_bone_debug_data("AFTER STAGE 2 ALIGNMENT", target_armature, target_key_bones_after, ref_debug_info)
+    
+    # Export Stage 2 GLB
+    print(f"Exporting Stage 2 model to: {output_stage_2_path}")
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in bpy.data.objects:
+        if obj.type in ['ARMATURE', 'MESH']:
+            obj.select_set(True)
+    bpy.ops.export_scene.gltf(filepath=output_stage_2_path, use_selection=True)
+    print("Stage 2 export complete.")
+    
+    # Render Stage 2 preview image (256x256)
+    output_stage_2_jpg_path = os.path.join(out_dir, f"{input_name_no_ext}_stage_2.jpg")
+    render_stage2_preview(output_stage_2_jpg_path)
+    
+    # 4. Process Stage 3 (Apply reference animations to target)
+    stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones, ref_actions)
+    
+    # Export Stage 3 GLB
+    print(f"Exporting Stage 3 model to: {output_stage_3_path}")
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in bpy.data.objects:
+        if obj.type in ['ARMATURE', 'MESH']:
+            obj.select_set(True)
+    bpy.ops.export_scene.gltf(filepath=output_stage_3_path, use_selection=True)
+    print("Stage 3 export complete.")
     
     clear_scene()
     print("Done!")
