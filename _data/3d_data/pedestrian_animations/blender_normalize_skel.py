@@ -1177,6 +1177,8 @@ def main():
     input_glb_path = os.path.abspath(args[1])
     out_dir = os.path.abspath(args[2])
     
+    debug_mode = os.environ.get("PEDESTRIAN_SCRIPT_DEBUG") == "1"
+    
     os.makedirs(out_dir, exist_ok=True)
     
     input_basename = os.path.basename(input_glb_path)
@@ -1209,9 +1211,10 @@ def main():
     ref_bone_mapping = classify_skeleton(ref_joints, ref_armature.name)
     
     # Save reference bone mapping to JSON
-    with open(ref_bones_json_path, 'w') as f:
-        json.dump(ref_bone_mapping, f, indent=2)
-    print(f"Saved reference bones JSON to {ref_bones_json_path}")
+    if debug_mode:
+        with open(ref_bones_json_path, 'w') as f:
+            json.dump(ref_bone_mapping, f, indent=2)
+        print(f"Saved reference bones JSON to {ref_bones_json_path}")
     
     # Identify reference key bones and segment directions
     ref_key_bones = identify_key_bones(ref_armature, ref_bone_mapping)
@@ -1259,7 +1262,8 @@ def main():
     print(f"Protected {len(ref_actions)} reference actions.")
     
     # Render reference animation preview images if they do not exist
-    render_reference_animations(ref_glb_path, ['Idle_Loop', 'Crouch_Idle_Loop', 'Jog_Fwd_Loop', 'Walk_Loop'])
+    if debug_mode:
+        render_reference_animations(ref_glb_path, ['Idle_Loop', 'Crouch_Idle_Loop', 'Jog_Fwd_Loop', 'Walk_Loop'])
     
     # 2. Process Input GLB: Stage 1 (Rotate, Ground, Scale)
     clear_scene()
@@ -1275,25 +1279,28 @@ def main():
     target_bone_mapping = stage_1_rotate_model(target_armature)
     
     # Save target bone mapping to JSON
-    with open(flag_bones_json_path, 'w') as f:
-        json.dump(target_bone_mapping, f, indent=2)
-    print(f"Saved target bones JSON to {flag_bones_json_path}")
+    if debug_mode:
+        with open(flag_bones_json_path, 'w') as f:
+            json.dump(target_bone_mapping, f, indent=2)
+        print(f"Saved target bones JSON to {flag_bones_json_path}")
     
     # Identify target key bones
     target_key_bones = identify_key_bones(target_armature, target_bone_mapping)
         
     # Export Stage 1 GLB
-    print(f"Exporting Stage 1 model to: {output_stage_1_path}")
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in bpy.data.objects:
-        if obj.type in ['ARMATURE', 'MESH']:
-            obj.select_set(True)
-    bpy.ops.export_scene.gltf(filepath=output_stage_1_path, use_selection=True)
-    print("Stage 1 export complete.")
+    if debug_mode:
+        print(f"Exporting Stage 1 model to: {output_stage_1_path}")
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in bpy.data.objects:
+            if obj.type in ['ARMATURE', 'MESH']:
+                obj.select_set(True)
+        bpy.ops.export_scene.gltf(filepath=output_stage_1_path, use_selection=True)
+        print("Stage 1 export complete.")
     
     # Print debug data BEFORE Stage 2 alignment
-    print_bone_debug_data("BEFORE STAGE 2 ALIGNMENT", target_armature, target_key_bones, ref_debug_info)
-    print_global_joint_coordinates("BEFORE STAGE 2 ALIGNMENT", target_armature, target_key_bones, ref_armature, ref_key_bones)
+    if debug_mode:
+        print_bone_debug_data("BEFORE STAGE 2 ALIGNMENT", target_armature, target_key_bones, ref_debug_info)
+        print_global_joint_coordinates("BEFORE STAGE 2 ALIGNMENT", target_armature, target_key_bones, ref_armature, ref_key_bones)
     
     # 3. Process Stage 2 (Align hand/foot/neck orientations)
     target_bone_mapping = stage_2_align_hands_feet_head(target_armature, target_bone_mapping, ref_key_bones, ref_segment_dirs)
@@ -1302,21 +1309,23 @@ def main():
     target_key_bones_after = identify_key_bones(target_armature, target_bone_mapping)
     
     # Print debug data AFTER Stage 2 alignment
-    print_bone_debug_data("AFTER STAGE 2 ALIGNMENT", target_armature, target_key_bones_after, ref_debug_info)
-    print_global_joint_coordinates("AFTER STAGE 2 ALIGNMENT", target_armature, target_key_bones_after, ref_armature, ref_key_bones)
+    if debug_mode:
+        print_bone_debug_data("AFTER STAGE 2 ALIGNMENT", target_armature, target_key_bones_after, ref_debug_info)
+        print_global_joint_coordinates("AFTER STAGE 2 ALIGNMENT", target_armature, target_key_bones_after, ref_armature, ref_key_bones)
     
     # Export Stage 2 GLB
-    print(f"Exporting Stage 2 model to: {output_stage_2_path}")
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in bpy.data.objects:
-        if obj.type in ['ARMATURE', 'MESH']:
-            obj.select_set(True)
-    bpy.ops.export_scene.gltf(filepath=output_stage_2_path, use_selection=True)
-    print("Stage 2 export complete.")
-    
-    # Render Stage 2 preview image (256x256)
-    output_stage_2_jpg_path = os.path.join(out_dir, f"{input_name_no_ext}_stage_2.jpg")
-    render_stage2_preview(output_stage_2_jpg_path)
+    if debug_mode:
+        print(f"Exporting Stage 2 model to: {output_stage_2_path}")
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in bpy.data.objects:
+            if obj.type in ['ARMATURE', 'MESH']:
+                obj.select_set(True)
+        bpy.ops.export_scene.gltf(filepath=output_stage_2_path, use_selection=True)
+        print("Stage 2 export complete.")
+        
+        # Render Stage 2 preview image (256x256)
+        output_stage_2_jpg_path = os.path.join(out_dir, f"{input_name_no_ext}_stage_2.jpg")
+        render_stage2_preview(output_stage_2_jpg_path)
     
     # 4. Process Stage 3 (Apply reference animations to target)
     stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones, ref_actions, ref_rest_matrices=ref_rest_matrices, ref_bone_parents=ref_bone_parents)
@@ -1331,7 +1340,8 @@ def main():
     print("Stage 3 export complete.")
     
     # Render and debug target animations post-Stage 3
-    render_and_debug_target_animations(target_armature, target_key_bones_after, out_dir, input_name_no_ext, ['Idle_Loop', 'Crouch_Idle_Loop', 'Jog_Fwd_Loop', 'Walk_Loop'])
+    if debug_mode:
+        render_and_debug_target_animations(target_armature, target_key_bones_after, out_dir, input_name_no_ext, ['Idle_Loop', 'Crouch_Idle_Loop', 'Jog_Fwd_Loop', 'Walk_Loop'])
     
     clear_scene()
     print("Done!")

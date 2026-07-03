@@ -8,7 +8,7 @@ def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     
     ref_glb = os.path.join(base_dir, "UAL1_Standard.glb")
-    input_dir = os.path.join(base_dir, "..", "pedestrian_3d_gen", "3d_with_skeleton", "round2")
+    input_dir = os.path.join(base_dir, "..", "pedestrian_3d_gen", "3d_with_skeleton", "round1")
     out_dir = os.path.join(base_dir, "out2")
     blender_script = os.path.join(base_dir, "blender_normalize_skel.py")
     
