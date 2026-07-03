@@ -1,15 +1,12 @@
 use avian3d::prelude::{
     Collider, CollisionLayers, Restitution, RigidBody, PhysicsPlugins,
-    SpatialQuery, SpatialQueryFilter, LinearDamping, AngularDamping,
-    SphericalJoint, PhysicsLayer, LayerMask, LinearVelocity, AngularVelocity,
-    MassPropertiesBundle,
+    SpatialQuery, SpatialQueryFilter,
 };
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use bevy::{
     asset::{Asset, AssetLoader, LoadContext, RenderAssetUsages, io::Reader},
     ecs::relationship::Relationship,
     prelude::*,
-    render::view::screenshot::{Screenshot, save_to_disk},
     reflect::TypePath,
     render::{
         RenderPlugin,
@@ -186,490 +183,6 @@ struct JointData {
     parent: Option<Entity>,
 }
 
-#[derive(PhysicsLayer, Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum RagdollLayer {
-    #[default]
-    Map,
-    Car,
-    Wheel,
-    BoneColor0,
-    BoneColor1,
-}
-
-fn get_bone_depth(bone_ent: Entity, bone_parents: &std::collections::HashMap<Entity, Entity>) -> usize {
-    let mut depth = 0;
-    let mut current = bone_ent;
-    while let Some(&parent) = bone_parents.get(&current) {
-        depth += 1;
-        current = parent;
-    }
-    depth
-}
-
-fn get_bone_layer(bone_ent: Entity, bone_parents: &std::collections::HashMap<Entity, Entity>) -> RagdollLayer {
-    if get_bone_depth(bone_ent, bone_parents) % 2 == 0 {
-        RagdollLayer::BoneColor0
-    } else {
-        RagdollLayer::BoneColor1
-    }
-}
-
-#[derive(Event, Debug, Clone)]
-struct ToggleRagdollEvent {
-    entity: Entity,
-    enable: bool,
-}
-
-#[derive(Resource)]
-struct RagdollSettings {
-    stiffness: f32,
-    damping: f32,
-    tube_radius: f32,
-    density: f32,
-}
-
-impl Default for RagdollSettings {
-    fn default() -> Self {
-        Self {
-            stiffness: 2000.0,
-            damping: 2.5,
-            tube_radius: 0.05,
-            density: 1.0,
-        }
-    }
-}
-
-#[derive(Component)]
-struct ActiveRagdoll {
-    original_bones: Vec<SavedBoneState>,
-    animation_player_entity: Entity,
-    joint_entities: Vec<Entity>,
-    collider_entities: Vec<Entity>,
-}
-
-struct SavedBoneState {
-    entity: Entity,
-    parent: Entity,
-    local_transform: Transform,
-}
-
-fn remove_all_colliders_recursive(
-    entity: Entity,
-    commands: &mut Commands,
-    children_query: &Query<&Children>,
-    collider_query: &Query<Entity, With<Collider>>,
-) {
-    if collider_query.contains(entity) {
-        commands.entity(entity).remove::<Collider>();
-    }
-    if let Ok(children) = children_query.get(entity) {
-        for child in children.iter() {
-            remove_all_colliders_recursive(child, commands, children_query, collider_query);
-        }
-    }
-}
-
-fn restore_mesh_colliders_recursive(
-    entity: Entity,
-    commands: &mut Commands,
-    children_query: &Query<&Children>,
-    mesh_query: &Query<&Mesh3d>,
-    meshes: &Assets<Mesh>,
-) {
-    if let Ok(mesh3d) = mesh_query.get(entity) {
-        if let Some(mesh) = meshes.get(&mesh3d.0) {
-            if let Some(collider) = Collider::trimesh_from_mesh(mesh) {
-                commands.entity(entity).insert(collider);
-            }
-        }
-    }
-    if let Ok(children) = children_query.get(entity) {
-        for child in children.iter() {
-            restore_mesh_colliders_recursive(child, commands, children_query, mesh_query, meshes);
-        }
-    }
-}
-
-fn toggle_ragdoll_observer(
-    trigger: On<ToggleRagdollEvent>,
-    mut commands: Commands,
-    pedestrian_query: Query<&PedestrianSkeleton>,
-    active_ragdoll_query: Query<&ActiveRagdoll>,
-    parent_query: Query<&ChildOf>,
-    children_query: Query<&Children>,
-    player_query: Query<(Entity, &mut AnimationPlayer, Option<&CurrentPlayingAnimation>)>,
-    transform_query: Query<&Transform>,
-    global_transform_query: Query<&GlobalTransform>,
-    ragdoll_settings: Res<RagdollSettings>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    collider_query: Query<Entity, With<Collider>>,
-    mesh_query: Query<&Mesh3d>,
-) {
-    let req = trigger.event();
-    let ped_entity = req.entity;
-    let enable = req.enable;
-
-    println!("Observer called with enable={}, entity={:?}", enable, ped_entity);
-
-    if enable {
-        // Remove static trimesh colliders from visual meshes to prevent physics panics
-        remove_all_colliders_recursive(ped_entity, &mut commands, &children_query, &collider_query);
-        if active_ragdoll_query.contains(ped_entity) {
-            return;
-        }
-        let Ok(skeleton) = pedestrian_query.get(ped_entity) else {
-            return;
-        };
-
-        // Find the AnimationPlayer entity under ped_entity
-        let mut anim_player_ent = None;
-        let mut queue = vec![ped_entity];
-        while let Some(current) = queue.pop() {
-            if player_query.contains(current) {
-                anim_player_ent = Some(current);
-                break;
-            }
-            if let Ok(children) = children_query.get(current) {
-                for child in children.iter() {
-                    queue.push(child);
-                }
-            }
-        }
-
-        let Some(player_ent) = anim_player_ent else {
-            info!("Could not find AnimationPlayer for entity {:?}", ped_entity);
-            return;
-        };
-
-        // Remove animation components
-        commands.entity(player_ent)
-            .remove::<AnimationPlayer>()
-            .remove::<AnimationGraphHandle>()
-            .remove::<CurrentPlayingAnimation>();
-
-        // Get all bones
-        let mut bones: Vec<Entity> = skeleton.joint_labels.keys().copied().collect();
-        bones.sort_by_key(|e| e.index());
-
-        // Get parent for each bone in the skeleton tree
-        let mut bone_parents = std::collections::HashMap::new();
-        for &bone_ent in &bones {
-            let mut current = bone_ent;
-            let mut parent_bone = None;
-            while let Ok(parent_comp) = parent_query.get(current) {
-                let parent_ent = parent_comp.get();
-                if skeleton.joint_labels.contains_key(&parent_ent) {
-                    parent_bone = Some(parent_ent);
-                    break;
-                }
-                current = parent_ent;
-            }
-            if let Some(p) = parent_bone {
-                bone_parents.insert(bone_ent, p);
-            }
-        }
-
-        let mut original_bones = Vec::new();
-        let mut joint_entities = Vec::new();
-        let mut collider_entities = Vec::new();
-
-        // Save bone local transforms and make them dynamic (preserving hierarchy!)
-        for &bone_ent in &bones {
-            let Ok(saved_local_transform) = transform_query.get(bone_ent).copied() else {
-                continue;
-            };
-
-            original_bones.push(SavedBoneState {
-                entity: bone_ent,
-                parent: parent_query.get(bone_ent).map(|p| p.get()).unwrap_or(ped_entity),
-                local_transform: saved_local_transform,
-            });
-
-            println!("  Bone entity: {:?}", bone_ent);
-
-            // Add physics body components
-            commands.entity(bone_ent).insert((
-                RigidBody::Dynamic,
-                MassPropertiesBundle::from_shape(&Collider::sphere(ragdoll_settings.tube_radius), ragdoll_settings.density),
-                LinearDamping(ragdoll_settings.damping),
-                AngularDamping(ragdoll_settings.damping),
-            ));
-        }
-
-        // Spawn tubes and joints
-        for &bone_ent in &bones {
-            let bone_label = skeleton.joint_labels.get(&bone_ent).unwrap();
-            let color = bone_label.color();
-            let material_handle = materials.add(StandardMaterial {
-                base_color: color,
-                perceptual_roughness: 0.5,
-                ..default()
-            });
-
-            if let Some(&parent_bone_ent) = bone_parents.get(&bone_ent) {
-                let Ok(bone_gt) = global_transform_query.get(bone_ent) else { continue; };
-                let Ok(parent_gt) = global_transform_query.get(parent_bone_ent) else { continue; };
-
-                // In C's local coordinate system:
-                let local_p = bone_gt.affine().inverse().transform_point3(parent_gt.translation());
-                let l = local_p.length();
-                if l > 0.001 {
-                    let dir = local_p.normalize();
-                    let midpoint = local_p / 2.0;
-                    let rotation = Quat::from_rotation_arc(Vec3::Y, dir);
-
-                    let cylinder_mesh = meshes.add(Cylinder::new(ragdoll_settings.tube_radius, l));
-
-                    // Spawn child collider + visual tube
-                    let child_collider_ent = commands.spawn((
-                        Collider::cylinder(ragdoll_settings.tube_radius, l),
-                        Mesh3d(cylinder_mesh),
-                        MeshMaterial3d(material_handle.clone()),
-                        Transform::from_translation(midpoint).with_rotation(rotation),
-                    )).id();
-
-                    println!("  Spawning tube: bone={:?}, child={:?}", bone_ent, child_collider_ent);
-
-                    commands.entity(bone_ent).add_child(child_collider_ent);
-                    collider_entities.push(child_collider_ent);
-
-                    let bone_layer = get_bone_layer(bone_ent, &bone_parents);
-                    let memberships = [LayerMask::from(bone_layer), LayerMask::from(RagdollLayer::Car)];
-                    let filters = [LayerMask::from(RagdollLayer::Map), LayerMask::from(bone_layer)];
-                    commands.entity(child_collider_ent).insert(CollisionLayers::new(memberships, filters));
-                }
-
-                // SphericalJoint at P's position
-                let joint_ent = commands.spawn(
-                    SphericalJoint::new(parent_bone_ent, bone_ent)
-                        .with_local_anchor1(Vec3::ZERO)
-                        .with_local_anchor2(local_p)
-                        .with_point_compliance(1.0 / ragdoll_settings.stiffness)
-                        .with_swing_compliance(1.0 / ragdoll_settings.stiffness)
-                        .with_twist_compliance(1.0 / ragdoll_settings.stiffness)
-                ).id();
-
-                joint_entities.push(joint_ent);
-            } else {
-                // Midgroin (root): Spawn a pelvis sphere collider + visual
-                let sphere_mesh = meshes.add(Sphere::new(0.12).mesh().ico(4).unwrap());
-                let child_collider_ent = commands.spawn((
-                    Collider::sphere(0.12),
-                    Mesh3d(sphere_mesh),
-                    MeshMaterial3d(material_handle),
-                    Transform::IDENTITY,
-                )).id();
-
-                commands.entity(bone_ent).add_child(child_collider_ent);
-                collider_entities.push(child_collider_ent);
-
-                let bone_layer = get_bone_layer(bone_ent, &bone_parents);
-                let memberships = [LayerMask::from(bone_layer), LayerMask::from(RagdollLayer::Car)];
-                let filters = [LayerMask::from(RagdollLayer::Map), LayerMask::from(bone_layer)];
-                commands.entity(child_collider_ent).insert(CollisionLayers::new(memberships, filters));
-            }
-        }
-
-        commands.entity(ped_entity).insert(ActiveRagdoll {
-            original_bones,
-            animation_player_entity: player_ent,
-            joint_entities,
-            collider_entities,
-        });
-
-    } else {
-        if let Ok(active_ragdoll) = active_ragdoll_query.get(ped_entity) {
-            for &joint_ent in &active_ragdoll.joint_entities {
-                commands.entity(joint_ent).despawn();
-            }
-            for &col_ent in &active_ragdoll.collider_entities {
-                commands.entity(col_ent).despawn();
-            }
-
-            for saved_bone in &active_ragdoll.original_bones {
-                commands.entity(saved_bone.entity)
-                    .remove::<RigidBody>()
-                    .remove::<LinearVelocity>()
-                    .remove::<AngularVelocity>()
-                    .remove::<LinearDamping>()
-                    .remove::<AngularDamping>();
-
-                commands.entity(saved_bone.entity).insert(saved_bone.local_transform);
-            }
-
-            commands.entity(active_ragdoll.animation_player_entity).insert(AnimationPlayer::default());
-            commands.entity(ped_entity).remove::<ActiveRagdoll>();
-
-            // Restore visual mesh colliders
-            restore_mesh_colliders_recursive(ped_entity, &mut commands, &children_query, &mesh_query, &meshes);
-        }
-    }
-}
-
-fn keyboard_ragdoll_toggle_system(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    selected: Res<SelectedModel>,
-    active_ragdolls: Query<&ActiveRagdoll>,
-    mut commands: Commands,
-) {
-    if keyboard.just_pressed(KeyCode::Space) {
-        if let Some(selected_ent) = selected.entity {
-            let is_active = active_ragdolls.contains(selected_ent);
-            commands.trigger(ToggleRagdollEvent {
-                entity: selected_ent,
-                enable: !is_active,
-            });
-        }
-    }
-}
-
-fn sync_ragdoll_local_transforms_system(
-    mut query: Query<(&mut Transform, &GlobalTransform, &ChildOf), With<RigidBody>>,
-    parent_transform_query: Query<&GlobalTransform>,
-) {
-    for (mut local_transform, global_transform, child_of) in query.iter_mut() {
-        if let Ok(parent_gt) = parent_transform_query.get(child_of.get()) {
-            let parent_inv = parent_gt.affine().inverse();
-            let relative_mat = parent_inv * global_transform.affine();
-            let new_transform = Transform::from_matrix(relative_mat.into());
-            if !new_transform.translation.is_nan() && !new_transform.rotation.is_nan() {
-                *local_transform = new_transform;
-            }
-        }
-    }
-}
-
-struct AutoTestState {
-    timer: Timer,
-    step: u8,
-    selected_entity: Option<Entity>,
-}
-
-fn auto_test_system(
-    mut test_state: Local<Option<AutoTestState>>,
-    time: Res<Time>,
-    loader: Option<Res<ManifestLoader>>,
-    need_alignment_query: Query<Entity, With<NeedAlignment>>,
-    pedestrians: Query<(Entity, &PedestrianSkeleton, &ModelRoot)>,
-    anim_settings: Option<ResMut<AnimationSettings>>,
-    mut selected: ResMut<SelectedModel>,
-    mut commands: Commands,
-    _camera_query: Query<(&Camera, &GlobalTransform)>,
-    global_transform_query: Query<&GlobalTransform>,
-    velocities: Query<&LinearVelocity>,
-) {
-    if test_state.is_none() {
-        *test_state = Some(AutoTestState {
-            timer: Timer::from_seconds(0.1, TimerMode::Once),
-            step: 0,
-            selected_entity: None,
-        });
-    }
-
-    let state = test_state.as_mut().unwrap();
-
-    match state.step {
-        0 => {
-            // Step 0: wait until all models load
-            let Some(loader) = loader else { return; };
-            if loader.spawned && !pedestrians.is_empty() && need_alignment_query.is_empty() {
-                // All models loaded and aligned!
-                // Choose a random animation
-                if let Some(mut anim) = anim_settings {
-                    let available = &anim.available_animations;
-                    if !available.is_empty() {
-                        let rand_idx = (rand::random::<u32>() as usize) % available.len();
-                        anim.selected_animation = Some(available[rand_idx].clone());
-                        println!("AutoTest: Selecting random animation: {:?}", anim.selected_animation);
-                    }
-                }
-
-                // Select the first pedestrian in the query
-                if let Some((ped_ent, _, model_root)) = pedestrians.iter().next() {
-                    selected.entity = Some(ped_ent);
-                    state.selected_entity = Some(ped_ent);
-
-                    // Position the camera to focus on it
-                    let head_height = model_root.size.y;
-                    let model_pos = global_transform_query.get(ped_ent)
-                        .map(|gt| gt.translation())
-                        .unwrap_or(Vec3::ZERO);
-
-                    let target_pos = model_pos + Vec3::new(0.0, head_height / 2.0 + 0.3, -1.8);
-                    let look_target = model_pos + Vec3::new(0.0, head_height / 4.0, 0.0);
-                    let start_pos = target_pos + Vec3::new(0.0, 0.2, 0.2); // slight offset to start transition
-                    let start_rot = Quat::IDENTITY;
-                    let target_rot = Transform::from_translation(target_pos).looking_at(look_target, Vec3::Y).rotation;
-                    commands.insert_resource(ActiveCameraAnimation {
-                        start_pos,
-                        start_rot,
-                        target_pos,
-                        target_rot,
-                        elapsed: 0.0,
-                        duration: 0.01, // make it instant
-                    });
-                }
-
-                state.timer = Timer::from_seconds(0.1, TimerMode::Once);
-                state.step = 1;
-            }
-        }
-        1 => {
-            // Step 1: wait 0.1s
-            state.timer.tick(time.delta());
-            if state.timer.is_finished() {
-                if let Some(ped_ent) = state.selected_entity {
-                    println!("AutoTest: Triggering Start Ragdoll on entity {:?}", ped_ent);
-                    commands.trigger(ToggleRagdollEvent {
-                        entity: ped_ent,
-                        enable: true,
-                    });
-                }
-                state.timer = Timer::from_seconds(0.3, TimerMode::Once);
-                state.step = 2;
-            }
-        }
-        2 => {
-            // Step 2: wait 0.3s
-            state.timer.tick(time.delta());
-            if state.timer.is_finished() {
-                // Print ankle debug information
-                println!("=== ANKLE DEBUG INFO ===");
-                let mut count = 0;
-                for (_ped_ent, skeleton, _) in pedestrians.iter() {
-                    if count >= 10 { break; }
-                    print!("Pedestrian {}: ", count);
-                    let mut ankle_info = Vec::new();
-                    for &label in &[BoneLabel::LeftFoot, BoneLabel::RightFoot] {
-                        if let Some(&bone_ent) = skeleton.joint_labels.iter()
-                            .find(|&(_, &l)| l == label)
-                            .map(|(ent, _)| ent)
-                        {
-                            if let Ok(gt) = global_transform_query.get(bone_ent) {
-                                let pos = gt.translation();
-                                let speed = velocities.get(bone_ent)
-                                    .map(|v| v.0.length())
-                                    .unwrap_or(0.0);
-                                ankle_info.push(format!("{:?}: pos={:?}, speed={:.3} m/s", label, pos, speed));
-                            }
-                        }
-                    }
-                    println!("{}", ankle_info.join(" | "));
-                    count += 1;
-                }
-
-                println!("AutoTest: Taking screenshot...");
-                commands.spawn(Screenshot::primary_window())
-                    .observe(save_to_disk("screenshot.png"));
-                println!("AutoTest: Saved screenshot request to disk!");
-                state.step = 3;
-            }
-        }
-        _ => {}
-    }
-}
-
 fn main() {
     #[cfg(feature = "web")]
     let backends = Backends::GL;
@@ -717,9 +230,7 @@ fn main() {
         .init_resource::<AnimationSettings>()
         .init_resource::<FrameCounter>()
         .init_resource::<SkeletonVisuals>()
-        .init_resource::<RagdollSettings>()
         .add_observer(spawn_pedestrian_observer)
-        .add_observer(toggle_ragdoll_observer)
         .add_systems(Startup, setup_scene)
         .add_systems(
             Update,
@@ -731,14 +242,7 @@ fn main() {
                 draw_skeletons_system,
                 picker_system,
                 draw_hovered_bbox_system,
-                keyboard_ragdoll_toggle_system,
-                auto_test_system,
             ),
-        )
-        .add_systems(
-            PostUpdate,
-            sync_ragdoll_local_transforms_system
-                .before(bevy::transform::TransformSystems::Propagate),
         )
         .add_systems(EguiPrimaryContextPass, draw_gui_system)
         .run();
@@ -1602,9 +1106,6 @@ fn picker_system(
     mut hovered: ResMut<HoveredModel>,
     mut selected: ResMut<SelectedModel>,
     mut contexts: EguiContexts,
-    active_ragdolls: Query<&ActiveRagdoll>,
-    pedestrians: Query<&PedestrianSkeleton>,
-    global_transform_query: Query<&GlobalTransform>,
 ) {
     let egui_focused = if let Ok(ctx) = contexts.ctx_mut() {
         ctx.egui_wants_pointer_input() || ctx.is_pointer_over_egui()
@@ -1614,7 +1115,7 @@ fn picker_system(
     if egui_focused {
         hovered.entity = None;
         return;
-    };
+    }
 
     let Some(window) = windows.iter().next() else {
         return;
@@ -1663,22 +1164,8 @@ fn picker_system(
                 info!("Selected model: {} (entity: {:?})", model_idx, root_ent);
 
                 if let Ok((_, root, root_gt)) = model_root_query.get(root_ent) {
-                    let mut model_pos = root_gt.translation();
+                    let model_pos = root_gt.translation();
                     let head_height = root.size.y;
-
-                    // If ragdolled, focus the look target on the pelvis (Midgroin)
-                    if active_ragdolls.contains(root_ent) {
-                        if let Ok(skeleton) = pedestrians.get(root_ent) {
-                            if let Some(&midgroin_ent) = skeleton.joint_labels.iter()
-                                .find(|&(_, &label)| label == BoneLabel::Midgroin)
-                                .map(|(ent, _)| ent)
-                            {
-                                if let Ok(midgroin_gt) = global_transform_query.get(midgroin_ent) {
-                                    model_pos = midgroin_gt.translation();
-                                }
-                            }
-                        }
-                    }
 
                     let start_pos = camera_transform.translation();
                     let start_rot = camera_transform.rotation();
@@ -1731,9 +1218,6 @@ fn draw_gui_system(
     model_roots: Query<&ModelRoot>,
     mut anim_settings: ResMut<AnimationSettings>,
     mut skeleton_visuals: ResMut<SkeletonVisuals>,
-    active_ragdolls: Query<&ActiveRagdoll>,
-    mut ragdoll_settings: ResMut<RagdollSettings>,
-    mut commands: Commands,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -1795,30 +1279,6 @@ fn draw_gui_system(
         .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-12.0, -12.0))
         .default_size(egui::vec2(250.0, 200.0))
         .show(ctx, |ui| {
-            ui.heading("Ragdoll");
-            if let Some(selected_ent) = selected.entity {
-                let is_active = active_ragdolls.contains(selected_ent);
-                let btn_label = if is_active { "Stop Ragdoll" } else { "Start Ragdoll" };
-                if ui.button(btn_label).clicked() {
-                    commands.trigger(ToggleRagdollEvent {
-                        entity: selected_ent,
-                        enable: !is_active,
-                    });
-                }
-            } else {
-                ui.add_enabled(false, egui::Button::new("Start Ragdoll"));
-                ui.label("(Select a pedestrian to toggle ragdoll)");
-            }
-
-            ui.collapsing("Ragdoll Settings", |ui| {
-                ui.add(egui::Slider::new(&mut ragdoll_settings.stiffness, 10.0..=5000.0).text("Stiffness"));
-                ui.add(egui::Slider::new(&mut ragdoll_settings.damping, 0.0..=10.0).text("Damping"));
-                ui.add(egui::Slider::new(&mut ragdoll_settings.tube_radius, 0.01..=0.3).text("Tube Radius"));
-                ui.add(egui::Slider::new(&mut ragdoll_settings.density, 0.1..=5.0).text("Density"));
-            });
-
-            ui.separator();
-
             // Speed slider above the list
             ui.add(egui::Slider::new(&mut anim_settings.speed, 0.3..=3.0).text("Speed"));
             
