@@ -647,15 +647,15 @@ def stage_2_align_hands_feet_head(target_armature, target_bone_mapping, ref_key_
             [target_key_bones.get('right_arm'), target_key_bones.get('right_forearm'), target_key_bones.get('right_wrist')],
             [ref_key_bones.get('right_arm'), ref_key_bones.get('right_forearm'), ref_key_bones.get('right_wrist')]
         ),
-        # Left Leg: [Thigh, Calf, Foot]
+        # Left Leg: [Hip, Knee, Ankle, Toes]
         (
-            [target_key_bones.get('left_hip'), target_key_bones.get('left_knee'), target_key_bones.get('left_foot_child') or target_key_bones.get('left_foot')],
-            [ref_key_bones.get('left_hip'), ref_key_bones.get('left_knee'), ref_key_bones.get('left_foot')]
+            [target_key_bones.get('left_hip'), target_key_bones.get('left_knee'), target_key_bones.get('left_foot'), target_key_bones.get('left_foot_child')],
+            [ref_key_bones.get('left_hip'), ref_key_bones.get('left_knee'), ref_key_bones.get('left_foot'), 'ball_l']
         ),
-        # Right Leg: [Thigh, Calf, Foot]
+        # Right Leg: [Hip, Knee, Ankle, Toes]
         (
-            [target_key_bones.get('right_hip'), target_key_bones.get('right_knee'), target_key_bones.get('right_foot_child') or target_key_bones.get('right_foot')],
-            [ref_key_bones.get('right_hip'), ref_key_bones.get('right_knee'), ref_key_bones.get('right_foot')]
+            [target_key_bones.get('right_hip'), target_key_bones.get('right_knee'), target_key_bones.get('right_foot'), target_key_bones.get('right_foot_child')],
+            [ref_key_bones.get('right_hip'), ref_key_bones.get('right_knee'), ref_key_bones.get('right_foot'), 'ball_r']
         ),
         # Neck: [Neck]
         (
@@ -673,8 +673,8 @@ def stage_2_align_hands_feet_head(target_armature, target_bone_mapping, ref_key_
         pb.matrix_basis = mathutils.Matrix.Identity(4)
     bpy.context.view_layer.update()
 
-    # Align bone chains top-down using segment vector matching (3 convergence passes)
-    for _pass in range(3):
+    # Align bone chains top-down using segment vector matching (1 clean top-down pass)
+    for _pass in range(1):
         for target_chain, ref_chain in category_pairs:
             t_chain = [b for b in target_chain if b]
             r_chain = [b for b in ref_chain if b]
@@ -698,11 +698,7 @@ def stage_2_align_hands_feet_head(target_armature, target_bone_mapping, ref_key_
                 
                 pb = target_armature.pose.bones.get(t_name)
                 if pb:
-                    # If t_name is a child bone whose parent is an intermediate bone (e.g. bone_22 for bone_23), apply rotation to parent
                     target_pb = pb
-                    if pb.parent and pb.parent.name not in t_chain and pb.parent.name != target_armature.name:
-                        target_pb = pb.parent
-                        
                     loc, rot, scale = target_pb.matrix.decompose()
                     q_rot = Q
                     new_rot = q_rot @ rot
@@ -714,41 +710,86 @@ def stage_2_align_hands_feet_head(target_armature, target_bone_mapping, ref_key_
     print("Stage 2 vector orientation alignment complete.")
     return target_bone_mapping
 
+def print_global_joint_coordinates(title, target_armature, target_key_bones, ref_armature=None, ref_key_bones=None):
+    print(f"\n=================== GLOBAL JOINT COORDINATES: {title} ===================")
+    
+    # Key joints to output: elbow, knee, heel (ankle), wrist for left and right
+    joint_specs = [
+        ('Left Elbow', 'left_forearm', 'lowerarm_l'),
+        ('Right Elbow', 'right_forearm', 'lowerarm_r'),
+        ('Left Wrist', 'left_wrist', 'hand_l'),
+        ('Right Wrist', 'right_wrist', 'hand_r'),
+        ('Left Knee', 'left_knee', 'calf_l'),
+        ('Right Knee', 'right_knee', 'calf_r'),
+        ('Left Heel/Ankle', 'left_foot', 'foot_l'),
+        ('Right Heel/Ankle', 'right_foot', 'foot_r'),
+    ]
+    
+    for label, target_key, ref_key in joint_specs:
+        t_bone_name = target_key_bones.get(target_key)
+        t_pos_str = "N/A"
+        if t_bone_name:
+            # Check pose bone first, then fallback to rest bone
+            pb = target_armature.pose.bones.get(t_bone_name) if target_armature.pose else None
+            if pb:
+                w_pos = target_armature.matrix_world @ pb.head
+            else:
+                b = target_armature.data.bones.get(t_bone_name)
+                w_pos = target_armature.matrix_world @ b.head_local if b else None
+            if w_pos:
+                t_pos_str = f"({w_pos.x:+.4f}, {w_pos.y:+.4f}, {w_pos.z:+.4f})"
+                
+        r_pos_str = ""
+        try:
+            if ref_armature and hasattr(ref_armature, "matrix_world"):
+                r_bone_name = ref_key_bones.get(ref_key) if ref_key_bones else ref_key
+                rb = ref_armature.data.bones.get(r_bone_name) if r_bone_name else None
+                if rb:
+                    r_w_pos = ref_armature.matrix_world @ rb.head_local
+                    r_pos_str = f" | Ref ({r_bone_name}): ({r_w_pos.x:+.4f}, {r_w_pos.y:+.4f}, {r_w_pos.z:+.4f})"
+        except Exception:
+            pass
+                
+        print(f"  {label:<16} (Target: {t_bone_name or 'N/A'}): {t_pos_str}{r_pos_str}")
+    print("=========================================================================\n")
+
+
 def render_stage2_preview(output_jpg_path):
-    print(f"Rendering Stage 2 256x256 preview image to: {output_jpg_path}")
+    output_x_jpg_path = output_jpg_path.replace(".jpg", "_x.jpg")
+    print(f"Rendering Stage 2 256x256 preview images to:\n  Front: {output_jpg_path}\n  Side:  {output_x_jpg_path}")
+    
     scene = bpy.context.scene
     scene.render.engine = 'BLENDER_WORKBENCH'
-    
-    # Configure resolution
     scene.render.resolution_x = 256
     scene.render.resolution_y = 256
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = 'JPEG'
-    scene.render.filepath = output_jpg_path
-    
-    # Add light if needed
-    light_data = bpy.data.lights.new(name="PreviewLight", type='SUN')
-    light_object = bpy.data.objects.new(name="PreviewLight", object_data=light_data)
-    scene.collection.objects.link(light_object)
-    light_object.location = (0, -5, 5)
-    light_object.rotation_euler = (0.7854, 0, 0)
-    
-    # Set camera
-    camera_data = bpy.data.cameras.new(name='PreviewCamera')
-    camera_object = bpy.data.objects.new('PreviewCamera', camera_data)
-    scene.collection.objects.link(camera_object)
-    scene.camera = camera_object
-    
-    # Position camera to look at center of model (Z=1.0, Y=-3.0, X=0) looking towards +Y
-    camera_object.location = mathutils.Vector((0.0, -3.2, 1.0))
-    camera_object.rotation_euler = mathutils.Euler((1.5708, 0, 0), 'XYZ')
     
     if hasattr(scene, 'display'):
         scene.display.shading.type = 'SOLID'
         scene.display.shading.light = 'STUDIO'
         
+    # Camera 1: Front view (Y = -3.2, Z = 1.0 looking towards +Y)
+    cam_front = bpy.data.objects.new('CamFront', bpy.data.cameras.new('CamFront'))
+    scene.collection.objects.link(cam_front)
+    cam_front.location = mathutils.Vector((0.0, -3.2, 1.0))
+    cam_front.rotation_euler = mathutils.Euler((1.5708, 0, 0), 'XYZ')
+    
+    scene.camera = cam_front
+    scene.render.filepath = output_jpg_path
     bpy.ops.render.render(write_still=True)
-    print("Stage 2 preview render complete.")
+    
+    # Camera 2: Side view from model's right side (X = -3.2, Y = 0, Z = 1.0 looking towards +X)
+    cam_side = bpy.data.objects.new('CamSide', bpy.data.cameras.new('CamSide'))
+    scene.collection.objects.link(cam_side)
+    cam_side.location = mathutils.Vector((-3.2, 0.0, 1.0))
+    cam_side.rotation_euler = mathutils.Euler((1.5708, 0, -1.5708), 'XYZ')
+    
+    scene.camera = cam_side
+    scene.render.filepath = output_x_jpg_path
+    bpy.ops.render.render(write_still=True)
+    
+    print("Stage 2 preview renders complete.")
 
 def stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones, ref_actions):
     print("Executing Stage 3: Applying and retargeting animations...")
@@ -879,8 +920,8 @@ def main():
     ref_categories = [
         [ref_key_bones.get('left_arm'), ref_key_bones.get('left_forearm'), ref_key_bones.get('left_wrist')],
         [ref_key_bones.get('right_arm'), ref_key_bones.get('right_forearm'), ref_key_bones.get('right_wrist')],
-        [ref_key_bones.get('left_hip'), ref_key_bones.get('left_knee'), ref_key_bones.get('left_foot')],
-        [ref_key_bones.get('right_hip'), ref_key_bones.get('right_knee'), ref_key_bones.get('right_foot')],
+        [ref_key_bones.get('left_hip'), ref_key_bones.get('left_knee'), ref_key_bones.get('left_foot'), 'ball_l'],
+        [ref_key_bones.get('right_hip'), ref_key_bones.get('right_knee'), ref_key_bones.get('right_foot'), 'ball_r'],
         [ref_key_bones.get('neck'), 'Head']
     ]
     
@@ -943,6 +984,7 @@ def main():
     
     # Print debug data BEFORE Stage 2 alignment
     print_bone_debug_data("BEFORE STAGE 2 ALIGNMENT", target_armature, target_key_bones, ref_debug_info)
+    print_global_joint_coordinates("BEFORE STAGE 2 ALIGNMENT", target_armature, target_key_bones, ref_armature, ref_key_bones)
     
     # 3. Process Stage 2 (Align hand/foot/neck orientations)
     target_bone_mapping = stage_2_align_hands_feet_head(target_armature, target_bone_mapping, ref_key_bones, ref_segment_dirs)
@@ -952,6 +994,7 @@ def main():
     
     # Print debug data AFTER Stage 2 alignment
     print_bone_debug_data("AFTER STAGE 2 ALIGNMENT", target_armature, target_key_bones_after, ref_debug_info)
+    print_global_joint_coordinates("AFTER STAGE 2 ALIGNMENT", target_armature, target_key_bones_after, ref_armature, ref_key_bones)
     
     # Export Stage 2 GLB
     print(f"Exporting Stage 2 model to: {output_stage_2_path}")
