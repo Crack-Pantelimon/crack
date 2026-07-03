@@ -6,7 +6,6 @@ Reads variable files from variables/, randomly samples one option per category,
 composes a full image-generation prompt, and writes 100 prompts to output/.
 """
 
-from requests import structures
 import os
 import random
 import shutil

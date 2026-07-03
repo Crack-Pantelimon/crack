@@ -1,0 +1,60 @@
+{
+  "Head": "Head",
+  "Neck": "neck_01",
+  "Spine": [
+    "spine_03",
+    "spine_02",
+    "spine_01",
+    "pelvis",
+    "root"
+  ],
+  "Midgroin": [
+    "Armature",
+    "thigh_l",
+    "thigh_r"
+  ],
+  "LeftShoulder": [
+    "upperarm_l",
+    "clavicle_l"
+  ],
+  "RightShoulder": [
+    "upperarm_r",
+    "clavicle_r"
+  ],
+  "LeftArm": [
+    "hand_l",
+    "lowerarm_l"
+  ],
+  "RightArm": [
+    "hand_r",
+    "lowerarm_r"
+  ],
+  "LeftHand": [
+    "middle_04_leaf_l",
+    "middle_03_l",
+    "middle_02_l",
+    "middle_01_l"
+  ],
+  "RightHand": [
+    "middle_04_leaf_r",
+    "middle_03_r",
+    "middle_02_r",
+    "middle_01_r"
+  ],
+  "LeftLeg": [
+    "foot_l",
+    "calf_l"
+  ],
+  "RightLeg": [
+    "foot_r",
+    "calf_r"
+  ],
+  "LeftFoot": [
+    "ball_leaf_l",
+    "ball_l"
+  ],
+  "RightFoot": [
+    "ball_leaf_r",
+    "ball_r"
+  ]
+}

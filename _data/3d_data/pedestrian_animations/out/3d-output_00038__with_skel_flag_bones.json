@@ -1,0 +1,43 @@
+{
+  "Head": "bone_5",
+  "Neck": "bone_4",
+  "Spine": [
+    "bone_3",
+    "bone_2",
+    "bone_1",
+    "bone_0"
+  ],
+  "Midgroin": [
+    "Armature",
+    "bone_15",
+    "bone_14",
+    "bone_19",
+    "bone_18"
+  ],
+  "LeftShoulder": null,
+  "RightShoulder": [
+    "bone_7",
+    "bone_6"
+  ],
+  "LeftArm": [
+    "bone_12",
+    "bone_11",
+    "bone_10"
+  ],
+  "RightArm": [
+    "bone_9",
+    "bone_8"
+  ],
+  "LeftHand": "bone_13",
+  "RightHand": null,
+  "LeftLeg": [
+    "bone_17",
+    "bone_16"
+  ],
+  "RightLeg": [
+    "bone_21",
+    "bone_20"
+  ],
+  "LeftFoot": null,
+  "RightFoot": null
+}

@@ -1,10 +1,6 @@
-light skin tone
-medium skin tone
-dark skin tone
-olive skin tone
-tan skin tone
-pale skin tone
-deep brown skin tone
-golden brown skin tone
-fair skin tone
-bronze skin tone
+light white skin tone
+medium white skin tone
+tan white skin tone
+pale, white skin tone
+fair, white skin tone
+bronze white skin tone
