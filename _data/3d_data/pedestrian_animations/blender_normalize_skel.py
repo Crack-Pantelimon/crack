@@ -760,8 +760,8 @@ def render_stage2_preview(output_jpg_path):
     
     scene = bpy.context.scene
     scene.render.engine = 'BLENDER_WORKBENCH'
-    scene.render.resolution_x = 256
-    scene.render.resolution_y = 256
+    scene.render.resolution_x = 128
+    scene.render.resolution_y = 128
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = 'JPEG'
     
@@ -791,50 +791,116 @@ def render_stage2_preview(output_jpg_path):
     
     print("Stage 2 preview renders complete.")
 
-def stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones, ref_actions):
-    print("Executing Stage 3: Applying and retargeting animations...")
+def stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones, ref_actions, ref_rest_matrices=None):
+    print("Executing Stage 3: Full-body animation retargeting with C matrix coordinate space transformation & spine interpolation...")
     
-    # Identify key bones in target model
     target_key_bones = identify_key_bones(target_armature, target_bone_mapping)
     print(f"Target key bones identified: {target_key_bones}")
     
-    # Regular expression to parse bone name and property path
     import re
     pattern = re.compile(r'^pose\.bones\["([^"]+)"\]\.(.+)$')
+    
+    # 1. Build Direct Bone Mappings for Key & Secondary Bones
+    ref_to_target = {}
+    key_pairs = [
+        ('neck', 'neck'), ('head', 'head'),
+        ('left_arm', 'left_arm'), ('left_forearm', 'left_forearm'), ('left_wrist', 'left_wrist'),
+        ('right_arm', 'right_arm'), ('right_forearm', 'right_forearm'), ('right_wrist', 'right_wrist'),
+        ('left_hip', 'left_hip'), ('left_knee', 'left_knee'), ('left_foot', 'left_foot'),
+        ('right_hip', 'right_hip'), ('right_knee', 'right_knee'), ('right_foot', 'right_foot'),
+    ]
+    for r_k, t_k in key_pairs:
+        rb = ref_key_bones.get(r_k)
+        tb = target_key_bones.get(t_k)
+        if rb and tb:
+            ref_to_target[rb] = tb
+            
+    # Toe Mappings
+    if ref_key_bones.get('left_foot') and target_key_bones.get('left_foot_child'):
+        ref_to_target['ball_l'] = target_key_bones.get('left_foot_child')
+    if ref_key_bones.get('right_foot') and target_key_bones.get('right_foot_child'):
+        ref_to_target['ball_r'] = target_key_bones.get('right_foot_child')
+        
+    # Pelvis / Root Mapping
+    r_root = 'pelvis'
+    t_root = 'bone_0' if target_armature.data.bones.get('bone_0') else target_key_bones.get('left_hip')
+    if r_root and t_root:
+        ref_to_target[r_root] = t_root
+        
+    # Spine Bone Chain Mapping with Interpolation Support
+    ref_spine_bones = ['pelvis', 'spine_01', 'spine_02', 'spine_03']
+    target_spine_bones = [b.name for b in target_armature.data.bones if any(k in b.name for k in ['bone_0', 'bone_1', 'bone_2', 'bone_3'])]
+    if not target_spine_bones:
+        target_spine_bones = ['bone_0', 'bone_1', 'bone_2', 'bone_3']
+    target_spine_bones = [b for b in target_spine_bones if target_armature.data.bones.get(b)]
+    
+    print(f"Ref Spine Chain: {ref_spine_bones}")
+    print(f"Target Spine Chain: {target_spine_bones}")
+    
+    # Calculate C transformation matrices: C = M_tgt_rest.to_3x3().inverted() @ M_ref_rest.to_3x3()
+    C_matrices = {}
+    for r_b, t_b in ref_to_target.items():
+        m_r_mat = ref_rest_matrices.get(r_b) if ref_rest_matrices else None
+        m_t_b = target_armature.data.bones.get(t_b)
+        m_t_mat = m_t_b.matrix_local.to_3x3() if m_t_b else mathutils.Matrix.Identity(3)
+        if m_r_mat and m_t_mat:
+            m_r_3x3 = m_r_mat.to_3x3() if hasattr(m_r_mat, 'to_3x3') else m_r_mat
+            C_matrices[t_b] = m_t_mat.inverted() @ m_r_3x3
+        else:
+            C_matrices[t_b] = mathutils.Matrix.Identity(3)
+            
+    for idx, t_b in enumerate(target_spine_bones):
+        u = idx / max(1, len(target_spine_bones) - 1)
+        r_idx = u * (len(ref_spine_bones) - 1)
+        r_b_name = ref_spine_bones[min(int(round(r_idx)), len(ref_spine_bones) - 1)]
+        m_r_mat = ref_rest_matrices.get(r_b_name) if ref_rest_matrices else None
+        m_t_b = target_armature.data.bones.get(t_b)
+        m_t_mat = m_t_b.matrix_local.to_3x3() if m_t_b else mathutils.Matrix.Identity(3)
+        if m_r_mat and m_t_mat:
+            m_r_3x3 = m_r_mat.to_3x3() if hasattr(m_r_mat, 'to_3x3') else m_r_mat
+            C_matrices[t_b] = m_t_mat.inverted() @ m_r_3x3
+            
+    # Root height scale factor
+    ref_h = 1.8
+    target_h = 1.8
+    target_head_b = target_armature.data.bones.get('bone_5') or target_armature.data.bones.get('bone_4')
+    if target_head_b:
+        target_h = max(0.1, target_head_b.head_local.z)
+    root_scale = target_h / ref_h
+    print(f"Root translation height scale factor: {root_scale:.4f}")
     
     target_actions = []
     
     for ref_action in ref_actions:
         print(f"Retargeting animation: {ref_action.name}")
-        # Duplicate action
         target_action = ref_action.copy()
         target_action.name = f"{ref_action.name}_retargeted"
         
-        # Iterate over layers, strips, channelbags in target_action
         for layer in target_action.layers:
             for strip in layer.strips:
                 for cb in strip.channelbags:
+                    # Group F-Curves by bone and property
+                    bone_curves = {}
                     fcurves_to_remove = []
                     
                     for fc in cb.fcurves:
                         match = pattern.match(fc.data_path)
                         if match:
-                            ref_bone_name = match.group(1)
+                            r_b_name = match.group(1)
                             prop = match.group(2)
                             
-                            # Check if ref_bone_name maps to any of our key bones
-                            found_key = None
-                            for key, name in ref_key_bones.items():
-                                if name == ref_bone_name:
-                                    found_key = key
-                                    break
-                                    
-                            if found_key and prop in ['rotation_quaternion', 'rotation_euler', 'rotation_axis_angle']:
-                                t_bone_name = target_key_bones.get(found_key)
-                                if t_bone_name:
-                                    fc.data_path = f'pose.bones["{t_bone_name}"].{prop}'
-                                else:
-                                    fcurves_to_remove.append(fc)
+                            t_b_name = ref_to_target.get(r_b_name)
+                            if not t_b_name and r_b_name in ref_spine_bones and target_spine_bones:
+                                u_idx = ref_spine_bones.index(r_b_name) / max(1, len(ref_spine_bones) - 1)
+                                t_spine_idx = min(int(round(u_idx * (len(target_spine_bones) - 1))), len(target_spine_bones) - 1)
+                                t_b_name = target_spine_bones[t_spine_idx]
+                                
+                            if t_b_name:
+                                key = (t_b_name, prop)
+                                if key not in bone_curves:
+                                    bone_curves[key] = {}
+                                bone_curves[key][fc.array_index] = fc
+                                fc.data_path = f'pose.bones["{t_b_name}"].{prop}'
                             else:
                                 fcurves_to_remove.append(fc)
                         else:
@@ -842,15 +908,51 @@ def stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones
                             
                     for fc in fcurves_to_remove:
                         cb.fcurves.remove(fc)
-            
-        # Push retargeted action to target armature's NLA tracks
+                        
+                    # Transform Quaternion Keyframes in-place using C Matrix (R_tgt = C @ R_ref)
+                    for (t_b_name, prop), curves in bone_curves.items():
+                        C_mat = C_matrices.get(t_b_name, mathutils.Matrix.Identity(3))
+                        
+                        if prop in ['rotation_quaternion'] and all(idx in curves for idx in [0, 1, 2, 3]):
+                            fc_w, fc_x, fc_y, fc_z = curves[0], curves[1], curves[2], curves[3]
+                            num_keys = len(fc_w.keyframe_points)
+                            
+                            for k in range(num_keys):
+                                w = fc_w.keyframe_points[k].co[1]
+                                x = fc_x.keyframe_points[k].co[1]
+                                y = fc_y.keyframe_points[k].co[1]
+                                z = fc_z.keyframe_points[k].co[1]
+                                
+                                q_ref = mathutils.Quaternion((w, x, y, z))
+                                r_ref = q_ref.to_matrix()
+                                # Local pose rotation conversion: R_tgt = C @ R_ref
+                                r_tgt = C_mat @ r_ref
+                                q_tgt = r_tgt.to_quaternion()
+                                
+                                fc_w.keyframe_points[k].co[1] = q_tgt.w
+                                fc_x.keyframe_points[k].co[1] = q_tgt.x
+                                fc_y.keyframe_points[k].co[1] = q_tgt.y
+                                fc_z.keyframe_points[k].co[1] = q_tgt.z
+                                
+                        elif prop in ['location'] and t_b_name == t_root and all(idx in curves for idx in [0, 1, 2]):
+                            fc_px, fc_py, fc_pz = curves[0], curves[1], curves[2]
+                            num_keys = len(fc_px.keyframe_points)
+                            
+                            for k in range(num_keys):
+                                px = fc_px.keyframe_points[k].co[1] * root_scale
+                                py = fc_py.keyframe_points[k].co[1] * root_scale
+                                pz = fc_pz.keyframe_points[k].co[1] * root_scale
+                                
+                                p_tgt = C_mat @ mathutils.Vector((px, py, pz))
+                                fc_px.keyframe_points[k].co[1] = p_tgt.x
+                                fc_py.keyframe_points[k].co[1] = p_tgt.y
+                                fc_pz.keyframe_points[k].co[1] = p_tgt.z
+                                
         if not target_armature.animation_data:
             target_armature.animation_data_create()
             
         track = target_armature.animation_data.nla_tracks.new()
         track.name = target_action.name
-        
-        # Create strip
         start_frame = target_action.frame_range[0]
         track.strips.new(name=target_action.name, start=int(start_frame), action=target_action)
         target_actions.append(target_action)
@@ -865,7 +967,7 @@ def stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones
             
     for act in list(bpy.data.actions):
         if act.name.endswith("_retargeted"):
-            clean_name = act.name[:-11]  # strip '_retargeted'
+            clean_name = act.name[:-11]
             act.name = clean_name
             
     if target_armature.animation_data:
@@ -975,6 +1077,10 @@ def render_and_debug_target_animations(target_armature, target_key_bones, out_di
     if not target_armature.animation_data:
         target_armature.animation_data_create()
         
+    if target_armature.animation_data.nla_tracks:
+        for track in target_armature.animation_data.nla_tracks:
+            track.mute = True
+            
     for anim_name in anim_names:
         action = bpy.data.actions.get(anim_name)
         if not action:
@@ -1106,6 +1212,8 @@ def main():
                     'rot': bone.matrix_local.to_euler()
                 }
                 
+    ref_rest_matrices = {b.name: b.matrix_local.copy() for b in ref_armature.data.bones}
+    
     # Capture and protect animations (Actions) from the reference model
     ref_actions = list(bpy.data.actions)
     for action in ref_actions:
@@ -1173,7 +1281,7 @@ def main():
     render_stage2_preview(output_stage_2_jpg_path)
     
     # 4. Process Stage 3 (Apply reference animations to target)
-    stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones, ref_actions)
+    stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones, ref_actions, ref_rest_matrices=ref_key_matrices)
     
     # Export Stage 3 GLB
     print(f"Exporting Stage 3 model to: {output_stage_3_path}")
