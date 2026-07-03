@@ -856,6 +856,166 @@ def stage_3_apply_animations(target_armature, target_bone_mapping, ref_key_bones
         target_actions.append(target_action)
         
     print(f"Retargeted {len(target_actions)} animations.")
+    
+    # Remove original non-retargeted actions and rename retargeted actions
+    all_actions = list(bpy.data.actions)
+    for act in all_actions:
+        if not act.name.endswith("_retargeted"):
+            bpy.data.actions.remove(act, do_unlink=True)
+            
+    for act in list(bpy.data.actions):
+        if act.name.endswith("_retargeted"):
+            clean_name = act.name[:-11]  # strip '_retargeted'
+            act.name = clean_name
+            
+    if target_armature.animation_data:
+        for track in target_armature.animation_data.nla_tracks:
+            if track.name.endswith("_retargeted"):
+                track.name = track.name[:-11]
+            for strip in track.strips:
+                if strip.name.endswith("_retargeted"):
+                    strip.name = strip.name[:-11]
+                    
+    print("Action cleanup complete: original actions removed, retargeted actions renamed.")
+
+
+def render_reference_animations(ref_glb_path, anim_names):
+    ref_dir = os.path.join(os.path.dirname(os.path.abspath(ref_glb_path)), "ref")
+    os.makedirs(ref_dir, exist_ok=True)
+    ref_basename = os.path.splitext(os.path.basename(ref_glb_path))[0]
+    
+    needed_files = []
+    for anim in anim_names:
+        needed_files.append(os.path.join(ref_dir, f"{ref_basename}_{anim}_front.jpg"))
+        needed_files.append(os.path.join(ref_dir, f"{ref_basename}_{anim}_side.jpg"))
+        
+    if all(os.path.exists(f) for f in needed_files):
+        print(f"All reference animation renders for {ref_basename} already exist in {ref_dir}. Skipping reference render.")
+        return
+        
+    print(f"Rendering reference animation preview images to {ref_dir}...")
+    clear_scene()
+    bpy.ops.import_scene.gltf(filepath=ref_glb_path)
+    ref_armature = get_armature_object()
+    if not ref_armature:
+        print("Error: No armature found in reference model for anim rendering")
+        return
+        
+    if not ref_armature.animation_data:
+        ref_armature.animation_data_create()
+        
+    scene = bpy.context.scene
+    scene.render.engine = 'BLENDER_WORKBENCH'
+    scene.render.resolution_x = 256
+    scene.render.resolution_y = 256
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = 'JPEG'
+    
+    if hasattr(scene, 'display'):
+        scene.display.shading.type = 'SOLID'
+        scene.display.shading.light = 'STUDIO'
+        
+    cam_front = bpy.data.objects.new('RefCamFront', bpy.data.cameras.new('RefCamFront'))
+    scene.collection.objects.link(cam_front)
+    cam_front.location = mathutils.Vector((0.0, -3.2, 1.0))
+    cam_front.rotation_euler = mathutils.Euler((1.5708, 0, 0), 'XYZ')
+    
+    cam_side = bpy.data.objects.new('RefCamSide', bpy.data.cameras.new('RefCamSide'))
+    scene.collection.objects.link(cam_side)
+    cam_side.location = mathutils.Vector((-3.2, 0.0, 1.0))
+    cam_side.rotation_euler = mathutils.Euler((1.5708, 0, -1.5708), 'XYZ')
+    
+    for anim_name in anim_names:
+        action = bpy.data.actions.get(anim_name)
+        if not action:
+            print(f"Warning: Reference action '{anim_name}' not found.")
+            continue
+            
+        ref_armature.animation_data.action = action
+        scene.frame_set(1)
+        bpy.context.view_layer.update()
+        
+        front_path = os.path.join(ref_dir, f"{ref_basename}_{anim_name}_front.jpg")
+        scene.camera = cam_front
+        scene.render.filepath = front_path
+        bpy.ops.render.render(write_still=True)
+        
+        side_path = os.path.join(ref_dir, f"{ref_basename}_{anim_name}_side.jpg")
+        scene.camera = cam_side
+        scene.render.filepath = side_path
+        bpy.ops.render.render(write_still=True)
+        print(f"Saved reference renders for {anim_name} to {ref_dir}")
+        
+    print("Reference animation rendering complete.")
+
+
+def render_and_debug_target_animations(target_armature, target_key_bones, out_dir, target_basename, anim_names):
+    print("\n=================== TARGET ANIMATION RENDERS & DEBUG ===================")
+    scene = bpy.context.scene
+    scene.render.engine = 'BLENDER_WORKBENCH'
+    scene.render.resolution_x = 256
+    scene.render.resolution_y = 256
+    scene.render.resolution_percentage = 100
+    scene.render.image_settings.file_format = 'JPEG'
+    
+    if hasattr(scene, 'display'):
+        scene.display.shading.type = 'SOLID'
+        scene.display.shading.light = 'STUDIO'
+        
+    cam_front = bpy.data.objects.new('TargetCamFront', bpy.data.cameras.new('TargetCamFront'))
+    scene.collection.objects.link(cam_front)
+    cam_front.location = mathutils.Vector((0.0, -3.2, 1.0))
+    cam_front.rotation_euler = mathutils.Euler((1.5708, 0, 0), 'XYZ')
+    
+    cam_side = bpy.data.objects.new('TargetCamSide', bpy.data.cameras.new('TargetCamSide'))
+    scene.collection.objects.link(cam_side)
+    cam_side.location = mathutils.Vector((-3.2, 0.0, 1.0))
+    cam_side.rotation_euler = mathutils.Euler((1.5708, 0, -1.5708), 'XYZ')
+    
+    if not target_armature.animation_data:
+        target_armature.animation_data_create()
+        
+    for anim_name in anim_names:
+        action = bpy.data.actions.get(anim_name)
+        if not action:
+            print(f"Warning: Target action '{anim_name}' not found.")
+            continue
+            
+        target_armature.animation_data.action = action
+        scene.frame_set(1)
+        bpy.context.view_layer.update()
+        
+        print(f"\n--- Body Part Orientations for Target Animation: {anim_name} ---")
+        keys_to_debug = [
+            'left_arm', 'left_forearm', 'left_wrist',
+            'right_arm', 'right_forearm', 'right_wrist',
+            'left_hip', 'left_knee', 'left_foot',
+            'right_hip', 'right_knee', 'right_foot',
+            'neck'
+        ]
+        for key in keys_to_debug:
+            b_name = target_key_bones.get(key)
+            if b_name:
+                pb = target_armature.pose.bones.get(b_name)
+                if pb:
+                    w_head = target_armature.matrix_world @ pb.head
+                    w_tail = target_armature.matrix_world @ pb.tail
+                    dir_vec = (w_tail - w_head).normalized()
+                    q_rot = pb.matrix.to_quaternion()
+                    print(f"  {key:<14} ({b_name:<8}): Head=({w_head.x:+.3f}, {w_head.y:+.3f}, {w_head.z:+.3f}) | Dir=({dir_vec.x:+.3f}, {dir_vec.y:+.3f}, {dir_vec.z:+.3f}) | Quat=({q_rot.w:+.3f}, {q_rot.x:+.3f}, {q_rot.y:+.3f}, {q_rot.z:+.3f})")
+                    
+        front_path = os.path.join(out_dir, f"{target_basename}_{anim_name}_front.jpg")
+        scene.camera = cam_front
+        scene.render.filepath = front_path
+        bpy.ops.render.render(write_still=True)
+        
+        side_path = os.path.join(out_dir, f"{target_basename}_{anim_name}_side.jpg")
+        scene.camera = cam_side
+        scene.render.filepath = side_path
+        bpy.ops.render.render(write_still=True)
+        print(f"Saved target renders for {anim_name}: {front_path} and {side_path}")
+        
+    print("=========================================================================\n")
 
 def main():
     # Parse arguments after '--'
@@ -952,6 +1112,9 @@ def main():
         action.use_fake_user = True
     print(f"Protected {len(ref_actions)} reference actions.")
     
+    # Render reference animation preview images if they do not exist
+    render_reference_animations(ref_glb_path, ['Idle_Loop', 'Crouch_Idle_Loop', 'Jog_Fwd_Loop', 'Walk_Loop'])
+    
     # 2. Process Input GLB: Stage 1 (Rotate, Ground, Scale)
     clear_scene()
     print(f"Importing input model: {input_glb_path}")
@@ -1020,6 +1183,9 @@ def main():
             obj.select_set(True)
     bpy.ops.export_scene.gltf(filepath=output_stage_3_path, use_selection=True)
     print("Stage 3 export complete.")
+    
+    # Render and debug target animations post-Stage 3
+    render_and_debug_target_animations(target_armature, target_key_bones_after, out_dir, input_name_no_ext, ['Idle_Loop', 'Crouch_Idle_Loop', 'Jog_Fwd_Loop', 'Walk_Loop'])
     
     clear_scene()
     print("Done!")
