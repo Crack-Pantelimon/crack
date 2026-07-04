@@ -9,7 +9,7 @@ edition = "2024"
 [dependencies]
 bevy = { version = "0.19.0", features = ["http", "https", "jpeg"] }
 bevy_egui = "0.40.0"
-avian3d = { git = "https://github.com/avianphysics/avian", branch = "main" }
+avian3d = { git = "https://github.com/avianphysics/avian", branch = "main" , features = ["bevy_diagnostic", "diagnostic_ui"]}
 # bevy_atmosphere = "0.12.2"
 # bevy_hanabi = { version = "0.14", default-features = false, features = [ "3d", "serde" ] }
 log = { version = "*", features = [

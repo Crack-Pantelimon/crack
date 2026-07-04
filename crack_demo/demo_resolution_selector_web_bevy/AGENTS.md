@@ -1,0 +1,2 @@
+- We are using bevy 0.19, look up examples online https://bevy.org/examples/ 
+- We are using avian physics 3d, you have examples under <project_root>/_slop/_examples/avian3d and documentation here: https://docs.rs/avian3d/latest/avian3d/

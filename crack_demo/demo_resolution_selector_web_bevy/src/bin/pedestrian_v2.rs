@@ -5,8 +5,8 @@
 //! window. All reusable pedestrian logic lives in `plugins::pedestrians`.
 
 use avian3d::prelude::{
-    Collider, CollisionLayers, PhysicsPlugins, Restitution, RigidBody, SpatialQuery,
-    SpatialQueryFilter,
+    Collider, CollisionLayers, LinearVelocity, PhysicsDebugPlugin, PhysicsPlugins, Restitution,
+    RigidBody, SpatialQuery, SpatialQueryFilter, SubstepCount,
 };
 use bevy::{
     asset::RenderAssetUsages,
@@ -16,6 +16,7 @@ use bevy::{
         RenderPlugin,
         render_resource::{Extent3d, TextureDimension, TextureFormat},
         settings::{Backends, WgpuSettings},
+        view::window::screenshot::{Screenshot, save_to_disk},
     },
     window::WindowResolution,
 };
@@ -27,7 +28,8 @@ use demo_resolution_selector_web_bevy::plugins::{
     map_plugin::{BBox, MapTree},
     pedestrians::{
         ModelRoot, PedestrianAnimationControlEvent, PedestrianAnimations, PedestrianManifest,
-        PedestriansPlugin, SkeletonDebug, SpawnPedestrianEvent,
+        PedestriansPlugin, RAGDOLL_ANIMATION, RagdollReady, SkeletonDebug, SpawnPedestrianEvent,
+        ragdoll::RagdollBoneConstraint,
     },
     states::GameControlState,
 };
@@ -58,6 +60,37 @@ impl Default for ViewerAnimSelection {
     }
 }
 
+/// Automated verification harness (enabled via `RAGDOLL_VERIFY=1`): once every pedestrian is
+/// ragdoll-ready, flips them all into ragdoll, screenshots at +0.1/+1.0/+3.0s (logging pose +
+/// velocity of the first 10 models), and exits at +4.0s.
+#[derive(Resource)]
+struct RagdollVerify {
+    enabled: bool,
+    triggered_at: Option<f32>,
+    shots_done: [bool; 3],
+    exited: bool,
+    last_ready: usize,
+    last_change_at: f32,
+    last_log_at: f32,
+}
+
+impl Default for RagdollVerify {
+    fn default() -> Self {
+        Self {
+            enabled: std::env::var("RAGDOLL_VERIFY").is_ok(),
+            triggered_at: None,
+            shots_done: [false; 3],
+            exited: false,
+            last_ready: 0,
+            last_change_at: 0.0,
+            last_log_at: 0.0,
+        }
+    }
+}
+
+const RAGDOLL_SHOT_TIMES: [f32; 3] = [0.1, 1.0, 3.0];
+const RAGDOLL_VERIFY_EXIT: f32 = 4.0;
+
 fn main() {
     #[cfg(feature = "web")]
     let backends = Backends::GL;
@@ -87,7 +120,14 @@ fn main() {
                 }),
         )
         .add_plugins(EguiPlugin::default())
-        .add_plugins(PhysicsPlugins::default())
+        .add_plugins((PhysicsPlugins::default(),             avian3d::diagnostics::PhysicsDiagnosticsPlugin,
+            // Add the `PhysicsDiagnosticsUiPlugin` to display physics diagnostics
+            // in a debug UI. Requires the `diagnostic_ui` feature.
+            avian3d::diagnostics::ui::PhysicsDiagnosticsUiPlugin,))
+        
+        // .add_plugins(PhysicsDebugPlugin::default())
+        // More substeps => stiffer, more stable ragdoll joints.
+        .insert_resource(SubstepCount(15))
         .init_state::<GameControlState>()
         .insert_resource(MapTree {
             parsed: true,
@@ -99,9 +139,12 @@ fn main() {
         })
         .add_plugins(CameraControlsPlugin)
         .add_plugins(PedestriansPlugin)
+        
         .init_resource::<SelectedModel>()
         .init_resource::<HoveredModel>()
         .init_resource::<ViewerAnimSelection>()
+        .init_resource::<RagdollVerify>()
+        
         .add_systems(Startup, setup_scene)
         .add_systems(
             Update,
@@ -109,6 +152,7 @@ fn main() {
                 spawn_grid_system,
                 picker_system,
                 draw_hovered_bbox_system,
+                ragdoll_verify_system,
             ),
         )
         .add_systems(EguiPrimaryContextPass, draw_gui_system)
@@ -246,7 +290,7 @@ fn spawn_grid_system(
     }
     let cols = (count as f32).sqrt().ceil() as usize;
 
-    for (idx, url) in manifest.urls.iter().enumerate() {
+    for (idx, url) in manifest.urls.iter().take(20).enumerate() {
         let col = idx % cols;
         let row = idx / cols;
 
@@ -381,6 +425,127 @@ fn draw_hovered_bbox_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn ragdoll_verify_system(
+    time: Res<Time>,
+    mut verify: ResMut<RagdollVerify>,
+    manifest: Res<PedestrianManifest>,
+    mut commands: Commands,
+    models: Query<(Entity, &ModelRoot, &GlobalTransform, Has<RagdollReady>)>,
+    bones: Query<(&RagdollBoneConstraint, &LinearVelocity)>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    if !verify.enabled {
+        return;
+    }
+    let now = time.elapsed_secs();
+
+    // Phase 1: wait until every pedestrian is ragdoll-ready, then flip them all to ragdoll.
+    if verify.triggered_at.is_none() {
+        let total = manifest.urls.len();
+        if total == 0 {
+            return;
+        }
+        let ready = models.iter().filter(|(_, _, _, r)| *r).count();
+
+        if ready != verify.last_ready {
+            verify.last_ready = ready;
+            verify.last_change_at = now;
+        }
+        if now - verify.last_log_at >= 1.0 {
+            verify.last_log_at = now;
+            info!(
+                "RAGDOLL_VERIFY: waiting — {}/{} ragdoll-ready (spawned {})",
+                ready,
+                total,
+                models.iter().count()
+            );
+        }
+
+        // Fire when everyone is ready, or when readiness has stalled for 5s (stragglers/failed
+        // network loads shouldn't block the whole verification).
+        let all_ready = ready >= total;
+        let stalled = ready > 0 && (now - verify.last_change_at) > 5.0;
+        if !all_ready && !stalled {
+            return;
+        }
+        for (ent, _, _, is_ready) in models.iter() {
+            if !is_ready {
+                continue;
+            }
+            commands.trigger(PedestrianAnimationControlEvent {
+                ped: ent,
+                animation: RAGDOLL_ANIMATION.to_string(),
+                speed: 1.0,
+            });
+        }
+        info!(
+            "RAGDOLL_VERIFY: switching {}/{} ragdoll-ready models to ragdoll at t={:.2}s{}",
+            ready,
+            total,
+            now,
+            if all_ready { "" } else { " (stalled)" }
+        );
+        verify.triggered_at = Some(now);
+        return;
+    }
+
+    let elapsed = now - verify.triggered_at.unwrap();
+
+    // Phase 2: timed screenshots + per-model pose/velocity logging.
+    for (i, &shot_t) in RAGDOLL_SHOT_TIMES.iter().enumerate() {
+        if verify.shots_done[i] || elapsed < shot_t {
+            continue;
+        }
+        verify.shots_done[i] = true;
+
+        let path = format!("/home/p/VIDOEGAME/crack/ragdoll_{:.1}s.png", shot_t);
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk(path.clone()));
+        info!(
+            "RAGDOLL_VERIFY: === t+{:.1}s (elapsed {:.2}s) screenshot -> {} ===",
+            shot_t, elapsed, path
+        );
+
+        // Aggregate bone linear velocities per model root.
+        let mut agg: std::collections::HashMap<Entity, (f32, u32, f32)> =
+            std::collections::HashMap::new();
+        for (c, lv) in bones.iter() {
+            let speed = lv.0.length();
+            let e = agg.entry(c.root).or_insert((0.0, 0, 0.0));
+            e.0 += speed;
+            e.1 += 1;
+            e.2 = e.2.max(speed);
+        }
+
+        let mut list: Vec<(Entity, &ModelRoot, &GlobalTransform)> = models
+            .iter()
+            .filter(|(_, m, _, _)| m.index < 10)
+            .map(|(e, m, gt, _)| (e, m, gt))
+            .collect();
+        list.sort_by_key(|(_, m, _)| m.index);
+        for (ent, m, gt) in list {
+            let pos = gt.translation();
+            let (avg, maxs) = agg
+                .get(&ent)
+                .map(|(s, c, mx)| (if *c > 0 { *s / *c as f32 } else { 0.0 }, *mx))
+                .unwrap_or((0.0, 0.0));
+            info!(
+                "  model #{} '{}' pos=({:.2},{:.2},{:.2}) bone_vel avg={:.3} max={:.3} m/s",
+                m.index, m.name, pos.x, pos.y, pos.z, avg, maxs
+            );
+        }
+    }
+
+    // Phase 3: exit.
+    if elapsed >= RAGDOLL_VERIFY_EXIT && !verify.exited {
+        verify.exited = true;
+        info!("RAGDOLL_VERIFY: exiting at t+{:.2}s", elapsed);
+        exit.write(AppExit::Success);
+    }
+}
+
 fn draw_gui_system(
     mut commands: Commands,
     mut contexts: EguiContexts,
@@ -418,7 +583,16 @@ fn draw_gui_system(
             ui.separator();
             ui.label("Select Animation:");
 
-            let anim_names: Vec<String> = anims.catalog.keys().cloned().collect();
+            // "ragdoll" first, then "A_TPose", then the rest of the catalog.
+            let mut anim_names: Vec<String> = vec![RAGDOLL_ANIMATION.to_string()];
+            if anims.catalog.contains_key("A_TPose") {
+                anim_names.push("A_TPose".to_string());
+            }
+            for name in anims.catalog.keys() {
+                if name != "A_TPose" {
+                    anim_names.push(name.clone());
+                }
+            }
             let current = anim_sel.selected.clone();
             egui::ScrollArea::vertical()
                 .max_height(160.0)

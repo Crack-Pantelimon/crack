@@ -14,6 +14,7 @@
 pub mod animation;
 pub mod draw_skel_debug;
 pub mod manifest;
+pub mod ragdoll;
 pub mod skeleton;
 pub mod spawn_pedestrian;
 
@@ -22,6 +23,7 @@ use bevy::prelude::*;
 pub use animation::{AnimationInfo, PedestrianAnimationControlEvent, PedestrianAnimations};
 pub use draw_skel_debug::SkeletonDebug;
 pub use manifest::{PedestrianManifest, PedestrianUrl};
+pub use ragdoll::{RAGDOLL_ANIMATION, RagdollActive, RagdollReady};
 pub use spawn_pedestrian::{ModelRoot, SpawnPedestrianEvent};
 
 use animation::{
@@ -29,6 +31,10 @@ use animation::{
 };
 use draw_skel_debug::draw_skeletons_system;
 use manifest::{TextAsset, TextAssetLoader, load_pedestrian_manifest_system, start_manifest_load};
+use ragdoll::{
+    compute_ragdoll_constraints_system, ragdoll_enable_joints_system, ragdoll_toggle_system,
+    spawn_ragdoll_bodies_system,
+};
 use spawn_pedestrian::{PedestrianSpawnCounter, init_pedestrians_system, spawn_pedestrian_observer};
 
 pub struct PedestriansPlugin;
@@ -52,6 +58,10 @@ impl Plugin for PedestriansPlugin {
                     setup_animation_players_system,
                     play_animations_system,
                     draw_skeletons_system,
+                    compute_ragdoll_constraints_system,
+                    spawn_ragdoll_bodies_system,
+                    ragdoll_toggle_system,
+                    ragdoll_enable_joints_system,
                 ),
             );
     }

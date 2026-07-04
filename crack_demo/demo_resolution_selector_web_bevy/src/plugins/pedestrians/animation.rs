@@ -130,6 +130,13 @@ pub fn play_animations_system(
             continue;
         };
 
+        // Ragdoll is driven by physics, not the animation player — leave it alone.
+        if target.map(|t| t.name == crate::plugins::pedestrians::ragdoll::RAGDOLL_ANIMATION)
+            == Some(true)
+        {
+            continue;
+        }
+
         let Some(gltf) = gltf_assets.get(&gltf_comp.handle) else {
             continue;
         };
