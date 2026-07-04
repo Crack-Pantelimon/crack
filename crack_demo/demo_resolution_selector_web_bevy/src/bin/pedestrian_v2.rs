@@ -126,8 +126,15 @@ fn main() {
             avian3d::diagnostics::ui::PhysicsDiagnosticsUiPlugin,))
         
         .add_plugins(PhysicsDebugPlugin::default())
-        // More substeps => stiffer, more stable ragdoll joints.
-        .insert_resource(SubstepCount(15))
+        // Substeps: 1 is enough for a stable ragdoll here — the per-bone damping, hard speed caps,
+        // and slightly-compliant joints carry the stability instead of brute-force substepping.
+        // Overridable via SUBSTEPS env for tuning.
+        .insert_resource(SubstepCount(
+            std::env::var("SUBSTEPS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1),
+        ))
         .init_state::<GameControlState>()
         .insert_resource(MapTree {
             parsed: true,
@@ -248,6 +255,9 @@ fn setup_scene(
                     GamePhysicsLayer::Map,
                     GamePhysicsLayer::Car,
                     GamePhysicsLayer::Wheel,
+                    // Ragdoll spheres + tubes must land on the ground.
+                    GamePhysicsLayer::Bone1,
+                    GamePhysicsLayer::Bone2,
                 ],
             ),
         ));

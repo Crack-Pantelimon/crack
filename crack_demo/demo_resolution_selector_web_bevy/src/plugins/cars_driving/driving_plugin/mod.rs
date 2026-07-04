@@ -54,6 +54,11 @@ pub enum GamePhysicsLayer {
     Map,
     Car,
     Wheel,
+    /// Ragdoll node spheres. Collides with itself + `Map`, but not with `Bone2` (tubes),
+    /// so a sphere never collides with its own/parent tube (they overlap by construction).
+    Bone1,
+    /// Ragdoll bone tubes. Collides with itself + `Map`, but not with `Bone1` (spheres).
+    Bone2,
 }
 
 #[derive(Clone, Debug)]
