@@ -125,7 +125,7 @@ fn main() {
             // in a debug UI. Requires the `diagnostic_ui` feature.
             avian3d::diagnostics::ui::PhysicsDiagnosticsUiPlugin,))
         
-        // .add_plugins(PhysicsDebugPlugin::default())
+        .add_plugins(PhysicsDebugPlugin::default())
         // More substeps => stiffer, more stable ragdoll joints.
         .insert_resource(SubstepCount(15))
         .init_state::<GameControlState>()

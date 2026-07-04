@@ -205,7 +205,7 @@ pub fn spawn_ragdoll_bodies_system(
                 bone_layers,
                 // Denser than the default so the small spheres carry sane mass, plus damping and
                 // hard speed caps to keep the constraint solver from launching the ragdoll.
-                ColliderDensity(5000.0),
+                ColliderDensity(1000.0),
                 LinearDamping(0.8),
                 AngularDamping(2.0),
                 MaxLinearSpeed(6.0),
