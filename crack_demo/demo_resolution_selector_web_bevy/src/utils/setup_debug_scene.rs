@@ -1,3 +1,5 @@
+//! Implement `SetupDebugScenePlugin` that will spawn some flat ground, a camera and the sun.
+
 use bevy::prelude::*;
 
 use avian3d::prelude::{Collider, CollisionLayers, Restitution, RigidBody};
@@ -7,6 +9,7 @@ use crate::{
     utils::create_texture::create_grayscale_texture,
 };
 
+/// This plugin will create simple implementation for ground, scene and camera. There is no camera controller.
 pub struct SetupDebugScenePlugin;
 
 impl Plugin for SetupDebugScenePlugin {
@@ -15,6 +18,7 @@ impl Plugin for SetupDebugScenePlugin {
     }
 }
 
+/// Component attached to debug ground texture.
 #[derive(Component)]
 pub struct DebugSceneGroundComponent;
 
@@ -92,7 +96,7 @@ fn setup_scene(
 
     commands.spawn((
         DirectionalLight {
-            illuminance: 10000.0,
+            illuminance: 3500.0,
             shadow_maps_enabled: true,
             ..default()
         },
