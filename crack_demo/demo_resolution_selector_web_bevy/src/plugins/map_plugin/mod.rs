@@ -3,6 +3,8 @@ pub mod map_material_edit;
 mod map_metadata_parquet;
 mod map_plugin_ui;
 
+pub use map_lod::TreeMapTile;
+
 use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
 use std::collections::{BTreeMap, BTreeSet};

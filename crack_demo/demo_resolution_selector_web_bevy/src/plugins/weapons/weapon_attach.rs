@@ -36,8 +36,8 @@ impl Default for WeaponGripOffset {
 /// Tracks which weapon model is currently spawned for a character.
 #[derive(Component, Default)]
 pub struct WeaponModelState {
-    spawned_for: Option<WeaponId>,
-    entity: Option<Entity>,
+    pub spawned_for: Option<WeaponId>,
+    pub entity: Option<Entity>,
 }
 
 /// Marker on a spawned weapon model entity.
@@ -60,6 +60,18 @@ pub fn equip_weapon_observer(trigger: On<EquipWeaponEvent>, mut commands: Comman
     commands
         .entity(ev.character)
         .insert(EquippedWeapon(ev.weapon.clone()));
+    // Guns carry ammo state (a fresh full clip); anything else has none.
+    match &ev.weapon {
+        WeaponId::Gun(info) => {
+            commands.entity(ev.character).insert(super::GunState {
+                rounds: info.clip_size,
+                clip_size: info.clip_size,
+            });
+        }
+        _ => {
+            commands.entity(ev.character).remove::<super::GunState>();
+        }
+    }
 }
 
 /// Finds the right-wrist bone entity under `character` (the ped model is a descendant).
@@ -91,6 +103,7 @@ pub fn reconcile_weapon_model(
     mut characters: Query<(Entity, &EquippedWeapon, Option<&mut WeaponModelState>)>,
     children_query: Query<&Children>,
     skeletons: Query<&PedestrianSkeleton>,
+    pending: Query<(), With<PendingWeaponExtents>>,
 ) {
     for (character, equipped, state) in &mut characters {
         let equipped_id = equipped.0.clone();
@@ -99,6 +112,14 @@ pub fn reconcile_weapon_model(
         if let Some(state) = &state {
             if state.spawned_for.as_ref() == Some(&equipped_id) {
                 continue;
+            }
+            // The previous switch is still in flight (model loading / extents pending): wait for
+            // it to finish before switching again. This prevents despawning an entity that
+            // `finalize_weapon_extents` is concurrently working on (fast mouse-wheel panic).
+            if let Some(current) = state.entity {
+                if pending.get(current).is_ok() {
+                    continue;
+                }
             }
         }
 

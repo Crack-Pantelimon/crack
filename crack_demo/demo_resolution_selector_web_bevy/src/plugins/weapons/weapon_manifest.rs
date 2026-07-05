@@ -1,8 +1,9 @@
 //! Weapon manifest parsing.
 //!
-//! The manifest at `{DATA_BASE_URL}/3d_data/3d_weapons/out2/manifest.txt` lists one relative weapon
-//! path per line, e.g. `gun/ak47.glb` or `melee/machete2.glb`. The first path segment is the class
-//! (`gun` or `melee`).
+//! The manifest at `{DATA_BASE_URL}/3d_data/3d_weapons/out2/manifest.txt` is a CSV with a header
+//! line and columns `path,is_gun,clip_size,bullet_type,damage,range`, e.g.
+//! `gun/ak47.glb,1,30,7.62x39,42,150`. Melee rows have `0` in every column after the path.
+//! The path's first segment is the class folder (`gun` or `melee`).
 //!
 //! # Weapon-local coordinate conventions
 //! Every weapon has its **grip point at the origin `(0,0,0)`**.
@@ -13,12 +14,23 @@ use bevy::prelude::*;
 
 use crate::plugins::pedestrians::manifest::TextAsset;
 
-/// A selectable weapon. The `String` is the manifest line (e.g. `"gun/ak47.glb"`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Gun stats parsed from the manifest CSV.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GunInfo {
+    /// Full loadable URL of the model.
+    pub path: String,
+    pub clip_size: u32,
+    pub bullet_type: String,
+    pub damage: f32,
+    pub range: f32,
+}
+
+/// A selectable weapon. The `String`/`GunInfo.path` is the full loadable URL.
+#[derive(Clone, Debug, PartialEq)]
 pub enum WeaponId {
     Unarmed,
     Melee(String),
-    Gun(String),
+    Gun(GunInfo),
 }
 
 impl WeaponId {
@@ -31,20 +43,26 @@ impl WeaponId {
     pub fn is_melee(&self) -> bool {
         matches!(self, WeaponId::Melee(_))
     }
-    /// The manifest-relative path, if this weapon has a model.
+    /// The loadable model path, if this weapon has a model.
     pub fn path(&self) -> Option<&str> {
         match self {
             WeaponId::Unarmed => None,
-            WeaponId::Melee(p) | WeaponId::Gun(p) => Some(p),
+            WeaponId::Melee(p) => Some(p),
+            WeaponId::Gun(g) => Some(&g.path),
+        }
+    }
+    /// Gun stats, if this is a gun.
+    pub fn gun_info(&self) -> Option<&GunInfo> {
+        match self {
+            WeaponId::Gun(g) => Some(g),
+            _ => None,
         }
     }
     /// A short human-readable label for UI.
     pub fn label(&self) -> String {
-        match self {
-            WeaponId::Unarmed => "Unarmed".to_string(),
-            WeaponId::Melee(p) | WeaponId::Gun(p) => {
-                p.rsplit('/').next().unwrap_or(p).replace(".glb", "")
-            }
+        match self.path() {
+            None => "Unarmed".to_string(),
+            Some(p) => p.rsplit('/').next().unwrap_or(p).replace(".glb", ""),
         }
     }
 }
@@ -96,12 +114,30 @@ pub fn load_weapon_manifest_system(
         if line.is_empty() {
             continue;
         }
+        // CSV columns: path,is_gun,clip_size,bullet_type,damage,range (header line skipped).
+        let cols: Vec<&str> = line.split(',').map(str::trim).collect();
+        let rel_path = cols[0];
+        if rel_path == "path" {
+            continue; // header
+        }
         // Full loadable path, prefixed with the manifest folder.
-        let full = format!("{}{}", bootstrap.folder, line);
-        let class = line.split('/').next().unwrap_or("");
-        match class {
-            "melee" => melee.push(WeaponId::Melee(full)),
-            _ => guns.push(WeaponId::Gun(full)),
+        let full = format!("{}{}", bootstrap.folder, rel_path);
+        let is_gun = cols
+            .get(1)
+            .and_then(|c| c.parse::<u32>().ok())
+            .map(|v| v == 1)
+            // Fallback for malformed rows: classify by folder.
+            .unwrap_or_else(|| rel_path.starts_with("gun/"));
+        if is_gun {
+            guns.push(WeaponId::Gun(GunInfo {
+                path: full,
+                clip_size: cols.get(2).and_then(|c| c.parse().ok()).unwrap_or(10),
+                bullet_type: cols.get(3).unwrap_or(&"9mm").to_string(),
+                damage: cols.get(4).and_then(|c| c.parse().ok()).unwrap_or(20.0),
+                range: cols.get(5).and_then(|c| c.parse().ok()).unwrap_or(50.0),
+            }));
+        } else {
+            melee.push(WeaponId::Melee(full));
         }
     }
 

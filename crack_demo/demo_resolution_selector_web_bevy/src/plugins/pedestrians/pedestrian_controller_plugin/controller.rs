@@ -5,6 +5,8 @@ use avian3d::{math::*, prelude::*};
 use bevy::{ecs::query::Has, prelude::*};
 
 use super::*;
+use crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
+use crate::plugins::map_plugin::{MapTree, TreeMapTile};
 
 /// Reads WASD into a camera-relative move direction and updates modifiers. Space -> jump.
 pub fn character_input(
@@ -153,10 +155,14 @@ pub fn apply_movement_damping(
 /// ramps toward `SPRINT_MAX_MULT` x jog speed while Shift is held.
 pub fn apply_speed_cap(
     time: Res<Time>,
-    mut query: Query<(&mut MovementModifiers, &mut LinearVelocity)>,
+    mut query: Query<(&mut MovementModifiers, &mut LinearVelocity, Has<Rolling>)>,
 ) {
     let dt = time.delta_secs();
-    for (mut modifiers, mut velocity) in &mut query {
+    for (mut modifiers, mut velocity, rolling) in &mut query {
+        // A crouch roll drives its own speed; don't clamp it down to the crouch cap.
+        if rolling {
+            continue;
+        }
         // Advance / reset the sprint ramp timer.
         if modifiers.sprint && !modifiers.crouch {
             modifiers.sprint_secs = (modifiers.sprint_secs + dt).min(SPRINT_RAMP_TIME);
@@ -165,7 +171,12 @@ pub fn apply_speed_cap(
         }
 
         let cap = if modifiers.crouch {
-            CROUCH_SPEED
+            // Crouch-sprint: Shift while crouched doubles the crouch speed.
+            if modifiers.sprint {
+                CROUCH_SPEED * CROUCH_SPRINT_MULT
+            } else {
+                CROUCH_SPEED
+            }
         } else if modifiers.sprint {
             let t = modifiers.sprint_secs / SPRINT_RAMP_TIME;
             JOG_SPEED * (2.0 + (SPRINT_MAX_MULT - 2.0) * t)
@@ -368,23 +379,47 @@ pub fn respawn_if_fallen(
     }
 }
 
-/// On Space, decide between jumping and climbing a ledge in front. Climbing is allowed even while
-/// airborne/falling; jumping only takes effect when grounded (handled in `movement`).
+/// On Space, decide between jumping, climbing a ledge in front, or (while crouched) a forward
+/// roll. Climbing is allowed even while airborne/falling; jumping only takes effect when grounded
+/// (handled in `movement`).
 pub fn jump_or_climb(
     keys: Res<ButtonInput<KeyCode>>,
     spatial_query: SpatialQuery,
     mut commands: Commands,
     mut movement_writer: MessageWriter<MovementAction>,
+    map: Option<Res<MapTree>>,
+    tiles: Query<(), With<TreeMapTile>>,
     query: Query<
-        (Entity, &GlobalTransform, &CharacterScale),
-        (With<CharacterController>, Without<Climbing>),
+        (
+            Entity,
+            &GlobalTransform,
+            &CharacterScale,
+            &MovementModifiers,
+            Has<Grounded>,
+        ),
+        (With<CharacterController>, Without<Climbing>, Without<Rolling>),
     >,
 ) {
     if !keys.just_pressed(KeyCode::Space) {
         return;
     }
-    for (entity, gt, scale) in &query {
-        if let Some((start, target)) = detect_climb(gt, scale.0, &spatial_query, entity) {
+    // Extra off-map safety checks only make sense in the main game (map loaded + tiles active).
+    let map_active = map.map(|m| m.parsed).unwrap_or(false) && !tiles.is_empty();
+
+    for (entity, gt, scale, modifiers, grounded) in &query {
+        // Crouch + Space = forward roll.
+        if modifiers.crouch {
+            if grounded {
+                commands.entity(entity).insert(Rolling {
+                    elapsed: 0.0,
+                    duration: ROLL_DURATION,
+                });
+            }
+            continue;
+        }
+        if let Some((start, target)) =
+            detect_climb(gt, scale.0, &spatial_query, entity, map_active)
+        {
             commands.entity(entity).insert(Climbing {
                 start,
                 target,
@@ -404,6 +439,7 @@ fn detect_climb(
     scale: f32,
     spatial_query: &SpatialQuery,
     self_entity: Entity,
+    map_active: bool,
 ) -> Option<(Vec3, Vec3)> {
     let pos = gt.translation();
     let mut forward = gt.rotation() * Vec3::Z;
@@ -444,6 +480,22 @@ fn detect_climb(
         return None;
     }
 
+    // 4. Off-map guard (main game only): sample the climb-over path with a few extra short rays
+    // and verify there is actually ground to land on. If the far side of the wall is a void (map
+    // edge), abort the climb instead of vaulting into hell.
+    if map_active {
+        for t in [0.0_f32, 0.35, 0.7] {
+            let sample = stand + forward * t;
+            let sample_origin = Vec3::new(sample.x, top_y + 0.4, sample.z);
+            if spatial_query
+                .cast_ray(sample_origin, Dir3::NEG_Y, 3.0, true, &filter)
+                .is_none()
+            {
+                return None;
+            }
+        }
+    }
+
     let target = Vec3::new(stand.x, top_y + CAPSULE_HALF_HEIGHT, stand.z);
     Some((pos, target))
 }
@@ -478,4 +530,69 @@ pub fn update_climb(
 fn smoothstep(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+
+/// Drives an in-progress crouch roll: pushes the character forward along its facing at
+/// [`ROLL_SPEED`] until the roll duration elapses.
+pub fn update_roll(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut query: Query<(Entity, &Transform, &mut LinearVelocity, &mut Rolling)>,
+) {
+    for (entity, transform, mut velocity, mut roll) in &mut query {
+        roll.elapsed += time.delta_secs();
+
+        let mut forward = transform.rotation * Vec3::Z;
+        forward.y = 0.0;
+        let forward = forward.normalize_or_zero();
+        velocity.x = (forward.x * ROLL_SPEED) as Scalar;
+        velocity.z = (forward.z * ROLL_SPEED) as Scalar;
+
+        if roll.elapsed >= roll.duration {
+            commands.entity(entity).remove::<Rolling>();
+        }
+    }
+}
+
+/// Off-map safety net for the main game: if the character somehow ends up *below* the map surface
+/// (e.g. clipped through a wall while double-jumping), pop it back on top.
+///
+/// The ground height at the character's XZ is found by shooting a physics ray upward from just
+/// below the map's minimum height, colliding with map-layer (ground) geometry only. Only runs when
+/// the main world is loaded and map tiles are active.
+pub fn detect_fallen_off_map(
+    map: Option<Res<MapTree>>,
+    tiles: Query<(), With<TreeMapTile>>,
+    spatial_query: SpatialQuery,
+    mut query: Query<(Entity, &mut Transform, &mut LinearVelocity), With<CharacterController>>,
+) {
+    let Some(map) = map else {
+        return;
+    };
+    if !map.parsed || tiles.is_empty() {
+        return;
+    }
+
+    let min_y = map.bbox.min.y - 1.0;
+    let max_y = map.bbox.max.y + 1.0;
+    let ray_len = max_y - min_y;
+    if ray_len <= 0.0 {
+        return;
+    }
+
+    for (entity, mut transform, mut velocity) in &mut query {
+        let origin = Vec3::new(transform.translation.x, min_y, transform.translation.z);
+        // Ground (map tiles) only — cars/props must not count as "the map surface".
+        let mut filter = SpatialQueryFilter::from_mask(GamePhysicsLayer::Map);
+        filter.excluded_entities.insert(entity);
+
+        if let Some(hit) = spatial_query.cast_ray(origin, Dir3::Y, ray_len, true, &filter) {
+            let ground_y = min_y + hit.distance;
+            if transform.translation.y < ground_y {
+                transform.translation.y = ground_y + CAPSULE_TOTAL_HEIGHT + 0.5;
+                velocity.0 = Vector::ZERO;
+                info!("Character fell below the map; teleported back above ground.");
+            }
+        }
+    }
 }

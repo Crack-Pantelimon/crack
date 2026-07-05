@@ -26,7 +26,9 @@ use demo_resolution_selector_web_bevy::{
             PedestrianManifest, PedestriansPlugin,
         },
         states::GameControlState,
-        weapons::{EquipWeaponEvent, WeaponGripOffset, WeaponId, WeaponManifest, WeaponsPlugin},
+        weapons::{
+            EquipWeaponEvent, GunState, WeaponGripOffset, WeaponId, WeaponManifest, WeaponsPlugin,
+        },
     },
     utils::setup_debug_scene::SetupDebugScenePlugin,
 };
@@ -61,8 +63,39 @@ fn main() {
                 weapon_wheel.run_if(in_state(GameControlState::ControllingPedestrian)),
             ),
         )
-        .add_systems(EguiPrimaryContextPass, weapon_ui)
+        .add_systems(EguiPrimaryContextPass, (weapon_ui, crosshair_ui))
         .run();
+}
+
+/// White (70% alpha) crosshair — a dot with a circle around it — at the screen center. Shown while
+/// controlling a pedestrian that holds a gun; hitscan shots go where it points.
+fn crosshair_ui(
+    mut contexts: EguiContexts,
+    controlled: Res<ControlledCharacter>,
+    guns: Query<&GunState>,
+    state: Res<State<GameControlState>>,
+) {
+    if *state.get() != GameControlState::ControllingPedestrian {
+        return;
+    }
+    let Some(controller) = controlled.controller else {
+        return;
+    };
+    if guns.get(controller).is_err() {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("crosshair"),
+    ));
+    let center = ctx.content_rect().center();
+    // White with ~70% alpha.
+    let color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 178);
+    painter.circle_stroke(center, 10.0, egui::Stroke::new(1.5, color));
+    painter.circle_filled(center, 2.0, color);
 }
 
 /// Equip a random weapon whenever a new character is spawned.
@@ -120,6 +153,8 @@ fn weapon_wheel(
             step -= 1;
         }
     }
+    // Never switch more than one weapon per frame, no matter how hard the wheel was rolled.
+    let step = step.signum();
     if step == 0 || over_ui {
         return;
     }
@@ -141,6 +176,7 @@ fn weapon_ui(
     mut contexts: EguiContexts,
     controlled: Res<ControlledCharacter>,
     manifest: Res<WeaponManifest>,
+    guns: Query<&GunState>,
     mut grip: ResMut<WeaponGripOffset>,
     mut selection: ResMut<WeaponSelection>,
 ) {
@@ -152,6 +188,12 @@ fn weapon_ui(
         .default_size(egui::vec2(240.0, 360.0))
         .show(ctx, |ui| {
             ui.add(egui::Slider::new(&mut grip.0, 0.05..=0.5).text("Grip offset"));
+            if let Some(gun) = controlled.controller.and_then(|c| guns.get(c).ok()) {
+                ui.label(format!(
+                    "Ammo: {} / {}  (R to reload)",
+                    gun.rounds, gun.clip_size
+                ));
+            }
             ui.separator();
             if !manifest.loaded {
                 ui.label("Loading weapons…");

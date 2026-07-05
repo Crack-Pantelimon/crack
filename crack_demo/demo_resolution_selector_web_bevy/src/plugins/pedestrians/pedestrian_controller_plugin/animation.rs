@@ -13,7 +13,7 @@ use bevy_egui::EguiContexts;
 
 use super::*;
 use crate::plugins::pedestrians::PedestrianAnimations;
-use crate::plugins::weapons::EquippedWeapon;
+use crate::plugins::weapons::{EquippedWeapon, FireGunEvent, GunState, ReloadGunEvent};
 use spawn::ControlledCharacter;
 
 /// Base weight while a combat overlay is active, so the overlay reads on top of locomotion.
@@ -55,6 +55,8 @@ pub fn drive_character_animation(
     anims: Res<PedestrianAnimations>,
     controlled: Res<ControlledCharacter>,
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut commands: Commands,
     mut contexts: EguiContexts,
     mut controllers: Query<
         (
@@ -63,7 +65,9 @@ pub fn drive_character_animation(
             &MovementModifiers,
             &CharacterScale,
             Has<Climbing>,
+            Has<Rolling>,
             Option<&EquippedWeapon>,
+            Option<&GunState>,
             &mut AnimState,
             &mut CombatState,
         ),
@@ -81,13 +85,29 @@ pub fn drive_character_animation(
     let Some(controller) = controlled.controller else {
         return;
     };
-    let Ok((velocity, grounded, modifiers, char_scale, climbing, equipped, mut anim, mut combat)) =
-        controllers.get_mut(controller)
+    let Ok((
+        velocity,
+        grounded,
+        modifiers,
+        char_scale,
+        climbing,
+        rolling,
+        equipped,
+        gun_state,
+        mut anim,
+        mut combat,
+    )) = controllers.get_mut(controller)
     else {
         return;
     };
     // Shorter characters animate faster (inverse of mesh scale).
     let anim_speed = 1.0 / char_scale.0;
+    // The Roll clip (used for climbing and crouch rolls) is too long at 1x; play it faster.
+    let base_speed = if climbing || rolling {
+        anim_speed * ROLL_ANIM_SPEED_MULT
+    } else {
+        anim_speed
+    };
 
     // Which weapon class is equipped (None component == Unarmed).
     let weapon = equipped.map(|e| &e.0);
@@ -159,8 +179,8 @@ pub fn drive_character_animation(
 
     let speed = Vec2::new(velocity.x as f32, velocity.z as f32).length();
     let moving = speed > MOVE_ANIM_THRESHOLD;
-    let base_candidates: &[&str] = if climbing {
-        // No dedicated climb clip exists in the catalog; play the "Roll" clip for the climb.
+    let base_candidates: &[&str] = if climbing || rolling {
+        // No dedicated climb clip exists in the catalog; play the "Roll" clip for climbs & rolls.
         &["Roll", "Jump_Loop"]
     } else {
         match anim.phase {
@@ -197,11 +217,11 @@ pub fn drive_character_animation(
             if let Some(old) = anim.base_node {
                 player.stop(old);
             }
-            player.play(base_node).repeat().set_speed(anim_speed);
+            player.play(base_node).repeat().set_speed(base_speed);
             anim.base_node = Some(base_node);
         } else if let Some(active) = player.animation_mut(base_node) {
-            // Keep the height-based speed applied even if the clip did not change.
-            active.set_speed(anim_speed);
+            // Keep the height/state-based speed applied even if the clip did not change.
+            active.set_speed(base_speed);
         }
     }
 
@@ -212,19 +232,32 @@ pub fn drive_character_animation(
             .node
             .map_or(true, |n| player.animation(n).map_or(true, |a| a.is_finished()));
 
-    // LMB attack clip depends on the equipped weapon class.
-    let attack_node = if is_gun {
-        node_for(&anims, &["Pistol_Shoot"])
-    } else if is_melee {
-        node_for(&anims, &["Sword_Attack"])
-    } else if rand::random::<bool>() {
-        node_for(&anims, &["Punch_Jab", "Punch_Cross"])
-    } else {
-        node_for(&anims, &["Punch_Cross", "Punch_Jab"])
-    };
+    let can_shoot = gun_state.map_or(false, |g| g.rounds > 0);
+    let reload_pressed = keys.just_pressed(KeyCode::KeyR);
 
-    let (want_kind, want_node) = if lmb {
-        (CombatKind::OneShot, attack_node)
+    // A press starts (or restarts) a one-shot clip depending on the equipped weapon.
+    let mut pressed_node = None;
+    if lmb {
+        if is_gun {
+            // Only fire (and animate) when there are rounds left in the clip.
+            if can_shoot {
+                pressed_node = node_for(&anims, &["Pistol_Shoot"]);
+                commands.trigger(FireGunEvent { shooter: controller });
+            }
+        } else if is_melee {
+            pressed_node = node_for(&anims, &["Sword_Attack"]);
+        } else if rand::random::<bool>() {
+            pressed_node = node_for(&anims, &["Punch_Jab", "Punch_Cross"]);
+        } else {
+            pressed_node = node_for(&anims, &["Punch_Cross", "Punch_Jab"]);
+        }
+    } else if reload_pressed && is_gun && gun_state.is_some_and(|g| g.rounds < g.clip_size) {
+        pressed_node = node_for(&anims, &["Pistol_Reload"]);
+        commands.trigger(ReloadGunEvent { shooter: controller });
+    }
+
+    let (want_kind, want_node) = if pressed_node.is_some() {
+        (CombatKind::OneShot, pressed_node)
     } else if combat.kind == CombatKind::OneShot && !one_shot_finished {
         // Keep the in-progress one-shot playing.
         (CombatKind::OneShot, combat.node)
@@ -239,8 +272,8 @@ pub fn drive_character_animation(
     };
 
     let changed = want_kind != combat.kind || want_node != combat.node;
-    // A fresh LMB press always (re)starts the one-shot from the beginning.
-    let restart = lmb && want_kind == CombatKind::OneShot;
+    // A fresh press always (re)starts the one-shot from the beginning.
+    let restart = pressed_node.is_some();
     if changed || restart {
         if let Some(old) = combat.node {
             if Some(old) != want_node {

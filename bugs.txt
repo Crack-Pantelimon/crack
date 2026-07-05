@@ -1,11 +1,49 @@
+1. 
+
+when i roll the mouse wheel really hard i get this panic: 
+
+
+
+thread 'main' (425509) panicked at /home/p/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/bevy_ecs-0.19.0/src/error/handler.rs:130:1:
+Encountered an error in command `<bevy_ecs::system::commands::entity_command::insert<demo_resolution_selector_web_bevy::plugins::weapons::weapon_attach::WeaponExtents>::{{closure}} as bevy_ecs::system::commands::entity_command::EntityCommand>::with_entity::{{closure}}`: Entity despawned: The entity with ID 651v0 is invalid; its index now has generation 1.
+Note that interacting with a despawned entity is the most common cause of this error but there are others
+
+    If you were attempting to apply a command to this entity,
+    and want to handle this error gracefully, consider using `EntityCommands::queue_handled` or `queue_silenced`.
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Encountered a panic when applying buffers for system `demo_resolution_selector_web_bevy::plugins::weapons::weapon_attach::finalize_weapon_extents`!
+2026-07-05T18:12:30.356535Z  WARN bevy_ecs::world::command_queue: CommandQueue has un-applied commands being dropped. Did you forget to call SystemState::apply?
+Encountered a panic in system `bevy_app::main_schedule::Main::run_main`!
+
+
+
+it happens when we switch weapons really quick. Here's two fixes:
+- don't accept more than one weapon switch per frame in the system that reads it
+- fix the underlying situation that causes the panic (ordering a despawn) by waiting for one weapon switch event to finish (and the weapon to successfully load and switch) before it is going to switch again
+
+
+----
+
+2. 
+
 - pedestrian plugin
   - when double jumping into wall on main map, we cross through and fall into hell. implement all the following:
     - detect when we've fallen off map (get min point by shooting physics ray from y=min_map_height-1.0 upwards for a length of max_map_height+1-min_map_height-1) and get the y for that hit point (colliding only ground) and if we are lower in y than that position then the chip should go over 
     - detect when the climb animation would take us off map (shoot some extra short rays parallel to the ground), along the path that we would climb through, and check there is no ground there.
+    - this issue should only be tackled in the code for the main plugin, so only run the functions for it if the main world is loaded and we have some map tiles active.
 
-  - when climbing, the animation is too long, make it 2x faster
+  - when climbing, the roll animation is too long, make it 2x faster
+  - when crouching with c, hitting shift will sprint while crouching at 2x speed, and hitting space will roll forward. 
+
+
+---
+
+3.
+
 
 - weapons plugin
   - gun: manually edit the gun manifest file under _data to be a csv that has path,is_gun,clip_size,bullet_type,damage,range and add some values in there. the rows for non-guns (melee) will be with 0 in all columns. then edit the weapons such that we store that information for the guns enum variant. Then we use that to implement hitscan based shooting into cars, pedestrians, or the map. Shooting will leave a gizmo with the bullet path for 5s. Add a crosshair in the middle of the screen which will be shot at. The crosshair is a dot with a circle around it - make them white with alpha 70%. 
   - gun: implement bullet count ui and reload functionality
   - implement reloading when we have a gun and we hit r
+

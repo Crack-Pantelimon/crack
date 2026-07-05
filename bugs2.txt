@@ -1,0 +1,14 @@
+- car physics
+  - fix car physics. currently, we have the car model as a single collider with normal dynamic physics and we add forces to it to fix slip and simulate car rpm and check speed. The car hovers off the ground by having a lot of probes underneath it to check distance to ground and use their average as the wheel suspension height and computes by hand the values from that. 
+  - make sure when car model glb is loaded, we go through all its vertex and obtain the min/max in all 3 axis. the rays will have to shoot out from inside the car down its bottom as described below.
+  - we want to completely revamp the system and fix our formulas. remove the old sliders and add in new sliders with whatever tuning values you think the user should have. the basic operation of the system should not change (do not add any physics springs and wheels, we tried that, our map tiles don't combine perfectly, so it's easier to just find the distance and surface contact area with the ground and go from there)
+  - we want to fix the following problem: the probes start off too low. they should start from about 5% higher than the min Y of the car in car-local space, and go down in car-local space for a distance of about 0.5. the rays should also start in a grid, now they start in a random distribution every frame. Bring back the ray gizmos in the car simulation binary. 
+  - we also want to fix another problem: too large surface area. the middle of the car shouldn't have wheel surface area - so only run the grid to about 75% from the wheel position to the middle of the car. 
+  - if we don't have traction on at least 2 wheels, do not apply any driving-related force to the wheels, but instead let the car coast/fly under its physics rules.
+  - the rpm should be shown as a number in the ui, alongside the current gear, in 50% lower font. 
+  - the input->value integration has a period of 0.2, driving feels very laggy, so let's have that integration for 0.060s. there are other things that integrate/average code again, make that be relatedly short in period.
+ 
+
+- cosmetic wheels
+  - the cars' wheels should be procedurally placed only cosmetically by taking the values of the car's orientation, of the point and surface of contact with the ground. The wheels are simple black cylinders with the usual black/white debug texture. Use the car's velocity and the wheel's diameter to compute wheel rotation, and use the hit with the ground to compute wheel position. The cosmetic wheel does not have any physics role at all. Its position will be computed from the car data in the Last schedule to make sure we render them in the correct place at all times.
+

@@ -36,8 +36,8 @@ use animation::{drive_character_animation, print_animation_catalog};
 use camera::{follow_camera, orbit_camera_input};
 use controller::{
     apply_forces_to_dynamic_bodies, apply_gravity, apply_movement_damping, apply_speed_cap,
-    character_input, face_movement, jump_or_climb, move_and_slide, movement, respawn_if_fallen,
-    update_climb, update_grounded,
+    character_input, detect_fallen_off_map, face_movement, jump_or_climb, move_and_slide, movement,
+    respawn_if_fallen, update_climb, update_grounded, update_roll,
 };
 use interaction_ui::{handle_freecam_right_click, spawn_choice_popup_ui};
 use spawn::{
@@ -90,6 +90,14 @@ const CLIMB_MAX_FRAC: f32 = 1.2;
 const CLIMB_FORWARD_REACH: f32 = 0.5;
 /// Duration of the climb motion (up-then-over).
 const CLIMB_DURATION: f32 = 0.6;
+/// Speed multiplier for the climb/roll animation clip (the Roll clip is too long at 1x).
+const ROLL_ANIM_SPEED_MULT: f32 = 2.0;
+
+// Crouch roll (crouch + Space): a short forward dash with the Roll animation.
+const ROLL_SPEED: f32 = 5.0;
+const ROLL_DURATION: f32 = 0.7;
+/// Sprinting while crouched (crouch + Shift) doubles the crouch speed cap.
+const CROUCH_SPRINT_MULT: f32 = 2.0;
 
 /// How fast the controller turns to face its movement direction (higher = snappier).
 const TURN_SPEED: f32 = 12.0;
@@ -201,6 +209,13 @@ pub struct Grounded;
 pub struct Climbing {
     pub start: Vec3,
     pub target: Vec3,
+    pub elapsed: f32,
+    pub duration: f32,
+}
+
+/// An in-progress crouch roll (crouch + Space): a short forward dash with the Roll animation.
+#[derive(Component)]
+pub struct Rolling {
     pub elapsed: f32,
     pub duration: f32,
 }
@@ -317,7 +332,9 @@ impl Plugin for PedestrianControllerPlugin {
                 (
                     adopt_pedestrian,
                     respawn_if_fallen,
+                    detect_fallen_off_map,
                     update_climb,
+                    update_roll,
                     face_movement,
                     orbit_camera_input,
                     follow_camera,
