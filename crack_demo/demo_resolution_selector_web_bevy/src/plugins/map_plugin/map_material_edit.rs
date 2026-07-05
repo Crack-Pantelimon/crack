@@ -8,8 +8,14 @@ impl Plugin for MapMaterialEditPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MapMaterialEditState>()
             .add_systems(EguiPrimaryContextPass, (map_material_edit_ui,));
+        // Run the material/texture fix-ups in `PostUpdate` (after `Update` spawns and the
+        // `SpawnScene` schedule that instantiates the tile GLB scenes, but still before the render
+        // extract). In `Update` the execution order relative to tile spawning is not deterministic
+        // — on the single-threaded web build this let a freshly-swapped tile render one frame with
+        // its default (glossier/lighter) GLTF material before the matte values were applied,
+        // causing a visible flash. `PostUpdate` guarantees the fix lands before the tile is drawn.
         app.add_systems(
-            Update,
+            Last,
             (
                 auto_apply_new_materials,
                 auto_apply_nearest_sampling_to_images,

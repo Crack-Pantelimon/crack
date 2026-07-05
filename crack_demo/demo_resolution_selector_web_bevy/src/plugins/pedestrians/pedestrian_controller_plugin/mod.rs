@@ -85,7 +85,13 @@ const MODEL_FORWARD_OFFSET: f32 = 0.0;
 // Follow camera. Position trails the character; orientation is manual (left-mouse drag).
 const CAM_DISTANCE: f32 = 5.5;
 const CAM_LOOK_HEIGHT: f32 = 1.1;
-const CAM_POS_LERP: f32 = 8.0;
+/// Time constant for smoothing the *character-driven* follow position. This attenuates the wild
+/// up/down/left/right shake the kinematic controller picks up from the rough map, while leaving
+/// user-driven (mouse-drag) camera rotation completely un-attenuated.
+const CAM_FOLLOW_SMOOTH_TIME: f32 = 0.15;
+/// If the character jumps further than this in one frame (respawn / new spawn), snap instead of
+/// smoothing.
+const CAM_FOLLOW_SNAP_DIST: f32 = 5.0;
 /// Initial (and default) camera pitch — slightly downward.
 const CAM_PITCH: f32 = -0.35;
 /// Mouse-drag orbit sensitivity (radians per pixel).
