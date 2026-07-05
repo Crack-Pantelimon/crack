@@ -38,9 +38,7 @@ pub fn character_input(
         )));
     }
 
-    if keys.just_pressed(KeyCode::Space) {
-        movement_writer.write(MovementAction::Jump);
-    }
+    // Space is handled by `jump_or_climb` (it decides between jumping and climbing a ledge).
 
     for mut m in &mut modifiers {
         m.crouch = keys.pressed(KeyCode::KeyC);
@@ -88,7 +86,11 @@ pub fn update_grounded(
 pub fn movement(
     time: Res<Time>,
     mut movement_reader: MessageReader<MovementAction>,
-    mut controllers: Query<(&CharacterMovementSettings, &mut LinearVelocity, Has<Grounded>)>,
+    mut controllers: Query<(
+        &CharacterMovementSettings,
+        &mut LinearVelocity,
+        Has<Grounded>,
+    )>,
 ) {
     let delta_secs = time.delta_secs_f64().adjust_precision();
 
@@ -364,4 +366,116 @@ pub fn respawn_if_fallen(
             velocity.0 = Vector::ZERO;
         }
     }
+}
+
+/// On Space, decide between jumping and climbing a ledge in front. Climbing is allowed even while
+/// airborne/falling; jumping only takes effect when grounded (handled in `movement`).
+pub fn jump_or_climb(
+    keys: Res<ButtonInput<KeyCode>>,
+    spatial_query: SpatialQuery,
+    mut commands: Commands,
+    mut movement_writer: MessageWriter<MovementAction>,
+    query: Query<
+        (Entity, &GlobalTransform, &CharacterScale),
+        (With<CharacterController>, Without<Climbing>),
+    >,
+) {
+    if !keys.just_pressed(KeyCode::Space) {
+        return;
+    }
+    for (entity, gt, scale) in &query {
+        if let Some((start, target)) = detect_climb(gt, scale.0, &spatial_query, entity) {
+            commands.entity(entity).insert(Climbing {
+                start,
+                target,
+                elapsed: 0.0,
+                duration: CLIMB_DURATION,
+            });
+        } else {
+            movement_writer.write(MovementAction::Jump);
+        }
+    }
+}
+
+/// Casts a few rays to detect a climbable ledge directly in front of the character. Returns the
+/// climb start and target positions (capsule center) if one is found.
+fn detect_climb(
+    gt: &GlobalTransform,
+    scale: f32,
+    spatial_query: &SpatialQuery,
+    self_entity: Entity,
+) -> Option<(Vec3, Vec3)> {
+    let pos = gt.translation();
+    let mut forward = gt.rotation() * Vec3::Z;
+    forward.y = 0.0;
+    let forward = forward.normalize_or_zero();
+    let forward_dir = Dir3::new(forward).ok()?;
+
+    let feet_y = pos.y - CAPSULE_HALF_HEIGHT;
+    let height = CAPSULE_TOTAL_HEIGHT * scale;
+    let min_ledge = CLIMB_MIN_FRAC * height;
+    let max_ledge = CLIMB_MAX_FRAC * height;
+
+    let filter = SpatialQueryFilter::from_excluded_entities([self_entity]);
+
+    // 1. There must be a wall directly in front, around lower-body height.
+    let wall_origin = Vec3::new(pos.x, feet_y + 0.2 * height, pos.z);
+    let reach = CAPSULE_RADIUS + CLIMB_FORWARD_REACH;
+    spatial_query.cast_ray(wall_origin, forward_dir, reach, true, &filter)?;
+
+    // 2. Probe downward just past the wall to find the ledge top height.
+    let probe = pos + forward * (CAPSULE_RADIUS + 0.35);
+    let probe_origin = Vec3::new(probe.x, feet_y + max_ledge + 0.5, probe.z);
+    let down_dist = max_ledge + 0.6;
+    let top_hit = spatial_query.cast_ray(probe_origin, Dir3::NEG_Y, down_dist, true, &filter)?;
+    let top_y = probe_origin.y - top_hit.distance;
+    let ledge_height = top_y - feet_y;
+    if ledge_height < min_ledge || ledge_height > max_ledge {
+        return None;
+    }
+
+    // 3. Require head clearance above the ledge so the character can actually stand there.
+    let stand = pos + forward * (CAPSULE_RADIUS + 0.5);
+    let clearance_origin = Vec3::new(stand.x, top_y + 0.1, stand.z);
+    if spatial_query
+        .cast_ray(clearance_origin, Dir3::Y, height * 0.8, true, &filter)
+        .is_some()
+    {
+        return None;
+    }
+
+    let target = Vec3::new(stand.x, top_y + CAPSULE_HALF_HEIGHT, stand.z);
+    Some((pos, target))
+}
+
+/// Tweens a climbing character up-then-over onto the ledge, then removes [`Climbing`].
+pub fn update_climb(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Transform, &mut LinearVelocity, &mut Climbing)>,
+) {
+    for (entity, mut transform, mut velocity, mut climb) in &mut query {
+        velocity.0 = Vector::ZERO;
+        climb.elapsed += time.delta_secs();
+        let f = (climb.elapsed / climb.duration).clamp(0.0, 1.0);
+
+        // Up-then-over path so the character does not clip through the wall.
+        let up = Vec3::new(climb.start.x, climb.target.y, climb.start.z);
+        transform.translation = if f < 0.5 {
+            let s = smoothstep(f * 2.0);
+            climb.start.lerp(up, s)
+        } else {
+            let s = smoothstep((f - 0.5) * 2.0);
+            up.lerp(climb.target, s)
+        };
+
+        if f >= 1.0 {
+            commands.entity(entity).remove::<Climbing>();
+        }
+    }
+}
+
+fn smoothstep(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }

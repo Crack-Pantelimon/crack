@@ -7,7 +7,9 @@ use rand::seq::IndexedRandom;
 use super::*;
 use crate::plugins::{
     cars_driving::driving_plugin::GamePhysicsLayer,
-    pedestrians::{ManualAnimation, ModelRoot, PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent},
+    pedestrians::{
+        ManualAnimation, ModelRoot, PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent,
+    },
     states::GameControlState,
 };
 
@@ -36,6 +38,8 @@ pub struct SpawnChoicePopup {
 pub struct SpawnControlledPedestrianEvent {
     pub position: Vec3,
     pub url: Option<PedestrianUrl>,
+    /// Mesh scale, clamped to `[SCALE_MIN, SCALE_MAX]`. `None` picks a random scale in that range.
+    pub scale: Option<f32>,
 }
 
 pub fn spawn_controlled_pedestrian_observer(
@@ -61,6 +65,12 @@ pub fn spawn_controlled_pedestrian_observer(
         commands.entity(old).despawn();
     }
     controlled.ped = None;
+    controlled.scale_node = None;
+
+    let scale = event
+        .scale
+        .unwrap_or_else(|| SCALE_MIN + rand::random::<f32>() * (SCALE_MAX - SCALE_MIN))
+        .clamp(SCALE_MIN, SCALE_MAX);
 
     let controller_pos = Vec3::new(
         event.position.x,
@@ -72,6 +82,7 @@ pub fn spawn_controlled_pedestrian_observer(
         .spawn((
             Name::new("PedestrianController"),
             CharacterController,
+            CharacterScale(scale),
             CharacterMovementSettings::default(),
             CharacterCollisions::default(),
             MovementModifiers::default(),
@@ -96,7 +107,19 @@ pub fn spawn_controlled_pedestrian_observer(
         ))
         .id();
 
+    // Intermediate scale node: child of controller, parent of the model. Scaling here keeps the
+    // model's feet at the capsule bottom and does not affect the animation playback.
+    let scale_node = commands
+        .spawn((
+            Name::new("PedestrianScaleNode"),
+            ChildOf(controller),
+            Transform::from_xyz(0.0, -CAPSULE_HALF_HEIGHT, 0.0).with_scale(Vec3::splat(scale)),
+            Visibility::default(),
+        ))
+        .id();
+
     controlled.controller = Some(controller);
+    controlled.scale_node = Some(scale_node);
     controlled.awaiting = true;
 
     commands.trigger(SpawnPedestrianEvent {
@@ -116,14 +139,14 @@ pub fn adopt_pedestrian(
     if !controlled.awaiting {
         return;
     }
-    let Some(controller) = controlled.controller else {
+    let Some(scale_node) = controlled.scale_node else {
         return;
     };
     for ped in new_peds.iter() {
         commands.entity(ped).insert((
-            ChildOf(controller),
-            // Local offset so the model's feet meet the bottom of the capsule.
-            Transform::from_xyz(0.0, -CAPSULE_HALF_HEIGHT, 0.0),
+            // Parent under the scale node; the vertical offset + scale live on that node.
+            ChildOf(scale_node),
+            Transform::IDENTITY,
             // Drive this model's animations manually (skip the shared play_animations_system).
             ManualAnimation,
         ));
@@ -147,6 +170,7 @@ pub fn escape_to_freecam(
         commands.entity(controller).despawn();
     }
     controlled.ped = None;
+    controlled.scale_node = None;
     controlled.awaiting = false;
     next_state.set(GameControlState::MapFreecam);
 }

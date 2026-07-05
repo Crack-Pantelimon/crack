@@ -2,7 +2,7 @@
 
 use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts};
+use bevy_egui::{EguiContexts, egui};
 
 use super::spawn::{SpawnChoicePopup, SpawnControlledPedestrianEvent};
 use crate::plugins::cars_driving::{
@@ -74,6 +74,7 @@ pub fn spawn_choice_popup_ui(
                     commands.trigger(SpawnControlledPedestrianEvent {
                         position: popup.world_pos,
                         url: None,
+                        scale: None,
                     });
                     close = true;
                 }

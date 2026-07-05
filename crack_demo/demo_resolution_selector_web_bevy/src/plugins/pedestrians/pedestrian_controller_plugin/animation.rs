@@ -60,6 +60,8 @@ pub fn drive_character_animation(
             &LinearVelocity,
             Has<Grounded>,
             &MovementModifiers,
+            &CharacterScale,
+            Has<Climbing>,
             &mut AnimState,
             &mut CombatState,
         ),
@@ -77,10 +79,13 @@ pub fn drive_character_animation(
     let Some(controller) = controlled.controller else {
         return;
     };
-    let Ok((velocity, grounded, modifiers, mut anim, mut combat)) = controllers.get_mut(controller)
+    let Ok((velocity, grounded, modifiers, char_scale, climbing, mut anim, mut combat)) =
+        controllers.get_mut(controller)
     else {
         return;
     };
+    // Shorter characters animate faster (inverse of mesh scale).
+    let anim_speed = 1.0 / char_scale.0;
 
     // Do not fire combat when interacting with egui.
     let over_ui = contexts
@@ -147,27 +152,32 @@ pub fn drive_character_animation(
 
     let speed = Vec2::new(velocity.x as f32, velocity.z as f32).length();
     let moving = speed > MOVE_ANIM_THRESHOLD;
-    let base_candidates: &[&str] = match anim.phase {
-        JumpPhase::Start => &["Jump_Start"],
-        JumpPhase::Loop => &["Jump_Loop"],
-        JumpPhase::Land => &["Jump_Land"],
-        JumpPhase::Grounded => {
-            if modifiers.crouch {
-                if moving {
-                    &["Crouch_Fwd_Loop"]
+    let base_candidates: &[&str] = if climbing {
+        // No dedicated climb clip exists in the catalog; play the "Roll" clip for the climb.
+        &["Roll", "Jump_Loop"]
+    } else {
+        match anim.phase {
+            JumpPhase::Start => &["Jump_Start"],
+            JumpPhase::Loop => &["Jump_Loop"],
+            JumpPhase::Land => &["Jump_Land"],
+            JumpPhase::Grounded => {
+                if modifiers.crouch {
+                    if moving {
+                        &["Crouch_Fwd_Loop"]
+                    } else {
+                        &["Crouch_Idle_Loop", "Idle_Loop"]
+                    }
+                } else if moving {
+                    if speed < WALK_MAX_SPEED {
+                        &["Walk_Loop"]
+                    } else if speed < JOG_MAX_SPEED {
+                        &["Jog_Fwd_Loop"]
+                    } else {
+                        &["Sprint_Loop", "Sprint_Fwd_Loop"]
+                    }
                 } else {
-                    &["Crouch_Idle_Loop", "Idle_Loop"]
+                    &["Idle_Loop", "A_TPose"]
                 }
-            } else if moving {
-                if speed < WALK_MAX_SPEED {
-                    &["Walk_Loop"]
-                } else if speed < JOG_MAX_SPEED {
-                    &["Jog_Fwd_Loop"]
-                } else {
-                    &["Sprint_Loop", "Sprint_Fwd_Loop"]
-                }
-            } else {
-                &["Idle_Loop", "A_TPose"]
             }
         }
     };
@@ -177,16 +187,19 @@ pub fn drive_character_animation(
             if let Some(old) = anim.base_node {
                 player.stop(old);
             }
-            player.play(base_node).repeat();
+            player.play(base_node).repeat().set_speed(anim_speed);
             anim.base_node = Some(base_node);
+        } else if let Some(active) = player.animation_mut(base_node) {
+            // Keep the height-based speed applied even if the clip did not change.
+            active.set_speed(anim_speed);
         }
     }
 
     // --- Combat overlay state machine ----------------------------------------------------------
     let current_finished = match combat.kind {
-        CombatKind::Jab | CombatKind::Shoot => combat
-            .node
-            .map_or(true, |n| player.animation(n).map_or(true, |a| a.is_finished())),
+        CombatKind::Jab | CombatKind::Shoot => combat.node.map_or(true, |n| {
+            player.animation(n).map_or(true, |a| a.is_finished())
+        }),
         _ => true,
     };
 

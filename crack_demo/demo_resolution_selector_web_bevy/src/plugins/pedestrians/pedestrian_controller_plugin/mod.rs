@@ -36,12 +36,13 @@ use animation::{drive_character_animation, print_animation_catalog};
 use camera::{follow_camera, orbit_camera_input};
 use controller::{
     apply_forces_to_dynamic_bodies, apply_gravity, apply_movement_damping, apply_speed_cap,
-    character_input, face_movement, move_and_slide, movement, respawn_if_fallen, update_grounded,
+    character_input, face_movement, jump_or_climb, move_and_slide, movement, respawn_if_fallen,
+    update_climb, update_grounded,
 };
 use interaction_ui::{handle_freecam_right_click, spawn_choice_popup_ui};
 use spawn::{
-    adopt_pedestrian, escape_to_freecam, spawn_controlled_pedestrian_observer, ControlledCharacter,
-    SpawnChoicePopup,
+    ControlledCharacter, SpawnChoicePopup, adopt_pedestrian, escape_to_freecam,
+    spawn_controlled_pedestrian_observer,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -82,6 +83,15 @@ const JOG_MAX_SPEED: f32 = 6.0;
 const JUMP_START_TIME: f32 = 0.22;
 const JUMP_LAND_TIME: f32 = 0.22;
 
+// Climbing. A ledge is climbable if its top is between these fractions of the character's height
+// above the feet. Detection uses a few forward/down rays; climbing works even while airborne.
+const CLIMB_MIN_FRAC: f32 = 0.3;
+const CLIMB_MAX_FRAC: f32 = 1.2;
+/// How far in front of the capsule surface to probe for a ledge.
+const CLIMB_FORWARD_REACH: f32 = 0.5;
+/// Duration of the climb motion (up-then-over).
+const CLIMB_DURATION: f32 = 0.6;
+
 /// How fast the controller turns to face its movement direction (higher = snappier).
 const TURN_SPEED: f32 = 12.0;
 /// Yaw offset applied on top of the movement direction, if the model's forward axis is not +Z.
@@ -120,7 +130,11 @@ pub enum MovementAction {
 /// Marker for the kinematic character body. Requires a kinematic rigid body and disables Avian's
 /// automatic position integration so move-and-slide drives the transform manually.
 #[derive(Component)]
-#[require(RigidBody::Kinematic, CustomPositionIntegration, SpeculativeMargin(0.0))]
+#[require(
+    RigidBody::Kinematic,
+    CustomPositionIntegration,
+    SpeculativeMargin(0.0)
+)]
 pub struct CharacterController;
 
 /// The random mesh scale chosen for this character (in `[SCALE_MIN, SCALE_MAX]`). Used to speed up
@@ -181,6 +195,16 @@ impl Default for GroundDetection {
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 pub struct Grounded;
+
+/// An in-progress ledge climb. While present, the normal movement chain is skipped and the
+/// controller transform is tweened up-then-over onto the ledge.
+#[derive(Component)]
+pub struct Climbing {
+    pub start: Vec3,
+    pub target: Vec3,
+    pub elapsed: f32,
+    pub duration: f32,
+}
 
 /// Per-frame collisions recorded by move-and-slide, used to push dynamic bodies.
 #[derive(Component, Default, Deref)]
@@ -268,12 +292,14 @@ impl Plugin for PedestrianControllerPlugin {
                 EguiPrimaryContextPass,
                 spawn_choice_popup_ui.run_if(in_state(GameControlState::MapFreecam)),
             )
-            // Input before the physics step.
+            // Input before the physics step. `jump_or_climb` decides Space -> jump vs climb.
             .add_systems(
                 PreUpdate,
-                character_input.run_if(in_state(GameControlState::ControllingPedestrian)),
+                (character_input, jump_or_climb)
+                    .run_if(in_state(GameControlState::ControllingPedestrian)),
             )
-            // Movement in FixedUpdate for frame-rate independence.
+            // Movement in FixedUpdate for frame-rate independence. Skipped while climbing (the climb
+            // tween owns the transform then).
             .add_systems(
                 FixedUpdate,
                 (
@@ -286,13 +312,15 @@ impl Plugin for PedestrianControllerPlugin {
                     apply_forces_to_dynamic_bodies,
                 )
                     .chain()
-                    .run_if(in_state(GameControlState::ControllingPedestrian)),
+                    .run_if(in_state(GameControlState::ControllingPedestrian))
+                    .run_if(no_one_climbing),
             )
             .add_systems(
                 Update,
                 (
                     adopt_pedestrian,
                     respawn_if_fallen,
+                    update_climb,
                     face_movement,
                     orbit_camera_input,
                     follow_camera,
@@ -302,4 +330,9 @@ impl Plugin for PedestrianControllerPlugin {
                     .run_if(in_state(GameControlState::ControllingPedestrian)),
             );
     }
+}
+
+/// Run condition: true when no character is mid-climb (so the movement chain can run).
+fn no_one_climbing(q: Query<(), With<Climbing>>) -> bool {
+    q.is_empty()
 }

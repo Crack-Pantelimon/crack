@@ -95,8 +95,8 @@ pub fn follow_camera(
 
     // Camera position from the (slow) follow target + manual orbit; look at the (fast) look target.
     let anchor = pos_target + Vec3::Y * CAM_LOOK_HEIGHT;
-    let offset =
-        Quat::from_euler(EulerRot::YXZ, rig.yaw, rig.pitch, 0.0) * Vec3::new(0.0, 0.0, CAM_DISTANCE);
+    let offset = Quat::from_euler(EulerRot::YXZ, rig.yaw, rig.pitch, 0.0)
+        * Vec3::new(0.0, 0.0, CAM_DISTANCE);
     cam.translation = anchor + offset;
     cam.look_at(look_pos + Vec3::Y * CAM_LOOK_HEIGHT, Vec3::Y);
 }

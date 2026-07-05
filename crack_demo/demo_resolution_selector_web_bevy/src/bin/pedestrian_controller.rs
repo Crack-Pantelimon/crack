@@ -94,6 +94,7 @@ fn demo_auto_spawn(
     commands.trigger(SpawnControlledPedestrianEvent {
         position: Vec3::ZERO,
         url: None,
+        scale: None,
     });
     *done = true;
 }

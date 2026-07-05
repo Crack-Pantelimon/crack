@@ -69,30 +69,30 @@ fn spawn_node_tiles(
                     asset_id: asset_id.clone(),
                 },
                 avian3d::prelude::RigidBody::Static,
-            avian3d::prelude::ColliderConstructorHierarchy::new(
-                avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
-                // avian3d::prelude::ColliderConstructor::ConvexDecompositionFromMesh,
-            )
-            .with_default_layers(CollisionLayers::new(
-                [GamePhysicsLayer::Map],
-                [
-                    GamePhysicsLayer::Map,
-                    GamePhysicsLayer::Car,
-                    GamePhysicsLayer::Wheel,
-                ],
-            )),
-            CollisionMargin(0.2),
-            avian3d::prelude::Restitution::ZERO
-                .with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
-            avian3d::prelude::Friction::new(0.9),
-            CollisionLayers::new(
-                [GamePhysicsLayer::Map],
-                [
-                    // GamePhysicsLayer::Map,
-                    GamePhysicsLayer::Car,
-                    GamePhysicsLayer::Wheel,
-                ],
-            ),
+                avian3d::prelude::ColliderConstructorHierarchy::new(
+                    avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
+                    // avian3d::prelude::ColliderConstructor::ConvexDecompositionFromMesh,
+                )
+                .with_default_layers(CollisionLayers::new(
+                    [GamePhysicsLayer::Map],
+                    [
+                        GamePhysicsLayer::Map,
+                        GamePhysicsLayer::Car,
+                        GamePhysicsLayer::Wheel,
+                    ],
+                )),
+                CollisionMargin(0.2),
+                avian3d::prelude::Restitution::ZERO
+                    .with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
+                avian3d::prelude::Friction::new(0.9),
+                CollisionLayers::new(
+                    [GamePhysicsLayer::Map],
+                    [
+                        // GamePhysicsLayer::Map,
+                        GamePhysicsLayer::Car,
+                        GamePhysicsLayer::Wheel,
+                    ],
+                ),
             ))
             .id();
         spawned.push(entity);
