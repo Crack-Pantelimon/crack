@@ -16,11 +16,10 @@ use bevy::{
 use bevy_egui::{EguiContexts, egui};
 
 use demo_resolution_selector_web_bevy::{
-    plugins::{
+    basic_app::make_basic_app, plugins::{
         cars_driving::driving_plugin::GamePhysicsLayer, physics_plugin::PhysicsPlugin,
         states::GameStatesPlugin,
-    },
-    ui_egui::UiState,
+    }, ui_egui::UiState,
 };
 
 #[derive(Component)]
@@ -73,33 +72,7 @@ enum PedestrianModelType {
 struct BoneBaseRotation(Quat);
 
 fn main() {
-    #[cfg(feature = "web")]
-    let backends = Backends::GL;
-    #[cfg(not(feature = "web"))]
-    let backends = Backends::PRIMARY;
-
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .build()
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Pedestrian Animations".into(),
-                        resolution: WindowResolution::new(1280, 720),
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(RenderPlugin {
-                    render_creation: bevy::render::settings::RenderCreation::Automatic(Box::new(
-                        WgpuSettings {
-                            backends: Some(backends),
-                            ..default()
-                        },
-                    )),
-                    ..default()
-                }),
-        )
+    make_basic_app("Pedestrian Animations")
         .add_plugins(bevy_egui::EguiPlugin::default())
         .init_resource::<UiState>() // Satisfies PhysicsPlugin's sync_physics_debug_config
         .insert_resource(PedestrianSettings {

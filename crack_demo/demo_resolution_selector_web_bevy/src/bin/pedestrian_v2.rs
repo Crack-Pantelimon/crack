@@ -21,7 +21,7 @@ use bevy::{
 };
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
-use demo_resolution_selector_web_bevy::plugins::{
+use demo_resolution_selector_web_bevy::{basic_app::make_basic_app, plugins::{
     cars_driving::driving_plugin::GamePhysicsLayer,
     game_freecam::camera_controls::{ActiveCameraAnimation, CameraControlsPlugin},
     map_plugin::{BBox, MapTree},
@@ -30,7 +30,7 @@ use demo_resolution_selector_web_bevy::plugins::{
         PedestriansPlugin, SkeletonDebug, SpawnPedestrianEvent,
     },
     states::GameControlState,
-};
+}};
 
 #[derive(Resource, Default)]
 struct SelectedModel {
@@ -59,33 +59,7 @@ impl Default for ViewerAnimSelection {
 }
 
 fn main() {
-    #[cfg(feature = "web")]
-    let backends = Backends::GL;
-    #[cfg(not(feature = "web"))]
-    let backends = Backends::PRIMARY;
-
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .build()
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Pedestrian V2 Viewer".into(),
-                        resolution: WindowResolution::new(1280, 720),
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(RenderPlugin {
-                    render_creation: bevy::render::settings::RenderCreation::Automatic(Box::new(
-                        WgpuSettings {
-                            backends: Some(backends),
-                            ..default()
-                        },
-                    )),
-                    ..default()
-                }),
-        )
+    make_basic_app("Pedestrian V2 - list")
         .add_plugins(EguiPlugin::default())
         .add_plugins(PhysicsPlugins::default())
         .init_state::<GameControlState>()

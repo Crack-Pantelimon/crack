@@ -4,57 +4,10 @@ use bevy::{
     render::{RenderPlugin, settings::WgpuSettings},
     window::WindowResolution,
 };
+use demo_resolution_selector_web_bevy::basic_app::make_basic_app;
 
 fn main() {
-    info!("exec main_bevy()...");
-    #[cfg(feature = "web")]
-    let backends = Backends::GL;
-    #[cfg(not(feature = "web"))]
-    let backends = Backends::PRIMARY;
-
-    info!("backends: {:?}", backends);
-
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .build()
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Crack! - Fane".into(),
-                        canvas: Some("#the-canvas".into()),
-                        // resizable: true,
-                        fit_canvas_to_parent: true,
-                        prevent_default_event_handling: true,
-                        resolution: WindowResolution::new(1280, 720)
-                            .with_scale_factor_override(1.15),
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(RenderPlugin {
-                    render_creation: bevy::render::settings::RenderCreation::Automatic(Box::new(
-                        WgpuSettings {
-                            backends: Some(backends),
-                            ..default()
-                        },
-                    )),
-                    ..default()
-                })
-                .set(bevy::asset::io::web::WebAssetPlugin {
-                    silence_startup_warning: true,
-                })
-                .set(AssetPlugin {
-                    meta_check: bevy::asset::AssetMetaCheck::Never,
-                    ..default()
-                }),
-        )
-        .insert_resource(bevy::winit::WinitSettings {
-            focused_mode: bevy::winit::UpdateMode::reactive(std::time::Duration::from_millis(16)),
-            unfocused_mode: bevy::winit::UpdateMode::reactive_low_power(
-                std::time::Duration::from_millis(666),
-            ),
-        })
-        ///////////////////
+    make_basic_app("Fane")
         .add_systems(Startup, scene.spawn())
         .run();
 }

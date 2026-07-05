@@ -11,7 +11,7 @@ use bevy::{
     },
     window::WindowResolution,
 };
-use demo_resolution_selector_web_bevy::plugins::cars_driving::driving_plugin::spawn_car::Car;
+use demo_resolution_selector_web_bevy::{basic_app::make_basic_app, plugins::cars_driving::driving_plugin::spawn_car::Car};
 use demo_resolution_selector_web_bevy::plugins::cars_driving::driving_plugin::{
     CarDriveState, CarWheelsContactData, SimState,
 };
@@ -41,33 +41,8 @@ impl Default for SimLogTimer {
 }
 
 fn main() {
-    #[cfg(feature = "web")]
-    let backends = Backends::GL;
-    #[cfg(not(feature = "web"))]
-    let backends = Backends::PRIMARY;
 
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .build()
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "Car Sim - Native".into(),
-                        resolution: WindowResolution::new(1280, 720),
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(RenderPlugin {
-                    render_creation: bevy::render::settings::RenderCreation::Automatic(Box::new(
-                        WgpuSettings {
-                            backends: Some(backends),
-                            ..default()
-                        },
-                    )),
-                    ..default()
-                }),
-        )
+    make_basic_app("Car Sim")
         .add_plugins(bevy_egui::EguiPlugin::default())
         .insert_resource(UiState::with_physics_debug()) // Satisfies PhysicsPlugin's sync_physics_debug_config
         .insert_resource(SimLogTimer::default())
