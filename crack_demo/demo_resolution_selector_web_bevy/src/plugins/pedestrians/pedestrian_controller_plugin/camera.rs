@@ -14,8 +14,11 @@ use spawn::ControlledCharacter;
 pub struct CameraRig {
     pub yaw: f32,
     pub pitch: f32,
-    /// Low-pass-filtered character position the camera actually follows (attenuates map shake).
+    /// Low-pass-filtered character position the camera *position* follows (attenuates map shake).
     pub follow_target: Option<Vec3>,
+    /// Low-pass-filtered character position the camera *looks at*. Smoothed 2x faster than
+    /// `follow_target` so the character stays framed even while the position glides smoothly.
+    pub look_target: Option<Vec3>,
 }
 
 impl Default for CameraRig {
@@ -24,6 +27,7 @@ impl Default for CameraRig {
             yaw: 0.0,
             pitch: CAM_PITCH,
             follow_target: None,
+            look_target: None,
         }
     }
 }
@@ -67,19 +71,32 @@ pub fn follow_camera(
     // yaw/pitch (user input) below is applied instantly and never smoothed.
     let real = controller_gt.translation();
     let dt = time.delta_secs();
-    let target = match rig.follow_target {
+
+    // Position-follow target: slow smoothing to swallow the controller's map jitter.
+    let pos_target = match rig.follow_target {
         Some(prev) if prev.distance(real) < CAM_FOLLOW_SNAP_DIST && dt > 0.0 => {
             let alpha = 1.0 - (-dt / CAM_FOLLOW_SMOOTH_TIME).exp();
             prev.lerp(real, alpha)
         }
         _ => real,
     };
-    rig.follow_target = Some(target);
+    rig.follow_target = Some(pos_target);
 
-    let look = target + Vec3::Y * CAM_LOOK_HEIGHT;
-    // Orbit offset: yaw around Y, pitch tilts up/down; camera sits CAM_DISTANCE behind (+Z of rig).
+    // Look-at target: smoothed 2x faster so the camera keeps the character framed while strafing.
+    let look_smooth_time = CAM_FOLLOW_SMOOTH_TIME * 0.5;
+    let look_pos = match rig.look_target {
+        Some(prev) if prev.distance(real) < CAM_FOLLOW_SNAP_DIST && dt > 0.0 => {
+            let alpha = 1.0 - (-dt / look_smooth_time).exp();
+            prev.lerp(real, alpha)
+        }
+        _ => real,
+    };
+    rig.look_target = Some(look_pos);
+
+    // Camera position from the (slow) follow target + manual orbit; look at the (fast) look target.
+    let anchor = pos_target + Vec3::Y * CAM_LOOK_HEIGHT;
     let offset =
         Quat::from_euler(EulerRot::YXZ, rig.yaw, rig.pitch, 0.0) * Vec3::new(0.0, 0.0, CAM_DISTANCE);
-    cam.translation = look + offset;
-    cam.look_at(look, Vec3::Y);
+    cam.translation = anchor + offset;
+    cam.look_at(look_pos + Vec3::Y * CAM_LOOK_HEIGHT, Vec3::Y);
 }

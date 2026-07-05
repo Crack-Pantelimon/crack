@@ -56,6 +56,11 @@ pub const CAPSULE_HALF_HEIGHT: f32 = CAPSULE_LENGTH / 2.0 + CAPSULE_RADIUS;
 /// Full capsule height (tip to tip).
 pub const CAPSULE_TOTAL_HEIGHT: f32 = CAPSULE_LENGTH + 2.0 * CAPSULE_RADIUS;
 
+/// Character mesh scale range. Every spawn picks a scale in this range (or clamps the requested one);
+/// the mesh is scaled by an intermediate node so animations are unaffected.
+pub const SCALE_MIN: f32 = 0.8;
+pub const SCALE_MAX: f32 = 1.0;
+
 // Movement. Acceleration is deliberately high so the per-mode speed *caps* are the binding limit.
 const MOVE_ACCEL: f32 = 200.0;
 const MOVE_DAMPING: f32 = 12.0;
@@ -117,6 +122,11 @@ pub enum MovementAction {
 #[derive(Component)]
 #[require(RigidBody::Kinematic, CustomPositionIntegration, SpeculativeMargin(0.0))]
 pub struct CharacterController;
+
+/// The random mesh scale chosen for this character (in `[SCALE_MIN, SCALE_MAX]`). Used to speed up
+/// locomotion animations for shorter characters and to size climb-height thresholds.
+#[derive(Component, Clone, Copy)]
+pub struct CharacterScale(pub f32);
 
 /// Held movement modifiers, updated from the keyboard each frame.
 #[derive(Component, Default)]

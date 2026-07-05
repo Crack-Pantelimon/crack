@@ -45,21 +45,30 @@ fn spawn_node_tiles(
     commands: &mut Commands,
     assets: &[(MapTileAssetId, Handle<WorldAsset>)],
     node_path: &MapTreeNodePath,
-) {
+    hidden: bool,
+) -> Vec<Entity> {
     // tracing::info!(
     //     "spawn_node_tiles({:?}, assets count: {})",
     //     node_path,
     //     assets.len()
     // );
+    let visibility = if hidden {
+        Visibility::Hidden
+    } else {
+        Visibility::Visible
+    };
+    let mut spawned = Vec::with_capacity(assets.len());
     for (asset_id, handle) in assets {
-        commands.spawn((
-            WorldAssetRoot(handle.clone()),
-            Transform::from_xyz(0.0, 0.0, 0.0),
-            TreeMapTile {
-                node_path: node_path.clone(),
-                asset_id: asset_id.clone(),
-            },
-            avian3d::prelude::RigidBody::Static,
+        let entity = commands
+            .spawn((
+                WorldAssetRoot(handle.clone()),
+                visibility,
+                Transform::from_xyz(0.0, 0.0, 0.0),
+                TreeMapTile {
+                    node_path: node_path.clone(),
+                    asset_id: asset_id.clone(),
+                },
+                avian3d::prelude::RigidBody::Static,
             avian3d::prelude::ColliderConstructorHierarchy::new(
                 avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
                 // avian3d::prelude::ColliderConstructor::ConvexDecompositionFromMesh,
@@ -84,8 +93,11 @@ fn spawn_node_tiles(
                     GamePhysicsLayer::Wheel,
                 ],
             ),
-        ));
+            ))
+            .id();
+        spawned.push(entity);
     }
+    spawned
 }
 
 pub fn spawn_root_map_tiles(
@@ -99,9 +111,25 @@ pub fn spawn_root_map_tiles(
     if !data_res.parsed {
         return;
     }
+    let mut new_tiles = Vec::new();
     for node_path in data_res.roots.iter() {
         let assets_and_handles = get_node_assets_and_handles(&data_res, &asset_server, node_path);
-        spawn_node_tiles(&mut commands, &assets_and_handles, node_path);
+        new_tiles.extend(spawn_node_tiles(
+            &mut commands,
+            &assets_and_handles,
+            node_path,
+            true,
+        ));
+    }
+    // Root tiles have nothing to replace, but still defer their reveal so the browser never shows
+    // the one-frame default-material flash on first appearance.
+    if !new_tiles.is_empty() {
+        commands.spawn(PendingTileReveal {
+            new_tiles,
+            drop_parent: None,
+            drop_descendants_of: Vec::new(),
+            countdown: TILE_REVEAL_DELAY_FRAMES,
+        });
     }
 }
 
@@ -140,18 +168,44 @@ pub struct TileSwapRequests {
     pub merge_requests: BTreeSet<MapTreeNodePath>,
 }
 
+/// Frames to keep a freshly-spawned tile hidden before revealing it and dropping the tile it
+/// replaces. During this window the tile's GLB scene instantiates and the material/texture fix-up
+/// systems run, so when it is finally shown it already has its matte material — no one-frame
+/// default-material flash (the bug was only visible on the single-threaded web build). Because the
+/// old tile stays alive until the new one is revealed, the swap is atomic: there is never a frame
+/// with neither the old nor the new tile present.
+const TILE_REVEAL_DELAY_FRAMES: u8 = 3;
+
+/// A batch of freshly-spawned (hidden) tiles waiting to be revealed, along with the tiles they
+/// replace (dropped atomically at reveal time). While any of these exist, `recompute_lod_mark_changes`
+/// is blocked so no new swap is started mid-transition.
+#[derive(Component)]
+pub struct PendingTileReveal {
+    /// Newly-spawned, currently-hidden tile entities to reveal.
+    new_tiles: Vec<Entity>,
+    /// Split case: the exact parent node path whose tiles are dropped on reveal.
+    drop_parent: Option<MapTreeNodePath>,
+    /// Merge case: descendant paths whose tiles are dropped on reveal.
+    drop_descendants_of: Vec<MapTreeNodePath>,
+    countdown: u8,
+}
+
 pub fn recompute_lod_mark_changes(
     data_res: Res<MapTree>,
     lod_state: Res<MapLODState>,
     q_merge: Query<&TileShouldMerge>,
     q_split: Query<&TileShouldSplit>,
+    q_pending: Query<&PendingTileReveal>,
     q_nodes: Query<(&TreeMapTile, Entity)>,
     mut last: Local<Option<(BTreeSet<MapTreeNodePath>, Vec<Vec3>, u32)>>,
     q_camera: Query<&Transform, With<Camera3d>>,
     mut res_tiles: ResMut<TileSwapRequests>,
 ) {
+    // Do not compute a new LOD swap while one is still in flight — including while freshly-spawned
+    // tiles are still hidden and waiting to be revealed (see `PendingTileReveal`).
     if !q_merge.is_empty()
         || !q_split.is_empty()
+        || !q_pending.is_empty()
         || !res_tiles.merge_requests.is_empty()
         || !res_tiles.split_requests.is_empty()
     {
@@ -446,17 +500,8 @@ pub fn do_split_requests(
     mut commands: Commands,
     q_split: Query<(&TileShouldSplit, Entity)>,
     asset_server: Res<AssetServer>,
-    q_nodes: Query<(&TreeMapTile, Entity), Without<TileShouldMerge>>,
 ) {
     let mut split_finished = vec![];
-
-    let mut entity_map: BTreeMap<MapTreeNodePath, Vec<Entity>> = BTreeMap::new();
-    for (tile, ent) in q_nodes.iter() {
-        entity_map
-            .entry(tile.node_path.clone())
-            .or_default()
-            .push(ent);
-    }
 
     let mut k = 0;
     for (split_req, _req_ent) in q_split.iter() {
@@ -500,25 +545,23 @@ pub fn do_split_requests(
         }
     }
     for split_req in split_finished {
-        if let Some(split_entities) = entity_map.get(&split_req.drop_parent) {
-            for entity in split_entities {
-                commands.entity(*entity).despawn();
-            }
-        } else {
-            tracing::warn!(
-                "Split: Did not find parent entity to despawn: {:?}",
-                split_req.drop_parent
-            );
-        }
-        // let xxx: Vec<_> = split_req
-        //     .load_children
-        //     .iter()
-        //     .map(|x| x.0.clone())
-        //     .collect();
-        // tracing::info!("XXX Split: {:?} -> {:?}", split_req.drop_parent, xxx);
+        // Spawn the children hidden and defer the reveal. The parent tile stays visible until the
+        // children are revealed (see `reveal_pending_tiles`), so the swap has no gap and no flash.
+        let mut new_tiles = Vec::new();
         for (child_path, child_assets) in split_req.load_children.iter() {
-            spawn_node_tiles(&mut commands, child_assets, child_path);
+            new_tiles.extend(spawn_node_tiles(
+                &mut commands,
+                child_assets,
+                child_path,
+                true,
+            ));
         }
+        commands.spawn(PendingTileReveal {
+            new_tiles,
+            drop_parent: Some(split_req.drop_parent.clone()),
+            drop_descendants_of: Vec::new(),
+            countdown: TILE_REVEAL_DELAY_FRAMES,
+        });
     }
 }
 
@@ -526,17 +569,8 @@ pub fn do_merge_requests(
     mut commands: Commands,
     q_merge: Query<(&TileShouldMerge, Entity)>,
     asset_server: Res<AssetServer>,
-    q_nodes: Query<(&TreeMapTile, Entity), Without<TileShouldMerge>>,
 ) {
     let mut merge_finished = vec![];
-
-    let mut entity_map: BTreeMap<MapTreeNodePath, Vec<Entity>> = BTreeMap::new();
-    for (tile, ent) in q_nodes.iter() {
-        entity_map
-            .entry(tile.node_path.clone())
-            .or_default()
-            .push(ent);
-    }
 
     let mut k = 0;
     for (merge_req, req_ent) in q_merge.iter() {
@@ -571,44 +605,62 @@ pub fn do_merge_requests(
             );
         }
     }
-    let mut drop_children_1 = BTreeSet::new();
     for merge_req in merge_finished {
-        for child_path in merge_req.drop_children.iter() {
-            drop_children_1.insert(child_path);
-
-            // let descendant_paths = q_nodes.iter().map(|x| x.0.clone());
-            // if let Some(child_entities) = entity_map.get(child_path) {
-            //     for entity in child_entities {
-            //         commands.entity(*entity).despawn();
-            //     }
-            // } else {
-            //     tracing::warn!(
-            //         "Merge: Did not find child entity to despawn: {:?}",
-            //         child_path
-            //     );
-            // }
-        }
-        // tracing::info!(
-        //     "XXX Merge: {:?} -> {:?}",
-        //     merge_req.drop_children,
-        //     merge_req.load_parent.0
-        // );
-        spawn_node_tiles(
+        // Spawn the merged parent hidden and defer the reveal. The child tiles stay visible until
+        // the parent is revealed (see `reveal_pending_tiles`), so the swap has no gap and no flash.
+        let new_tiles = spawn_node_tiles(
             &mut commands,
             &merge_req.load_parent.1,
             &merge_req.load_parent.0,
+            true,
         );
+        commands.spawn(PendingTileReveal {
+            new_tiles,
+            drop_parent: None,
+            drop_descendants_of: merge_req.drop_children.iter().cloned().collect(),
+            countdown: TILE_REVEAL_DELAY_FRAMES,
+        });
     }
-    let mut drop_children2 = BTreeSet::new();
-    for drop in drop_children_1 {
-        for (node, node_ent) in q_nodes.iter() {
-            if node.node_path.0.starts_with(&drop.0) {
-                drop_children2.insert(node_ent);
+}
+
+/// Reveals hidden freshly-spawned tiles once their delay elapses, dropping the tiles they replace
+/// in the same step so the swap is atomic (no gap, and the new tile's material is already fixed).
+pub fn reveal_pending_tiles(
+    mut commands: Commands,
+    mut q_pending: Query<(Entity, &mut PendingTileReveal)>,
+    mut q_vis: Query<&mut Visibility>,
+    q_nodes: Query<(&TreeMapTile, Entity)>,
+) {
+    for (pending_ent, mut pending) in q_pending.iter_mut() {
+        if pending.countdown > 0 {
+            pending.countdown -= 1;
+            continue;
+        }
+
+        // Reveal the new tiles.
+        for tile_ent in &pending.new_tiles {
+            if let Ok(mut vis) = q_vis.get_mut(*tile_ent) {
+                *vis = Visibility::Visible;
             }
         }
-    }
-    for drop in drop_children2 {
-        commands.entity(drop).despawn();
+
+        // Drop the tiles being replaced, atomically with the reveal.
+        if let Some(parent) = &pending.drop_parent {
+            for (tile, ent) in q_nodes.iter() {
+                if &tile.node_path == parent {
+                    commands.entity(ent).despawn();
+                }
+            }
+        }
+        for drop in &pending.drop_descendants_of {
+            for (tile, ent) in q_nodes.iter() {
+                if tile.node_path.0.starts_with(&drop.0) {
+                    commands.entity(ent).despawn();
+                }
+            }
+        }
+
+        commands.entity(pending_ent).despawn();
     }
 }
 

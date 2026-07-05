@@ -15,6 +15,8 @@ use crate::plugins::{
 #[derive(Resource, Default)]
 pub struct ControlledCharacter {
     pub controller: Option<Entity>,
+    /// Intermediate node (child of controller, parent of the model) that applies the mesh scale.
+    pub scale_node: Option<Entity>,
     pub ped: Option<Entity>,
     /// True after spawning a controller while we wait for the pedestrian model to appear.
     pub awaiting: bool,

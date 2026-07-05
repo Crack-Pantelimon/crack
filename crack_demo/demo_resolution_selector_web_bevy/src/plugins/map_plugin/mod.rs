@@ -9,7 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::plugins::map_plugin::map_lod::{
     TileSwapRequests, check_map_loaded_status, do_merge_requests, do_split_requests,
-    recompute_lod_mark_changes, spawn_root_map_tiles, start_tile_swap_requests,
+    recompute_lod_mark_changes, reveal_pending_tiles, spawn_root_map_tiles,
+    start_tile_swap_requests,
 };
 use crate::plugins::map_plugin::map_metadata_parquet::{
     ParquetAsset, ParquetAssetLoader, check_and_parse_parquet, init_parquet_handles,
@@ -40,6 +41,7 @@ impl Plugin for MapPlugin {
                     draw_reference_points_gizmos,
                     spawn_root_map_tiles,
                     recompute_lod_mark_changes,
+                    reveal_pending_tiles,
                     check_map_loaded_status,
                 ),
             )
