@@ -1,5 +1,5 @@
 use crate::plugins::cars_driving::{
-    driving_plugin::spawn_car::Car,
+    driving_plugin::spawn_car::{ActivePlayerVehicle, Car},
     driving_plugin::{CarDriveState, Drive, SimState},
 };
 use avian3d::prelude::{AngularVelocity, LinearVelocity};
@@ -16,7 +16,7 @@ pub fn keybinds_control_car(
             &mut CarDriveState,
             &Car,
         ),
-        With<Car>,
+        With<ActivePlayerVehicle>,
     >,
     mut commands: Commands,
     mut next_state: ResMut<NextState<crate::plugins::states::GameControlState>>,
@@ -29,12 +29,12 @@ pub fn keybinds_control_car(
         }
     }
 
-    // If escape or F is pressed, exit car
-    if keyboard.just_pressed(KeyCode::Escape) || keyboard.just_pressed(KeyCode::KeyF) {
-        next_state.set(crate::plugins::states::GameControlState::MapFreecam);
+    // If Escape is pressed, drop car control and enter freecam mode (keep car alive in world)
+    if keyboard.just_pressed(KeyCode::Escape) {
         if let Ok((car_entity, _, _, _, _, _car)) = q_car.single_mut() {
-            commands.entity(car_entity).despawn();
+            commands.entity(car_entity).remove::<ActivePlayerVehicle>();
         }
+        next_state.set(crate::plugins::states::GameControlState::MapFreecam);
         return;
     }
 

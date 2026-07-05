@@ -40,6 +40,8 @@ pub struct SpawnControlledPedestrianEvent {
     pub url: Option<PedestrianUrl>,
     /// Mesh scale, clamped to `[SCALE_MIN, SCALE_MAX]`. `None` picks a random scale in that range.
     pub scale: Option<f32>,
+    pub is_exiting_car: bool,
+    pub rotation: Option<Quat>,
 }
 
 pub fn spawn_controlled_pedestrian_observer(
@@ -78,7 +80,7 @@ pub fn spawn_controlled_pedestrian_observer(
         event.position.z,
     );
 
-    let controller = commands
+    let mut controller = commands
         .spawn((
             Name::new("PedestrianController"),
             CharacterController,
@@ -102,10 +104,15 @@ pub fn spawn_controlled_pedestrian_observer(
                     GamePhysicsLayer::Wheel,
                 ],
             ),
-            Transform::from_translation(controller_pos),
+            Transform::from_translation(controller_pos).with_rotation(event.rotation.unwrap_or(Quat::IDENTITY)),
             Visibility::default(),
-        ))
-        .id();
+        ));
+
+    if event.is_exiting_car {
+        controller.insert(crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::ExitingCarTimer(Timer::from_seconds(1.2, TimerMode::Once)));
+    }
+
+    let controller = controller.id();
 
     // Intermediate scale node: child of controller, parent of the model. Scaling here keeps the
     // model's feet at the capsule bottom and does not affect the animation playback.

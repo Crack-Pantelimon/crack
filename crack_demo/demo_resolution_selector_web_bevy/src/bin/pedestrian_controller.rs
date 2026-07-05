@@ -265,9 +265,11 @@ fn demo_auto_spawn(
         return;
     }
     commands.trigger(SpawnControlledPedestrianEvent {
-        position: Vec3::ZERO,
+        position: Vec3::new(0.0, 5.0, 0.0),
         url: None,
         scale: None,
+        is_exiting_car: false,
+        rotation: None,
     });
     *done = true;
 }

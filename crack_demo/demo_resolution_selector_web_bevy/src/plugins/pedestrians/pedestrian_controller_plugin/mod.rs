@@ -39,7 +39,10 @@ use controller::{
     character_input, detect_fallen_off_map, face_movement, jump_or_climb, move_and_slide, movement,
     respawn_if_fallen, update_climb, update_grounded, update_roll,
 };
-use interaction_ui::{handle_freecam_right_click, spawn_choice_popup_ui};
+use interaction_ui::{
+    detect_car_interaction, handle_exit_car, handle_freecam_right_click,
+    spawn_choice_popup_ui, tick_entering_car, tick_exiting_car,
+};
 use spawn::{
     SpawnChoicePopup, adopt_pedestrian, escape_to_freecam, spawn_controlled_pedestrian_observer,
 };
@@ -340,8 +343,15 @@ impl Plugin for PedestrianControllerPlugin {
                     follow_camera,
                     drive_character_animation,
                     escape_to_freecam,
+                    detect_car_interaction,
+                    tick_entering_car,
+                    tick_exiting_car,
                 )
                     .run_if(in_state(GameControlState::ControllingPedestrian)),
+            )
+            .add_systems(
+                Update,
+                handle_exit_car.run_if(in_state(GameControlState::DrivingCar)),
             );
     }
 }

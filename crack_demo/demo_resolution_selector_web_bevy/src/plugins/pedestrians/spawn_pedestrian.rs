@@ -1,8 +1,7 @@
 //! The pedestrian spawn path: turn a [`SpawnPedestrianEvent`] into a live, aligned,
 //! classified pedestrian entity.
 
-use avian3d::collision::collider::{ColliderConstructor, ColliderConstructorHierarchy};
-use avian3d::prelude::Collider;
+
 use bevy::ecs::relationship::Relationship;
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};

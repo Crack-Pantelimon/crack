@@ -2,11 +2,11 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
 use crate::plugins::cars_driving::driving_plugin::CarDriveState;
-use crate::plugins::cars_driving::driving_plugin::spawn_car::Car;
+use crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle;
 
 pub fn speedometer_ui(
     mut contexts: EguiContexts,
-    mut q_car: Query<(&avian3d::prelude::LinearVelocity, &mut CarDriveState), With<Car>>,
+    mut q_car: Query<(&avian3d::prelude::LinearVelocity, &mut CarDriveState), With<ActivePlayerVehicle>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -43,210 +43,59 @@ pub fn speedometer_ui(
                         });
                         ui.allocate_space(egui::Vec2::new(1.0, 5.0));
 
-                        // Tuning Sliders
+                        // Tuning Sliders: Exactly 2 Sliders
                         ui.group(|ui| {
                             ui.label(
-                                egui::RichText::new("VEHICLE TUNING PARAMETERS")
+                                egui::RichText::new("SUSPENSION TUNING")
                                     .color(egui::Color32::WHITE)
                                     .size(10.0)
                                     .strong(),
                             );
 
-                            ui.collapsing(
-                                egui::RichText::new("Dimensions")
-                                    .size(9.0)
-                                    .color(egui::Color32::LIGHT_GRAY),
-                                |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Width:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.car_half_width,
-                                                0.3..=2.7,
-                                            )
-                                            .text("2x m")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Length:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.car_half_length,
-                                                0.73..=6.6,
-                                            )
-                                            .text("2x m")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Height:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.car_half_height,
-                                                0.2..=1.8,
-                                            )
-                                            .text("2x m")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Wheel R:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.wheel_radius,
-                                                0.15..=1.35,
-                                            )
-                                            .text("m")
-                                            .step_by(0.02),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Wheel W:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.wheel_width,
-                                                0.116..=1.05,
-                                            )
-                                            .text("m")
-                                            .step_by(0.02),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Wheel Y Off:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.wheel_y_offset,
-                                                -1.0..=2.0,
-                                            )
-                                            .text("m")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                },
-                            );
-
-                            ui.collapsing(
-                                egui::RichText::new("Masses")
-                                    .size(9.0)
-                                    .color(egui::Color32::LIGHT_GRAY),
-                                |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Car:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.car_mass,
-                                                400.0..=3600.0,
-                                            )
-                                            .text("kg")
-                                            .step_by(50.0),
-                                        );
-                                    });
-                                },
-                            );
-
-                            ui.collapsing(
-                                egui::RichText::new("Suspension")
-                                    .size(9.0)
-                                    .color(egui::Color32::LIGHT_GRAY),
-                                |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Min:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_min,
-                                                0.033..=0.3,
-                                            )
-                                            .text("m")
-                                            .step_by(0.01),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Rest:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_rest,
-                                                0.133..=1.2,
-                                            )
-                                            .text("m")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Extra Len:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.extra_spring_length,
-                                                0.2..=2.0,
-                                            )
-                                            .text("m")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Stiffness:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_stiffness,
-                                                4.0..=36.0,
-                                            )
-                                            .text("Hz")
-                                            .step_by(0.5),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Damping:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.suspension_damping,
-                                                0.266..=2.4,
-                                            )
-                                            .text("ratio")
-                                            .step_by(0.05),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "Avg Height: {:.2} m",
-                                                drive_state.avg_suspension_height
-                                            ))
-                                            .size(9.0)
-                                            .color(egui::Color32::LIGHT_GREEN),
-                                        );
-                                    });
-                                },
-                            );
-
-                            ui.collapsing(
-                                egui::RichText::new("Limits")
-                                    .size(9.0)
-                                    .color(egui::Color32::LIGHT_GRAY),
-                                |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Max Speed:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.car_max_speed,
-                                                40.0..=300.0,
-                                            )
-                                            .text("km/h")
-                                            .step_by(5.0),
-                                        );
-                                    });
-                                    ui.horizontal(|ui| {
-                                        ui.label(egui::RichText::new("Horsepower:").size(9.0));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut drive_state.horsepower,
-                                                50.0..=1000.0,
-                                            )
-                                            .text("HP")
-                                            .step_by(10.0),
-                                        );
-                                    });
-                                },
-                            );
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Max Ray Length:").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut drive_state.max_ray_length,
+                                        0.60..=1.80,
+                                    )
+                                    .text("m")
+                                    .step_by(0.02),
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Rest Length (%):").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut drive_state.rest_length_pct,
+                                        10.0..=90.0,
+                                    )
+                                    .text("%")
+                                    .step_by(1.0),
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Max Speed:").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut drive_state.car_max_speed,
+                                        40.0..=300.0,
+                                    )
+                                    .text("km/h")
+                                    .step_by(5.0),
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Horsepower:").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut drive_state.horsepower,
+                                        50.0..=1000.0,
+                                    )
+                                    .text("HP")
+                                    .step_by(10.0),
+                                );
+                            });
                         });
 
                         ui.allocate_space(egui::Vec2::new(1.0, 5.0));
@@ -272,6 +121,11 @@ pub fn speedometer_ui(
                                         .color(egui::Color32::from_rgb(0, 220, 255))
                                         .size(36.0)
                                         .strong(),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(format!("{:.0} RPM", drive_state.engine_rpm))
+                                            .color(egui::Color32::LIGHT_GRAY)
+                                            .size(18.0)
                                     );
                                 });
                                 ui.label(

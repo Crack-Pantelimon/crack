@@ -1,12 +1,12 @@
-use crate::plugins::cars_driving::driving_plugin::spawn_car::Car;
+use crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle;
 use avian3d::prelude::LinearVelocity;
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
 pub fn camera_follows_car(
     time: Res<Time>,
-    mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<Car>)>,
-    car_query: Query<(&Transform, &LinearVelocity), (With<Car>, Without<Camera3d>)>,
+    mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<ActivePlayerVehicle>)>,
+    car_query: Query<(&Transform, &LinearVelocity), (With<ActivePlayerVehicle>, Without<Camera3d>)>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<bevy::input::mouse::MouseMotion>,
     mut contexts: EguiContexts,

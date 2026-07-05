@@ -75,6 +75,8 @@ pub fn spawn_choice_popup_ui(
                         position: popup.world_pos,
                         url: None,
                         scale: None,
+                        is_exiting_car: false,
+                        rotation: None,
                     });
                     close = true;
                 }
@@ -96,3 +98,137 @@ pub fn spawn_choice_popup_ui(
         popup.active = false;
     }
 }
+
+use crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle;
+
+#[derive(Component)]
+pub struct EnteringCarTimer {
+    pub car_entity: Entity,
+    pub timer: Timer,
+}
+
+#[derive(Component)]
+pub struct ExitingCarTimer(pub Timer);
+
+pub fn detect_car_interaction(
+    keys: Res<ButtonInput<KeyCode>>,
+    q_player: Query<(Entity, &GlobalTransform), (With<crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterController>, Without<EnteringCarTimer>)>,
+    q_cars: Query<(Entity, &GlobalTransform), With<crate::plugins::cars_driving::driving_plugin::spawn_car::Car>>,
+    mut commands: Commands,
+) {
+    if keys.just_pressed(KeyCode::KeyF) {
+        if let Some((ped_entity, ped_tf)) = q_player.iter().next() {
+            let mut closest_car = None;
+            let mut min_dist = 3.0;
+            
+            for (car_entity, car_tf) in q_cars.iter() {
+                let dist = ped_tf.translation().distance(car_tf.translation());
+                if dist < min_dist {
+                    min_dist = dist;
+                    closest_car = Some(car_entity);
+                }
+            }
+            
+            if let Some(car) = closest_car {
+                // Instead of immediately entering, add a timer for the animation
+                commands.entity(ped_entity).insert(EnteringCarTimer {
+                    car_entity: car,
+                    timer: Timer::from_seconds(1.2, TimerMode::Once),
+                });
+            }
+        }
+    }
+}
+
+pub fn tick_entering_car(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut q_player: Query<(Entity, &mut EnteringCarTimer, &mut Transform)>,
+    q_cars: Query<&GlobalTransform, With<crate::plugins::cars_driving::driving_plugin::spawn_car::Car>>,
+    mut next_state: ResMut<NextState<crate::plugins::states::GameControlState>>,
+) {
+    for (entity, mut entering, mut ped_transform) in q_player.iter_mut() {
+        // Interpolate position to the car door
+        if let Ok(car_gt) = q_cars.get(entering.car_entity) {
+            let car_tf = car_gt.compute_transform();
+            
+            // Assume door is to the left (negative X in local space) and seat is in the middle
+            let door_pos = car_tf.translation + car_tf.rotation * Vec3::new(-1.2, 0.0, 0.0);
+            let seat_pos = car_tf.translation + car_tf.rotation * Vec3::new(-0.4, 0.2, 0.0);
+            
+            let progress = entering.timer.fraction();
+            let target_pos = if progress < 0.5 {
+                door_pos
+            } else {
+                seat_pos
+            };
+            
+            ped_transform.translation = ped_transform.translation.lerp(target_pos, time.delta_secs() * 5.0);
+            
+            // Face the driver orientation (rotated 180 deg around Y relative to car)
+            let target_rot = car_tf.rotation * Quat::from_rotation_y(std::f32::consts::PI);
+            ped_transform.rotation = ped_transform.rotation.slerp(target_rot, time.delta_secs() * 5.0);
+        }
+
+        entering.timer.tick(time.delta());
+        if entering.timer.just_finished() {
+            // Only now despawn the pedestrian and transfer control
+            if let Ok(mut entity_cmds) = commands.get_entity(entity) {
+                entity_cmds.despawn();
+            }
+            if let Ok(mut car_cmds) = commands.get_entity(entering.car_entity) {
+                car_cmds.insert(ActivePlayerVehicle);
+            }
+            next_state.set(crate::plugins::states::GameControlState::DrivingCar);
+        }
+    }
+}
+
+pub fn tick_exiting_car(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut q_player: Query<(Entity, &mut ExitingCarTimer)>,
+    controlled: Res<crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter>,
+) {
+    // Wait until the pedestrian model is fully loaded before ticking the timer,
+    // otherwise the animation won't be seen.
+    if controlled.awaiting {
+        return;
+    }
+    for (entity, mut exiting) in q_player.iter_mut() {
+        exiting.0.tick(time.delta());
+        if exiting.0.just_finished() {
+            if let Ok(mut entity_cmds) = commands.get_entity(entity) {
+                entity_cmds.remove::<ExitingCarTimer>();
+            }
+        }
+    }
+}
+
+pub fn handle_exit_car(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    q_active_car: Query<(Entity, &GlobalTransform), With<ActivePlayerVehicle>>,
+    mut next_state: ResMut<NextState<crate::plugins::states::GameControlState>>,
+) {
+    if keys.just_pressed(KeyCode::KeyF) {
+        if let Some((car_entity, car_tf)) = q_active_car.iter().next() {
+            commands.entity(car_entity).remove::<ActivePlayerVehicle>();
+            
+            let (_, car_rot, car_trans) = car_tf.to_scale_rotation_translation();
+            let right_dir = car_rot * Vec3::X;
+            let exit_pos = car_trans + right_dir * 2.0 + Vec3::Y * 0.5;
+            
+            commands.trigger(SpawnControlledPedestrianEvent {
+                position: exit_pos,
+                url: None,
+                scale: None,
+                is_exiting_car: true,
+                rotation: Some(car_rot * Quat::from_rotation_y(std::f32::consts::PI)),
+            });
+            
+            next_state.set(crate::plugins::states::GameControlState::ControllingPedestrian);
+        }
+    }
+}
+

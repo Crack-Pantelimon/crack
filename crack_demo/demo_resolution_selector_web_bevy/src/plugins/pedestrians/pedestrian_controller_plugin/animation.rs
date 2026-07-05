@@ -13,6 +13,7 @@ use bevy_egui::EguiContexts;
 
 use super::*;
 use crate::plugins::pedestrians::PedestrianAnimations;
+use crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::{EnteringCarTimer, ExitingCarTimer};
 use crate::plugins::weapons::{EquippedWeapon, FireGunEvent, GunState, ReloadGunEvent};
 use spawn::ControlledCharacter;
 
@@ -70,6 +71,8 @@ pub fn drive_character_animation(
             Option<&GunState>,
             &mut AnimState,
             &mut CombatState,
+            Option<&EnteringCarTimer>,
+            Option<&ExitingCarTimer>,
         ),
         With<CharacterController>,
     >,
@@ -96,6 +99,8 @@ pub fn drive_character_animation(
         gun_state,
         mut anim,
         mut combat,
+        entering,
+        exiting,
     )) = controllers.get_mut(controller)
     else {
         return;
@@ -179,7 +184,11 @@ pub fn drive_character_animation(
 
     let speed = Vec2::new(velocity.x as f32, velocity.z as f32).length();
     let moving = speed > MOVE_ANIM_THRESHOLD;
-    let base_candidates: &[&str] = if climbing || rolling {
+    let base_candidates: &[&str] = if entering.is_some() {
+        &["Sitting_Enter"]
+    } else if exiting.is_some() {
+        &["Sitting_Exit"]
+    } else if climbing || rolling {
         // No dedicated climb clip exists in the catalog; play the "Roll" clip for climbs & rolls.
         &["Roll", "Jump_Loop"]
     } else {
