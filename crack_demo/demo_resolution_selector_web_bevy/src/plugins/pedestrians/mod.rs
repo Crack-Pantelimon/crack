@@ -14,12 +14,15 @@
 pub mod animation;
 pub mod draw_skel_debug;
 pub mod manifest;
+pub mod pedestrian_controller_plugin;
 pub mod skeleton;
 pub mod spawn_pedestrian;
 
 use bevy::prelude::*;
 
-pub use animation::{AnimationInfo, PedestrianAnimationControlEvent, PedestrianAnimations};
+pub use animation::{
+    AnimationInfo, ManualAnimation, PedestrianAnimationControlEvent, PedestrianAnimations,
+};
 pub use draw_skel_debug::SkeletonDebug;
 pub use manifest::{PedestrianManifest, PedestrianUrl};
 pub use spawn_pedestrian::{ModelRoot, SpawnPedestrianEvent};

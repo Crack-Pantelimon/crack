@@ -47,6 +47,12 @@ pub struct PedestrianAnimationControlEvent {
     pub speed: f32,
 }
 
+/// Opt-out marker: put this on a pedestrian [`ModelRoot`] whose animations are driven manually by
+/// another system (e.g. the character controller's multi-clip blender). [`play_animations_system`]
+/// skips these pedestrians so it does not fight the manual driver.
+#[derive(Component)]
+pub struct ManualAnimation;
+
 /// Desired animation for a pedestrian, written by the control observer, read by
 /// [`play_animations_system`].
 #[derive(Component, Clone)]
@@ -98,7 +104,10 @@ pub fn play_animations_system(
     mut commands: Commands,
     anims: Res<PedestrianAnimations>,
     gltf_assets: Res<Assets<bevy::gltf::Gltf>>,
-    model_roots: Query<(&PedestrianGltf, Option<&TargetAnimation>), With<ModelRoot>>,
+    model_roots: Query<
+        (&PedestrianGltf, Option<&TargetAnimation>),
+        (With<ModelRoot>, Without<ManualAnimation>),
+    >,
     mut players: Query<(
         Entity,
         &mut AnimationPlayer,
