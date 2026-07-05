@@ -1,0 +1,40 @@
+//! Weapons: parse a manifest of gun/melee models and attach the chosen one to a character's right
+//! wrist. Combat animations elsewhere read [`EquippedWeapon`] to pick punch / sword / pistol clips.
+//!
+//! Requires [`crate::plugins::pedestrians::PedestriansPlugin`] (it reuses that plugin's `TextAsset`
+//! loader for the manifest and its skeleton classification to find the right-wrist bone).
+
+pub mod weapon_attach;
+pub mod weapon_manifest;
+
+use bevy::prelude::*;
+
+pub use weapon_attach::{
+    EquipWeaponEvent, EquippedWeapon, WeaponExtents, WeaponGripOffset, WeaponModel,
+};
+pub use weapon_manifest::{WeaponId, WeaponManifest};
+
+use weapon_attach::{
+    apply_grip_offset, equip_weapon_observer, finalize_weapon_extents, reconcile_weapon_model,
+};
+use weapon_manifest::{load_weapon_manifest_system, start_weapon_manifest_load};
+
+pub struct WeaponsPlugin;
+
+impl Plugin for WeaponsPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<WeaponManifest>()
+            .init_resource::<WeaponGripOffset>()
+            .add_observer(equip_weapon_observer)
+            .add_systems(Startup, start_weapon_manifest_load)
+            .add_systems(
+                Update,
+                (
+                    load_weapon_manifest_system,
+                    reconcile_weapon_model,
+                    finalize_weapon_extents,
+                    apply_grip_offset,
+                ),
+            );
+    }
+}

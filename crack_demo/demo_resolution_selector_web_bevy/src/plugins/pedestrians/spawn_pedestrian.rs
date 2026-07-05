@@ -214,10 +214,12 @@ pub fn init_pedestrians_system(
             });
         }
 
-        let (classification, _, _, _, _, _, _) = classify_skeleton(root_entity, &joints);
+        let (classification, _, _, _, _, _, right_wrist) =
+            classify_skeleton(root_entity, &joints);
 
         commands.entity(root_entity).insert(PedestrianSkeleton {
             joint_labels: classification,
+            right_hand: right_wrist,
         });
 
         commands.entity(root_entity).remove::<NeedAlignment>();

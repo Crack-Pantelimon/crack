@@ -1,0 +1,11 @@
+- pedestrian plugin
+  - when double jumping into wall on main map, we cross through and fall into hell. implement all the following:
+    - detect when we've fallen off map (get min point by shooting physics ray from y=min_map_height-1.0 upwards for a length of max_map_height+1-min_map_height-1) and get the y for that hit point (colliding only ground) and if we are lower in y than that position then the chip should go over 
+    - detect when the climb animation would take us off map (shoot some extra short rays parallel to the ground), along the path that we would climb through, and check there is no ground there.
+
+  - when climbing, the animation is too long, make it 2x faster
+
+- weapons plugin
+  - gun: manually edit the gun manifest file under _data to be a csv that has path,is_gun,clip_size,bullet_type,damage,range and add some values in there. the rows for non-guns (melee) will be with 0 in all columns. then edit the weapons such that we store that information for the guns enum variant. Then we use that to implement hitscan based shooting into cars, pedestrians, or the map. Shooting will leave a gizmo with the bullet path for 5s. Add a crosshair in the middle of the screen which will be shot at. The crosshair is a dot with a circle around it - make them white with alpha 70%. 
+  - gun: implement bullet count ui and reload functionality
+  - implement reloading when we have a gun and we hit r

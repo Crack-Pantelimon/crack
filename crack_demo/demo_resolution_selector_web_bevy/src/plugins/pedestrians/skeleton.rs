@@ -26,6 +26,8 @@ pub enum BoneLabel {
 #[derive(Component)]
 pub struct PedestrianSkeleton {
     pub joint_labels: std::collections::HashMap<Entity, BoneLabel>,
+    /// The right-wrist bone entity (a good attach point for a held weapon), if found.
+    pub right_hand: Option<Entity>,
 }
 
 pub struct JointData {

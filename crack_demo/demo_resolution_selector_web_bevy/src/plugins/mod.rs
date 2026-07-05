@@ -6,3 +6,4 @@ pub mod map_plugin;
 pub mod pedestrians;
 pub mod physics_plugin;
 pub mod states;
+pub mod weapons;

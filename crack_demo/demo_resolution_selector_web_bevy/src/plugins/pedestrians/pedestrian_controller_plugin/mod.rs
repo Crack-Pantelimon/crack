@@ -30,7 +30,7 @@ use bevy_egui::EguiPrimaryContextPass;
 
 use crate::plugins::states::GameControlState;
 
-pub use spawn::SpawnControlledPedestrianEvent;
+pub use spawn::{ControlledCharacter, SpawnControlledPedestrianEvent};
 
 use animation::{drive_character_animation, print_animation_catalog};
 use camera::{follow_camera, orbit_camera_input};
@@ -41,8 +41,7 @@ use controller::{
 };
 use interaction_ui::{handle_freecam_right_click, spawn_choice_popup_ui};
 use spawn::{
-    ControlledCharacter, SpawnChoicePopup, adopt_pedestrian, escape_to_freecam,
-    spawn_controlled_pedestrian_observer,
+    SpawnChoicePopup, adopt_pedestrian, escape_to_freecam, spawn_controlled_pedestrian_observer,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -261,12 +260,10 @@ pub struct CombatState {
 pub enum CombatKind {
     #[default]
     None,
-    /// One-shot punch; reverts to `None` when finished.
-    Jab,
-    /// Looping aim pose held while RMB is down.
+    /// A one-shot attack (punch / sword swing / gun shot); reverts when finished.
+    OneShot,
+    /// Looping aim pose held while RMB is down (guns only).
     Aim,
-    /// One-shot shot; reverts to `Aim` (if RMB still held) when finished.
-    Shoot,
 }
 
 // ---------------------------------------------------------------------------------------------

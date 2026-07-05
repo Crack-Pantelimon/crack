@@ -13,6 +13,7 @@ use bevy_egui::EguiContexts;
 
 use super::*;
 use crate::plugins::pedestrians::PedestrianAnimations;
+use crate::plugins::weapons::EquippedWeapon;
 use spawn::ControlledCharacter;
 
 /// Base weight while a combat overlay is active, so the overlay reads on top of locomotion.
@@ -62,6 +63,7 @@ pub fn drive_character_animation(
             &MovementModifiers,
             &CharacterScale,
             Has<Climbing>,
+            Option<&EquippedWeapon>,
             &mut AnimState,
             &mut CombatState,
         ),
@@ -79,13 +81,18 @@ pub fn drive_character_animation(
     let Some(controller) = controlled.controller else {
         return;
     };
-    let Ok((velocity, grounded, modifiers, char_scale, climbing, mut anim, mut combat)) =
+    let Ok((velocity, grounded, modifiers, char_scale, climbing, equipped, mut anim, mut combat)) =
         controllers.get_mut(controller)
     else {
         return;
     };
     // Shorter characters animate faster (inverse of mesh scale).
     let anim_speed = 1.0 / char_scale.0;
+
+    // Which weapon class is equipped (None component == Unarmed).
+    let weapon = equipped.map(|e| &e.0);
+    let is_gun = weapon.is_some_and(|w| w.is_gun());
+    let is_melee = weapon.is_some_and(|w| w.is_melee());
 
     // Do not fire combat when interacting with egui.
     let over_ui = contexts
@@ -175,6 +182,9 @@ pub fn drive_character_animation(
                     } else {
                         &["Sprint_Loop", "Sprint_Fwd_Loop"]
                     }
+                } else if is_melee {
+                    // A melee weapon replaces the neutral idle with the sword idle.
+                    &["Sword_Idle", "Idle_Loop"]
                 } else {
                     &["Idle_Loop", "A_TPose"]
                 }
@@ -195,39 +205,42 @@ pub fn drive_character_animation(
         }
     }
 
-    // --- Combat overlay state machine ----------------------------------------------------------
-    let current_finished = match combat.kind {
-        CombatKind::Jab | CombatKind::Shoot => combat.node.map_or(true, |n| {
-            player.animation(n).map_or(true, |a| a.is_finished())
-        }),
-        _ => true,
-    };
+    // --- Combat overlay state machine (weapon-aware) -------------------------------------------
+    // A one-shot attack keeps playing until it finishes; an aim loop holds while RMB is down.
+    let one_shot_finished = combat.kind == CombatKind::OneShot
+        && combat
+            .node
+            .map_or(true, |n| player.animation(n).map_or(true, |a| a.is_finished()));
 
-    let want = if rmb {
-        if lmb {
-            CombatKind::Shoot
-        } else if combat.kind == CombatKind::Shoot && !current_finished {
-            CombatKind::Shoot
-        } else {
-            CombatKind::Aim
-        }
-    } else if lmb {
-        CombatKind::Jab
-    } else if combat.kind == CombatKind::Jab && !current_finished {
-        CombatKind::Jab
+    // LMB attack clip depends on the equipped weapon class.
+    let attack_node = if is_gun {
+        node_for(&anims, &["Pistol_Shoot"])
+    } else if is_melee {
+        node_for(&anims, &["Sword_Attack"])
+    } else if rand::random::<bool>() {
+        node_for(&anims, &["Punch_Jab", "Punch_Cross"])
     } else {
-        CombatKind::None
+        node_for(&anims, &["Punch_Cross", "Punch_Jab"])
     };
 
-    let want_node = match want {
-        CombatKind::None => None,
-        CombatKind::Jab => node_for(&anims, &["Punch_Jab", "Punch_Cross"]),
-        CombatKind::Aim => node_for(&anims, &["Pistol_Idle_Loop", "Pistol_Aim_Neutral"]),
-        CombatKind::Shoot => node_for(&anims, &["Pistol_Shoot"]),
+    let (want_kind, want_node) = if lmb {
+        (CombatKind::OneShot, attack_node)
+    } else if combat.kind == CombatKind::OneShot && !one_shot_finished {
+        // Keep the in-progress one-shot playing.
+        (CombatKind::OneShot, combat.node)
+    } else if is_gun && rmb {
+        // Guns aim while RMB is held.
+        (
+            CombatKind::Aim,
+            node_for(&anims, &["Pistol_Idle_Loop", "Pistol_Aim_Neutral"]),
+        )
+    } else {
+        (CombatKind::None, None)
     };
 
-    let changed = want != combat.kind || want_node != combat.node;
-    let restart = lmb && matches!(want, CombatKind::Jab | CombatKind::Shoot);
+    let changed = want_kind != combat.kind || want_node != combat.node;
+    // A fresh LMB press always (re)starts the one-shot from the beginning.
+    let restart = lmb && want_kind == CombatKind::OneShot;
     if changed || restart {
         if let Some(old) = combat.node {
             if Some(old) != want_node {
@@ -237,18 +250,18 @@ pub fn drive_character_animation(
         if let Some(n) = want_node {
             let active = player.play(n);
             active.set_weight(1.0);
-            match want {
+            match want_kind {
                 CombatKind::Aim => {
                     active.repeat();
                 }
-                CombatKind::Jab | CombatKind::Shoot => {
+                CombatKind::OneShot => {
                     // One-shot: (re)start from the beginning, no repeat.
                     active.seek_to(0.0);
                 }
                 CombatKind::None => {}
             }
         }
-        combat.kind = want;
+        combat.kind = want_kind;
         combat.node = want_node;
     }
 
