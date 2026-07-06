@@ -52,6 +52,8 @@ pub enum AudioFxEventType {
     GearShiftWhoosh,
     FootstepLoop,                   // looped, attached
     EngineLoop { sound_idx: usize },// looped, attached; index into ENGINE_IDLE_SOUNDS
+    Climb,
+    DeathThud,                      // played when a pedestrian dies
 }
 
 #[derive(Event, Clone, Copy, Debug)]
@@ -134,13 +136,19 @@ pub fn audio_fx_observer(
             let idx = sound_idx % ENGINE_IDLE_SOUNDS.len();
             (ENGINE_IDLE_SOUNDS[idx], 1.0, 1.0, true)
         }
+        AudioFxEventType::Climb => {
+            ("weapons/melee/sword_whoosh.mp3", 0.8, 0.7, false)
+        }
+        AudioFxEventType::DeathThud => {
+            ("misc-sounds/deep-thud.mp3", 1.0, 1.0, false)
+        }
     };
 
     if let Some(entry) = manifest.get(path) {
         commands.trigger(PlaySoundEvent {
             handle: entry.handle.clone(),
             position: ev.position,
-            volume,
+            volume: volume * entry.volume,
             speed,
             attenuation: entry.attenuation,
             follow: ev.follow,
@@ -187,6 +195,7 @@ pub fn manage_car_engine_sound_pitch_volume(
     query: Query<(&CarDriveState, &EngineSoundEmitter)>,
     mut sinks: Query<&mut SpatialAudioSink>,
     children_query: Query<&Children>,
+    manifest: Res<SoundManifest>,
 ) {
     for (drive_state, emitter) in &query {
         let mut target_child = None;
@@ -205,7 +214,8 @@ pub fn manage_car_engine_sound_pitch_volume(
                 let playback_speed = 0.33 + rpm_pct * (3.0 - 0.33);
                 sink.set_speed(playback_speed);
 
-                let throttle_vol = 1.0 + drive_state.avg_accelerate * 0.5;
+                let base_vol = manifest.get("car-sounds/engine-idle-2.mp3").map(|e| e.volume).unwrap_or(0.6);
+                let throttle_vol = (1.0 + drive_state.avg_accelerate * 0.5) * base_vol;
                 sink.set_volume(bevy::audio::Volume::Linear(throttle_vol));
             }
         }

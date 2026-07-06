@@ -18,8 +18,14 @@ use bevy_egui::EguiPrimaryContextPass;
 
 use crate::plugins::pedestrians::pedestrian_controller_plugin::locomotion::CharacterLocomotionPlugin;
 
-pub use faction::{Dying, Faction, Health, WarMatrix, DEATH_ANIM_TIME, DEFAULT_HP};
+pub use faction::{Dying, Enemies, Faction, Health, WarMatrix, DEATH_ANIM_TIME, DEFAULT_HP};
 pub use spawn_ai::SpawnAiPedestrianEvent;
+
+/// Emitted whenever any pedestrian (AI or player) dies, so grudge lists can be pruned.
+#[derive(Message, Clone, Copy)]
+pub struct PedestrianDied {
+    pub entity: Entity,
+}
 
 // -------------------------------------------------------------------------------------
 // AI Components
@@ -50,6 +56,8 @@ pub struct AiPerception {
     pub target_pos: Vec3,
     pub target_dist: f32,
     pub visible: bool,
+    /// True when the current `target` is an enemy-driven car rather than a pedestrian.
+    pub target_is_car: bool,
     /// Cached LOS ray endpoints for debug gizmos: (from, to, hit_enemy).
     pub last_los: Option<(Vec3, Vec3, bool)>,
 }
@@ -84,6 +92,56 @@ pub struct AiAnim {
     pub last: Option<String>,
 }
 
+/// Per-entity think throttle: the heavy AI systems (perception raycasts, brain, combat) only run
+/// for an entity when `ready` is true, which happens once every `period` seconds. `period` is
+/// randomized per ped (0.1–0.2 s) and the initial `timer` is jittered so a freshly spawned crowd
+/// does not all think on the same frame (thundering herd).
+#[derive(Component)]
+pub struct AiThink {
+    pub timer: f32,
+    pub period: f32,
+    pub ready: bool,
+}
+
+impl Default for AiThink {
+    fn default() -> Self {
+        let period = 0.1 + rand::random::<f32>() * 0.1; // 0.1..0.2 s
+        Self {
+            timer: rand::random::<f32>() * period,
+            period,
+            ready: true,
+        }
+    }
+}
+
+/// Advances each ped's think throttle once per frame; sets `ready` on the frames it may run.
+pub fn tick_ai_think(time: Res<Time>, mut q: Query<&mut AiThink>) {
+    let dt = time.delta_secs();
+    for mut think in &mut q {
+        think.timer -= dt;
+        if think.timer <= 0.0 {
+            think.ready = true;
+            think.timer += think.period;
+        } else {
+            think.ready = false;
+        }
+    }
+}
+
+/// Prunes dead pedestrians out of every grudge list when a [`PedestrianDied`] event fires.
+pub fn prune_enemies_on_death(
+    mut deaths: MessageReader<PedestrianDied>,
+    mut q_enemies: Query<&mut Enemies>,
+) {
+    let dead: Vec<Entity> = deaths.read().map(|d| d.entity).collect();
+    if dead.is_empty() {
+        return;
+    }
+    for mut enemies in &mut q_enemies {
+        enemies.0.retain(|e| !dead.contains(e));
+    }
+}
+
 // -------------------------------------------------------------------------------------
 // Plugin
 // -------------------------------------------------------------------------------------
@@ -99,11 +157,14 @@ impl Plugin for PedestrianAiPlugin {
 
         app.init_resource::<WarMatrix>()
             .init_resource::<debug_ui::AiDebug>()
+            .add_message::<PedestrianDied>()
             .add_observer(spawn_ai::spawn_ai_pedestrian_observer)
             .add_observer(combat::apply_damage_observer)
             .add_systems(
                 Update,
                 (
+                    tick_ai_think,
+                    prune_enemies_on_death,
                     perception::ai_perception,
                     brain::ai_brain,
                     movement_ai::ai_movement,

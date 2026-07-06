@@ -114,10 +114,18 @@ pub fn spawn_traffic_pedestrian_observer(
     let ground_y = get_ground_y(offset_spawn, map_tree.as_ref().map(|r| &**r), &spatial_query);
     let spawn_pos = Vec3::new(offset_spawn.x, ground_y, offset_spawn.z);
 
-    // 5. Trigger SpawnAiPedestrianEvent with Neutral faction (no weapon, random model)
+    let faction = match rand::random::<u32>() % 5 {
+        0 => Faction::Neutral,
+        1 => Faction::Red,
+        2 => Faction::Green,
+        3 => Faction::Blue,
+        _ => Faction::Yellow,
+    };
+
+    // 5. Trigger SpawnAiPedestrianEvent with random faction (no weapon, random model)
     commands.trigger(SpawnAiPedestrianEvent {
         position: spawn_pos,
-        faction: Faction::Neutral,
+        faction,
         url: None,
         weapon: None,
     });

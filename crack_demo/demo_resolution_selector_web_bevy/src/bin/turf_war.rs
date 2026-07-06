@@ -114,6 +114,7 @@ fn manage_player_pedestrian(
                 scale: None,
                 is_exiting_car: false,
                 rotation: None,
+                health: None,
             });
             spawner.respawn_timer = 1.0;
         }

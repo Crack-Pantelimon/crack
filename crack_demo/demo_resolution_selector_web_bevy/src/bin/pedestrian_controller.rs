@@ -94,6 +94,7 @@ fn demo_auto_spawn(
         scale: None,
         is_exiting_car: false,
         rotation: None,
+        health: None,
     });
     *done = true;
 }

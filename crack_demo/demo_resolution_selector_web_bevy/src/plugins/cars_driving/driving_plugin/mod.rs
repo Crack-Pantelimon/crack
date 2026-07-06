@@ -1,4 +1,5 @@
 pub mod camera_follow;
+pub mod car_disable;
 pub mod collision_sparks;
 pub mod keybinds_control;
 pub mod rk4_prediction;
@@ -61,6 +62,8 @@ impl<S: States> Plugin for DrivingPlugin<S> {
                 cap_car_velocities,
                 update_vehicle_physics_from_tuning,
                 spawn_car::init_cars_system,
+                car_disable::disable_low_health_cars,
+                car_disable::draw_disabled_car_gizmos,
             )
                 .chain(),
         );

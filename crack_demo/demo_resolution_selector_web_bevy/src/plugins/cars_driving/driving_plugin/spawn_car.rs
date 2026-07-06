@@ -27,6 +27,20 @@ pub struct Car {
     pub _car_type: String,
 }
 
+#[derive(Component, Clone, Copy, Debug)]
+pub struct CarHealth {
+    pub current: f32,
+    pub max: f32,
+}
+
+/// Marks a car whose [`CarHealth`] has dropped below the disable threshold: it has ejected its
+/// driver, coasts to a stop, cannot be entered, and draws a green warning sphere.
+#[derive(Component)]
+pub struct DisabledCar;
+
+/// HP at/below which a car becomes a [`DisabledCar`].
+pub const CAR_DISABLE_HP: f32 = 100.0;
+
 pub fn spawn_physics_car(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
@@ -87,6 +101,10 @@ pub fn spawn_physics_car(
             ),
             Car {
                 _car_type: car_type.to_string(),
+            },
+            CarHealth {
+                current: 1000.0,
+                max: 1000.0,
             },
         ))
         .id();

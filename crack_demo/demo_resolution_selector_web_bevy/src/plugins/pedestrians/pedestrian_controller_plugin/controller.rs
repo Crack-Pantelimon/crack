@@ -7,6 +7,7 @@ use bevy::{ecs::query::Has, prelude::*};
 use super::*;
 use crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
 use crate::plugins::map_plugin::{MapTree, TreeMapTile};
+use crate::plugins::audio::audio_fx::{AudioFxEvent, AudioFxEventType};
 
 /// Reads WASD into a camera-relative move direction and updates modifiers. Space -> jump.
 pub fn character_input(
@@ -14,6 +15,7 @@ pub fn character_input(
     camera: Query<&GlobalTransform, With<Camera3d>>,
     controlled: Res<crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter>,
     mut query: Query<(&mut LocomotionInput, &mut MovementModifiers), With<CharacterController>>,
+    q_ejected: Query<&super::EjectedDriver>,
 ) {
     let Ok(cam) = camera.single() else {
         return;
@@ -24,6 +26,15 @@ pub fn character_input(
     let Ok((mut input, mut modifiers)) = query.get_mut(controller_entity) else {
         return;
     };
+
+    if q_ejected.contains(controller_entity) {
+        // Freeze all input while the ejected driver plays its on-ground -> stand-up sequence.
+        input.move_dir = Vec2::ZERO;
+        input.jump = false;
+        modifiers.sprint = false;
+        modifiers.crouch = false;
+        return;
+    }
 
     // Camera forward/right flattened onto the ground plane.
     let mut forward = cam.forward().as_vec3();
@@ -438,6 +449,11 @@ pub fn jump_or_climb(
             target,
             elapsed: 0.0,
             duration: CLIMB_DURATION,
+        });
+        commands.trigger(AudioFxEvent {
+            fx: AudioFxEventType::Climb,
+            position: gt.translation(),
+            follow: None,
         });
     } else {
         input.jump = true;

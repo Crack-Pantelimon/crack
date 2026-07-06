@@ -30,6 +30,8 @@ pub struct SoundEntry {
     pub handle: Handle<AudioSource>,
     /// Hand-picked attenuation distance.
     pub attenuation: f32,
+    /// Base volume multiplier parsed from manifest.
+    pub volume: f32,
 }
 
 /// Global resource holding every clip listed in the manifest.
@@ -171,6 +173,10 @@ fn load_sound_manifest_system(
             .next()
             .and_then(|s| s.trim().parse::<f32>().ok())
             .unwrap_or(1.0);
+        let volume = parts
+            .next()
+            .and_then(|s| s.trim().parse::<f32>().ok())
+            .unwrap_or(1.0);
 
         let url = format!("{}{}", bootstrap.folder, name);
         let handle = asset_server.load::<AudioSource>(url.clone());
@@ -179,6 +185,7 @@ fn load_sound_manifest_system(
             url,
             handle,
             attenuation,
+            volume,
         });
     }
 

@@ -2,7 +2,6 @@ use crate::plugins::cars_driving::driving_plugin::spawn_car::Car;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use std::collections::HashMap;
-use tracing::info;
 
 pub const MAX_SPARK_EVENTS_PER_CAR_PER_SEC: usize = 3;
 pub const MAX_SPARK_EVENTS_GLOBAL_PER_SEC: usize = 20;
@@ -59,7 +58,6 @@ pub fn handle_car_collisions(
     q_parent: Query<&ChildOf>,
     q_lin_vel: Query<&LinearVelocity>,
     q_gt: Query<&GlobalTransform>,
-    q_name: Query<&Name>,
     time: Res<Time>,
 ) {
     let current_time = time.elapsed_secs();
@@ -93,7 +91,6 @@ pub fn handle_car_collisions(
             .map(|gt| gt.translation())
             .unwrap_or(Vec3::ZERO);
         let car_vel = q_lin_vel.get(car_entity).map(|v| v.0).unwrap_or(Vec3::ZERO);
-        let car_speed = car_vel.length();
 
         let other_gt = q_gt
             .get(other_collider)
@@ -104,11 +101,6 @@ pub fn handle_car_collisions(
             .get(other_entity)
             .map(|v| v.0)
             .unwrap_or(Vec3::ZERO);
-        let other_name = q_name
-            .get(other_entity)
-            .or_else(|_| q_name.get(other_collider))
-            .map(|n| n.as_str())
-            .unwrap_or("Environment/Ground");
 
         let rel_vel_vec = car_vel - other_vel;
         let rel_speed = rel_vel_vec.length();
@@ -157,33 +149,6 @@ pub fn handle_car_collisions(
             }
         }
 
-        // Detailed tracing log as requested by user
-        info!(
-            "💥 CAR COLLISION DETECTED!\n\
-             ├─ Car Entity: {:?}\n\
-             ├─ Car Global Pos: Vec3({:.2}, {:.2}, {:.2})\n\
-             ├─ Car Speed: {:.2} m/s ({:.1} km/h)\n\
-             ├─ Collision Point (Global): Vec3({:.2}, {:.2}, {:.2})\n\
-             ├─ Relative Speed: {:.2} m/s\n\
-             ├─ Other Entity: {:?} ({})\n\
-             └─ Other Global Pos: Vec3({:.2}, {:.2}, {:.2})",
-            car_entity,
-            car_gt.x,
-            car_gt.y,
-            car_gt.z,
-            car_speed,
-            car_speed * 3.6,
-            collision_point.x,
-            collision_point.y,
-            collision_point.z,
-            rel_speed,
-            other_entity,
-            other_name,
-            other_gt.x,
-            other_gt.y,
-            other_gt.z,
-        );
-
         if rel_speed >= 1.5 {
             commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
                 fx: crate::plugins::audio::audio_fx::AudioFxEventType::CarCrash { rel_speed },
@@ -201,7 +166,7 @@ pub fn handle_car_collisions(
         });
 
         // Spawn short-lived spark objects (no collision physics - pure visual particles)
-        let spark_count = (rel_speed * 1.5).clamp(8.0, 24.0) as usize;
+        let spark_count = (rel_speed * 0.5).clamp(3.0, 8.0) as usize;
 
         for _ in 0..spark_count {
             let rx = rand::random::<f32>() * 2.0 - 1.0;
@@ -385,11 +350,6 @@ pub fn car_pedestrian_damage(
         recently_hit.insert(pair, current_time);
 
         let dmg = kmh * crate::plugins::traffic::CAR_HIT_KMH_TO_DAMAGE;
-        info!(
-            "🚗 CAR HIT PEDESTRIAN! Car {:?} hit victim {:?} at {:.1} km/h, inflicting {:.1} damage.",
-            car_entity, victim, kmh, dmg
-        );
-
         commands.trigger(crate::plugins::pedestrian_ai::combat::DamageEvent {
             target: victim,
             amount: dmg,

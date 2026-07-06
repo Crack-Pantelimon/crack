@@ -16,9 +16,10 @@ use crate::plugins::weapons::{
 };
 
 use super::{
-    AiCombatTimers, AiModel, AiPedestrian, AiPerception, AiState,
-    faction::{Dying, Health, DEATH_ANIM_TIME},
+    AiCombatTimers, AiModel, AiPedestrian, AiPerception, AiState, AiThink, PedestrianDied,
+    faction::{Dying, Enemies, Health, DEATH_ANIM_TIME},
 };
+use crate::plugins::cars_driving::driving_plugin::spawn_car::CarHealth;
 
 // -------------------------------------------------------------------------------------
 // Constants
@@ -52,13 +53,25 @@ pub struct DamageEvent {
 
 /// Observer: apply damage and, on death, mark the entity [`Dying`] so it plays a death clip
 /// before it is despawned by [`tick_dying`]. Applies to both AI peds and the player pedestrian.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_damage_observer(
     trigger: On<DamageEvent>,
     mut commands: Commands,
-    mut healths: Query<(&mut Health, Option<&super::faction::Faction>, Has<Dying>)>,
+    mut healths: Query<(&mut Health, Has<Dying>)>,
+    mut q_enemies: Query<&mut Enemies>,
+    q_gt: Query<&GlobalTransform>,
+    mut deaths: MessageWriter<PedestrianDied>,
 ) {
     let ev = trigger.event();
-    let Ok((mut health, faction, already_dying)) = healths.get_mut(ev.target) else {
+
+    // Remember the attacker: this ped now hunts whoever hurt it, regardless of faction.
+    if ev.source != ev.target {
+        if let Ok(mut enemies) = q_enemies.get_mut(ev.target) {
+            enemies.insert(ev.source);
+        }
+    }
+
+    let Ok((mut health, already_dying)) = healths.get_mut(ev.target) else {
         return;
     };
     if already_dying {
@@ -67,8 +80,15 @@ pub fn apply_damage_observer(
     health.current -= ev.amount;
     if health.current <= 0.0 {
         health.current = 0.0;
-        let faction_label = faction.map(|f| f.label()).unwrap_or("?");
-        info!("[AI {:?}] DIED (faction {})", ev.target, faction_label);
+        // Death thud at the victim's position.
+        if let Ok(gt) = q_gt.get(ev.target) {
+            commands.trigger(AudioFxEvent {
+                fx: AudioFxEventType::DeathThud,
+                position: gt.translation(),
+                follow: None,
+            });
+        }
+        deaths.write(PedestrianDied { entity: ev.target });
         commands
             .entity(ev.target)
             .insert(Dying { timer: DEATH_ANIM_TIME });
@@ -128,6 +148,7 @@ pub fn ai_combat(
             &GlobalTransform,
             &AiState,
             &AiPerception,
+            &AiThink,
             &mut AiCombatTimers,
             Option<&EquippedWeapon>,
             Option<&mut GunState>,
@@ -143,12 +164,14 @@ pub fn ai_combat(
     q_skel: Query<(), With<PedestrianSkeleton>>,
     q_driver: Query<(), With<DriverMesh>>,
     healths: Query<&Health>,
+    mut car_healths: Query<&mut CarHealth>,
 ) {
     for (
         entity,
         gt,
         state,
         perception,
+        think,
         mut timers,
         equipped,
         gun_state,
@@ -156,6 +179,10 @@ pub fn ai_combat(
         ai_model,
     ) in &mut query
     {
+        // Per-entity throttle: attack decisions run only a few times a second per ped.
+        if !think.ready {
+            continue;
+        }
         if *state != AiState::Hunt {
             continue;
         }
@@ -176,9 +203,15 @@ pub fn ai_combat(
         }
 
         let target_entity = perception.target.unwrap();
+        let target_is_car = perception.target_is_car;
 
-        // Verify target is still alive and has health > 0.
-        if let Ok(target_health) = healths.get(target_entity) {
+        // Verify target is still alive: peds via Health, cars via CarHealth.
+        if target_is_car {
+            match car_healths.get(target_entity) {
+                Ok(ch) if ch.current > 0.0 => {}
+                _ => continue,
+            }
+        } else if let Ok(target_health) = healths.get(target_entity) {
             if target_health.current <= 0.0 {
                 continue;
             }
@@ -262,7 +295,7 @@ pub fn ai_combat(
                 );
 
                 // Sparks
-                for _ in 0..3 {
+                for _ in 0..2 {
                     let offset = Vec3::new(
                         (rand::random::<f32>() * 2.0 - 1.0) * 0.1,
                         (rand::random::<f32>() * 2.0 - 1.0) * 0.1,
@@ -307,9 +340,24 @@ pub fn ai_combat(
                             source: entity,
                         });
                     }
+                } else if target_is_car {
+                    // Resolve the hit up to a car body and damage its CarHealth.
+                    let mut cur = hit.entity;
+                    let car_hit = loop {
+                        if car_healths.contains(cur) {
+                            break Some(cur);
+                        }
+                        match parents.get(cur) {
+                            Ok(child_of) => cur = child_of.parent(),
+                            Err(_) => break None,
+                        }
+                    };
+                    if let Some(car_ent) = car_hit {
+                        if let Ok(mut ch) = car_healths.get_mut(car_ent) {
+                            ch.current = (ch.current - gun_info.damage).max(0.0);
+                        }
+                    }
                 }
-
-                info!("[AI {:?}] SHOOT -> {:?} ({} dmg)", entity, target_entity, gun_info.damage);
             } else {
                 // Miss: tracer to max range.
                 tracers.0.push(ShotTracer {
@@ -335,11 +383,17 @@ pub fn ai_combat(
             }
             timers.attack_cooldown = SWING_INTERVAL;
 
-            commands.trigger(DamageEvent {
-                target: target_entity,
-                amount: SWORD_DAMAGE,
-                source: entity,
-            });
+            if target_is_car {
+                if let Ok(mut ch) = car_healths.get_mut(target_entity) {
+                    ch.current = (ch.current - SWORD_DAMAGE).max(0.0);
+                }
+            } else {
+                commands.trigger(DamageEvent {
+                    target: target_entity,
+                    amount: SWORD_DAMAGE,
+                    source: entity,
+                });
+            }
 
             commands.trigger(AudioFxEvent {
                 fx: AudioFxEventType::MeleeWhoosh { volume: 1.0 },
@@ -354,8 +408,6 @@ pub fn ai_combat(
                     speed: 1.0,
                 });
             }
-
-            info!("[AI {:?}] MELEE HIT -> {:?} ({} dmg)", entity, target_entity, SWORD_DAMAGE);
         } else {
             // --- Unarmed (punch) ---
             if perception.target_dist > PUNCH_RANGE {
@@ -363,11 +415,17 @@ pub fn ai_combat(
             }
             timers.attack_cooldown = PUNCH_INTERVAL;
 
-            commands.trigger(DamageEvent {
-                target: target_entity,
-                amount: PUNCH_DAMAGE,
-                source: entity,
-            });
+            if target_is_car {
+                if let Ok(mut ch) = car_healths.get_mut(target_entity) {
+                    ch.current = (ch.current - PUNCH_DAMAGE).max(0.0);
+                }
+            } else {
+                commands.trigger(DamageEvent {
+                    target: target_entity,
+                    amount: PUNCH_DAMAGE,
+                    source: entity,
+                });
+            }
 
             let clip = if _crack_utils::random_u32() % 2 == 0 {
                 "Punch_Jab"
@@ -388,8 +446,6 @@ pub fn ai_combat(
                     speed: 1.0,
                 });
             }
-
-            info!("[AI {:?}] PUNCH -> {:?} ({} dmg)", entity, target_entity, PUNCH_DAMAGE);
         }
     }
 }

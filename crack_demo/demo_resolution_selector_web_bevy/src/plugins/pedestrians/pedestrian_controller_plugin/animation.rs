@@ -80,6 +80,7 @@ pub fn drive_character_animation(
             Option<&WeaponModelState>,
             &GlobalTransform,
             Has<Dying>,
+            Option<&super::EjectedDriver>,
         ),
         With<CharacterController>,
     >,
@@ -111,6 +112,7 @@ pub fn drive_character_animation(
         weapon_model_state,
         char_gt,
         dying,
+        ejected_driver,
     )) = controllers.get_mut(controller)
     else {
         return;
@@ -169,6 +171,31 @@ pub fn drive_character_animation(
         anim.base_node = None;
         combat.node = None;
         combat.kind = CombatKind::None;
+    }
+
+    // --- Ejected driver stand-up sequence animation -------------------------------------------
+    if let Some(ejected) = ejected_driver {
+        if let Some(old) = combat.node {
+            player.stop(old);
+        }
+        combat.node = None;
+        combat.kind = CombatKind::None;
+
+        let candidates: &[&str] = match ejected.stage {
+            super::EjectedStage::OnGround => &["Fixing_Kneeling"],
+            super::EjectedStage::StandingUp => &["Sitting_Exit"],
+        };
+        let target_node = node_for(&anims, candidates);
+        if anim.base_node != target_node {
+            if let Some(old) = anim.base_node {
+                player.stop(old);
+            }
+            if let Some(node) = target_node {
+                player.play(node).set_speed(anim_speed).repeat();
+            }
+            anim.base_node = target_node;
+        }
+        return;
     }
 
     // --- Dead: play the death clip once and freeze; no locomotion or combat overlay. ----------

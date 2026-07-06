@@ -1,25 +1,21 @@
 //! Spawning and adopting AI pedestrians.
 
-use avian3d::prelude::*;
 use bevy::prelude::*;
 use rand::seq::IndexedRandom;
 
 use crate::plugins::{
-    cars_driving::driving_plugin::GamePhysicsLayer,
     pedestrians::{
         PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent,
         pedestrian_controller_plugin::{
-            CAPSULE_HALF_HEIGHT, CAPSULE_LENGTH, CAPSULE_RADIUS, SCALE_MAX, SCALE_MIN,
-            CharacterController, CharacterMovementSettings, CharacterScale, CharacterCollisions,
-            GroundDetection, LocomotionInput, MovementModifiers,
+            CAPSULE_HALF_HEIGHT, SCALE_MAX, SCALE_MIN, character_physics_bundle,
         },
     },
     weapons::{EquipWeaponEvent, WeaponId, WeaponManifest},
 };
 
 use super::{
-    AiAnim, AiCombatTimers, AiPedestrian, AiPerception, AiState, AiSteer,
-    faction::{Faction, Health, DEFAULT_HP},
+    AiAnim, AiCombatTimers, AiPedestrian, AiPerception, AiState, AiSteer, AiThink,
+    faction::{Enemies, Faction, Health, DEFAULT_HP},
 };
 
 /// Spawn an AI-driven pedestrian at `position` with the given `faction`.
@@ -72,29 +68,7 @@ pub fn spawn_ai_pedestrian_observer(
     let controller = commands
         .spawn((
             Name::new("AiPedestrianController"),
-            CharacterController,
-            CharacterScale(scale),
-            CharacterMovementSettings::default(),
-            CharacterCollisions::default(),
-            MovementModifiers::default(),
-            LocomotionInput::default(),
-            GroundDetection {
-                cast_shape: Some(Collider::capsule(CAPSULE_RADIUS * 0.99, CAPSULE_LENGTH)),
-                ..default()
-            },
-            Collider::capsule(CAPSULE_RADIUS, CAPSULE_LENGTH),
-            CollisionLayers::new(
-                GamePhysicsLayer::Car,
-                [
-                    GamePhysicsLayer::Map,
-                    GamePhysicsLayer::Car,
-                    GamePhysicsLayer::Wheel,
-                ],
-            ),
-            CollisionEventsEnabled,
-            RigidBody::Kinematic,
-            Transform::from_translation(controller_pos),
-            Visibility::default(),
+            character_physics_bundle(scale, Transform::from_translation(controller_pos)),
         ))
         .id();
 
@@ -108,6 +82,8 @@ pub fn spawn_ai_pedestrian_observer(
         AiCombatTimers::default(),
         AiSteer::default(),
         AiAnim::default(),
+        AiThink::default(),
+        Enemies::default(),
     ));
 
     let scale_node = commands

@@ -31,7 +31,7 @@ use bevy_egui::EguiPrimaryContextPass;
 
 use crate::plugins::states::GameControlState;
 
-pub use interaction_ui::{DriverMesh, CarSeatOffset};
+pub use interaction_ui::{DriverMesh, CarSeatOffset, EjectedDriver, EjectedStage, eject_driver_as_ai, tick_ejected_driver_system};
 pub use spawn::{ControlledCharacter, SpawnControlledPedestrianEvent};
 
 use animation::{drive_character_animation, print_animation_catalog};
@@ -45,7 +45,8 @@ use interaction_ui::{
     weapon_hud_ui, weapon_wheel,
 };
 pub use spawn::{
-    SpawnChoicePopup, escape_to_freecam, spawn_controlled_pedestrian_observer,
+    SpawnChoicePopup, escape_to_freecam, player_death_to_freecam,
+    spawn_controlled_pedestrian_observer,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -325,10 +326,12 @@ impl Plugin for PedestrianControllerPlugin {
             .add_systems(
                 Update,
                 (
+                    tick_ejected_driver_system,
                     orbit_camera_input,
                     follow_camera,
                     drive_character_animation,
                     escape_to_freecam,
+                    player_death_to_freecam,
                     detect_car_interaction,
                     tick_entering_car,
                     weapon_wheel,
@@ -363,4 +366,38 @@ impl Plugin for PedestrianControllerPlugin {
 /// Run condition: true when no character is mid-climb (so the movement chain can run).
 pub fn no_one_climbing(q: Query<(), With<Climbing>>) -> bool {
     q.is_empty()
+}
+
+/// The shared physics/locomotion core for every capsule character (player, AI ped, ejected
+/// driver). Callers add their role-specific components on top: the player adds
+/// [`AnimState`]/[`CombatState`], the AI adds its `Ai*` components. Keeping this in one place stops
+/// the three spawn sites from drifting apart (e.g. wrong `RigidBody`, missing collision layers).
+pub fn character_physics_bundle(scale: f32, transform: Transform) -> impl Bundle {
+    use crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
+    (
+        // `CharacterController` requires `RigidBody::Kinematic` + custom position integration, so
+        // no explicit `RigidBody` is added here (a `Dynamic` body would fight move-and-slide).
+        CharacterController,
+        CharacterScale(scale),
+        CharacterMovementSettings::default(),
+        CharacterCollisions::default(),
+        MovementModifiers::default(),
+        LocomotionInput::default(),
+        GroundDetection {
+            cast_shape: Some(Collider::capsule(CAPSULE_RADIUS * 0.99, CAPSULE_LENGTH)),
+            ..default()
+        },
+        Collider::capsule(CAPSULE_RADIUS, CAPSULE_LENGTH),
+        CollisionLayers::new(
+            GamePhysicsLayer::Car,
+            [
+                GamePhysicsLayer::Map,
+                GamePhysicsLayer::Car,
+                GamePhysicsLayer::Wheel,
+            ],
+        ),
+        CollisionEventsEnabled,
+        transform,
+        Visibility::default(),
+    )
 }

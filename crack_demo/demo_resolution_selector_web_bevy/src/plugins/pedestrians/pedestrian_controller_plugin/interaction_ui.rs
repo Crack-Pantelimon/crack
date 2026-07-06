@@ -14,6 +14,13 @@ use crate::plugins::cars_driving::{
 use crate::plugins::weapons::{
     EquipWeaponEvent, EquippedWeapon, GunState, WeaponId, WeaponManifest,
 };
+use crate::plugins::pedestrians::ManualAnimation;
+use crate::plugins::pedestrian_ai::faction::{Enemies, Health};
+use crate::plugins::pedestrian_ai::{
+    AiPedestrian, AiModel, AiState, AiPerception, AiCombatTimers, AiSteer, AiAnim, AiThink,
+    faction::{Faction, DEFAULT_HP},
+};
+use super::{CAPSULE_HALF_HEIGHT, AnimState, CombatState, character_physics_bundle};
 
 /// On right-click in freecam, raycast to the map and open the choice popup at that point.
 pub fn handle_freecam_right_click(
@@ -83,6 +90,7 @@ pub fn spawn_choice_popup_ui(
                         scale: None,
                         is_exiting_car: false,
                         rotation: None,
+                        health: None,
                     });
                     close = true;
                 }
@@ -164,6 +172,8 @@ pub struct DriverMeshExit {
 
 /// F while looking at a car through the crosshair (hit point within ~1.2m of the
 /// character) starts the enter-car sequence.
+/// F while looking at a car through the crosshair (hit point within ~1.2m of the
+/// character) starts the enter-car sequence.
 pub fn detect_car_interaction(
     keys: Res<ButtonInput<KeyCode>>,
     q_player: Query<
@@ -175,6 +185,10 @@ pub fn detect_car_interaction(
     parents: Query<&ChildOf>,
     spatial_query: SpatialQuery,
     mut commands: Commands,
+    q_car_health: Query<&crate::plugins::cars_driving::driving_plugin::spawn_car::CarHealth>,
+    q_children: Query<&Children>,
+    q_driver: Query<(Entity, &DriverMesh, &Faction, &Health, &Transform)>,
+    q_car_gt: Query<&GlobalTransform>,
 ) {
     if !keys.just_pressed(KeyCode::KeyF) {
         return;
@@ -217,10 +231,35 @@ pub fn detect_car_interaction(
         return;
     }
 
-    commands.entity(ped_entity).insert(EnteringCarTimer {
-        car_entity: car,
-        timer: Timer::from_seconds(1.2, TimerMode::Once),
-    });
+    // Check if the car is disabled
+    if let Ok(car_health) = q_car_health.get(car) {
+        if car_health.current < 100.0 {
+            return; // Block entering / interacting
+        }
+    }
+
+    // Check if the car has a driver
+    let mut driver_info = None;
+    if let Ok(children) = q_children.get(car) {
+        for child in children.iter() {
+            if let Ok((d_ent, _, faction, health, tf)) = q_driver.get(child) {
+                driver_info = Some((d_ent, *faction, *health, *tf));
+                break;
+            }
+        }
+    }
+
+    if let Some((d_ent, faction, health, tf)) = driver_info {
+        // First F next to an occupied car ejects that driver; the player must press F again on the
+        // now-empty car to actually get in.
+        let car_gt = q_car_gt.get(car).cloned().unwrap_or(*ped_tf);
+        eject_driver_as_ai(&mut commands, &car_gt, d_ent, faction, health, tf.scale.x);
+    } else {
+        commands.entity(ped_entity).insert(EnteringCarTimer {
+            car_entity: car,
+            timer: Timer::from_seconds(1.2, TimerMode::Once),
+        });
+    }
 }
 
 pub fn tick_entering_car(
@@ -237,6 +276,7 @@ pub fn tick_entering_car(
     seat: Res<CarSeatOffset>,
     mut controlled: ResMut<ControlledCharacter>,
     mut next_state: ResMut<NextState<GameControlState>>,
+    q_player_fh: Query<(&Faction, &Health)>,
 ) {
     for (entity, mut entering, mut ped_transform, char_scale) in q_player.iter_mut() {
         // Interpolate position to the car door, then onto the seat
@@ -273,6 +313,8 @@ pub fn tick_entering_car(
                 }
             }
 
+            let (faction, health) = q_player_fh.get(entity).map(|(f, h)| (*f, *h)).unwrap_or((Faction::Neutral, Health::full(DEFAULT_HP)));
+
             // Steal the visual model from the controller and seat it in the car; the
             // physics capsule and controller components despawn with the controller.
             if let Some(ped_model) = controlled.ped {
@@ -286,6 +328,8 @@ pub fn tick_entering_car(
                         Transform::from_translation(seat.offset)
                             .with_rotation(Quat::from_rotation_y(seat.y_rot))
                             .with_scale(Vec3::splat(char_scale.0)),
+                        faction,
+                        health,
                     ));
                 }
             }
@@ -305,6 +349,110 @@ pub fn tick_entering_car(
             next_state.set(GameControlState::DrivingCar);
         }
     }
+}
+
+#[derive(Component)]
+pub struct EjectedDriver {
+    pub timer: Timer,
+    pub stage: EjectedStage,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EjectedStage {
+    OnGround,
+    StandingUp,
+}
+
+pub fn tick_ejected_driver_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut q_ejected: Query<(Entity, &mut EjectedDriver)>,
+) {
+    for (entity, mut ejected) in q_ejected.iter_mut() {
+        ejected.timer.tick(time.delta());
+        if ejected.timer.just_finished() {
+            match ejected.stage {
+                EjectedStage::OnGround => {
+                    ejected.stage = EjectedStage::StandingUp;
+                    ejected.timer = Timer::from_seconds(1.2, TimerMode::Once);
+                }
+                EjectedStage::StandingUp => {
+                    commands.entity(entity).remove::<EjectedDriver>();
+                }
+            }
+        }
+    }
+}
+
+/// Ejects a seated driver out of a car, turning the existing (already-loaded) driver mesh into a
+/// standalone AI pedestrian that plays the on-ground -> stand-up recovery sequence before it can
+/// act. Reuses [`character_physics_bundle`] so the ejected ped is physically identical to a
+/// normally-spawned AI ped.
+pub fn eject_driver_as_ai(
+    commands: &mut Commands,
+    car_gt: &GlobalTransform,
+    driver_mesh_entity: Entity,
+    driver_faction: Faction,
+    driver_health: Health,
+    scale: f32,
+) {
+    let car_tf = car_gt.compute_transform();
+    let exit_pos = car_tf.translation + car_tf.rotation * Vec3::new(-2.0, 0.2, 0.0);
+    let exit_rot = car_tf.rotation * Quat::from_rotation_y(PI);
+
+    // Detach the model from the car and strip its seated-driver bookkeeping. `ManualAnimation` is
+    // removed so the shared AI animation system (via `AiModel`) drives its clips again.
+    commands
+        .entity(driver_mesh_entity)
+        .remove::<ChildOf>()
+        .remove::<DriverMesh>()
+        .remove::<ManualAnimation>()
+        .remove::<Faction>()
+        .remove::<Health>();
+
+    let controller = commands
+        .spawn((
+            Name::new("EjectedAiPedestrian"),
+            character_physics_bundle(
+                scale,
+                Transform::from_translation(exit_pos).with_rotation(exit_rot),
+            ),
+            AnimState::default(),
+            CombatState::default(),
+        ))
+        .insert((
+            AiPedestrian,
+            driver_faction,
+            driver_health,
+            AiState::Idle,
+            AiPerception::default(),
+            AiCombatTimers::default(),
+            AiSteer::default(),
+            AiAnim::default(),
+            AiThink::default(),
+            Enemies::default(),
+            EjectedDriver {
+                timer: Timer::from_seconds(1.5, TimerMode::Once),
+                stage: EjectedStage::OnGround,
+            },
+        ))
+        .id();
+
+    let scale_node = commands
+        .spawn((
+            Name::new("EjectedAiScaleNode"),
+            ChildOf(controller),
+            Transform::from_xyz(0.0, -CAPSULE_HALF_HEIGHT, 0.0).with_scale(Vec3::splat(scale)),
+            Visibility::default(),
+        ))
+        .id();
+
+    commands.entity(driver_mesh_entity).insert((
+        ChildOf(scale_node),
+        Transform::IDENTITY,
+    ));
+
+    commands.entity(controller).insert(AiModel(driver_mesh_entity));
 }
 
 /// Plays the driving loop on seated driver meshes, or `Sitting_Exit` while getting out.
@@ -456,6 +604,7 @@ pub fn handle_exit_car(
             scale: None,
             is_exiting_car: false,
             rotation: Some(exit_rot),
+            health: None,
         });
     }
 }
@@ -466,6 +615,7 @@ pub fn tick_driver_mesh_exit(
     mut commands: Commands,
     time: Res<Time>,
     mut q_exit: Query<(Entity, &mut Transform, &mut DriverMeshExit)>,
+    q_health: Query<&Health>,
 ) {
     for (mesh_ent, mut tf, mut exit) in q_exit.iter_mut() {
         exit.timer.tick(time.delta());
@@ -482,6 +632,9 @@ pub fn tick_driver_mesh_exit(
         if exit.timer.just_finished() {
             let spawn_pos = exit.exit_pos;
             let spawn_rot = exit.exit_rot;
+            // Carry the driver's remaining HP out with them so a round-trip through a car is not
+            // a free heal.
+            let carried_health = q_health.get(mesh_ent).ok().copied();
             if let Ok(mut mesh_cmds) = commands.get_entity(mesh_ent) {
                 mesh_cmds.despawn();
             }
@@ -491,6 +644,7 @@ pub fn tick_driver_mesh_exit(
                 scale: None,
                 is_exiting_car: false,
                 rotation: Some(spawn_rot),
+                health: carried_health,
             });
         }
     }
@@ -501,7 +655,7 @@ pub fn tick_driver_mesh_exit(
 pub fn weapon_hud_ui(
     mut contexts: EguiContexts,
     controlled: Res<ControlledCharacter>,
-    equipped: Query<(&EquippedWeapon, Option<&GunState>)>,
+    equipped: Query<(&EquippedWeapon, Option<&GunState>, &Health)>,
     state: Res<State<GameControlState>>,
 ) {
     if *state.get() != GameControlState::ControllingPedestrian {
@@ -510,7 +664,7 @@ pub fn weapon_hud_ui(
     let Some(controller) = controlled.controller else {
         return;
     };
-    let Ok((equipped_weapon, gun_state)) = equipped.get(controller) else {
+    let Ok((equipped_weapon, gun_state, health)) = equipped.get(controller) else {
         return;
     };
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -528,6 +682,19 @@ pub fn weapon_hud_ui(
                     egui::RichText::new(&weapon_name)
                         .color(egui::Color32::from_rgb(0, 255, 0))
                         .size(18.0)
+                        .strong(),
+                );
+
+                // Display player health
+                let hp_color = if health.current < 30.0 {
+                    egui::Color32::from_rgb(255, 50, 50)
+                } else {
+                    egui::Color32::from_rgb(0, 255, 0)
+                };
+                ui.label(
+                    egui::RichText::new(format!("HP: {:.0}/{:.0}", health.current, health.max))
+                        .color(hp_color)
+                        .size(20.0)
                         .strong(),
                 );
 

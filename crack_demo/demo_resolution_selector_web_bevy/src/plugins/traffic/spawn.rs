@@ -11,6 +11,7 @@ use crate::plugins::{
         spawn_pedestrian::{PedestrianGltf, NeedAlignment},
     },
     pedestrians::pedestrian_controller_plugin::{DriverMesh, CarSeatOffset},
+    pedestrian_ai::faction::{Faction, Health, DEFAULT_HP},
 };
 
 use super::{
@@ -154,6 +155,14 @@ pub fn spawn_traffic_car_observer(
             let model_name = url.0.split('/').last().unwrap_or(&url.0).replace(".glb", "");
             let seat = CarSeatOffset::default();
 
+            let faction = match rand::random::<u32>() % 5 {
+                0 => Faction::Neutral,
+                1 => Faction::Red,
+                2 => Faction::Green,
+                3 => Faction::Blue,
+                _ => Faction::Yellow,
+            };
+
             commands.spawn((
                 Name::new("TrafficDriver"),
                 Transform::from_translation(seat.offset)
@@ -176,6 +185,8 @@ pub fn spawn_traffic_car_observer(
                     car: car_entity,
                     anim_node: None,
                 },
+                faction,
+                Health::full(DEFAULT_HP),
             ))
             .with_children(|parent| {
                 parent.spawn((

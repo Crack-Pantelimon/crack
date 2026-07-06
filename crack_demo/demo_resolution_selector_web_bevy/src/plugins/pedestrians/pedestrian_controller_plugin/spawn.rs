@@ -1,12 +1,10 @@
 //! Spawning, adopting, and despawning the controlled pedestrian, plus state transitions.
 
-use avian3d::prelude::*;
 use bevy::prelude::*;
 use rand::seq::IndexedRandom;
 
 use super::*;
 use crate::plugins::{
-    cars_driving::driving_plugin::GamePhysicsLayer,
     pedestrians::{
         PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent,
     },
@@ -42,6 +40,8 @@ pub struct SpawnControlledPedestrianEvent {
     pub scale: Option<f32>,
     pub is_exiting_car: bool,
     pub rotation: Option<Quat>,
+    /// Carried-over health (e.g. when getting out of a car). `None` spawns at full HP.
+    pub health: Option<crate::plugins::pedestrian_ai::faction::Health>,
 }
 
 pub fn spawn_controlled_pedestrian_observer(
@@ -80,37 +80,20 @@ pub fn spawn_controlled_pedestrian_observer(
         event.position.z,
     );
 
+    let health = event
+        .health
+        .unwrap_or_else(|| crate::plugins::pedestrian_ai::faction::Health::full(100.0));
+
     let controller = commands.spawn((
         Name::new("PedestrianController"),
-        CharacterController,
-        CharacterScale(scale),
-        CharacterMovementSettings::default(),
-        CharacterCollisions::default(),
-        MovementModifiers::default(),
-        LocomotionInput::default(),
+        super::character_physics_bundle(
+            scale,
+            Transform::from_translation(controller_pos)
+                .with_rotation(event.rotation.unwrap_or(Quat::IDENTITY)),
+        ),
         AnimState::default(),
         CombatState::default(),
-        GroundDetection {
-            cast_shape: Some(Collider::capsule(CAPSULE_RADIUS * 0.99, CAPSULE_LENGTH)),
-            ..default()
-        },
-        Collider::capsule(CAPSULE_RADIUS, CAPSULE_LENGTH),
-        // Same layer convention as the cars so the solver resolves ground/car interactions.
-        CollisionLayers::new(
-            GamePhysicsLayer::Car,
-            [
-                GamePhysicsLayer::Map,
-                GamePhysicsLayer::Car,
-                GamePhysicsLayer::Wheel,
-            ],
-        ),
-        Transform::from_translation(controller_pos)
-            .with_rotation(event.rotation.unwrap_or(Quat::IDENTITY)),
-        Visibility::default(),
-    ))
-    .insert((
-        CollisionEventsEnabled,
-        crate::plugins::pedestrian_ai::faction::Health::full(100.0),
+        health,
         crate::plugins::pedestrian_ai::faction::Faction::Neutral,
     ))
     .id();
@@ -138,6 +121,30 @@ pub fn spawn_controlled_pedestrian_observer(
     });
 
     next_state.set(GameControlState::ControllingPedestrian);
+}
+
+/// When the controlled pedestrian dies, leave pedestrian control and return to freecam, exactly as
+/// if the player had pressed Escape. The corpse is despawned here (matching Escape's behavior).
+pub fn player_death_to_freecam(
+    mut commands: Commands,
+    mut controlled: ResMut<ControlledCharacter>,
+    q_newly_dying: Query<(), Added<crate::plugins::pedestrian_ai::faction::Dying>>,
+    mut next_state: ResMut<NextState<GameControlState>>,
+) {
+    let Some(controller) = controlled.controller else {
+        return;
+    };
+    if q_newly_dying.get(controller).is_err() {
+        return;
+    }
+    controlled.controller = None;
+    controlled.ped = None;
+    controlled.scale_node = None;
+    controlled.awaiting = false;
+    if let Ok(mut cmds) = commands.get_entity(controller) {
+        cmds.despawn();
+    }
+    next_state.set(GameControlState::MapFreecam);
 }
 
 /// Escape leaves pedestrian control: despawn the character and return to freecam.

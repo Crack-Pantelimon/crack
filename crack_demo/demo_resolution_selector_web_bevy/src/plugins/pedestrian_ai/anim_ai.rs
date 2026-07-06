@@ -30,11 +30,12 @@ pub fn ai_animation(
             &mut AiAnim,
             &super::faction::Health,
             Option<&EquippedWeapon>,
+            Option<&crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedDriver>,
         ),
         With<AiPedestrian>,
     >,
 ) {
-    for (velocity, modifiers, _state, char_scale, ai_model, mut anim, health, equipped) in
+    for (velocity, modifiers, _state, char_scale, ai_model, mut anim, health, equipped, ejected_driver) in
         query.iter_mut()
     {
         if health.current <= 0.0 {
@@ -43,7 +44,12 @@ pub fn ai_animation(
         let speed = Vec2::new(velocity.x as f32, velocity.z as f32).length();
         let is_melee = equipped.is_some_and(|e| e.0.is_melee());
 
-        let clip = if modifiers.crouch {
+        let clip = if let Some(ejected) = ejected_driver {
+            match ejected.stage {
+                crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedStage::OnGround => "Fixing_Kneeling",
+                crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedStage::StandingUp => "Sitting_Exit",
+            }
+        } else if modifiers.crouch {
             if speed > MOVE_ANIM_THRESHOLD {
                 "Crouch_Fwd_Loop"
             } else {

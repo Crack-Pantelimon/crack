@@ -11,7 +11,10 @@ pub fn drive_traffic_cars(
     time: Res<Time>,
     config: Res<TrafficConfig>,
     graph: Res<TrafficRoadGraph>,
-    mut q_cars: Query<(Entity, &Transform, &LinearVelocity, &mut CarDriveState, &mut TrafficCar)>,
+    mut q_cars: Query<
+        (Entity, &Transform, &LinearVelocity, &mut CarDriveState, &mut TrafficCar),
+        Without<crate::plugins::cars_driving::driving_plugin::spawn_car::DisabledCar>,
+    >,
     mut commands: Commands,
 ) {
     let dt = time.delta_secs();

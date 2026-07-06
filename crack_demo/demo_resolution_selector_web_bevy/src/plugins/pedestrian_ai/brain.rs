@@ -26,14 +26,18 @@ pub fn ai_brain(
             &AiPerception,
             &mut AiState,
             &mut AiCombatTimers,
+            Option<&crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedDriver>,
         ),
         With<AiPedestrian>,
     >,
 ) {
     let dt = time.delta_secs();
 
-    for (entity, health, equipped, gun_state, perception, mut state, mut timers) in &mut query {
+    for (entity, health, equipped, gun_state, perception, mut state, mut timers, ejected_driver) in &mut query {
         if health.current <= 0.0 {
+            continue;
+        }
+        if ejected_driver.is_some() {
             continue;
         }
         // Tick timers.
@@ -43,8 +47,6 @@ pub fn ai_brain(
 
         let is_gun = equipped.is_some_and(|e| e.0.is_gun());
         let has_ammo = gun_state.is_some_and(|g| g.rounds > 0);
-
-        let old = *state;
 
         // Priority 1: Flee.
         let low_hp = health.current <= FLEE_HP;
@@ -74,10 +76,6 @@ pub fn ai_brain(
         // Priority 4: Idle.
         else {
             *state = AiState::Idle;
-        }
-
-        if *state != old {
-            info!("[AI {:?}] {:?} -> {:?}", entity, old, *state);
         }
     }
 }

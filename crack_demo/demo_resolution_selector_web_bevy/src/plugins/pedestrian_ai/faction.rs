@@ -68,6 +68,18 @@ impl WarMatrix {
         Self { wars }
     }
 
+    /// A partial rivalry map: only *some* faction pairs are at war, so the streets have a mix of
+    /// friendly and hostile clans. Red feuds with Blue, and Green feuds with Yellow; the other
+    /// cross-pairs coexist peacefully.
+    pub fn gang_wars() -> Self {
+        Self {
+            wars: vec![
+                (Faction::Red, Faction::Blue),
+                (Faction::Green, Faction::Yellow),
+            ],
+        }
+    }
+
     /// Returns true if factions `a` and `b` are at war.
     pub fn at_war(&self, a: Faction, b: Faction) -> bool {
         if a == Faction::Neutral || b == Faction::Neutral || a == b {
@@ -80,7 +92,7 @@ impl WarMatrix {
 }
 
 /// Hit points. Death handled centrally when `current <= 0`.
-#[derive(Component)]
+#[derive(Component, Clone, Copy)]
 pub struct Health {
     pub current: f32,
     pub max: f32,
@@ -89,6 +101,21 @@ pub struct Health {
 impl Health {
     pub fn full(max: f32) -> Self {
         Self { current: max, max }
+    }
+}
+
+/// Personal grudge list: entities that have damaged this pedestrian (by weapon or by running it
+/// over with a car). An AI ped will attack anyone on this list regardless of faction. Entries are
+/// pruned when the referenced entity dies ([`super::PedestrianDied`]) or no longer resolves.
+#[derive(Component, Default)]
+pub struct Enemies(pub Vec<Entity>);
+
+impl Enemies {
+    /// Add `who` as a personal enemy (deduplicated).
+    pub fn insert(&mut self, who: Entity) {
+        if !self.0.contains(&who) {
+            self.0.push(who);
+        }
     }
 }
 

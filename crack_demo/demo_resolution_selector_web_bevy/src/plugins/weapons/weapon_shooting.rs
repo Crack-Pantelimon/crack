@@ -93,6 +93,7 @@ pub fn fire_gun_observer(
     q_skel: Query<(), With<PedestrianSkeleton>>,
     q_driver: Query<(), With<DriverMesh>>,
     healths: Query<&crate::plugins::pedestrian_ai::faction::Health>,
+    mut car_healths: Query<&mut crate::plugins::cars_driving::driving_plugin::spawn_car::CarHealth>,
     mut tracers: ResMut<ShotTracers>,
     mut sparks: ResMut<BulletSparks>,
     mut commands: Commands,
@@ -210,12 +211,26 @@ pub fn fire_gun_observer(
                     source: shooter,
                 });
             }
+        } else {
+            // Check if bullet hit a car
+            let mut target_car = None;
+            let mut cur = hit.entity;
+            loop {
+                if car_healths.get(cur).is_ok() {
+                    target_car = Some(cur);
+                    break;
+                }
+                match parents.get(cur) {
+                    Ok(child_of) => cur = child_of.parent(),
+                    Err(_) => break,
+                }
+            }
+            if let Some(car_ent) = target_car {
+                if let Ok(mut car_health) = car_healths.get_mut(car_ent) {
+                    car_health.current = (car_health.current - info.damage).max(0.0);
+                }
+            }
         }
-
-        info!(
-            "Gun hit {:?} (is_person={}) at {:.1?} ({} dmg, {} left in clip)",
-            hit.entity, is_person, impact, info.damage, gun.rounds
-        );
     } else {
         // Missed everything: tracer flies out to max range.
         tracers.0.push(ShotTracer {
@@ -315,6 +330,7 @@ pub fn tick_pending_melee_hits(
     q_skel: Query<(), With<PedestrianSkeleton>>,
     q_driver: Query<(), With<DriverMesh>>,
     healths: Query<&crate::plugins::pedestrian_ai::faction::Health>,
+    mut car_healths: Query<&mut crate::plugins::cars_driving::driving_plugin::spawn_car::CarHealth>,
     mut sparks: ResMut<BulletSparks>,
 ) {
     let dt = time.delta_secs();
@@ -403,12 +419,38 @@ pub fn tick_pending_melee_hits(
                             source: entity,
                         });
                     }
-                } else if pending.is_melee {
-                    commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
-                        fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeClash,
-                        position: hit_pos,
-                        follow: None,
-                    });
+                } else {
+                    // Check if it hit a car
+                    let mut target_car = None;
+                    let mut cur = hit.entity;
+                    loop {
+                        if car_healths.get(cur).is_ok() {
+                            target_car = Some(cur);
+                            break;
+                        }
+                        match parents.get(cur) {
+                            Ok(child_of) => cur = child_of.parent(),
+                            Err(_) => break,
+                        }
+                    }
+                    if let Some(car_ent) = target_car {
+                        let amount = if pending.is_melee {
+                            crate::plugins::pedestrian_ai::combat::SWORD_DAMAGE
+                        } else {
+                            crate::plugins::pedestrian_ai::combat::PUNCH_DAMAGE
+                        };
+                        if let Ok(mut car_health) = car_healths.get_mut(car_ent) {
+                            car_health.current = (car_health.current - amount).max(0.0);
+                        }
+                    }
+
+                    if pending.is_melee {
+                        commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                            fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeClash,
+                            position: hit_pos,
+                            follow: None,
+                        });
+                    }
                 }
             }
             commands.entity(entity).remove::<PendingMeleeHit>();
