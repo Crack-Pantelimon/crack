@@ -54,10 +54,10 @@ fn setup_camera_and_load(mut commands: Commands, asset_server: Res<AssetServer>)
             brightness: 1000.0,
             ..default()
         },
-        //         bevy::post_process::motion_blur::MotionBlur {
-        //     shutter_angle: 1.0,
-        //     samples: 2,
-        // },
+                bevy::post_process::motion_blur::MotionBlur {
+            shutter_angle: 1.0,
+            samples: 2,
+        },
         Msaa::Off,
     ));
 

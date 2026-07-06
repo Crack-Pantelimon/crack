@@ -11,16 +11,17 @@ pub mod weapon_shooting;
 use bevy::prelude::*;
 
 pub use weapon_attach::{
-    EquipWeaponEvent, EquippedWeapon, WeaponExtents, WeaponGripOffset, WeaponModel,
+    EquipWeaponEvent, EquippedWeapon, WeaponExtents, WeaponGripOffset, WeaponKind, WeaponModel,
 };
 pub use weapon_manifest::{GunInfo, WeaponId, WeaponManifest};
-pub use weapon_shooting::{FireGunEvent, GunState, ReloadGunEvent, ShotTracers};
+pub use weapon_shooting::{BulletSpark, BulletSparks, FireGunEvent, GunState, ReloadGunEvent, ShotTracers};
 
 use weapon_attach::{
-    apply_grip_offset, equip_weapon_observer, finalize_weapon_extents, reconcile_weapon_model,
+    equip_weapon_observer, finalize_weapon_extents, reconcile_weapon_model,
+    update_weapon_transforms,
 };
 use weapon_manifest::{load_weapon_manifest_system, start_weapon_manifest_load};
-use weapon_shooting::{draw_shot_tracers, fire_gun_observer, reload_gun_observer};
+use weapon_shooting::{draw_bullet_sparks, draw_shot_tracers, fire_gun_observer, reload_gun_observer};
 
 pub struct WeaponsPlugin;
 
@@ -29,6 +30,7 @@ impl Plugin for WeaponsPlugin {
         app.init_resource::<WeaponManifest>()
             .init_resource::<WeaponGripOffset>()
             .init_resource::<ShotTracers>()
+            .init_resource::<BulletSparks>()
             .add_observer(equip_weapon_observer)
             .add_observer(fire_gun_observer)
             .add_observer(reload_gun_observer)
@@ -41,10 +43,10 @@ impl Plugin for WeaponsPlugin {
                     load_weapon_manifest_system,
                     reconcile_weapon_model,
                     finalize_weapon_extents,
-                    apply_grip_offset,
+                    update_weapon_transforms,
                 )
                     .chain(),
             )
-            .add_systems(Update, draw_shot_tracers);
+            .add_systems(Update, (draw_shot_tracers, draw_bullet_sparks));
     }
 }

@@ -8,11 +8,9 @@
 //! LMB+RMB shoot · Esc back to freecam. In freecam, right-click to open the spawn popup.
 
 use avian3d::prelude::*;
-use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy::world_serialization::WorldAssetRoot;
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
-use rand::seq::IndexedRandom;
+use bevy_egui::EguiPlugin;
 
 use demo_resolution_selector_web_bevy::{
     basic_app::make_basic_app,
@@ -21,23 +19,15 @@ use demo_resolution_selector_web_bevy::{
         cars_driving::driving_plugin::GamePhysicsLayer,
         pedestrians::{
             pedestrian_controller_plugin::{
-                ControlledCharacter, PedestrianControllerPlugin, SpawnControlledPedestrianEvent,
+                PedestrianControllerPlugin, SpawnControlledPedestrianEvent,
             },
             PedestrianManifest, PedestriansPlugin,
         },
         states::GameControlState,
-        weapons::{
-            EquipWeaponEvent, GunState, WeaponGripOffset, WeaponId, WeaponManifest, WeaponsPlugin,
-        },
+        weapons::WeaponsPlugin,
     },
     utils::setup_debug_scene::SetupDebugScenePlugin,
 };
-
-/// The weapon currently selected in the demo UI (index into `WeaponManifest.all`).
-#[derive(Resource, Default)]
-struct WeaponSelection {
-    index: usize,
-}
 
 /// Approximate car body extents (matches `CarDriveState` defaults) used for the mass density.
 const CAR_SIZE: Vec3 = Vec3::new(1.8, 1.0, 3.04);
@@ -53,171 +43,12 @@ fn main() {
         .add_plugins(SetupDebugScenePlugin)
         .add_plugins(PedestrianControllerPlugin)
         .add_plugins(WeaponsPlugin)
-        .init_resource::<WeaponSelection>()
         .add_systems(Startup, (spawn_physics_cubes, spawn_random_cars))
-        .add_systems(
-            Update,
-            (
-                demo_auto_spawn,
-                equip_on_new_character,
-                weapon_wheel.run_if(in_state(GameControlState::ControllingPedestrian)),
-            ),
-        )
-        .add_systems(EguiPrimaryContextPass, (weapon_ui, crosshair_ui))
+        .add_systems(Update, demo_auto_spawn)
         .run();
 }
 
-/// White (70% alpha) crosshair — a dot with a circle around it — at the screen center. Shown while
-/// controlling a pedestrian that holds a gun; hitscan shots go where it points.
-fn crosshair_ui(
-    mut contexts: EguiContexts,
-    controlled: Res<ControlledCharacter>,
-    guns: Query<&GunState>,
-    state: Res<State<GameControlState>>,
-) {
-    if *state.get() != GameControlState::ControllingPedestrian {
-        return;
-    }
-    let Some(controller) = controlled.controller else {
-        return;
-    };
-    if guns.get(controller).is_err() {
-        return;
-    }
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-    let painter = ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Foreground,
-        egui::Id::new("crosshair"),
-    ));
-    let center = ctx.content_rect().center();
-    // White with ~70% alpha.
-    let color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 178);
-    painter.circle_stroke(center, 10.0, egui::Stroke::new(1.5, color));
-    painter.circle_filled(center, 2.0, color);
-}
 
-/// Equip a random weapon whenever a new character is spawned.
-fn equip_on_new_character(
-    mut commands: Commands,
-    controlled: Res<ControlledCharacter>,
-    manifest: Res<WeaponManifest>,
-    mut selection: ResMut<WeaponSelection>,
-    mut last: Local<Option<Entity>>,
-) {
-    if !manifest.loaded {
-        return;
-    }
-    let Some(controller) = controlled.controller else {
-        *last = None;
-        return;
-    };
-    if *last == Some(controller) {
-        return;
-    }
-    *last = Some(controller);
-
-    // Pick a random real weapon (skip Unarmed at index 0), fall back to Unarmed.
-    let weapon = manifest.all[1..]
-        .choose(&mut rand::rng())
-        .cloned()
-        .unwrap_or(WeaponId::Unarmed);
-    selection.index = manifest.all.iter().position(|w| *w == weapon).unwrap_or(0);
-    commands.trigger(EquipWeaponEvent { character: controller, weapon });
-}
-
-/// Mouse wheel cycles to the next/previous weapon.
-fn weapon_wheel(
-    mut commands: Commands,
-    mut wheel: MessageReader<MouseWheel>,
-    mut contexts: EguiContexts,
-    controlled: Res<ControlledCharacter>,
-    manifest: Res<WeaponManifest>,
-    mut selection: ResMut<WeaponSelection>,
-) {
-    if !manifest.loaded || manifest.all.is_empty() {
-        wheel.clear();
-        return;
-    }
-    let over_ui = contexts
-        .ctx_mut()
-        .map(|c| c.is_pointer_over_egui() || c.egui_wants_pointer_input())
-        .unwrap_or(false);
-
-    let mut step = 0i32;
-    for ev in wheel.read() {
-        if ev.y > 0.0 {
-            step += 1;
-        } else if ev.y < 0.0 {
-            step -= 1;
-        }
-    }
-    // Never switch more than one weapon per frame, no matter how hard the wheel was rolled.
-    let step = step.signum();
-    if step == 0 || over_ui {
-        return;
-    }
-    let Some(controller) = controlled.controller else {
-        return;
-    };
-
-    let n = manifest.all.len() as i32;
-    selection.index = (((selection.index as i32 + step) % n + n) % n) as usize;
-    commands.trigger(EquipWeaponEvent {
-        character: controller,
-        weapon: manifest.all[selection.index].clone(),
-    });
-}
-
-/// egui window: grip-offset slider on top, then the weapon list.
-fn weapon_ui(
-    mut commands: Commands,
-    mut contexts: EguiContexts,
-    controlled: Res<ControlledCharacter>,
-    manifest: Res<WeaponManifest>,
-    guns: Query<&GunState>,
-    mut grip: ResMut<WeaponGripOffset>,
-    mut selection: ResMut<WeaponSelection>,
-) {
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-    egui::Window::new("Weapons")
-        .default_pos(egui::pos2(12.0, 50.0))
-        .default_size(egui::vec2(240.0, 360.0))
-        .show(ctx, |ui| {
-            ui.add(egui::Slider::new(&mut grip.0, 0.05..=0.5).text("Grip offset"));
-            if let Some(gun) = controlled.controller.and_then(|c| guns.get(c).ok()) {
-                ui.label(format!(
-                    "Ammo: {} / {}  (R to reload)",
-                    gun.rounds, gun.clip_size
-                ));
-            }
-            ui.separator();
-            if !manifest.loaded {
-                ui.label("Loading weapons…");
-                return;
-            }
-            ui.label("Weapon (mouse wheel to cycle):");
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for (i, weapon) in manifest.all.iter().enumerate() {
-                    if ui
-                        .selectable_label(selection.index == i, weapon.label())
-                        .clicked()
-                    {
-                        selection.index = i;
-                        if let Some(controller) = controlled.controller {
-                            commands.trigger(EquipWeaponEvent {
-                                character: controller,
-                                weapon: weapon.clone(),
-                            });
-                        }
-                    }
-                }
-            });
-        });
-}
 
 /// Scatter a few non-drivable prop cars (mesh + collider only) over the demo ground.
 fn spawn_random_cars(mut commands: Commands, asset_server: Res<AssetServer>) {

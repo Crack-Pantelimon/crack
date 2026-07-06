@@ -14,6 +14,7 @@ impl Plugin for MainGamePlugin {
             .add_plugins(
                 crate::plugins::pedestrians::pedestrian_controller_plugin::PedestrianControllerPlugin,
             )
+            .add_plugins(crate::plugins::weapons::WeaponsPlugin)
             .add_plugins(crate::plugins::states::GameStatesPlugin);
     }
 }

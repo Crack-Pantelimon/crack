@@ -15,3 +15,6 @@
 {"ts":"2026-07-06T13:14:21.608Z","v":"8.9.1","op":"generate","baselineTokens":150744,"actualTokens":11017,"savedTokens":139727,"savedPct":92.7,"durationMs":261,"model":null,"ok":true}
 {"ts":"2026-07-06T13:16:42.693Z","v":"8.9.1","op":"ask","baselineTokens":22026,"actualTokens":1311,"savedTokens":20715,"savedPct":94,"durationMs":37,"model":"ask","ok":true}
 {"ts":"2026-07-06T13:30:55.920Z","v":"8.9.1","op":"ask","baselineTokens":14277,"actualTokens":1147,"savedTokens":13130,"savedPct":92,"durationMs":37,"model":"ask","ok":true}
+{"ts":"2026-07-06T13:33:08.016Z","v":"8.9.1","op":"ask","baselineTokens":8016,"actualTokens":704,"savedTokens":7312,"savedPct":91.2,"durationMs":34,"model":"ask","ok":true}
+{"ts":"2026-07-06T13:40:16.803Z","v":"8.9.1","op":"ask","baselineTokens":10979,"actualTokens":776,"savedTokens":10203,"savedPct":92.9,"durationMs":45,"model":"ask","ok":true}
+{"ts":"2026-07-06T13:59:30.953Z","v":"8.9.1","op":"ask","baselineTokens":11733,"actualTokens":1010,"savedTokens":10723,"savedPct":91.4,"durationMs":47,"model":"ask","ok":true}

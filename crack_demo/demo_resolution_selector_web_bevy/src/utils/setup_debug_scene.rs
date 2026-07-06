@@ -92,6 +92,10 @@ fn setup_scene(
             ..default()
         },
         Msaa::Off,
+                        bevy::post_process::motion_blur::MotionBlur {
+            shutter_angle: 1.0,
+            samples: 2,
+        },
     ));
 
     commands.spawn((

@@ -1,14 +1,11 @@
-//! Hitscan gun shooting: ammo tracking, ray-cast shots into cars/pedestrians/map, and tracer
-//! gizmos (shot line + muzzle/impact points + a short ricochet path) that live for a few seconds.
-//!
-//! The shot ray is fired from the camera through the screen-center crosshair, so what is under the
-//! crosshair is what gets hit. The tracer is drawn from the weapon muzzle to the impact point.
-
 use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 
 use super::weapon_attach::{EquippedWeapon, WeaponModel, WeaponModelState};
 use super::weapon_manifest::WeaponId;
+use crate::plugins::pedestrians::ModelRoot;
+use crate::plugins::pedestrians::pedestrian_controller_plugin::{CharacterController, DriverMesh};
+use crate::plugins::pedestrians::skeleton::PedestrianSkeleton;
 
 /// How long a shot tracer stays visible.
 const TRACER_TTL: f32 = 5.0;
@@ -46,6 +43,42 @@ pub struct ShotTracer {
 #[derive(Resource, Default)]
 pub struct ShotTracers(pub Vec<ShotTracer>);
 
+pub struct BulletSpark {
+    pub position: Vec3,
+    pub velocity: Vec3,
+    pub is_person: bool,
+    pub lifetime: f32,
+}
+
+/// Live bullet impact sparks.
+#[derive(Resource, Default)]
+pub struct BulletSparks(pub Vec<BulletSpark>);
+
+fn is_person_entity(
+    hit_entity: Entity,
+    parents: &Query<&ChildOf>,
+    q_controller: &Query<(), With<CharacterController>>,
+    q_model: &Query<(), With<ModelRoot>>,
+    q_skel: &Query<(), With<PedestrianSkeleton>>,
+    q_driver: &Query<(), With<DriverMesh>>,
+) -> bool {
+    let mut cur = hit_entity;
+    loop {
+        if q_controller.contains(cur)
+            || q_model.contains(cur)
+            || q_skel.contains(cur)
+            || q_driver.contains(cur)
+        {
+            return true;
+        }
+        match parents.get(cur) {
+            Ok(child_of) => cur = child_of.parent(),
+            Err(_) => break,
+        }
+    }
+    false
+}
+
 pub fn fire_gun_observer(
     trigger: On<FireGunEvent>,
     mut shooters: Query<(&mut GunState, &EquippedWeapon, Option<&WeaponModelState>)>,
@@ -53,7 +86,13 @@ pub fn fire_gun_observer(
     transforms: Query<&GlobalTransform>,
     weapon_models: Query<&GlobalTransform, With<WeaponModel>>,
     spatial: SpatialQuery,
+    parents: Query<&ChildOf>,
+    q_controller: Query<(), With<CharacterController>>,
+    q_model: Query<(), With<ModelRoot>>,
+    q_skel: Query<(), With<PedestrianSkeleton>>,
+    q_driver: Query<(), With<DriverMesh>>,
     mut tracers: ResMut<ShotTracers>,
+    mut sparks: ResMut<BulletSparks>,
 ) {
     let shooter = trigger.event().shooter;
     let Ok((mut gun, equipped, model_state)) = shooters.get_mut(shooter) else {
@@ -98,9 +137,49 @@ pub fn fire_gun_observer(
             reflect_to: Some(impact + reflect * REFLECT_LEN),
             ttl: TRACER_TTL,
         });
+
+        let is_person = is_person_entity(
+            hit.entity,
+            &parents,
+            &q_controller,
+            &q_model,
+            &q_skel,
+            &q_driver,
+        );
+
+        // Spawn 3 sparks jumping at random speeds around contact point +/- 0.1m
+        for _ in 0..3 {
+            let offset = Vec3::new(
+                (rand::random::<f32>() * 2.0 - 1.0) * 0.1,
+                (rand::random::<f32>() * 2.0 - 1.0) * 0.1,
+                (rand::random::<f32>() * 2.0 - 1.0) * 0.1,
+            );
+            let spawn_pos = impact + offset;
+
+            let rx = rand::random::<f32>() * 2.0 - 1.0;
+            let ry = rand::random::<f32>() * 1.5 + 0.3;
+            let rz = rand::random::<f32>() * 2.0 - 1.0;
+            let jump_dir = Vec3::new(rx, ry, rz).normalize_or_zero();
+
+            let speed = if is_person {
+                // Red and slower for persons
+                rand::random::<f32>() * 1.5 + 0.8
+            } else {
+                // Ground and car sparks
+                rand::random::<f32>() * 4.0 + 3.0
+            };
+
+            sparks.0.push(BulletSpark {
+                position: spawn_pos,
+                velocity: jump_dir * speed,
+                is_person,
+                lifetime: 1.0,
+            });
+        }
+
         info!(
-            "Gun hit {:?} at {:.1?} ({} dmg, {} left in clip)",
-            hit.entity, impact, info.damage, gun.rounds
+            "Gun hit {:?} (is_person={}) at {:.1?} ({} dmg, {} left in clip)",
+            hit.entity, is_person, impact, info.damage, gun.rounds
         );
     } else {
         // Missed everything: tracer flies out to max range.
@@ -140,4 +219,38 @@ pub fn draw_shot_tracers(time: Res<Time>, mut gizmos: Gizmos, mut tracers: ResMu
             gizmos.line(t.to, reflect_to, Color::srgb(1.0, 0.5, 0.1));
         }
     }
+}
+
+/// Updates position and draws bullet impact sparks (0.04m diameter, air friction, red/slower for persons).
+pub fn draw_bullet_sparks(time: Res<Time>, mut gizmos: Gizmos, mut sparks: ResMut<BulletSparks>) {
+    let dt = time.delta_secs();
+    if dt <= 0.0 {
+        return;
+    }
+
+    let gravity = Vec3::new(0.0, -9.81, 0.0);
+    let air_friction = 3.0;
+
+    sparks.0.retain_mut(|s| {
+        s.lifetime -= dt;
+        if s.lifetime <= 0.0 {
+            return false;
+        }
+
+        s.velocity += gravity * dt;
+        s.velocity *= (1.0 - air_friction * dt).max(0.0);
+        s.position += s.velocity * dt;
+
+        let alpha = (s.lifetime / 1.0).clamp(0.0, 1.0);
+        let color = if s.is_person {
+            Color::srgba(0.95, 0.15, 0.15, alpha)
+        } else {
+            Color::srgba(1.0, 0.9, 0.2, alpha)
+        };
+
+        // 0.04m diameter => 0.02m radius
+        gizmos.sphere(s.position, 0.02, color);
+
+        true
+    });
 }

@@ -1,6 +1,7 @@
 //! Equipping a weapon: attaching/detaching the model on the character's right wrist, and computing
 //! its extents.
 
+use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 use bevy::render::mesh::VertexAttributeValues;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
@@ -43,6 +44,13 @@ pub struct WeaponModelState {
 /// Marker on a spawned weapon model entity.
 #[derive(Component)]
 pub struct WeaponModel;
+
+/// Classification of equipped weapon model for transform and orientation calculations.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeaponKind {
+    Gun,
+    Melee,
+}
 
 /// Marker while a weapon's extents have not yet been computed.
 #[derive(Component)]
@@ -140,6 +148,12 @@ pub fn reconcile_weapon_model(
             }
         }
 
+        let kind = if equipped_id.is_gun() {
+            WeaponKind::Gun
+        } else {
+            WeaponKind::Melee
+        };
+
         // Spawn the new model (Unarmed has none).
         let new_entity = match (equipped_id.path().map(str::to_string), wrist) {
             (Some(url), Some(wrist)) => {
@@ -154,6 +168,7 @@ pub fn reconcile_weapon_model(
                         Visibility::default(),
                         InheritedVisibility::default(),
                         WeaponModel,
+                        kind,
                         PendingWeaponExtents,
                     ))
                     .id();
@@ -256,12 +271,60 @@ pub fn finalize_weapon_extents(
     }
 }
 
-/// Keeps every weapon's grip offset from the wrist in sync with the live slider value.
-pub fn apply_grip_offset(
+/// Keeps every weapon's grip offset from the wrist in sync with the live slider value,
+/// rotates swords 90 degrees along the X axis, and rotates guns around their grip point
+/// so they look at the global aim point target with y = up.
+pub fn update_weapon_transforms(
     grip: Res<WeaponGripOffset>,
-    mut weapons: Query<&mut Transform, With<WeaponModel>>,
+    camera: Query<&GlobalTransform, With<Camera3d>>,
+    spatial: SpatialQuery,
+    parents: Query<&ChildOf>,
+    global_transforms: Query<&GlobalTransform>,
+    mut weapons: Query<(Entity, &mut Transform, &WeaponKind), With<WeaponModel>>,
 ) {
-    for mut transform in &mut weapons {
+    let cam_gt = camera.iter().next();
+    let aim_target = cam_gt.map(|cam| {
+        let origin = cam.translation();
+        let dir = cam.forward();
+        let filter = SpatialQueryFilter::default();
+        if let Some(hit) = spatial.cast_ray(origin, dir, 500.0, true, &filter) {
+            origin + *dir * hit.distance
+        } else {
+            origin + *dir * 100.0
+        }
+    });
+
+    for (weapon_entity, mut transform, kind) in &mut weapons {
         transform.translation = GRIP_OFFSET_AXIS * grip.0;
+
+        match kind {
+            WeaponKind::Melee => {
+                transform.rotation = Quat::from_rotation_x(90.0_f32.to_radians());
+            }
+            WeaponKind::Gun => {
+                if let Some(aim_target) = aim_target {
+                    if let Ok(child_of) = parents.get(weapon_entity) {
+                        let wrist_entity = child_of.0;
+                        if let Ok(wrist_gt) = global_transforms.get(wrist_entity) {
+                            let weapon_world_pos = wrist_gt.transform_point(transform.translation);
+                            let aim_dir = (aim_target - weapon_world_pos).normalize_or_zero();
+                            if aim_dir != Vec3::ZERO {
+                                let x_axis = aim_dir;
+                                let mut z_axis = x_axis.cross(Vec3::Y).normalize_or_zero();
+                                if z_axis.length_squared() < 0.001 {
+                                    z_axis = x_axis.cross(Vec3::Z).normalize_or_zero();
+                                }
+                                let y_axis = z_axis.cross(x_axis).normalize();
+                                let target_world_rot =
+                                    Quat::from_mat3(&Mat3::from_cols(x_axis, y_axis, z_axis));
+
+                                let wrist_rot = wrist_gt.compute_transform().rotation;
+                                transform.rotation = wrist_rot.inverse() * target_world_rot;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

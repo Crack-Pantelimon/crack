@@ -30,6 +30,7 @@ use bevy_egui::EguiPrimaryContextPass;
 
 use crate::plugins::states::GameControlState;
 
+pub use interaction_ui::DriverMesh;
 pub use spawn::{ControlledCharacter, SpawnControlledPedestrianEvent};
 
 use animation::{drive_character_animation, print_animation_catalog};
@@ -40,9 +41,10 @@ use controller::{
     respawn_if_fallen, update_climb, update_grounded, update_roll,
 };
 use interaction_ui::{
-    CarSeatOffset, apply_seat_offset, car_seat_debug_ui, detect_car_interaction,
-    drive_driver_mesh_animation, handle_exit_car, handle_freecam_right_click,
-    spawn_choice_popup_ui, tick_driver_mesh_exit, tick_entering_car,
+    CarSeatOffset, WeaponSelection, apply_seat_offset, car_seat_debug_ui, crosshair_ui,
+    detect_car_interaction, drive_driver_mesh_animation, equip_on_new_character, handle_exit_car,
+    handle_freecam_right_click, spawn_choice_popup_ui, tick_driver_mesh_exit, tick_entering_car,
+    weapon_hud_ui, weapon_wheel,
 };
 use spawn::{
     SpawnChoicePopup, adopt_pedestrian, escape_to_freecam, spawn_controlled_pedestrian_observer,
@@ -122,9 +124,9 @@ const CAM_FOLLOW_SNAP_DIST: f32 = 5.0;
 const CAM_PITCH: f32 = -0.35;
 /// Mouse-drag orbit sensitivity (radians per pixel).
 const CAM_ORBIT_SENSITIVITY: f32 = 0.006;
-/// Pitch is clamped so the camera stays above the character and never flips.
-const CAM_PITCH_MIN: f32 = -1.4;
-const CAM_PITCH_MAX: f32 = -0.05;
+/// Pitch clamp limits: -85 degrees min to +85 degrees max.
+const CAM_PITCH_MIN: f32 = -85.0 * (std::f32::consts::PI / 180.0);
+const CAM_PITCH_MAX: f32 = 85.0 * (std::f32::consts::PI / 180.0);
 
 // ---------------------------------------------------------------------------------------------
 // Shared components / resources / messages
@@ -298,9 +300,10 @@ impl Plugin for PedestrianControllerPlugin {
             .init_resource::<camera::CameraRig>()
             .init_resource::<SpawnChoicePopup>()
             .init_resource::<CarSeatOffset>()
+            .init_resource::<WeaponSelection>()
             .add_observer(spawn_controlled_pedestrian_observer)
             // Runs in every state: log the catalog once, and manage the freecam right-click popup.
-            .add_systems(Update, print_animation_catalog)
+            .add_systems(Update, (print_animation_catalog, equip_on_new_character))
             .add_systems(
                 Update,
                 handle_freecam_right_click.run_if(in_state(GameControlState::MapFreecam)),
@@ -347,6 +350,7 @@ impl Plugin for PedestrianControllerPlugin {
                     escape_to_freecam,
                     detect_car_interaction,
                     tick_entering_car,
+                    weapon_wheel,
                 )
                     .run_if(in_state(GameControlState::ControllingPedestrian)),
             )
@@ -366,7 +370,11 @@ impl Plugin for PedestrianControllerPlugin {
             )
             .add_systems(
                 EguiPrimaryContextPass,
-                car_seat_debug_ui.run_if(in_state(GameControlState::DrivingCar)),
+                (
+                    crosshair_ui.run_if(in_state(GameControlState::ControllingPedestrian)),
+                    weapon_hud_ui.run_if(in_state(GameControlState::ControllingPedestrian)),
+                    car_seat_debug_ui.run_if(in_state(GameControlState::DrivingCar)),
+                ),
             );
     }
 }

@@ -4,10 +4,14 @@ use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
+use bevy::input::mouse::MouseWheel;
+use rand::seq::IndexedRandom;
+
 use super::spawn::{SpawnChoicePopup, SpawnControlledPedestrianEvent};
 use crate::plugins::cars_driving::{
     car_info::get_random_car_type, driving_plugin::spawn_car::SpawnCarRequestEvent,
 };
+use crate::plugins::weapons::{EquipWeaponEvent, EquippedWeapon, GunState, WeaponId, WeaponManifest};
 
 /// On right-click in freecam, raycast to the map and open the choice popup at that point.
 pub fn handle_freecam_right_click(
@@ -478,4 +482,182 @@ pub fn tick_driver_mesh_exit(
         }
     }
 }
+
+/// Top-left FPS-style weapon HUD: weapon name in green, and below it in larger font
+/// `<bullets_remaining>/<bullets_clip>` (with the zero in red if out of ammo).
+pub fn weapon_hud_ui(
+    mut contexts: EguiContexts,
+    controlled: Res<ControlledCharacter>,
+    equipped: Query<(&EquippedWeapon, Option<&GunState>)>,
+    state: Res<State<GameControlState>>,
+) {
+    if *state.get() != GameControlState::ControllingPedestrian {
+        return;
+    }
+    let Some(controller) = controlled.controller else {
+        return;
+    };
+    let Ok((equipped_weapon, gun_state)) = equipped.get(controller) else {
+        return;
+    };
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+
+    let weapon_name = equipped_weapon.0.label();
+
+    egui::Area::new(egui::Id::new("weapon_hud_area"))
+        .fixed_pos(egui::pos2(16.0, 16.0))
+        .show(ctx, |ui| {
+            ui.vertical(|ui| {
+                // Top line: Weapon name in green text (FPS style)
+                ui.label(
+                    egui::RichText::new(&weapon_name)
+                        .color(egui::Color32::from_rgb(0, 255, 0))
+                        .size(18.0)
+                        .strong(),
+                );
+
+                // Bottom line (if gun): ammo display in larger font
+                if let Some(gun) = gun_state {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        let font_size = 32.0;
+                        let green = egui::Color32::from_rgb(0, 255, 0);
+                        let red = egui::Color32::from_rgb(255, 50, 50);
+
+                        if gun.rounds == 0 {
+                            ui.label(
+                                egui::RichText::new("0")
+                                    .color(red)
+                                    .size(font_size)
+                                    .strong(),
+                            );
+                        } else {
+                            ui.label(
+                                egui::RichText::new(gun.rounds.to_string())
+                                    .color(green)
+                                    .size(font_size)
+                                    .strong(),
+                            );
+                        }
+                        ui.label(
+                            egui::RichText::new(format!("/{}", gun.clip_size))
+                                .color(green)
+                                .size(font_size)
+                                .strong(),
+                        );
+                    });
+                }
+            });
+        });
+}
+
+/// Selected weapon index into `WeaponManifest.all`.
+#[derive(Resource, Default)]
+pub struct WeaponSelection {
+    pub index: usize,
+}
+
+/// Equip a random weapon whenever a new character is spawned.
+pub fn equip_on_new_character(
+    mut commands: Commands,
+    controlled: Res<ControlledCharacter>,
+    manifest: Res<WeaponManifest>,
+    mut selection: ResMut<WeaponSelection>,
+    mut last: Local<Option<Entity>>,
+) {
+    if !manifest.loaded {
+        return;
+    }
+    let Some(controller) = controlled.controller else {
+        *last = None;
+        return;
+    };
+    if *last == Some(controller) {
+        return;
+    }
+    *last = Some(controller);
+
+    // Pick a random real weapon (skip Unarmed at index 0), fall back to Unarmed.
+    let weapon = manifest.all[1..]
+        .choose(&mut rand::rng())
+        .cloned()
+        .unwrap_or(WeaponId::Unarmed);
+    selection.index = manifest.all.iter().position(|w| *w == weapon).unwrap_or(0);
+    commands.trigger(EquipWeaponEvent { character: controller, weapon });
+}
+
+/// Mouse wheel cycles to the next/previous weapon.
+pub fn weapon_wheel(
+    mut commands: Commands,
+    mut wheel: MessageReader<MouseWheel>,
+    mut contexts: EguiContexts,
+    controlled: Res<ControlledCharacter>,
+    manifest: Res<WeaponManifest>,
+    mut selection: ResMut<WeaponSelection>,
+) {
+    if !manifest.loaded || manifest.all.is_empty() {
+        wheel.clear();
+        return;
+    }
+    let over_ui = contexts
+        .ctx_mut()
+        .map(|c| c.is_pointer_over_egui() || c.egui_wants_pointer_input())
+        .unwrap_or(false);
+
+    let mut step = 0i32;
+    for ev in wheel.read() {
+        if ev.y > 0.0 {
+            step += 1;
+        } else if ev.y < 0.0 {
+            step -= 1;
+        }
+    }
+    let step = step.signum();
+    if step == 0 || over_ui {
+        return;
+    }
+    let Some(controller) = controlled.controller else {
+        return;
+    };
+
+    let n = manifest.all.len() as i32;
+    selection.index = (((selection.index as i32 + step) % n + n) % n) as usize;
+    commands.trigger(EquipWeaponEvent {
+        character: controller,
+        weapon: manifest.all[selection.index].clone(),
+    });
+}
+
+/// White (70% alpha) crosshair at screen center when holding a gun.
+pub fn crosshair_ui(
+    mut contexts: EguiContexts,
+    controlled: Res<ControlledCharacter>,
+    guns: Query<&GunState>,
+    state: Res<State<GameControlState>>,
+) {
+    if *state.get() != GameControlState::ControllingPedestrian {
+        return;
+    }
+    let Some(controller) = controlled.controller else {
+        return;
+    };
+    if guns.get(controller).is_err() {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("crosshair"),
+    ));
+    let center = ctx.content_rect().center();
+    let color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 178);
+    painter.circle_stroke(center, 10.0, egui::Stroke::new(1.5, color));
+    painter.circle_filled(center, 2.0, color);
+}
+
+
 
