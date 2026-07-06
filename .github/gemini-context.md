@@ -3,7 +3,7 @@
 ## Auto-generated signatures
 <!-- Updated by gen-context.js -->
 You are a coding assistant with complete knowledge of this codebase.
-The following code signatures were extracted by SigMap v8.9.1 on 2026-07-06T17:10:33.692Z.
+The following code signatures were extracted by SigMap v8.9.1 on 2026-07-06T17:33:15.698Z.
 <!-- sigmap: version=8.9.1 -->
 
 These signatures represent every public function, class, and type in the project.
