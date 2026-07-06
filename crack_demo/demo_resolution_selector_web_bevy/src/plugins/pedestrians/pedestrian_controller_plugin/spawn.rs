@@ -80,33 +80,33 @@ pub fn spawn_controlled_pedestrian_observer(
         event.position.z,
     );
 
-    let controller = commands
-        .spawn((
-            Name::new("PedestrianController"),
-            CharacterController,
-            CharacterScale(scale),
-            CharacterMovementSettings::default(),
-            CharacterCollisions::default(),
-            MovementModifiers::default(),
-            AnimState::default(),
-            CombatState::default(),
-            GroundDetection {
-                cast_shape: Some(Collider::capsule(CAPSULE_RADIUS * 0.99, CAPSULE_LENGTH)),
-                ..default()
-            },
-            Collider::capsule(CAPSULE_RADIUS, CAPSULE_LENGTH),
-            // Same layer convention as the cars so the solver resolves ground/car interactions.
-            CollisionLayers::new(
+    let controller = commands.spawn((
+        Name::new("PedestrianController"),
+        CharacterController,
+        CharacterScale(scale),
+        CharacterMovementSettings::default(),
+        CharacterCollisions::default(),
+        MovementModifiers::default(),
+        AnimState::default(),
+        CombatState::default(),
+        GroundDetection {
+            cast_shape: Some(Collider::capsule(CAPSULE_RADIUS * 0.99, CAPSULE_LENGTH)),
+            ..default()
+        },
+        Collider::capsule(CAPSULE_RADIUS, CAPSULE_LENGTH),
+        // Same layer convention as the cars so the solver resolves ground/car interactions.
+        CollisionLayers::new(
+            GamePhysicsLayer::Car,
+            [
+                GamePhysicsLayer::Map,
                 GamePhysicsLayer::Car,
-                [
-                    GamePhysicsLayer::Map,
-                    GamePhysicsLayer::Car,
-                    GamePhysicsLayer::Wheel,
-                ],
-            ),
-            Transform::from_translation(controller_pos).with_rotation(event.rotation.unwrap_or(Quat::IDENTITY)),
-            Visibility::default(),
-        ));
+                GamePhysicsLayer::Wheel,
+            ],
+        ),
+        Transform::from_translation(controller_pos)
+            .with_rotation(event.rotation.unwrap_or(Quat::IDENTITY)),
+        Visibility::default(),
+    ));
 
     let controller = controller.id();
 

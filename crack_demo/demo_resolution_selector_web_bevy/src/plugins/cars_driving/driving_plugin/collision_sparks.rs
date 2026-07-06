@@ -1,8 +1,8 @@
+use crate::plugins::cars_driving::driving_plugin::spawn_car::Car;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use std::collections::HashMap;
 use tracing::info;
-use crate::plugins::cars_driving::driving_plugin::spawn_car::Car;
 
 pub const MAX_SPARK_EVENTS_PER_CAR_PER_SEC: usize = 3;
 pub const MAX_SPARK_EVENTS_GLOBAL_PER_SEC: usize = 20;
@@ -88,16 +88,24 @@ pub fn handle_car_collisions(
             (car2_opt.unwrap(), other, ev.collider1)
         };
 
-        let car_gt = q_gt.get(car_entity).map(|gt| gt.translation()).unwrap_or(Vec3::ZERO);
+        let car_gt = q_gt
+            .get(car_entity)
+            .map(|gt| gt.translation())
+            .unwrap_or(Vec3::ZERO);
         let car_vel = q_lin_vel.get(car_entity).map(|v| v.0).unwrap_or(Vec3::ZERO);
         let car_speed = car_vel.length();
 
-        let other_gt = q_gt.get(other_collider)
+        let other_gt = q_gt
+            .get(other_collider)
             .or_else(|_| q_gt.get(other_entity))
             .map(|gt| gt.translation())
             .unwrap_or(car_gt);
-        let other_vel = q_lin_vel.get(other_entity).map(|v| v.0).unwrap_or(Vec3::ZERO);
-        let other_name = q_name.get(other_entity)
+        let other_vel = q_lin_vel
+            .get(other_entity)
+            .map(|v| v.0)
+            .unwrap_or(Vec3::ZERO);
+        let other_name = q_name
+            .get(other_entity)
             .or_else(|_| q_name.get(other_collider))
             .map(|n| n.as_str())
             .unwrap_or("Environment/Ground");
@@ -114,14 +122,21 @@ pub fn handle_car_collisions(
             continue;
         }
 
-        let car_events_count = rate_limiter.per_car.get(&car_entity).map_or(0, |ts| ts.len());
+        let car_events_count = rate_limiter
+            .per_car
+            .get(&car_entity)
+            .map_or(0, |ts| ts.len());
         if car_events_count >= MAX_SPARK_EVENTS_PER_CAR_PER_SEC {
             continue;
         }
 
         // Record event timestamp for rate limiting
         rate_limiter.global.push(current_time);
-        rate_limiter.per_car.entry(car_entity).or_default().push(current_time);
+        rate_limiter
+            .per_car
+            .entry(car_entity)
+            .or_default()
+            .push(current_time);
 
         // Calculate collision point in global space
         let cast_dir = if rel_speed > 0.1 {
@@ -153,13 +168,20 @@ pub fn handle_car_collisions(
              ├─ Other Entity: {:?} ({})\n\
              └─ Other Global Pos: Vec3({:.2}, {:.2}, {:.2})",
             car_entity,
-            car_gt.x, car_gt.y, car_gt.z,
-            car_speed, car_speed * 3.6,
-            collision_point.x, collision_point.y, collision_point.z,
+            car_gt.x,
+            car_gt.y,
+            car_gt.z,
+            car_speed,
+            car_speed * 3.6,
+            collision_point.x,
+            collision_point.y,
+            collision_point.z,
             rel_speed,
             other_entity,
             other_name,
-            other_gt.x, other_gt.y, other_gt.z,
+            other_gt.x,
+            other_gt.y,
+            other_gt.z,
         );
 
         // Spawn gizmo collision marker (lives for 5s)
@@ -212,7 +234,9 @@ pub fn update_and_draw_collision_effects(
 ) {
     let current_time = time.elapsed_secs();
     let dt = time.delta_secs();
-    let draw_spark_origin = ui_state.as_ref().map_or(false, |s| s.draw_spark_origin_gizmos);
+    let draw_spark_origin = ui_state
+        .as_ref()
+        .map_or(false, |s| s.draw_spark_origin_gizmos);
 
     // 1. Draw collision markers (point and sphere for 5 seconds)
     for (entity, marker) in q_markers.iter() {

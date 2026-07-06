@@ -397,7 +397,11 @@ pub fn jump_or_climb(
             &MovementModifiers,
             Has<Grounded>,
         ),
-        (With<CharacterController>, Without<Climbing>, Without<Rolling>),
+        (
+            With<CharacterController>,
+            Without<Climbing>,
+            Without<Rolling>,
+        ),
     >,
 ) {
     if !keys.just_pressed(KeyCode::Space) {
@@ -417,8 +421,7 @@ pub fn jump_or_climb(
             }
             continue;
         }
-        if let Some((start, target)) =
-            detect_climb(gt, scale.0, &spatial_query, entity, map_active)
+        if let Some((start, target)) = detect_climb(gt, scale.0, &spatial_query, entity, map_active)
         {
             commands.entity(entity).insert(Climbing {
                 start,

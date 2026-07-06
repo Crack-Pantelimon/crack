@@ -6,7 +6,7 @@ pub mod spawn_car;
 pub mod speedometer_ui;
 
 pub use rk4_prediction::{
-    update_speculative_contacts_system, CarSpeculativeContactData, SpeculativeStepData,
+    CarSpeculativeContactData, SpeculativeStepData, update_speculative_contacts_system,
 };
 
 use crate::plugins::cars_driving::driving_plugin::{
@@ -74,10 +74,7 @@ impl<S: States> Plugin for DrivingPlugin<S> {
         // Player control & camera & UI systems only run when driving a car
         app.add_systems(
             Update,
-            (
-                camera_follows_car,
-                keybinds_control_car,
-            )
+            (camera_follows_car, keybinds_control_car)
                 .chain()
                 .run_if(in_state(self.state.clone())),
         );
@@ -381,8 +378,14 @@ pub fn apply_car_steering_and_drive(
     }
     let is_sim = sim_state.map(|s| s.is_sim).unwrap_or(false);
 
-    for (car_transform, mut drive_state, contact_data, speculative_data, mut lin_vel, mut ang_vel) in
-        q_car.iter_mut()
+    for (
+        car_transform,
+        mut drive_state,
+        contact_data,
+        speculative_data,
+        mut lin_vel,
+        mut ang_vel,
+    ) in q_car.iter_mut()
     {
         drive_state.suspension_rest =
             drive_state.max_ray_length * (drive_state.rest_length_pct / 100.0);
@@ -519,7 +522,8 @@ pub fn apply_car_steering_and_drive(
                 }
                 if valid_steps > 0.0 {
                     let avg_future_rel_y = sum_future_rel_y / valid_steps;
-                    anticipatory_height_bias = (avg_future_rel_y * 0.35 * speed_weight).clamp(-0.5, 0.5);
+                    anticipatory_height_bias =
+                        (avg_future_rel_y * 0.35 * speed_weight).clamp(-0.5, 0.5);
                 }
             }
         }
@@ -599,7 +603,11 @@ pub fn apply_car_steering_and_drive(
             // Engine force limit: 1G of engine traction limit
             drive_force_mag = drive_force_mag.min(drive_state.car_mass * 9.81f32);
 
-            let dir = if drive_state.is_reverse { -fwd_xz } else { fwd_xz };
+            let dir = if drive_state.is_reverse {
+                -fwd_xz
+            } else {
+                fwd_xz
+            };
             v_xz += dir * (drive_force_mag / drive_state.car_mass) * dt;
         }
 
@@ -663,9 +671,7 @@ pub fn init_cosmetic_wheels_system(
                 queue.extend(kids.iter());
             }
         }
-        if mesh_entities.is_empty()
-            || mesh_entities.iter().any(|(_, h)| meshes.get(h).is_none())
-        {
+        if mesh_entities.is_empty() || mesh_entities.iter().any(|(_, h)| meshes.get(h).is_none()) {
             continue;
         }
 
@@ -851,8 +857,10 @@ pub fn update_wheel_contact_normals(
                 for z in 0..grid_size {
                     let frac_x = x as f32 / (grid_size - 1) as f32;
                     let frac_z = z as f32 / (grid_size - 1) as f32;
-                    let local_x = x_min + frac_x * (x_max - x_min) * drive_state.ray_grid_width_frac;
-                    let local_z = z_min + frac_z * (z_max - z_min) * drive_state.ray_grid_length_frac;
+                    let local_x =
+                        x_min + frac_x * (x_max - x_min) * drive_state.ray_grid_width_frac;
+                    let local_z =
+                        z_min + frac_z * (z_max - z_min) * drive_state.ray_grid_length_frac;
                     let local_y = drive_state.ray_start_y_offset;
                     local_corners[x * grid_size + z] = Vec3::new(local_x, local_y, local_z);
                 }
@@ -982,7 +990,11 @@ pub fn draw_car_gizmos(
 
                         // Draw small sphere
                         let sphere = Sphere::new(0.05);
-                        gizmos.primitive_3d(&sphere, Isometry3d::from_translation(hit), sphere_color);
+                        gizmos.primitive_3d(
+                            &sphere,
+                            Isometry3d::from_translation(hit),
+                            sphere_color,
+                        );
                     }
                 }
 
@@ -1059,7 +1071,11 @@ pub fn draw_car_gizmos(
                             gizmos.line(h - Vec3::Y * 0.1, h + Vec3::Y * 0.1, star_blue);
                             gizmos.line(h - Vec3::Z * 0.1, h + Vec3::Z * 0.1, star_blue);
                             let sphere = Sphere::new(0.04);
-                            gizmos.primitive_3d(&sphere, Isometry3d::from_translation(h), star_blue);
+                            gizmos.primitive_3d(
+                                &sphere,
+                                Isometry3d::from_translation(h),
+                                star_blue,
+                            );
                         }
                     };
 

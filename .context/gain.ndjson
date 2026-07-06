@@ -18,3 +18,5 @@
 {"ts":"2026-07-06T13:33:08.016Z","v":"8.9.1","op":"ask","baselineTokens":8016,"actualTokens":704,"savedTokens":7312,"savedPct":91.2,"durationMs":34,"model":"ask","ok":true}
 {"ts":"2026-07-06T13:40:16.803Z","v":"8.9.1","op":"ask","baselineTokens":10979,"actualTokens":776,"savedTokens":10203,"savedPct":92.9,"durationMs":45,"model":"ask","ok":true}
 {"ts":"2026-07-06T13:59:30.953Z","v":"8.9.1","op":"ask","baselineTokens":11733,"actualTokens":1010,"savedTokens":10723,"savedPct":91.4,"durationMs":47,"model":"ask","ok":true}
+{"ts":"2026-07-06T16:23:34.556Z","v":"8.9.1","op":"generate","baselineTokens":154344,"actualTokens":11277,"savedTokens":143067,"savedPct":92.7,"durationMs":209,"model":null,"ok":true}
+{"ts":"2026-07-06T16:24:14.031Z","v":"8.9.1","op":"generate","baselineTokens":154463,"actualTokens":11278,"savedTokens":143185,"savedPct":92.7,"durationMs":220,"model":null,"ok":true}

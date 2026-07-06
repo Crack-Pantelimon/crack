@@ -11,7 +11,9 @@ use super::spawn::{SpawnChoicePopup, SpawnControlledPedestrianEvent};
 use crate::plugins::cars_driving::{
     car_info::get_random_car_type, driving_plugin::spawn_car::SpawnCarRequestEvent,
 };
-use crate::plugins::weapons::{EquipWeaponEvent, EquippedWeapon, GunState, WeaponId, WeaponManifest};
+use crate::plugins::weapons::{
+    EquipWeaponEvent, EquippedWeapon, GunState, WeaponId, WeaponManifest,
+};
 
 /// On right-click in freecam, raycast to the map and open the choice popup at that point.
 pub fn handle_freecam_right_click(
@@ -218,7 +220,12 @@ pub fn detect_car_interaction(
 pub fn tick_entering_car(
     mut commands: Commands,
     time: Res<Time>,
-    mut q_player: Query<(Entity, &mut EnteringCarTimer, &mut Transform, &CharacterScale)>,
+    mut q_player: Query<(
+        Entity,
+        &mut EnteringCarTimer,
+        &mut Transform,
+        &CharacterScale,
+    )>,
     q_cars: Query<&GlobalTransform, With<Car>>,
     q_drivers: Query<(Entity, &DriverMesh)>,
     seat: Res<CarSeatOffset>,
@@ -527,12 +534,7 @@ pub fn weapon_hud_ui(
                         let red = egui::Color32::from_rgb(255, 50, 50);
 
                         if gun.rounds == 0 {
-                            ui.label(
-                                egui::RichText::new("0")
-                                    .color(red)
-                                    .size(font_size)
-                                    .strong(),
-                            );
+                            ui.label(egui::RichText::new("0").color(red).size(font_size).strong());
                         } else {
                             ui.label(
                                 egui::RichText::new(gun.rounds.to_string())
@@ -585,7 +587,10 @@ pub fn equip_on_new_character(
         .cloned()
         .unwrap_or(WeaponId::Unarmed);
     selection.index = manifest.all.iter().position(|w| *w == weapon).unwrap_or(0);
-    commands.trigger(EquipWeaponEvent { character: controller, weapon });
+    commands.trigger(EquipWeaponEvent {
+        character: controller,
+        weapon,
+    });
 }
 
 /// Mouse wheel cycles to the next/previous weapon.
@@ -658,6 +663,3 @@ pub fn crosshair_ui(
     painter.circle_stroke(center, 10.0, egui::Stroke::new(1.5, color));
     painter.circle_filled(center, 2.0, color);
 }
-
-
-

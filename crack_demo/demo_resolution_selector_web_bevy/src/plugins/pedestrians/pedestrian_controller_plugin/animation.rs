@@ -236,9 +236,9 @@ pub fn drive_character_animation(
     // --- Combat overlay state machine (weapon-aware) -------------------------------------------
     // A one-shot attack keeps playing until it finishes; an aim loop holds while RMB is down.
     let one_shot_finished = combat.kind == CombatKind::OneShot
-        && combat
-            .node
-            .map_or(true, |n| player.animation(n).map_or(true, |a| a.is_finished()));
+        && combat.node.map_or(true, |n| {
+            player.animation(n).map_or(true, |a| a.is_finished())
+        });
 
     let can_shoot = gun_state.map_or(false, |g| g.rounds > 0);
     let reload_pressed = keys.just_pressed(KeyCode::KeyR);
@@ -250,7 +250,9 @@ pub fn drive_character_animation(
             // Only fire (and animate) when there are rounds left in the clip.
             if can_shoot {
                 pressed_node = node_for(&anims, &["Pistol_Shoot"]);
-                commands.trigger(FireGunEvent { shooter: controller });
+                commands.trigger(FireGunEvent {
+                    shooter: controller,
+                });
             }
         } else if is_melee {
             pressed_node = node_for(&anims, &["Sword_Attack"]);
@@ -261,7 +263,9 @@ pub fn drive_character_animation(
         }
     } else if reload_pressed && is_gun && gun_state.is_some_and(|g| g.rounds < g.clip_size) {
         pressed_node = node_for(&anims, &["Pistol_Reload"]);
-        commands.trigger(ReloadGunEvent { shooter: controller });
+        commands.trigger(ReloadGunEvent {
+            shooter: controller,
+        });
     }
 
     let (want_kind, want_node) = if pressed_node.is_some() {

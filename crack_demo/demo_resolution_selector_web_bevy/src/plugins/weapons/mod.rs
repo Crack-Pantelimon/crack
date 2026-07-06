@@ -14,14 +14,18 @@ pub use weapon_attach::{
     EquipWeaponEvent, EquippedWeapon, WeaponExtents, WeaponGripOffset, WeaponKind, WeaponModel,
 };
 pub use weapon_manifest::{GunInfo, WeaponId, WeaponManifest};
-pub use weapon_shooting::{BulletSpark, BulletSparks, FireGunEvent, GunState, ReloadGunEvent, ShotTracers};
+pub use weapon_shooting::{
+    BulletSpark, BulletSparks, FireGunEvent, GunState, ReloadGunEvent, ShotTracers,
+};
 
 use weapon_attach::{
     equip_weapon_observer, finalize_weapon_extents, reconcile_weapon_model,
     update_weapon_transforms,
 };
 use weapon_manifest::{load_weapon_manifest_system, start_weapon_manifest_load};
-use weapon_shooting::{draw_bullet_sparks, draw_shot_tracers, fire_gun_observer, reload_gun_observer};
+use weapon_shooting::{
+    draw_bullet_sparks, draw_shot_tracers, fire_gun_observer, reload_gun_observer,
+};
 
 pub struct WeaponsPlugin;
 

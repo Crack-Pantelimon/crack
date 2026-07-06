@@ -55,7 +55,11 @@ fn main() {
         .add_plugins(SetupDebugScenePlugin)
         .add_systems(
             Startup,
-            (spawn_bumpy_heightmap, spawn_physics_cubes, spawn_random_cars),
+            (
+                spawn_bumpy_heightmap,
+                spawn_physics_cubes,
+                spawn_random_cars,
+            ),
         )
         .add_systems(
             Update,
@@ -134,9 +138,7 @@ fn spawn_bumpy_heightmap(
     ));
 }
 
-fn set_car_initial_speed(
-    mut q_new_car: Query<(&Transform, &mut LinearVelocity), Added<Car>>,
-) {
+fn set_car_initial_speed(mut q_new_car: Query<(&Transform, &mut LinearVelocity), Added<Car>>) {
     for (transform, mut lin_vel) in q_new_car.iter_mut() {
         let fwd = transform.rotation * Vec3::NEG_Z;
         lin_vel.0 = fwd * (100.0 / 3.6);
@@ -352,6 +354,3 @@ fn spawn_physics_cubes(
         ));
     }
 }
-
-
-

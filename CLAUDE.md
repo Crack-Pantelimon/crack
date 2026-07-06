@@ -53,7 +53,7 @@ packages/api_asscrack/.github/copilot-instructions.md:41  # TODO: get which is m
 packages/api_asscrack/.github/copilot-instructions.md:42  # TODO: s
 ```
 
-## changes (last 5 commits — 52 seconds ago)
+## changes (last 5 commits — 2 hours ago)
 ```
 crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/collision_sparks.rs +to
 ```
@@ -65,17 +65,18 @@ crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_pl
 impl SimLogTimer
 ```
 
+### crack_demo/demo_resolution_selector_web_bevy/src/main_game_plugin.rs
+```
+pub struct MainGamePlugin
+impl MainGamePlugin
+```
+
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/car_info.rs
 ```
 pub fn get_car_asset(car_type: &str, asset_server: &AssetServer) → Handle<WorldAsset>
 pub fn get_wheel_asset(wheel_name: &str, asset_server: &AssetServer) → Handle<WorldAsset>
 pub fn car_list() → &'static [&'static str]
 pub fn get_random_car_type() → &'static str
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/camera_follow.rs
-```
-pub fn camera_follows_car(time: Res<Time>, mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<ActivePlayerVehicle>)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/collision_sparks.rs
@@ -85,11 +86,6 @@ pub struct CollisionMarker
 pub struct SparkParticle
 pub fn handle_car_collisions(mut commands: Commands, mut collision_events: MessageReader<CollisionStart>, mut rate_limiter: ResMut<SparkRateLimiter>, spatial_query: SpatialQuery, q_car: Query<&Car>, q_parent: Query<&ChildOf>, q_lin_vel: Query<&LinearVelocity>, q_gt: Query<&GlobalTransform>, q_name: Query<&Name>, time: Res<Time>,)
 pub fn update_and_draw_collision_effects(mut commands: Commands, time: Res<Time>, mut gizmos: Gizmos, q_markers: Query<(Entity, &CollisionMarker)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/keybinds_control.rs
-```
-pub fn keybinds_control_car(keyboard: Res<ButtonInput<KeyCode>>, mut q_car: Query< ( Entity, &mut Transform, &mut LinearVelocity, &mut AngularVelocity, &mut CarDriveState, &Car,)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/mod.rs
@@ -137,7 +133,14 @@ pub fn init_cars_system(mut commands: Commands, query: Query<(Entity, &NeedCarBo
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/speedometer_ui.rs
 ```
-pub fn speedometer_ui(mut contexts: EguiContexts, mut q_car: Query<(&avian3d::prelude::LinearVelocity, &mut CarDriveState)
+pub fn speedometer_ui(mut contexts: EguiContexts, mut q_car: Query< (&avian3d::prelude::LinearVelocity, &mut CarDriveState)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/main_scene_plugin.rs
+```
+pub struct MainScenePlugin
+pub struct SkyboxState
+impl MainScenePlugin
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/pedestrian_controller_plugin/animation.rs
@@ -152,16 +155,21 @@ pub struct CarSeatOffset
 pub struct EnteringCarTimer
 pub struct DriverMesh
 pub struct DriverMeshExit
+pub struct WeaponSelection
 impl CarSeatOffset
 pub fn handle_freecam_right_click(mouse_button: Res<ButtonInput<MouseButton>>, window_query: Query<&Window>, camera_query: Query<(&Camera, &GlobalTransform)
 pub fn spawn_choice_popup_ui(mut commands: Commands, mut contexts: EguiContexts, mut popup: ResMut<SpawnChoicePopup>,)
 pub fn detect_car_interaction(keys: Res<ButtonInput<KeyCode>>, q_player: Query< (Entity, &GlobalTransform)
-pub fn tick_entering_car(mut commands: Commands, time: Res<Time>, mut q_player: Query<(Entity, &mut EnteringCarTimer, &mut Transform, &CharacterScale)
+pub fn tick_entering_car(mut commands: Commands, time: Res<Time>, mut q_player: Query<( Entity, &mut EnteringCarTimer, &mut Transform, &CharacterScale,)
 pub fn drive_driver_mesh_animation(anims: Res<PedestrianAnimations>, mut q_driver: Query<(Entity, &mut DriverMesh, Has<DriverMeshExit>)
 pub fn apply_seat_offset(seat: Res<CarSeatOffset>, mut q_driver: Query<&mut Transform, (With<DriverMesh>, Without<DriverMeshExit>)
 pub fn car_seat_debug_ui(mut contexts: EguiContexts, mut seat: ResMut<CarSeatOffset>, q_driver: Query<()
 pub fn handle_exit_car(mut commands: Commands, keys: Res<ButtonInput<KeyCode>>, q_active_car: Query<(Entity, &GlobalTransform)
 pub fn tick_driver_mesh_exit(mut commands: Commands, time: Res<Time>, mut q_exit: Query<(Entity, &mut Transform, &mut DriverMeshExit)
+pub fn weapon_hud_ui(mut contexts: EguiContexts, controlled: Res<ControlledCharacter>, equipped: Query<(&EquippedWeapon, Option<&GunState>)
+pub fn equip_on_new_character(mut commands: Commands, controlled: Res<ControlledCharacter>, manifest: Res<WeaponManifest>, mut selection: ResMut<WeaponSelection>, mut last: Local<Option<Entity>>,)
+pub fn weapon_wheel(mut commands: Commands, mut wheel: MessageReader<MouseWheel>, mut contexts: EguiContexts, controlled: Res<ControlledCharacter>, manifest: Res<WeaponManifest>, mut selection: ResMut<WeaponSelection>,)
+pub fn crosshair_ui(mut contexts: EguiContexts, controlled: Res<ControlledCharacter>, guns: Query<&GunState>, state: Res<State<GameControlState>>,)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/pedestrian_controller_plugin/mod.rs
@@ -198,22 +206,68 @@ pub fn adopt_pedestrian(mut commands: Commands, mut controlled: ResMut<Controlle
 pub fn escape_to_freecam(keys: Res<ButtonInput<KeyCode>>, mut commands: Commands, mut controlled: ResMut<ControlledCharacter>, mut next_state: ResMut<NextState<GameControlState>>,)
 ```
 
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/spawn_pedestrian.rs
-```
-pub struct SpawnPedestrianEvent
-pub struct ModelRoot
-pub struct PedestrianGltf
-pub struct NeedAlignment
-pub struct PedestrianSpawnCounter
-pub fn spawn_pedestrian_observer(trigger: On<SpawnPedestrianEvent>, mut commands: Commands, asset_server: Res<AssetServer>, mut counter: ResMut<PedestrianSpawnCounter>,)
-pub fn init_pedestrians_system(mut commands: Commands, query: Query<(Entity, &NeedAlignment, &Children)
-```
-
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/physics_plugin.rs
 ```
 pub struct PhysicsPlugin
 impl PhysicsPlugin
 pub fn sync_physics_debug_config(ui_state: Res<UiState>, mut gizmo_store: ResMut<GizmoConfigStore>,)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/mod.rs
+```
+pub struct WeaponsPlugin
+impl WeaponsPlugin
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_attach.rs
+```
+pub struct EquippedWeapon
+pub struct EquipWeaponEvent
+pub struct WeaponGripOffset
+pub struct WeaponModelState
+pub struct WeaponModel
+pub struct PendingWeaponExtents
+pub struct WeaponExtents
+pub enum WeaponKind
+impl WeaponGripOffset
+pub fn equip_weapon_observer(trigger: On<EquipWeaponEvent>, mut commands: Commands)
+pub fn reconcile_weapon_model(mut commands: Commands, asset_server: Res<AssetServer>, mut characters: Query<(Entity, &EquippedWeapon, Option<&mut WeaponModelState>)
+pub fn finalize_weapon_extents(mut commands: Commands, pending: Query<(Entity, &Children)
+pub fn update_weapon_transforms(grip: Res<WeaponGripOffset>, camera: Query<&GlobalTransform, With<Camera3d>>, spatial: SpatialQuery, parents: Query<&ChildOf>, global_transforms: Query<&GlobalTransform>, mut weapons: Query<(Entity, &mut Transform, &WeaponKind)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_shooting.rs
+```
+pub struct GunState
+pub struct FireGunEvent
+pub struct ReloadGunEvent
+pub struct ShotTracer
+pub struct ShotTracers
+pub struct BulletSpark
+pub struct BulletSparks
+pub fn fire_gun_observer(trigger: On<FireGunEvent>, mut shooters: Query<(&mut GunState, &EquippedWeapon, Option<&WeaponModelState>)
+pub fn reload_gun_observer(trigger: On<ReloadGunEvent>, mut shooters: Query<&mut GunState>)
+pub fn draw_shot_tracers(time: Res<Time>, mut gizmos: Gizmos, mut tracers: ResMut<ShotTracers>)
+pub fn draw_bullet_sparks(time: Res<Time>, mut gizmos: Gizmos, mut sparks: ResMut<BulletSparks>)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/ui_egui.rs
+```
+pub struct UiEguiPlugin
+pub struct UiState
+impl UiEguiPlugin
+impl UiState
+impl UiState
+  pub fn with_physics_debug() → Self
+impl UiState
+pub fn web_set_loading_status(_show: bool, _message: &str)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/utils/setup_debug_scene.rs
+```
+pub struct SetupDebugScenePlugin
+pub struct DebugSceneGroundComponent
+impl SetupDebugScenePlugin
 ```
 
 ### crack_demo/AGENTS.md
@@ -272,15 +326,19 @@ pub fn make_basic_app(title: &str) → App
 impl ViewerAnimSelection
 ```
 
-### crack_demo/demo_resolution_selector_web_bevy/src/main_game_plugin.rs
-```
-pub struct MainGamePlugin
-impl MainGamePlugin
-```
-
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/click_spawn_select_controls.rs
 ```
 pub fn handle_click_raycast_spawn_car(mut commands: Commands, mouse_button: Res<ButtonInput<MouseButton>>, window_query: Query<&Window>, camera_query: Query<(&Camera, &GlobalTransform)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/camera_follow.rs
+```
+pub fn camera_follows_car(time: Res<Time>, mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<ActivePlayerVehicle>)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/keybinds_control.rs
+```
+pub fn keybinds_control_car(keyboard: Res<ButtonInput<KeyCode>>, mut q_car: Query< ( Entity, &mut Transform, &mut LinearVelocity, &mut AngularVelocity, &mut CarDriveState, &Car,)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/mod.rs
@@ -323,13 +381,6 @@ impl GeoBBox
   pub fn contains(&self, lat: f64, lon: f64) → bool
 impl OsmOverlayState
 pub fn octant_path_to_geobbox(path: &str) → Option<GeoBBox>
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/main_scene_plugin.rs
-```
-pub struct MainScenePlugin
-pub struct SkyboxState
-impl MainScenePlugin
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/map_lod.rs
@@ -468,6 +519,17 @@ pub fn find_pos_of(entity: Entity, joints: &[JointData]) → Option<Vec3>
 pub fn classify_limb_path(tip_entity: Option<Entity>, spine_path: &[Entity], root_entity: Entity, joints: &[JointData], labels: &mut std::collections::HashMap<Entity, BoneLabel>, limb_main_label: BoneLabel, limb_shoulder_label: BoneLabel, limb_hand_label: BoneLabel,) → Option<(Entity, Entity, Ent...
 ```
 
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/spawn_pedestrian.rs
+```
+pub struct SpawnPedestrianEvent
+pub struct ModelRoot
+pub struct PedestrianGltf
+pub struct NeedAlignment
+pub struct PedestrianSpawnCounter
+pub fn spawn_pedestrian_observer(trigger: On<SpawnPedestrianEvent>, mut commands: Commands, asset_server: Res<AssetServer>, mut counter: ResMut<PedestrianSpawnCounter>,)
+pub fn init_pedestrians_system(mut commands: Commands, query: Query<(Entity, &NeedAlignment, &Children)
+```
+
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/states/mod.rs
 ```
 pub struct GameStatesPlugin
@@ -475,28 +537,6 @@ pub enum InitialMapLoadFinished
 pub enum OsmDatabaseLoadFinished
 pub enum GameControlState
 impl GameStatesPlugin
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/mod.rs
-```
-pub struct WeaponsPlugin
-impl WeaponsPlugin
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_attach.rs
-```
-pub struct EquippedWeapon
-pub struct EquipWeaponEvent
-pub struct WeaponGripOffset
-pub struct WeaponModelState
-pub struct WeaponModel
-pub struct PendingWeaponExtents
-pub struct WeaponExtents
-impl WeaponGripOffset
-pub fn equip_weapon_observer(trigger: On<EquipWeaponEvent>, mut commands: Commands)
-pub fn reconcile_weapon_model(mut commands: Commands, asset_server: Res<AssetServer>, mut characters: Query<(Entity, &EquippedWeapon, Option<&mut WeaponModelState>)
-pub fn finalize_weapon_extents(mut commands: Commands, pending: Query<(Entity, &Children)
-pub fn apply_grip_offset(grip: Res<WeaponGripOffset>, mut weapons: Query<&mut Transform, With<WeaponModel>>,)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_manifest.rs
@@ -516,40 +556,9 @@ pub fn start_weapon_manifest_load(mut commands: Commands, asset_server: Res<Asse
 pub fn load_weapon_manifest_system(bootstrap: Option<Res<WeaponManifestBootstrap>>, text_assets: Res<Assets<TextAsset>>, mut manifest: ResMut<WeaponManifest>,)
 ```
 
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_shooting.rs
-```
-pub struct GunState
-pub struct FireGunEvent
-pub struct ReloadGunEvent
-pub struct ShotTracer
-pub struct ShotTracers
-pub fn fire_gun_observer(trigger: On<FireGunEvent>, mut shooters: Query<(&mut GunState, &EquippedWeapon, Option<&WeaponModelState>)
-pub fn reload_gun_observer(trigger: On<ReloadGunEvent>, mut shooters: Query<&mut GunState>,)
-pub fn draw_shot_tracers(time: Res<Time>, mut gizmos: Gizmos, mut tracers: ResMut<ShotTracers>)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/ui_egui.rs
-```
-pub struct UiEguiPlugin
-pub struct UiState
-impl UiEguiPlugin
-impl UiState
-impl UiState
-  pub fn with_physics_debug() → Self
-impl UiState
-pub fn web_set_loading_status(_show: bool, _message: &str)
-```
-
 ### crack_demo/demo_resolution_selector_web_bevy/src/utils/create_texture.rs
 ```
 pub fn create_grayscale_texture(gray1: u8, gray2: u8) → Image
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/utils/setup_debug_scene.rs
-```
-pub struct SetupDebugScenePlugin
-pub struct DebugSceneGroundComponent
-impl SetupDebugScenePlugin
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/Trunk.toml

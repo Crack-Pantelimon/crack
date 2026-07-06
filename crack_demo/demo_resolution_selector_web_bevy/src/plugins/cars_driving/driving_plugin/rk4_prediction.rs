@@ -2,7 +2,7 @@ use avian3d::prelude::{AngularVelocity, LinearVelocity, SpatialQuery, SpatialQue
 use bevy::prelude::*;
 
 use crate::plugins::cars_driving::driving_plugin::{
-    spawn_car::Car, CarDriveState, GamePhysicsLayer,
+    CarDriveState, GamePhysicsLayer, spawn_car::Car,
 };
 
 pub const NUM_PREDICTION_STEPS: usize = 8;
@@ -163,10 +163,21 @@ pub fn update_speculative_contacts_system(
             let front_center = pred_p + fwd_offset;
 
             let left_orig = front_center
-                + pred_q * Vec3::new(-drive_state.car_half_width, drive_state.ray_start_y_offset, 0.0);
+                + pred_q
+                    * Vec3::new(
+                        -drive_state.car_half_width,
+                        drive_state.ray_start_y_offset,
+                        0.0,
+                    );
             let right_orig = front_center
-                + pred_q * Vec3::new(drive_state.car_half_width, drive_state.ray_start_y_offset, 0.0);
-            let center_orig = front_center + pred_q * Vec3::new(0.0, drive_state.ray_start_y_offset, 0.0);
+                + pred_q
+                    * Vec3::new(
+                        drive_state.car_half_width,
+                        drive_state.ray_start_y_offset,
+                        0.0,
+                    );
+            let center_orig =
+                front_center + pred_q * Vec3::new(0.0, drive_state.ray_start_y_offset, 0.0);
 
             let ray_dir_vec = pred_q * Vec3::NEG_Y;
             let ray_dir = Dir3::new(ray_dir_vec).unwrap_or(Dir3::NEG_Y);
@@ -212,9 +223,9 @@ pub fn update_speculative_contacts_system(
         if let Some(mut spec_data) = speculative_opt {
             spec_data.steps = spec_steps;
         } else {
-            commands.entity(car_entity).insert(CarSpeculativeContactData {
-                steps: spec_steps,
-            });
+            commands
+                .entity(car_entity)
+                .insert(CarSpeculativeContactData { steps: spec_steps });
         }
     }
 }

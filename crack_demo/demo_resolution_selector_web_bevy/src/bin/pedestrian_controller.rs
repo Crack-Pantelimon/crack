@@ -15,13 +15,13 @@ use bevy_egui::EguiPlugin;
 use demo_resolution_selector_web_bevy::{
     basic_app::make_basic_app,
     plugins::{
-        cars_driving::{car_info::get_car_asset, car_info::get_random_car_type},
         cars_driving::driving_plugin::GamePhysicsLayer,
+        cars_driving::{car_info::get_car_asset, car_info::get_random_car_type},
         pedestrians::{
+            PedestrianManifest, PedestriansPlugin,
             pedestrian_controller_plugin::{
                 PedestrianControllerPlugin, SpawnControlledPedestrianEvent,
             },
-            PedestrianManifest, PedestriansPlugin,
         },
         states::GameControlState,
         weapons::WeaponsPlugin,
@@ -47,8 +47,6 @@ fn main() {
         .add_systems(Update, demo_auto_spawn)
         .run();
 }
-
-
 
 /// Scatter a few non-drivable prop cars (mesh + collider only) over the demo ground.
 fn spawn_random_cars(mut commands: Commands, asset_server: Res<AssetServer>) {

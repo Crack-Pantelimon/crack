@@ -6,7 +6,10 @@ use crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle
 
 pub fn speedometer_ui(
     mut contexts: EguiContexts,
-    mut q_car: Query<(&avian3d::prelude::LinearVelocity, &mut CarDriveState), With<ActivePlayerVehicle>>,
+    mut q_car: Query<
+        (&avian3d::prelude::LinearVelocity, &mut CarDriveState),
+        With<ActivePlayerVehicle>,
+    >,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -55,12 +58,9 @@ pub fn speedometer_ui(
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Max Ray Length:").size(9.0));
                                 ui.add(
-                                    egui::Slider::new(
-                                        &mut drive_state.max_ray_length,
-                                        0.60..=1.80,
-                                    )
-                                    .text("m")
-                                    .step_by(0.02),
+                                    egui::Slider::new(&mut drive_state.max_ray_length, 0.60..=1.80)
+                                        .text("m")
+                                        .step_by(0.02),
                                 );
                             });
                             ui.horizontal(|ui| {
@@ -88,12 +88,9 @@ pub fn speedometer_ui(
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Tilt response:").size(9.0));
                                 ui.add(
-                                    egui::Slider::new(
-                                        &mut drive_state.tilt_response,
-                                        0.05..=0.50,
-                                    )
-                                    .text("s")
-                                    .step_by(0.01),
+                                    egui::Slider::new(&mut drive_state.tilt_response, 0.05..=0.50)
+                                        .text("s")
+                                        .step_by(0.01),
                                 );
                             });
                             ui.horizontal(|ui| {
@@ -106,23 +103,17 @@ pub fn speedometer_ui(
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Max Speed:").size(9.0));
                                 ui.add(
-                                    egui::Slider::new(
-                                        &mut drive_state.car_max_speed,
-                                        40.0..=300.0,
-                                    )
-                                    .text("km/h")
-                                    .step_by(5.0),
+                                    egui::Slider::new(&mut drive_state.car_max_speed, 40.0..=300.0)
+                                        .text("km/h")
+                                        .step_by(5.0),
                                 );
                             });
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Horsepower:").size(9.0));
                                 ui.add(
-                                    egui::Slider::new(
-                                        &mut drive_state.horsepower,
-                                        50.0..=1000.0,
-                                    )
-                                    .text("HP")
-                                    .step_by(10.0),
+                                    egui::Slider::new(&mut drive_state.horsepower, 50.0..=1000.0)
+                                        .text("HP")
+                                        .step_by(10.0),
                                 );
                             });
                         });
@@ -152,9 +143,12 @@ pub fn speedometer_ui(
                                         .strong(),
                                     );
                                     ui.label(
-                                        egui::RichText::new(format!("{:.0} RPM", drive_state.engine_rpm))
-                                            .color(egui::Color32::LIGHT_GRAY)
-                                            .size(18.0)
+                                        egui::RichText::new(format!(
+                                            "{:.0} RPM",
+                                            drive_state.engine_rpm
+                                        ))
+                                        .color(egui::Color32::LIGHT_GRAY)
+                                        .size(18.0),
                                     );
                                 });
                                 ui.label(

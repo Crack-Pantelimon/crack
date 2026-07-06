@@ -1,7 +1,6 @@
 //! The pedestrian spawn path: turn a [`SpawnPedestrianEvent`] into a live, aligned,
 //! classified pedestrian entity.
 
-
 use bevy::ecs::relationship::Relationship;
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
@@ -213,8 +212,7 @@ pub fn init_pedestrians_system(
             });
         }
 
-        let (classification, _, _, _, _, _, right_wrist) =
-            classify_skeleton(root_entity, &joints);
+        let (classification, _, _, _, _, _, right_wrist) = classify_skeleton(root_entity, &joints);
 
         commands.entity(root_entity).insert(PedestrianSkeleton {
             joint_labels: classification,

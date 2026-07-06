@@ -192,10 +192,7 @@ pub fn fire_gun_observer(
     }
 }
 
-pub fn reload_gun_observer(
-    trigger: On<ReloadGunEvent>,
-    mut shooters: Query<&mut GunState>,
-) {
+pub fn reload_gun_observer(trigger: On<ReloadGunEvent>, mut shooters: Query<&mut GunState>) {
     if let Ok(mut gun) = shooters.get_mut(trigger.event().shooter) {
         gun.rounds = gun.clip_size;
     }

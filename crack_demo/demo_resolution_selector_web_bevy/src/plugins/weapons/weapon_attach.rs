@@ -224,10 +224,7 @@ pub fn finalize_weapon_extents(
         if mesh_entities.is_empty() {
             continue;
         }
-        if mesh_entities
-            .iter()
-            .any(|(_, h)| meshes.get(h).is_none())
-        {
+        if mesh_entities.iter().any(|(_, h)| meshes.get(h).is_none()) {
             continue; // meshes still loading
         }
 
@@ -249,7 +246,8 @@ pub fn finalize_weapon_extents(
                 mesh.attribute(Mesh::ATTRIBUTE_POSITION)
             {
                 for pos in positions {
-                    let local = root_inv.transform_point3(mesh_gt.transform_point(Vec3::from(*pos)));
+                    let local =
+                        root_inv.transform_point3(mesh_gt.transform_point(Vec3::from(*pos)));
                     min = min.min(local);
                     max = max.max(local);
                 }
