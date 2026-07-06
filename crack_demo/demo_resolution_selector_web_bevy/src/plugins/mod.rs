@@ -9,3 +9,4 @@ pub mod pedestrian_ai;
 pub mod physics_plugin;
 pub mod states;
 pub mod weapons;
+pub mod traffic;

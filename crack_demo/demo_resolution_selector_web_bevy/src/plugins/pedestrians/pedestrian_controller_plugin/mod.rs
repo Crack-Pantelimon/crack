@@ -31,7 +31,7 @@ use bevy_egui::EguiPrimaryContextPass;
 
 use crate::plugins::states::GameControlState;
 
-pub use interaction_ui::DriverMesh;
+pub use interaction_ui::{DriverMesh, CarSeatOffset};
 pub use spawn::{ControlledCharacter, SpawnControlledPedestrianEvent};
 
 use animation::{drive_character_animation, print_animation_catalog};
@@ -39,7 +39,7 @@ use camera::{follow_camera, orbit_camera_input};
 use controller::{character_input, jump_or_climb};
 use locomotion::CharacterLocomotionPlugin;
 use interaction_ui::{
-    CarSeatOffset, WeaponSelection, apply_seat_offset, car_seat_debug_ui, crosshair_ui,
+    WeaponSelection, apply_seat_offset, car_seat_debug_ui, crosshair_ui,
     detect_car_interaction, drive_driver_mesh_animation, equip_on_new_character, handle_exit_car,
     handle_freecam_right_click, spawn_choice_popup_ui, tick_driver_mesh_exit, tick_entering_car,
     weapon_hud_ui, weapon_wheel,

@@ -94,6 +94,12 @@ pub fn spawn_choice_popup_ui(
                     });
                     close = true;
                 }
+                if ui.button("🚦 Traffic car").clicked() {
+                    commands.trigger(crate::plugins::traffic::SpawnTrafficCarEvent {
+                        position: popup.world_pos,
+                    });
+                    close = true;
+                }
                 if ui.button("Cancel").clicked() {
                     close = true;
                 }

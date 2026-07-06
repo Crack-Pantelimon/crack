@@ -27,43 +27,13 @@ pub struct Car {
     pub _car_type: String,
 }
 
-pub fn spawn_car_request_event_observer(
-    spawn_car_event: On<SpawnCarRequestEvent>,
-    mut commands: Commands,
-    current_state: Res<State<GameControlState>>,
-    mut next_state: ResMut<NextState<GameControlState>>,
-    spatial_query: avian3d::prelude::SpatialQuery,
-    asset_server: Res<AssetServer>,
-    q_active_cars: Query<Entity, With<ActivePlayerVehicle>>,
-) {
-    if current_state.get() != &GameControlState::MapFreecam {
-        return;
-    }
-    let mut pos = spawn_car_event.position;
-
-    // Raycast down from pos.y + 100.0 to find exact ground height
-    let start_y = pos.y + 100.0;
-    let ray_origin = Vec3::new(pos.x, start_y, pos.z);
-    let filter = avian3d::prelude::SpatialQueryFilter::default();
-
-    if let Some(hit) = spatial_query.cast_ray(
-        ray_origin,
-        bevy::prelude::Dir3::NEG_Y,
-        1000.0,
-        true,
-        &filter,
-    ) {
-        let ground_y = start_y - hit.distance;
-        pos.y = ground_y + 3.0;
-    } else {
-        pos.y += 3.0;
-    }
-
-    let car_rot = spawn_car_event.rotation.unwrap_or_else(|| {
-        let random_angle = rand::random::<f32>() * std::f32::consts::TAU;
-        Quat::from_rotation_y(random_angle)
-    });
-
+pub fn spawn_physics_car(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    pos: Vec3,
+    car_rot: Quat,
+    car_type: &str,
+) -> Entity {
     let default_drive_state = CarDriveState::default();
     let car_half_width = default_drive_state.car_half_width;
     let car_half_height = default_drive_state.car_half_height;
@@ -74,8 +44,7 @@ pub fn spawn_car_request_event_observer(
     let car_body_volume =
         (car_half_width * 2.0) * (car_half_height * 2.0) * (car_half_length * 2.0);
 
-    let car_type = get_random_car_type();
-    let car_asset_handle = get_car_asset(car_type, &asset_server);
+    let car_asset_handle = get_car_asset(car_type, asset_server);
 
     let car_entity = commands
         .spawn((
@@ -116,19 +85,11 @@ pub fn spawn_car_request_event_observer(
                 Visibility::default(),
                 InheritedVisibility::default(),
             ),
+            Car {
+                _car_type: car_type.to_string(),
+            },
         ))
         .id();
-
-    // Remove ActivePlayerVehicle from any existing cars
-    for old_car in q_active_cars.iter() {
-        commands.entity(old_car).remove::<ActivePlayerVehicle>();
-    }
-    commands.entity(car_entity).insert(Car {
-        _car_type: spawn_car_event.car_type.clone(),
-    });
-
-    // Mark as active player vehicle so camera follows and player can drive immediately
-    commands.entity(car_entity).insert(ActivePlayerVehicle);
 
     let wheel_names = ["car-wheel_00003_", "car-wheel_00005_"];
     let selected_wheel_name = if rand::random::<bool>() {
@@ -136,7 +97,7 @@ pub fn spawn_car_request_event_observer(
     } else {
         wheel_names[1]
     };
-    let wheel_handle = get_wheel_asset(selected_wheel_name, &asset_server);
+    let wheel_handle = get_wheel_asset(selected_wheel_name, asset_server);
 
     for i in 0..4 {
         commands.spawn((
@@ -152,6 +113,57 @@ pub fn spawn_car_request_event_observer(
             InheritedVisibility::default(),
         ));
     }
+
+    car_entity
+}
+
+pub fn spawn_car_request_event_observer(
+    spawn_car_event: On<SpawnCarRequestEvent>,
+    mut commands: Commands,
+    current_state: Res<State<GameControlState>>,
+    mut next_state: ResMut<NextState<GameControlState>>,
+    spatial_query: avian3d::prelude::SpatialQuery,
+    asset_server: Res<AssetServer>,
+    q_active_cars: Query<Entity, With<ActivePlayerVehicle>>,
+) {
+    if current_state.get() != &GameControlState::MapFreecam {
+        return;
+    }
+    let mut pos = spawn_car_event.position;
+
+    // Raycast down from pos.y + 100.0 to find exact ground height
+    let start_y = pos.y + 100.0;
+    let ray_origin = Vec3::new(pos.x, start_y, pos.z);
+    let filter = avian3d::prelude::SpatialQueryFilter::default();
+
+    if let Some(hit) = spatial_query.cast_ray(
+        ray_origin,
+        bevy::prelude::Dir3::NEG_Y,
+        1000.0,
+        true,
+        &filter,
+    ) {
+        let ground_y = start_y - hit.distance;
+        pos.y = ground_y + 3.0;
+    } else {
+        pos.y += 3.0;
+    }
+
+    let car_rot = spawn_car_event.rotation.unwrap_or_else(|| {
+        let random_angle = rand::random::<f32>() * std::f32::consts::TAU;
+        Quat::from_rotation_y(random_angle)
+    });
+
+    let car_type = get_random_car_type();
+    let car_entity = spawn_physics_car(&mut commands, &asset_server, pos, car_rot, car_type);
+
+    // Remove ActivePlayerVehicle from any existing cars
+    for old_car in q_active_cars.iter() {
+        commands.entity(old_car).remove::<ActivePlayerVehicle>();
+    }
+
+    // Mark as active player vehicle so camera follows and player can drive immediately
+    commands.entity(car_entity).insert(ActivePlayerVehicle);
 
     next_state.set(GameControlState::DrivingCar);
 }

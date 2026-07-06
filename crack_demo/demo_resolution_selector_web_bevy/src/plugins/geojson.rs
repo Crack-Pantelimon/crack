@@ -383,7 +383,7 @@ fn project_point(
 // Ground Raycasting helper
 // ----------------------------------------------------
 
-fn query_point_ground_y(
+pub(crate) fn query_point_ground_y(
     x: f32,
     z: f32,
     map_tree: &crate::plugins::map_plugin::MapTree,

@@ -30,6 +30,7 @@ pub struct UiState {
     pub draw_spark_origin_gizmos: bool,
     pub show_lod_configurator: bool,
     pub show_geojson_database: bool,
+    pub show_traffic_debug: bool,
 }
 impl Default for UiState {
     fn default() -> Self {
@@ -45,6 +46,7 @@ impl Default for UiState {
             draw_spark_origin_gizmos: false,
             show_lod_configurator: false,
             show_geojson_database: false,
+            show_traffic_debug: false,
         }
     }
 }
@@ -62,6 +64,7 @@ impl UiState {
             draw_spark_origin_gizmos: false,
             show_lod_configurator: false,
             show_geojson_database: false,
+            show_traffic_debug: false,
         }
     }
 }
@@ -229,6 +232,10 @@ fn ui_example_system(
             egui::menu::menu_button(ui, "Debug", |ui| {
                 if ui.button("Lod Configurator & Tree Navigator").clicked() {
                     ui_state.show_lod_configurator = !ui_state.show_lod_configurator;
+                    ui.close();
+                }
+                if ui.button("Traffic").clicked() {
+                    ui_state.show_traffic_debug = !ui_state.show_traffic_debug;
                     ui.close();
                 }
                 let geojson_loaded = loading_status

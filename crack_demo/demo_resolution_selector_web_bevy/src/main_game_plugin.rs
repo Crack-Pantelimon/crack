@@ -11,6 +11,7 @@ impl Plugin for MainGamePlugin {
             .add_plugins(crate::plugins::map_plugin::MapPlugin)
             .add_plugins(crate::plugins::geojson::GeoJsonPlugin)
             .add_plugins(crate::plugins::cars_driving::CarsAndDrivingPlugin)
+            .add_plugins(crate::plugins::traffic::TrafficPlugin)
             .add_plugins(
                 crate::plugins::pedestrians::pedestrian_controller_plugin::PedestrianControllerPlugin,
             )
