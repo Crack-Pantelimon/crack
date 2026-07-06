@@ -49,7 +49,10 @@ fn main() {
         .add_plugins(CarsAndDrivingPlugin)
         .add_plugins(SetupDebugScenePlugin)
         .add_systems(Startup, spawn_bumpy_heightmap)
-        .add_systems(Update, (update_sim_control, log_car_state))
+        .add_systems(
+            Update,
+            (update_sim_control, log_car_state, set_car_initial_speed),
+        )
         .run();
 }
 
@@ -67,8 +70,9 @@ fn spawn_bumpy_heightmap(
     let size = 300.0f32; // meters, centered at origin
     let step = size / (n - 1) as f32;
     let half = size / 2.0;
-    // ~7m wavelength, amplitude 0.25m
-    let hfun = |x: f32, z: f32| -> f32 {AMPLITUDE * (x * 0.9).sin() * (z * 0.9).sin() };
+
+    // ~7m wavelength, amplitude 0.4m
+    let hfun = |x: f32, z: f32| -> f32 { AMPLITUDE * (x * 0.9).sin() * (z * 0.9).sin() };
 
     let mut positions = Vec::with_capacity(n * n);
     let mut uvs = Vec::with_capacity(n * n);
@@ -122,6 +126,19 @@ fn spawn_bumpy_heightmap(
     ));
 }
 
+fn set_car_initial_speed(
+    mut q_new_car: Query<(&Transform, &mut LinearVelocity), Added<Car>>,
+) {
+    for (transform, mut lin_vel) in q_new_car.iter_mut() {
+        let fwd = transform.rotation * Vec3::NEG_Z;
+        lin_vel.0 = fwd * (100.0 / 3.6);
+        info!(
+            "Set initial car spawn speed to 100 km/h ({:.2} m/s)",
+            lin_vel.0.length()
+        );
+    }
+}
+
 fn update_sim_control(
     time: Res<Time>,
     mut sim_state: ResMut<SimState>,
@@ -131,17 +148,32 @@ fn update_sim_control(
     let dt = time.delta_secs();
     sim_state.time_elapsed += dt;
 
-    // 1. Wait 1s to spawn a car
+    // 1. Wait 1s to spawn a car 100m outside the corner of the bumpy grid (150, 150)
     if !sim_state.spawned && sim_state.time_elapsed >= 1.0 {
         sim_state.spawned = true;
         let car_type = get_random_car_type();
-        info!("Spawn timer met: Triggering SpawnCarRequestEvent at (40, 0, 40)");
 
-        let car_rot =
-            Quat::from_rotation_arc(Vec3::NEG_Z, Vec3::new(-40.0, 0.0, -40.0).normalize());
+        // 100m outside the corner (150, 150) along diagonal
+        let corner_dist = 100.0 / 2.0f32.sqrt(); // ~70.71m in X and Z
+        let spawn_pos = Vec3::new(150.0 + corner_dist, 0.0, 150.0 + corner_dist);
+
+        // Base orientation facing toward the bumpy grid corner
+        let base_dir = Vec3::new(-1.0, 0.0, -1.0).normalize();
+        let base_rot = Quat::from_rotation_arc(Vec3::NEG_Z, base_dir);
+
+        // Rotate random 0..10 degrees to the right around Y axis
+        let rand_deg_right = rand::random::<f32>() * 10.0f32.to_radians();
+        let car_rot = base_rot * Quat::from_rotation_y(-rand_deg_right);
+
+        info!(
+            "Spawn timer met: Triggering SpawnCarRequestEvent at ({:.2}, 0, {:.2}) with right-rotation {:.1} deg",
+            spawn_pos.x,
+            spawn_pos.z,
+            rand_deg_right.to_degrees()
+        );
 
         commands.trigger(SpawnCarRequestEvent {
-            position: Vec3::new(40.0, 0.0, 40.0),
+            position: spawn_pos,
             car_type: car_type.to_string(),
             rotation: Some(car_rot),
         });

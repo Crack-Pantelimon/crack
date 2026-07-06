@@ -1,0 +1,8 @@
+{
+	"adapters": ["claude", "cursor", "gemini"],
+	"strategy": "full",
+	"maxTokens": 16000,
+	"modelContextLimit": 128000,
+  	"depMap": true,
+	"impactRadius": true
+}

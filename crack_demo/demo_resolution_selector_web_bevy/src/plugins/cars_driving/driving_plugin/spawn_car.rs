@@ -1,6 +1,8 @@
 use crate::plugins::cars_driving::car_info::{get_car_asset, get_random_car_type, get_wheel_asset};
 use crate::plugins::{
-    cars_driving::driving_plugin::{CarDriveState, CarWheelsContactData, GamePhysicsLayer},
+    cars_driving::driving_plugin::{
+        CarDriveState, CarSpeculativeContactData, CarWheelsContactData, GamePhysicsLayer,
+    },
     states::GameControlState,
 };
 use avian3d::{
@@ -104,6 +106,7 @@ pub fn spawn_car_request_event_observer(
             SweptCcd::default(),
             default_drive_state.clone(),
             CarWheelsContactData::default(),
+            CarSpeculativeContactData::default(),
             NeedCarBoundsCompute,
             Visibility::default(),
             InheritedVisibility::default(),

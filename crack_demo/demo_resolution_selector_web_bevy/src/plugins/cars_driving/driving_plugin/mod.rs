@@ -1,7 +1,12 @@
 pub mod camera_follow;
 pub mod keybinds_control;
+pub mod rk4_prediction;
 pub mod spawn_car;
 pub mod speedometer_ui;
+
+pub use rk4_prediction::{
+    update_speculative_contacts_system, CarSpeculativeContactData, SpeculativeStepData,
+};
 
 use crate::plugins::cars_driving::driving_plugin::{
     camera_follow::camera_follows_car, spawn_car::Car,
@@ -42,6 +47,7 @@ impl<S: States> Plugin for DrivingPlugin<S> {
             Update,
             (
                 update_wheel_contact_normals,
+                update_speculative_contacts_system,
                 apply_car_steering_and_drive,
                 draw_car_gizmos,
                 cap_car_velocities,
@@ -197,8 +203,8 @@ impl Default for CarDriveState {
             is_reverse: false,
             spawn_position: None,
 
-            max_ray_length: 1.15,
-            rest_length_pct: 60.0,
+            max_ray_length: 1.35,
+            rest_length_pct: 65.0,
             suspension_rest: 0.69,
             traction_loss_threshold: 1.15,
             avg_suspension_height: 0.0,
@@ -218,11 +224,11 @@ impl Default for CarDriveState {
             car_half_length: 1.52,
             car_half_height: 0.5,
 
-            wheel_radius: 0.45,
+            wheel_radius: 0.55,
 
             car_max_speed: 140.0,
 
-            horsepower: 150.0,
+            horsepower: 80.0,
             current_gear: 1,
             engine_rpm: 800.0,
         }
@@ -354,6 +360,7 @@ pub fn apply_car_steering_and_drive(
             &Transform,
             &mut CarDriveState,
             &CarWheelsContactData,
+            Option<&CarSpeculativeContactData>,
             &mut LinearVelocity,
             &mut AngularVelocity,
         ),
@@ -368,7 +375,7 @@ pub fn apply_car_steering_and_drive(
     }
     let is_sim = sim_state.map(|s| s.is_sim).unwrap_or(false);
 
-    for (car_transform, mut drive_state, contact_data, mut lin_vel, mut ang_vel) in
+    for (car_transform, mut drive_state, contact_data, speculative_data, mut lin_vel, mut ang_vel) in
         q_car.iter_mut()
     {
         drive_state.suspension_rest =
@@ -488,10 +495,33 @@ pub fn apply_car_steering_and_drive(
         drive_state.avg_suspension_height = avg_height;
 
         // --- Vertical: ride height control (rate-limited, launch-proof) ---
+        // Anticipatory slope adjustment from speculative future rays:
+        let speed_kmh = lin_vel.0.length() * 3.6;
+        let speed_weight = ((speed_kmh - 40.0) / 40.0).clamp(0.0, 1.0);
+        let mut anticipatory_height_bias = 0.0f32;
+
+        if speed_weight > 0.0 {
+            if let Some(spec) = speculative_data {
+                let mut sum_future_rel_y = 0.0f32;
+                let mut valid_steps = 0f32;
+                for step in &spec.steps {
+                    if step.has_ground_contact {
+                        let rel_y = step.predicted_ground_pos.y - car_transform.translation.y;
+                        sum_future_rel_y += rel_y;
+                        valid_steps += 1.0;
+                    }
+                }
+                if valid_steps > 0.0 {
+                    let avg_future_rel_y = sum_future_rel_y / valid_steps;
+                    anticipatory_height_bias = (avg_future_rel_y * 0.35 * speed_weight).clamp(-0.5, 0.5);
+                }
+            }
+        }
+
         // Small errors are ignored entirely so terrain ripple doesn't pump the car.
         // "Too low" reacts twice as fast as "too high": clipping a bump peak with the
         // chassis collider is far worse than briefly floating a little high.
-        let height_error = rest - avg_height; // positive => car too low => go up
+        let height_error = rest - avg_height + anticipatory_height_bias; // positive => car too low => go up
         let effective_error =
             (height_error.abs() - HEIGHT_DEADBAND).max(0.0) * height_error.signum();
         let response = if height_error > 0.0 {
@@ -757,7 +787,15 @@ pub fn update_cosmetic_wheels(
 
 pub fn update_wheel_contact_normals(
     spatial_query: SpatialQuery,
-    mut q_cars: Query<(Entity, &Transform, &CarDriveState, &mut CarWheelsContactData), With<Car>>,
+    mut q_cars: Query<
+        (
+            Entity,
+            &Transform,
+            &CarDriveState,
+            &mut CarWheelsContactData,
+        ),
+        With<Car>,
+    >,
     time: Res<Time>,
 ) {
     for (car_entity, car_transform, drive_state, mut contact_data) in q_cars.iter_mut() {
@@ -828,11 +866,7 @@ pub fn update_wheel_contact_normals(
                 }
             }
 
-            // Median-anchored validity window. Anchoring on the minimum (as before)
-            // backfires at tile seams: the shortest hit lands on the neighboring
-            // higher tile and every legit hit gets discarded, collapsing the wheel's
-            // support in one frame. The median lets the majority surface win, and
-            // still rejects lone rays through cracks or onto skirt lips.
+            // Median-anchored validity window
             let mut sorted = [0.0f32; 9];
             let mut hit_total = 0usize;
             for &d in &distances {
@@ -857,8 +891,6 @@ pub fn update_wheel_contact_normals(
 
             let w_contact = &mut contact_data.wheels[wheel_idx];
 
-            // Low-pass the per-ray distances (~0.06s, matching the input integration
-            // window) so a single frame of bad ray data can't spike the controller.
             let alpha = (time.delta_secs() / 0.06f32).min(1.0f32);
             for i in 0..9 {
                 let raw = distances[i];
@@ -883,9 +915,17 @@ pub fn update_wheel_contact_normals(
 
 pub fn draw_car_gizmos(
     mut gizmos: Gizmos,
-    q_car: Query<(&Transform, &CarDriveState, &CarWheelsContactData), With<Car>>,
+    q_car: Query<
+        (
+            &Transform,
+            &CarDriveState,
+            &CarWheelsContactData,
+            Option<&CarSpeculativeContactData>,
+        ),
+        With<Car>,
+    >,
 ) {
-    for (car_transform, drive_state, contact_data) in q_car.iter() {
+    for (car_transform, drive_state, contact_data, speculative_data) in q_car.iter() {
         // Draw orange lines for 9 rays for each of the 4 virtual wheels
         let ray_color = Color::srgb(1.0, 0.5, 0.0);
         let star_color = Color::srgb(0.0, 0.0, 1.0);
@@ -952,6 +992,50 @@ pub fn draw_car_gizmos(
                 Isometry3d::new(plane_center, plane_rotation),
                 box_color,
             );
+        }
+
+        // Speculative Rays & RK4 Trajectory Gizmos (attached to car front ground point)
+        if let Some(spec) = speculative_data {
+            let trajectory_yellow = Color::srgb(1.0, 1.0, 0.0);
+            let speculative_blue = Color::srgb(0.4, 0.7, 1.0);
+            let star_blue = Color::srgb(0.2, 0.8, 1.0);
+
+            // Front ground projection point of the car
+            let car_fwd = car_transform.rotation * Vec3::NEG_Z;
+            let car_front = car_transform.translation + car_fwd * drive_state.car_half_length;
+            let current_front_ground = car_front + local_down * drive_state.suspension_rest;
+
+            let mut path_points = vec![current_front_ground];
+            for step in &spec.steps {
+                path_points.push(step.predicted_ground_pos);
+            }
+
+            // Draw yellow gizmo line connecting front ground point to predicted future ground positions
+            for window in path_points.windows(2) {
+                gizmos.line(window[0], window[1], trajectory_yellow);
+            }
+
+            // Draw light blue speculative rays for left, center, right at each of the 8 future steps
+            let spec_max_len = drive_state.max_ray_length * 1.5;
+            for step in &spec.steps {
+                let spec_down = step.predicted_rotation * Vec3::NEG_Y;
+
+                let draw_ray = |gizmos: &mut Gizmos, orig: Vec3, hit: Option<Vec3>| {
+                    let end = hit.unwrap_or(orig + spec_down * spec_max_len);
+                    gizmos.line(orig, end, speculative_blue);
+                    if let Some(h) = hit {
+                        gizmos.line(h - Vec3::X * 0.1, h + Vec3::X * 0.1, star_blue);
+                        gizmos.line(h - Vec3::Y * 0.1, h + Vec3::Y * 0.1, star_blue);
+                        gizmos.line(h - Vec3::Z * 0.1, h + Vec3::Z * 0.1, star_blue);
+                        let sphere = Sphere::new(0.04);
+                        gizmos.primitive_3d(&sphere, Isometry3d::from_translation(h), star_blue);
+                    }
+                };
+
+                draw_ray(&mut gizmos, step.left_ray_origin, step.left_hit_point);
+                draw_ray(&mut gizmos, step.right_ray_origin, step.right_hit_point);
+                draw_ray(&mut gizmos, step.center_ray_origin, step.center_hit_point);
+            }
         }
     }
 }

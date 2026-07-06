@@ -1,0 +1,12 @@
+{"ts":"2026-07-06T10:48:26.643Z","v":"8.9.1","op":"generate","baselineTokens":186923,"actualTokens":5189,"savedTokens":181734,"savedPct":97.2,"durationMs":1443,"model":null,"ok":true}
+{"ts":"2026-07-06T10:55:17.065Z","v":"8.9.1","op":"generate","baselineTokens":186923,"actualTokens":5189,"savedTokens":181734,"savedPct":97.2,"durationMs":1350,"model":null,"ok":true}
+{"ts":"2026-07-06T10:57:44.129Z","v":"8.9.1","op":"generate","baselineTokens":186923,"actualTokens":131,"savedTokens":186792,"savedPct":99.9,"durationMs":3657,"model":null,"ok":true}
+{"ts":"2026-07-06T10:59:11.143Z","v":"8.9.1","op":"generate","baselineTokens":169224,"actualTokens":120,"savedTokens":169104,"savedPct":99.9,"durationMs":2804,"model":null,"ok":true}
+{"ts":"2026-07-06T10:59:34.011Z","v":"8.9.1","op":"generate","baselineTokens":169224,"actualTokens":120,"savedTokens":169104,"savedPct":99.9,"durationMs":2841,"model":null,"ok":true}
+{"ts":"2026-07-06T11:00:08.246Z","v":"8.9.1","op":"generate","baselineTokens":122681,"actualTokens":109,"savedTokens":122572,"savedPct":99.9,"durationMs":2125,"model":null,"ok":true}
+{"ts":"2026-07-06T11:00:31.881Z","v":"8.9.1","op":"generate","baselineTokens":122681,"actualTokens":109,"savedTokens":122572,"savedPct":99.9,"durationMs":2001,"model":null,"ok":true}
+{"ts":"2026-07-06T11:02:42.936Z","v":"8.9.1","op":"generate","baselineTokens":122681,"actualTokens":109,"savedTokens":122572,"savedPct":99.9,"durationMs":2018,"model":null,"ok":true}
+{"ts":"2026-07-06T11:03:00.417Z","v":"8.9.1","op":"generate","baselineTokens":122681,"actualTokens":109,"savedTokens":122572,"savedPct":99.9,"durationMs":2063,"model":null,"ok":true}
+{"ts":"2026-07-06T11:09:12.828Z","v":"8.9.1","op":"generate","baselineTokens":122681,"actualTokens":109,"savedTokens":122572,"savedPct":99.9,"durationMs":2074,"model":null,"ok":true}
+{"ts":"2026-07-06T11:10:36.705Z","v":"8.9.1","op":"generate","baselineTokens":122681,"actualTokens":4220,"savedTokens":118461,"savedPct":96.6,"durationMs":1442,"model":null,"ok":true}
+{"ts":"2026-07-06T11:11:00.016Z","v":"8.9.1","op":"ask","baselineTokens":18537,"actualTokens":1028,"savedTokens":17509,"savedPct":94.5,"durationMs":24,"model":"ask","ok":true}
