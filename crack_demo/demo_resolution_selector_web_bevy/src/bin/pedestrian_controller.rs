@@ -13,20 +13,14 @@ use bevy::world_serialization::WorldAssetRoot;
 use bevy_egui::EguiPlugin;
 
 use demo_resolution_selector_web_bevy::{
-    basic_app::make_basic_app,
-    plugins::{
-        cars_driving::driving_plugin::GamePhysicsLayer,
-        cars_driving::{car_info::get_car_asset, car_info::get_random_car_type},
-        pedestrians::{
+    basic_app::make_basic_app, plugins::{
+        audio::GameAudioPlugin, cars_driving::{car_info::{get_car_asset, get_random_car_type}, driving_plugin::GamePhysicsLayer}, pedestrians::{
             PedestrianManifest, PedestriansPlugin,
             pedestrian_controller_plugin::{
                 PedestrianControllerPlugin, SpawnControlledPedestrianEvent,
             },
-        },
-        states::GameControlState,
-        weapons::WeaponsPlugin,
-    },
-    utils::setup_debug_scene::SetupDebugScenePlugin,
+        }, states::GameControlState, weapons::WeaponsPlugin,
+    }, utils::setup_debug_scene::SetupDebugScenePlugin,
 };
 
 /// Approximate car body extents (matches `CarDriveState` defaults) used for the mass density.
@@ -42,6 +36,7 @@ fn main() {
         .add_plugins(PedestriansPlugin)
         .add_plugins(SetupDebugScenePlugin)
         .add_plugins(PedestrianControllerPlugin)
+        .add_plugins(GameAudioPlugin)
         .add_plugins(WeaponsPlugin)
         .add_systems(Startup, (spawn_physics_cubes, spawn_random_cars))
         .add_systems(Update, demo_auto_spawn)

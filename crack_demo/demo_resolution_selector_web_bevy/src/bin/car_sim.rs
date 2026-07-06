@@ -3,6 +3,7 @@ use avian3d::prelude::{
     MassPropertiesBundle, Restitution, RigidBody,
 };
 use bevy::prelude::*;
+use demo_resolution_selector_web_bevy::plugins::audio::GameAudioPlugin;
 use demo_resolution_selector_web_bevy::plugins::cars_driving::car_info::get_car_asset;
 use demo_resolution_selector_web_bevy::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
 use demo_resolution_selector_web_bevy::plugins::cars_driving::driving_plugin::{
@@ -53,6 +54,7 @@ fn main() {
         .add_plugins(GameStatesPlugin)
         .add_plugins(CarsAndDrivingPlugin)
         .add_plugins(SetupDebugScenePlugin)
+        .add_plugins(GameAudioPlugin)
         .add_systems(
             Startup,
             (
