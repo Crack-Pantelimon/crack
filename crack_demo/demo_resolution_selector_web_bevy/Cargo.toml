@@ -7,7 +7,17 @@ authors = [
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.19.0", features = ["http", "https", "jpeg"] }
+bevy = { version = "0.19.0", features = [
+    "http",
+    "https",
+    "jpeg",
+    # Audio: playback engine + 3D spatial audio (part of bevy_audio) and the
+    # mp3 / ogg-vorbis decoders. `vorbis`/`bevy_audio` are already on via the
+    # default `audio` feature, but we list them so the intent is explicit.
+    "bevy_audio",
+    "mp3",
+    "symphonia-vorbis",
+] }
 bevy_egui = "0.40.0"
 avian3d = { git = "https://github.com/avianphysics/avian", branch = "main" }
 # bevy_atmosphere = "0.12.2"

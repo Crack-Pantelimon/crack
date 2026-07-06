@@ -15,6 +15,16 @@ pub enum OsmDatabaseLoadFinished {
     OsmFinished,
 }
 
+/// Tracks whether the sound-fx manifest has finished loading its list of clip paths.
+/// Flipped to `Finished` by [`crate::plugins::audio::AudioDemoPlugin`] once the manifest
+/// text has been fetched and parsed into the sound resource.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, States)]
+pub enum SoundManifestLoadFinished {
+    #[default]
+    Loading,
+    Finished,
+}
+
 /// The exclusive top-level control mode. `DrivingCar` and `ControllingPedestrian` are mutually
 /// exclusive since they are values of the same state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, States)]

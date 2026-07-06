@@ -1,3 +1,4 @@
+pub mod audio;
 pub mod cars_driving;
 pub mod game_freecam;
 pub mod geojson;
