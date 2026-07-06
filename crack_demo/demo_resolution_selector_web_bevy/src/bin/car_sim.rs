@@ -1,5 +1,8 @@
-use avian3d::prelude::LinearVelocity;
+use avian3d::prelude::{
+    CoefficientCombine, Collider, CollisionLayers, LinearVelocity, Restitution, RigidBody,
+};
 use bevy::prelude::*;
+use demo_resolution_selector_web_bevy::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
 use demo_resolution_selector_web_bevy::plugins::cars_driving::driving_plugin::{
     CarDriveState, CarWheelsContactData, SimState,
 };
@@ -45,8 +48,78 @@ fn main() {
         .add_plugins(GameStatesPlugin)
         .add_plugins(CarsAndDrivingPlugin)
         .add_plugins(SetupDebugScenePlugin)
+        .add_systems(Startup, spawn_bumpy_heightmap)
         .add_systems(Update, (update_sim_control, log_car_state))
         .run();
+}
+
+/// A bumpy heightmap laid over the flat debug ground: heights in [-0.25, 0.25] so the
+/// bumps and the original ground cubes (tops at y = 0) intertwine — peaks stick out,
+/// valleys sink below the flat floor. Rendered and collidable (trimesh from the same
+/// vertices, so visuals == physics).
+fn spawn_bumpy_heightmap(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    const AMPLITUDE: f32 = 0.4;
+    let n = 151usize; // vertices per side
+    let size = 300.0f32; // meters, centered at origin
+    let step = size / (n - 1) as f32;
+    let half = size / 2.0;
+    // ~7m wavelength, amplitude 0.25m
+    let hfun = |x: f32, z: f32| -> f32 {AMPLITUDE * (x * 0.9).sin() * (z * 0.9).sin() };
+
+    let mut positions = Vec::with_capacity(n * n);
+    let mut uvs = Vec::with_capacity(n * n);
+    for i in 0..n {
+        for j in 0..n {
+            let x = -half + i as f32 * step;
+            let z = -half + j as f32 * step;
+            positions.push([x, hfun(x, z), z]);
+            uvs.push([i as f32 * 0.5, j as f32 * 0.5]);
+        }
+    }
+    let mut indices: Vec<u32> = Vec::with_capacity((n - 1) * (n - 1) * 6);
+    for i in 0..n - 1 {
+        for j in 0..n - 1 {
+            let a = (i * n + j) as u32;
+            let b = (i * n + j + 1) as u32;
+            let c = ((i + 1) * n + j) as u32;
+            let d = ((i + 1) * n + j + 1) as u32;
+            indices.extend_from_slice(&[a, b, c, b, d, c]);
+        }
+    }
+
+    let mut mesh = Mesh::new(
+        bevy::render::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+    .with_inserted_indices(bevy::render::mesh::Indices::U32(indices));
+    mesh.compute_normals();
+
+    let collider = Collider::trimesh_from_mesh(&mesh)
+        .expect("bumpy heightmap mesh should convert to a trimesh collider");
+
+    commands.spawn((
+        Name::new("BumpyHeightmap"),
+        Mesh3d(meshes.add(mesh)),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.45, 0.52, 0.4),
+            perceptual_roughness: 0.95,
+            ..default()
+        })),
+        Transform::IDENTITY,
+        RigidBody::Static,
+        collider,
+        Restitution::ZERO.with_combine_rule(CoefficientCombine::Min),
+        CollisionLayers::new(
+            [GamePhysicsLayer::Map],
+            [GamePhysicsLayer::Car, GamePhysicsLayer::Wheel],
+        ),
+    ));
 }
 
 fn update_sim_control(
@@ -74,16 +147,20 @@ fn update_sim_control(
         });
     }
 
-    // 2. Set acceleration for 5s (from t = 1.0s to t = 6.0s), then drop controls
+    // 2. Set acceleration for 5s (from t = 1.0s to t = 6.0s), then hand the controls
+    //    back to the player exactly once — keeping writing avg_accelerate every frame
+    //    was stomping WASD input after the rigged phase.
     if sim_state.spawned {
-        if let Some(mut drive_state) = q_car.iter_mut().next() {
-            if sim_state.time_elapsed >= 1.0 && sim_state.time_elapsed < 6.0 {
+        if sim_state.time_elapsed < 6.0 {
+            if let Some(mut drive_state) = q_car.iter_mut().next() {
                 drive_state.avg_accelerate = 1.0;
-                sim_state.is_sim = true;
-            } else {
-                drive_state.avg_accelerate = 0.0;
-                sim_state.is_sim = false;
             }
+            sim_state.is_sim = true;
+        } else if sim_state.is_sim {
+            if let Some(mut drive_state) = q_car.iter_mut().next() {
+                drive_state.avg_accelerate = 0.0;
+            }
+            sim_state.is_sim = false;
         }
     }
 }
@@ -104,7 +181,7 @@ fn log_car_state(
     let dt = time.delta_secs();
     log_timer.total_time += dt;
 
-    if log_timer.total_time > 8.0 {
+    if log_timer.total_time > 30.0 {
         return;
     }
 
@@ -118,13 +195,14 @@ fn log_car_state(
             let brake = drive_state.avg_brake;
             let steer = drive_state.avg_steer;
 
+            let max_len = drive_state.traction_loss_threshold;
             let mut susp_lengths = [0.0f32; 4];
             for wheel_idx in 0..4 {
                 let w_contact = &contact_data.wheels[wheel_idx];
                 let mut sum_dist = 0.0f32;
                 let mut engaged_rays = 0;
                 for &d in &w_contact.ray_distances {
-                    if d <= 1.0f32 {
+                    if d <= max_len {
                         sum_dist += d;
                         engaged_rays += 1;
                     }
@@ -132,13 +210,13 @@ fn log_car_state(
                 let avg_length = if engaged_rays > 0 {
                     sum_dist / engaged_rays as f32
                 } else {
-                    1.0f32
+                    max_len
                 };
                 susp_lengths[wheel_idx] = avg_length;
             }
 
             info!(
-                "TIME: {:.2}s | POS: ({:.2}, {:.2}, {:.2}) | SPEED: {:.2} m/s | ROT: (Y:{:.1} P:{:.1} R:{:.1}) | CTL: (A:{:.1} B:{:.1} S:{:.1}) | SUSP: [FL: {:.2}m, FR: {:.2}m, RL: {:.2}m, RR: {:.2}m]",
+                "TIME: {:.2}s | POS: ({:.2}, {:.2}, {:.2}) | SPEED: {:.2} m/s | ROT: (Y:{:.1} P:{:.1} R:{:.1}) | CTL: (A:{:.1} B:{:.1} S:{:.1}) | Y0: {:.2} | SUSP: [FL: {:.2}m, FR: {:.2}m, RL: {:.2}m, RR: {:.2}m]",
                 log_timer.total_time,
                 pos.x,
                 pos.y,
@@ -150,6 +228,7 @@ fn log_car_state(
                 acc,
                 brake,
                 steer,
+                drive_state.ray_start_y_offset,
                 susp_lengths[0],
                 susp_lengths[1],
                 susp_lengths[2],

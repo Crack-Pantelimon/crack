@@ -80,7 +80,7 @@ pub fn spawn_controlled_pedestrian_observer(
         event.position.z,
     );
 
-    let mut controller = commands
+    let controller = commands
         .spawn((
             Name::new("PedestrianController"),
             CharacterController,
@@ -107,10 +107,6 @@ pub fn spawn_controlled_pedestrian_observer(
             Transform::from_translation(controller_pos).with_rotation(event.rotation.unwrap_or(Quat::IDENTITY)),
             Visibility::default(),
         ));
-
-    if event.is_exiting_car {
-        controller.insert(crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::ExitingCarTimer(Timer::from_seconds(1.2, TimerMode::Once)));
-    }
 
     let controller = controller.id();
 

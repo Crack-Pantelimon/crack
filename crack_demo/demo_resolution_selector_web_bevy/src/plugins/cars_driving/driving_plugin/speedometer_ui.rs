@@ -75,6 +75,35 @@ pub fn speedometer_ui(
                                 );
                             });
                             ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Height response:").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut drive_state.height_response,
+                                        0.05..=0.50,
+                                    )
+                                    .text("s")
+                                    .step_by(0.01),
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Tilt response:").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut drive_state.tilt_response,
+                                        0.05..=0.50,
+                                    )
+                                    .text("s")
+                                    .step_by(0.01),
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Grip:").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(&mut drive_state.grip, 0.5..=10.0)
+                                        .step_by(0.1),
+                                );
+                            });
+                            ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Max Speed:").size(9.0));
                                 ui.add(
                                     egui::Slider::new(
@@ -137,29 +166,8 @@ pub fn speedometer_ui(
 
                             ui.allocate_space(egui::Vec2::new(10.0, 1.0)); // spacing
 
-                            // Right Column: Input Progress Bars & RPM
+                            // Right Column: Input Progress Bars
                             ui.vertical(|ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new("RPM")
-                                            .size(9.0)
-                                            .color(egui::Color32::LIGHT_GRAY),
-                                    );
-                                    let rpm_ratio =
-                                        (drive_state.engine_rpm / 6500.0).clamp(0.0, 1.0);
-                                    let rpm_color = if drive_state.engine_rpm > 5500.0 {
-                                        egui::Color32::from_rgb(220, 50, 50)
-                                    } else if drive_state.engine_rpm > 4500.0 {
-                                        egui::Color32::from_rgb(220, 220, 50)
-                                    } else {
-                                        egui::Color32::from_rgb(50, 220, 100)
-                                    };
-                                    ui.add(
-                                        egui::ProgressBar::new(rpm_ratio)
-                                            .text(format!("{:.0} RPM", drive_state.engine_rpm))
-                                            .fill(rpm_color),
-                                    );
-                                });
                                 ui.horizontal(|ui| {
                                     ui.label(
                                         egui::RichText::new("ACC")

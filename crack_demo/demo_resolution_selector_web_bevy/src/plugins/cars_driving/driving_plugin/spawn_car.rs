@@ -133,6 +133,7 @@ pub fn spawn_car_request_event_observer(
                 wheel_idx: i,
                 parent_car: car_entity,
                 accumulated_rotation: 0.0,
+                measured_radius: None,
             },
             Visibility::default(),
         ));

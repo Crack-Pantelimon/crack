@@ -7,13 +7,28 @@ use crate::plugins::cars_driving::driving_plugin::{
     camera_follow::camera_follows_car, spawn_car::Car,
 };
 use avian3d::prelude::{
-    AngularInertia, AngularVelocity, CenterOfMass, ComputeMassProperties3d, Forces, LinearVelocity,
-    Mass, MassPropertiesExt, PhysicsLayer, ReadRigidBodyForces, SpatialQuery, SpatialQueryFilter,
-    WriteRigidBodyForces,
+    AngularInertia, AngularVelocity, CenterOfMass, ComputeMassProperties3d, LinearVelocity, Mass,
+    MassPropertiesExt, PhysicsLayer, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
 use {keybinds_control::keybinds_control_car, speedometer_ui::speedometer_ui};
+
+// Hard caps for the grounded hover controller. These are what make violent launches
+// impossible by construction: no matter how bad a frame of ray data is, the car's
+// vertical velocity can only change by MAX_VERTICAL_ACCEL * dt.
+const MAX_LIFT_SPEED: f32 = 8.0; // m/s of ride-height correction
+const MAX_VERTICAL_ACCEL: f32 = 50.0; // ~5G vertical acceleration budget
+const MAX_TILT_RATE: f32 = 2.0; // rad/s of pitch/roll correction
+/// Time constant for smoothing the per-wheel ground heights the controller chases.
+/// Bumpy terrain must read as gentle undulation, not per-frame steps.
+const WHEEL_HEIGHT_SMOOTH: f32 = 0.15;
+/// Ride-height errors smaller than this are ignored (bump rejection).
+const HEIGHT_DEADBAND: f32 = 0.03;
+/// Tilt errors smaller than this (radians) are ignored (bump rejection).
+const TILT_DEADBAND: f32 = 0.03;
+/// Input averaging window (also used for expiring stale inputs on uncontrolled cars).
+const INPUT_WINDOW: f32 = 0.060;
 
 pub struct DrivingPlugin<S: States> {
     pub state: S,
@@ -32,9 +47,17 @@ impl<S: States> Plugin for DrivingPlugin<S> {
                 cap_car_velocities,
                 update_vehicle_physics_from_tuning,
                 spawn_car::init_cars_system,
-                update_cosmetic_wheels,
             )
                 .chain(),
+        );
+        // Cosmetic wheels are placed late in the frame: after Avian's FixedPostUpdate
+        // writeback has produced the car's final Transform, but before PostUpdate transform
+        // propagation, so the wheels' child meshes render in the correct place this frame.
+        app.add_systems(
+            PostUpdate,
+            (init_cosmetic_wheels_system, update_cosmetic_wheels)
+                .chain()
+                .before(bevy::transform::TransformSystems::Propagate),
         );
         // Player control & camera & UI systems only run when driving a car
         app.add_systems(
@@ -69,6 +92,9 @@ pub enum GamePhysicsLayer {
 #[derive(Clone, Debug)]
 pub struct WheelContactData {
     pub ray_distances: [f32; 9],
+    // Low-passed ray distances (~0.06s) that the hover controller reads; raw
+    // distances stay available for gizmos so seam artifacts remain visible.
+    pub smoothed_distances: [f32; 9],
     pub hit_points: [Vec3; 9],
     pub ray_origins: [Vec3; 9],
     pub contact_normal: Vec3,
@@ -79,6 +105,7 @@ impl Default for WheelContactData {
     fn default() -> Self {
         Self {
             ray_distances: [f32::MAX; 9],
+            smoothed_distances: [f32::MAX; 9],
             hit_points: [Vec3::ZERO; 9],
             ray_origins: [Vec3::ZERO; 9],
             contact_normal: Vec3::Y,
@@ -120,21 +147,27 @@ pub struct CarDriveState {
     // Spawn position for reset functionality
     pub spawn_position: Option<Vec3>,
 
-    // Sliders
-    pub suspension_min: f32,
-    pub suspension_max: f32,
-    pub suspension_rest: f32,
-    pub suspension_stiffness: f32,
-    pub suspension_damping: f32,
-    pub extra_spring_length: f32,
-    pub avg_suspension_height: f32,
-
+    // Ride height model: rays start just above the car's bottom bed and go down
+    // max_ray_length; the car hovers at rest_length_pct% of that length.
     pub max_ray_length: f32,
     pub rest_length_pct: f32,
+    /// Derived each frame: max_ray_length * rest_length_pct.
+    pub suspension_rest: f32,
+    /// Derived each frame: rays farther than this count as "no traction".
+    pub traction_loss_threshold: f32,
+    /// Mean engaged ray distance across grounded wheels (for UI / wheel placement).
+    pub avg_suspension_height: f32,
+    /// Low-passed per-wheel ground heights the hover controller chases (NaN = unset).
+    pub smoothed_wheel_height: [f32; 4],
+
+    // Hover controller response times & grip.
+    pub height_response: f32,
+    pub tilt_response: f32,
+    pub grip: f32,
+
     pub ray_grid_width_frac: f32,
     pub ray_grid_length_frac: f32,
     pub ray_start_y_offset: f32,
-    pub traction_loss_threshold: f32,
 
     pub car_mass: f32,
 
@@ -142,9 +175,8 @@ pub struct CarDriveState {
     pub car_half_length: f32,
     pub car_half_height: f32,
 
+    /// Nominal wheel radius (engine RPM calc + cosmetic wheel fallback until measured).
     pub wheel_radius: f32,
-    pub wheel_width: f32,
-    pub wheel_y_offset: f32,
 
     pub car_max_speed: f32,
 
@@ -165,20 +197,20 @@ impl Default for CarDriveState {
             is_reverse: false,
             spawn_position: None,
 
-            suspension_min: 0.1,
-            suspension_max: 1.0,
-            suspension_rest: 0.3,
-            suspension_stiffness: 8.0,
-            suspension_damping: 0.8,
-            extra_spring_length: 0.2,
-            avg_suspension_height: 0.0,
-
             max_ray_length: 1.15,
-            rest_length_pct: 50.0,
+            rest_length_pct: 60.0,
+            suspension_rest: 0.69,
+            traction_loss_threshold: 1.15,
+            avg_suspension_height: 0.0,
+            smoothed_wheel_height: [f32::NAN; 4],
+
+            height_response: 0.12,
+            tilt_response: 0.18,
+            grip: 4.5,
+
             ray_grid_width_frac: 0.8,
             ray_grid_length_frac: 0.75,
             ray_start_y_offset: 0.0, // Set dynamically after load
-            traction_loss_threshold: 1.15,
 
             car_mass: 1200.0,
 
@@ -187,8 +219,6 @@ impl Default for CarDriveState {
             car_half_height: 0.5,
 
             wheel_radius: 0.45,
-            wheel_width: 0.35,
-            wheel_y_offset: 0.25,
 
             car_max_speed: 140.0,
 
@@ -238,9 +268,9 @@ pub fn car_drive_observer(
 
     let current_time = time.elapsed_secs();
 
-    // 1. Accumulate drive inputs and average over 0.060s
+    // 1. Accumulate drive inputs and average over the input window
     drive_state.history.push((current_time, drive_input));
-    let threshold = current_time - 0.060;
+    let threshold = current_time - INPUT_WINDOW;
     drive_state.history.retain(|(t, _)| *t >= threshold);
 
     let mut sum_accel = 0.0;
@@ -306,357 +336,259 @@ pub fn update_vehicle_physics_from_tuning(
     }
 }
 
+/// Arcade "hover controller" car physics.
+///
+/// The car is a dynamic rigid body, but while grounded (>= 2 virtual wheels with valid ray
+/// contact) its *velocities* are steered directly instead of applying spring forces:
+/// - vertical velocity is nudged toward closing the ride-height error, with a hard
+///   acceleration cap so bad ray data physically cannot launch the car;
+/// - pitch/roll angular velocity is replaced by a clamped correction toward the ground
+///   plane fitted from the four wheel heights (mesh normals are never read — the map
+///   tiles have vertical skirts that make them useless); yaw stays player-controlled;
+/// - planar velocity gets engine/brake/drag accelerations and lateral-slip decay (grip).
+///
+/// With < 2 wheels grounded the body is left entirely to Avian (ballistic flight).
 pub fn apply_car_steering_and_drive(
     mut q_car: Query<
         (
-            &mut Transform,
-            &CenterOfMass,
+            &Transform,
             &mut CarDriveState,
-            &mut CarWheelsContactData,
-            Forces,
+            &CarWheelsContactData,
+            &mut LinearVelocity,
+            &mut AngularVelocity,
         ),
         With<Car>,
     >,
     time: Res<Time>,
+    sim_state: Option<Res<SimState>>,
 ) {
     let dt = time.delta_secs().min(0.1);
     if dt <= 0.0 {
         return;
     }
+    let is_sim = sim_state.map(|s| s.is_sim).unwrap_or(false);
 
-    for (mut car_transform, body_center, mut drive_state, contact_data, mut car_forces) in
+    for (car_transform, mut drive_state, contact_data, mut lin_vel, mut ang_vel) in
         q_car.iter_mut()
     {
-        drive_state.suspension_rest = drive_state.max_ray_length * (drive_state.rest_length_pct / 100.0);
-        drive_state.suspension_min = drive_state.suspension_rest * 0.3;
+        drive_state.suspension_rest =
+            drive_state.max_ray_length * (drive_state.rest_length_pct / 100.0);
         drive_state.traction_loss_threshold = drive_state.max_ray_length;
+        let rest = drive_state.suspension_rest.max(0.01);
 
-    let speed = car_forces.linear_velocity().length();
-    let max_steer = 1.2f32 / (1.0f32 + 0.3f32 * speed);
-    let steer_angle = drive_state.current_steer_integrated * max_steer;
-
-    let car_forward = car_transform.rotation * Vec3::NEG_Z;
-    let car_right = car_transform.rotation * Vec3::X;
-    let steer_dir_world =
-        car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, -steer_angle.cos());
-
-    let mut total_linear_force = Vec3::ZERO;
-    let mut total_torque = Vec3::ZERO;
-
-    let com_world = car_transform.transform_point(body_center.0);
-
-    // 1. Engine & Gearbox Simulation
-    let gear_ratios = [3.5f32, 2.1f32, 1.4f32, 1.0f32, 0.8f32];
-    let final_drive = 3.7f32;
-    let forward_speed = car_forces.linear_velocity().dot(car_forward);
-
-    // Calculate physical RPM matching the speed
-    let gear_ratio = if drive_state.is_reverse {
-        3.4f32
-    } else {
-        gear_ratios[(drive_state.current_gear - 1).min(4)]
-    };
-
-    let physical_rpm = (forward_speed.abs() * 60.0f32 * final_drive * gear_ratio)
-        / (2.0f32 * std::f32::consts::PI * drive_state.wheel_radius);
-
-    let mut target_rpm = physical_rpm;
-    if drive_state.avg_accelerate > 0.05f32 {
-        let throttle_rpm = 800.0f32 + drive_state.avg_accelerate * 2200.0f32;
-        target_rpm = target_rpm.max(throttle_rpm);
-        drive_state.engine_rpm = drive_state.engine_rpm.lerp(target_rpm, 10.0 * dt);
-    } else {
-        // Coasting: engine RPM decays towards physical_rpm or idle (800.0)
-        let decay_target = physical_rpm.max(800.0f32);
-        if drive_state.engine_rpm > decay_target {
-            drive_state.engine_rpm = (drive_state.engine_rpm - 2500.0 * dt).max(decay_target);
-        } else {
-            drive_state.engine_rpm = drive_state.engine_rpm.lerp(decay_target, 10.0 * dt);
-        }
-    }
-    drive_state.engine_rpm = drive_state.engine_rpm.min(6500.0);
-
-    // Automatic gear shifting
-    if !drive_state.is_reverse {
-        if drive_state.engine_rpm > 5500.0f32 && drive_state.current_gear < 5 {
-            drive_state.current_gear += 1;
-        } else if drive_state.engine_rpm < 1800.0f32 && drive_state.current_gear > 1 {
-            drive_state.current_gear -= 1;
-        }
-    } else {
-        drive_state.current_gear = 1;
-    }
-
-    // 2. Drive Force Calculation
-    let power_watts = drive_state.horsepower * 745.7f32;
-    let speed_for_power = forward_speed.abs().max(2.0f32);
-    let mut drive_force_mag = 0.0f32;
-
-    let mut grounded_wheels = 0;
-    for wheel in &contact_data.wheels {
-        let engaged_rays = wheel
-            .ray_distances
-            .iter()
-            .filter(|&&d| d != f32::MAX && d <= drive_state.traction_loss_threshold)
-            .count();
-        if engaged_rays > 0 {
-            grounded_wheels += 1;
-        }
-    }
-
-    if drive_state.avg_accelerate > 0.0f32 && grounded_wheels >= 2 {
-        let max_speed_mps = if drive_state.is_reverse {
-            40.0f32 / 3.6f32
-        } else {
-            drive_state.car_max_speed / 3.6f32
-        };
-        let speed_ratio = forward_speed.abs() / max_speed_mps;
-        let force_scale = (1.0f32 - speed_ratio).max(0.0f32);
-        drive_force_mag =
-            (power_watts / speed_for_power) * drive_state.avg_accelerate * force_scale;
-
-        // Engine force limit: 1G of engine traction limit
-        let max_engine_force = drive_state.car_mass * 9.81f32 * 1.0f32;
-        drive_force_mag = drive_force_mag.min(max_engine_force);
-    }
-
-    // Rolling resistance + Aerodynamic Drag (applies always)
-    if forward_speed.abs() > 0.1f32 {
-        let direction = forward_speed.signum();
-        let aero_drag = 0.46f32 * forward_speed * forward_speed;
-        let rolling_res = drive_state.car_mass * 9.81f32 * 0.06f32;
-        let total_drag = (aero_drag + rolling_res).min(drive_state.car_mass * 9.81f32 * 0.5f32);
-        total_linear_force += -car_forward * direction * total_drag;
-    }
-
-    // 3. Virtual Wheels Force Accumulation
-    let wheel_offsets = [
-        // FL
-        (
-            Vec3::new(
-                -drive_state.car_half_width,
-                -drive_state.car_half_height,
-                -drive_state.car_half_length,
-            ),
-            true,
-            true,
-        ),
-        // FR
-        (
-            Vec3::new(
-                drive_state.car_half_width + 0.1,
-                -drive_state.car_half_height,
-                -drive_state.car_half_length,
-            ),
-            true,
-            false,
-        ),
-        // RL
-        (
-            Vec3::new(
-                -drive_state.car_half_width,
-                -drive_state.car_half_height,
-                drive_state.car_half_length,
-            ),
-            false,
-            true,
-        ),
-        // RR
-        (
-            Vec3::new(
-                drive_state.car_half_width,
-                -drive_state.car_half_height,
-                drive_state.car_half_length,
-            ),
-            false,
-            false,
-        ),
-    ];
-
-    let mass_per_wheel = drive_state.car_mass / 4.0f32;
-    let mut total_engaged_height = 0.0f32;
-    let mut engaged_wheels_count = 0;
-    let mut avg_normal = Vec3::ZERO;
-    let mut max_deficit = 0.0f32;
-
-    for (wheel_idx, (offset, is_front, _is_left)) in wheel_offsets.into_iter().enumerate() {
-        let mut adjusted_offset = offset;
-        adjusted_offset.y += drive_state.wheel_y_offset;
-        let mount_world = car_transform.transform_point(adjusted_offset);
-
-        let velocity_at_wheel = car_forces.linear_velocity()
-            + car_forces.angular_velocity().cross(mount_world - com_world);
-        let w_contact = &contact_data.wheels[wheel_idx];
-
-        // --- Suspension Engagement & Length Check ---
-        let mut sum_dist = 0.0f32;
-        let mut engaged_rays = 0;
-        for &d in &w_contact.ray_distances {
-            if d != f32::MAX && d <= drive_state.traction_loss_threshold {
-                sum_dist += d;
-                engaged_rays += 1;
+        // Expire stale inputs: `car_drive_observer` only runs when Drive events arrive,
+        // so an uncontrolled car would otherwise keep its last throttle/steer averages
+        // forever and drive away on its own. (Skipped in sim mode, where the sim binary
+        // writes the averages directly.)
+        if !is_sim {
+            let input_threshold = time.elapsed_secs() - INPUT_WINDOW;
+            drive_state.history.retain(|(t, _)| *t >= input_threshold);
+            if drive_state.history.is_empty() {
+                drive_state.avg_accelerate = 0.0;
+                drive_state.avg_brake = 0.0;
+                drive_state.avg_steer = 0.0;
+                let shrink = 5.0 * dt;
+                if drive_state.current_steer_integrated > 0.0 {
+                    drive_state.current_steer_integrated =
+                        (drive_state.current_steer_integrated - shrink).max(0.0);
+                } else if drive_state.current_steer_integrated < 0.0 {
+                    drive_state.current_steer_integrated =
+                        (drive_state.current_steer_integrated + shrink).min(0.0);
+                }
             }
         }
 
-        if engaged_rays == 0 {
-            // Suspension is fully disengaged, no force is put on the car from this wheel
+        // --- Per-wheel ground heights from the smoothed, median-filtered rays ---
+        let mut wheel_height = [rest; 4];
+        let mut grounded_wheels = 0;
+        for (i, wheel) in contact_data.wheels.iter().enumerate() {
+            let mut sum = 0.0f32;
+            let mut n = 0u32;
+            for &d in &wheel.smoothed_distances {
+                if d != f32::MAX && d <= drive_state.traction_loss_threshold {
+                    sum += d;
+                    n += 1;
+                }
+            }
+            if n > 0 {
+                wheel_height[i] = sum / n as f32;
+                grounded_wheels += 1;
+            }
+        }
+
+        // Temporally smooth the per-wheel heights the controller chases. Raw heights on
+        // bumpy terrain made the tilt controller roll-oscillate left/right, and the grip
+        // term then bled the oscillating "lateral" velocity off as a massive slowdown.
+        let height_alpha = (dt / WHEEL_HEIGHT_SMOOTH).min(1.0);
+        for i in 0..4 {
+            let prev = drive_state.smoothed_wheel_height[i];
+            drive_state.smoothed_wheel_height[i] = if prev.is_nan() {
+                wheel_height[i]
+            } else {
+                prev + (wheel_height[i] - prev) * height_alpha
+            };
+        }
+        let wheel_height = drive_state.smoothed_wheel_height;
+
+        let car_forward = car_transform.rotation * Vec3::NEG_Z;
+        let forward_speed = lin_vel.0.dot(car_forward);
+
+        // --- Engine & Gearbox Simulation (RPM/gear UI + drive force magnitude) ---
+        let gear_ratios = [3.5f32, 2.1f32, 1.4f32, 1.0f32, 0.8f32];
+        let final_drive = 3.7f32;
+        let gear_ratio = if drive_state.is_reverse {
+            3.4f32
+        } else {
+            gear_ratios[(drive_state.current_gear - 1).min(4)]
+        };
+
+        let physical_rpm = (forward_speed.abs() * 60.0f32 * final_drive * gear_ratio)
+            / (2.0f32 * std::f32::consts::PI * drive_state.wheel_radius);
+
+        let mut target_rpm = physical_rpm;
+        if drive_state.avg_accelerate > 0.05f32 {
+            let throttle_rpm = 800.0f32 + drive_state.avg_accelerate * 2200.0f32;
+            target_rpm = target_rpm.max(throttle_rpm);
+            drive_state.engine_rpm = drive_state.engine_rpm.lerp(target_rpm, 10.0 * dt);
+        } else {
+            // Coasting: engine RPM decays towards physical_rpm or idle (800.0)
+            let decay_target = physical_rpm.max(800.0f32);
+            if drive_state.engine_rpm > decay_target {
+                drive_state.engine_rpm = (drive_state.engine_rpm - 2500.0 * dt).max(decay_target);
+            } else {
+                drive_state.engine_rpm = drive_state.engine_rpm.lerp(decay_target, 10.0 * dt);
+            }
+        }
+        drive_state.engine_rpm = drive_state.engine_rpm.min(6500.0);
+
+        // Automatic gear shifting
+        if !drive_state.is_reverse {
+            if drive_state.engine_rpm > 5500.0f32 && drive_state.current_gear < 5 {
+                drive_state.current_gear += 1;
+            } else if drive_state.engine_rpm < 1800.0f32 && drive_state.current_gear > 1 {
+                drive_state.current_gear -= 1;
+            }
+        } else {
+            drive_state.current_gear = 1;
+        }
+
+        // If we don't have traction on at least 2 wheels, apply no driving-related
+        // velocity control at all: the car coasts/flies under plain physics rules.
+        if grounded_wheels < 2 {
+            drive_state.avg_suspension_height = 0.0;
             continue;
         }
 
-        let avg_length = sum_dist / engaged_rays as f32;
-        total_engaged_height += avg_length;
-        engaged_wheels_count += 1;
-        avg_normal += w_contact.contact_normal;
-
-        // Comfortable length threshold check: (min + rest) / 2
-        let threshold = (drive_state.suspension_min + drive_state.suspension_rest) / 2.0f32;
-        if avg_length < threshold {
-            let deficit = threshold - avg_length;
-            if deficit > max_deficit {
-                max_deficit = deficit;
-            }
+        let mut height_sum = 0.0f32;
+        for &h in &wheel_height {
+            height_sum += h;
         }
+        // Ungrounded wheels default to `rest`, which is a fine neutral contribution.
+        let avg_height = height_sum / 4.0f32;
+        drive_state.avg_suspension_height = avg_height;
 
-        // --- Suspension Force ---
-        let gravity_force = mass_per_wheel * 9.81f32;
-        let base_stiffness = gravity_force / drive_state.extra_spring_length.max(0.01f32);
-        let stiffness = base_stiffness * (drive_state.suspension_stiffness / 8.0f32);
-
-        let displacement =
-            (drive_state.suspension_rest + drive_state.extra_spring_length) - avg_length;
-
-        // More aggressive scaling if length is shorter than rest position (but avoid division by zero)
-        let scaling = if avg_length < drive_state.suspension_rest {
-            let remaining = (avg_length - drive_state.suspension_min).max(0.001f32);
-            ((drive_state.suspension_rest - drive_state.suspension_min) / remaining).max(1.0f32)
+        // --- Vertical: ride height control (rate-limited, launch-proof) ---
+        // Small errors are ignored entirely so terrain ripple doesn't pump the car.
+        // "Too low" reacts twice as fast as "too high": clipping a bump peak with the
+        // chassis collider is far worse than briefly floating a little high.
+        let height_error = rest - avg_height; // positive => car too low => go up
+        let effective_error =
+            (height_error.abs() - HEIGHT_DEADBAND).max(0.0) * height_error.signum();
+        let response = if height_error > 0.0 {
+            drive_state.height_response.max(0.02) * 0.5
         } else {
-            1.0f32
+            drive_state.height_response.max(0.02)
         };
+        let target_vy = (effective_error / response).clamp(-MAX_LIFT_SPEED, MAX_LIFT_SPEED);
+        let max_dv = MAX_VERTICAL_ACCEL * dt;
+        lin_vel.0.y += (target_vy - lin_vel.0.y).clamp(-max_dv, max_dv);
 
-        let spring_force = stiffness * displacement * scaling;
+        // --- Attitude: tilt toward the wheel-height ground plane, yaw from steering ---
+        let track = (drive_state.car_half_width * 2.0).max(0.5);
+        let wheelbase = (drive_state.car_half_length * 2.0).max(0.5);
+        let h_left = (wheel_height[0] + wheel_height[2]) * 0.5;
+        let h_right = (wheel_height[1] + wheel_height[3]) * 0.5;
+        let h_front = (wheel_height[0] + wheel_height[1]) * 0.5;
+        let h_rear = (wheel_height[2] + wheel_height[3]) * 0.5;
+        let ground_normal_local = Vec3::new(
+            (h_right - h_left) / track,
+            1.0,
+            (h_rear - h_front) / wheelbase,
+        )
+        .normalize_or_zero();
+        let target_up = (car_transform.rotation * ground_normal_local).normalize_or_zero();
+        let up = car_transform.rotation * Vec3::Y;
 
-        let force_dir = w_contact.contact_normal;
-        let speed_along_suspension = velocity_at_wheel.dot(force_dir);
+        let mut tilt_correction = Vec3::ZERO;
+        let tilt_axis = up.cross(target_up);
+        if tilt_axis.length_squared() > 1e-8 {
+            let tilt_angle = up.angle_between(target_up);
+            // Deadband: small terrain ripple must not rock the chassis.
+            let effective_angle = (tilt_angle - TILT_DEADBAND).max(0.0);
+            tilt_correction = (tilt_axis.normalize()
+                * (effective_angle / drive_state.tilt_response.max(0.02)))
+            .clamp_length_max(MAX_TILT_RATE);
+        }
 
-        // Critical damping coefficient dynamically computed based on stiffness
-        let damping_coef =
-            2.0f32 * (stiffness * mass_per_wheel).sqrt() * drive_state.suspension_damping;
-        let damping_force = -damping_coef * speed_along_suspension * scaling;
+        // Kinematic (bicycle-model) steering: yaw rate follows the steering angle scaled
+        // by speed, so there is no yaw at standstill and reverse flips it naturally.
+        let max_steer = 1.2f32 / (1.0f32 + 0.3f32 * forward_speed.abs());
+        let steer_angle = drive_state.current_steer_integrated * max_steer;
+        let target_yaw_rate = -steer_angle * forward_speed / wheelbase;
+        let current_yaw_rate = ang_vel.0.dot(up);
+        let new_yaw_rate =
+            current_yaw_rate + (target_yaw_rate - current_yaw_rate) * (dt / 0.1).min(1.0);
 
-        let mut total_suspension_force = (spring_force + damping_force).max(0.0f32);
-        // Suspension force limit: 5G max suspension force per wheel
-        let max_susp_force = mass_per_wheel * 9.81f32 * 5.0f32;
-        total_suspension_force = total_suspension_force.min(max_susp_force);
+        // Yaw stays player-controlled; everything else becomes the tilt correction, so
+        // collision-induced spins are damped out while grounded (arcade self-righting).
+        ang_vel.0 = up * new_yaw_rate + tilt_correction;
 
-        let suspension_force_vec = force_dir * total_suspension_force;
+        // --- Planar velocity: drive, brake, drag, grip ---
+        let mut v_xz = Vec3::new(lin_vel.0.x, 0.0, lin_vel.0.z);
+        let fwd_xz = Vec3::new(car_forward.x, 0.0, car_forward.z).normalize_or_zero();
 
-        total_linear_force += suspension_force_vec;
-        total_torque += (mount_world - com_world).cross(suspension_force_vec);
-
-        // --- Driving / Traction Force (Front Wheels only) ---
-        if is_front && drive_force_mag > 0.0f32 {
-            let drive_dir = if drive_state.is_reverse {
-                -steer_dir_world
+        // Drive: engine power -> acceleration along the car's planar forward.
+        if drive_state.avg_accelerate > 0.0f32 {
+            let power_watts = drive_state.horsepower * 745.7f32;
+            let speed_for_power = forward_speed.abs().max(2.0f32);
+            let max_speed_mps = if drive_state.is_reverse {
+                40.0f32 / 3.6f32
             } else {
-                steer_dir_world
+                drive_state.car_max_speed / 3.6f32
             };
-            let drive_dir_plane =
-                (drive_dir - force_dir * drive_dir.dot(force_dir)).normalize_or_zero();
-            let wheel_drive_force = drive_dir_plane * (drive_force_mag / 2.0f32);
+            let speed_ratio = forward_speed.abs() / max_speed_mps;
+            let force_scale = (1.0f32 - speed_ratio).max(0.0f32);
+            let mut drive_force_mag =
+                (power_watts / speed_for_power) * drive_state.avg_accelerate * force_scale;
+            // Engine force limit: 1G of engine traction limit
+            drive_force_mag = drive_force_mag.min(drive_state.car_mass * 9.81f32);
 
-            total_linear_force += wheel_drive_force;
-            total_torque += (mount_world - com_world).cross(wheel_drive_force);
+            let dir = if drive_state.is_reverse { -fwd_xz } else { fwd_xz };
+            v_xz += dir * (drive_force_mag / drive_state.car_mass) * dt;
         }
 
-        // --- Braking Force ---
-        if drive_state.avg_brake > 0.0f32 && grounded_wheels >= 2 {
-            let forward_dir = if is_front {
-                steer_dir_world
-            } else {
-                car_forward
-            };
-            let forward_dir_plane =
-                (forward_dir - force_dir * forward_dir.dot(force_dir)).normalize_or_zero();
-            let speed_forward = velocity_at_wheel.dot(forward_dir_plane);
-            let raw_brake_force = -forward_dir_plane
-                * speed_forward
-                * (drive_state.avg_brake * mass_per_wheel * 4.0f32);
-
-            // Braking force limit: 1.2G limit per wheel
-            let max_brake_force = mass_per_wheel * 9.81f32 * 1.2f32;
-            let wheel_brake_force = raw_brake_force.clamp_length_max(max_brake_force);
-
-            total_linear_force += wheel_brake_force;
-            total_torque += (mount_world - com_world).cross(wheel_brake_force);
+        // Brake: up to ~1.2G of deceleration along the current motion.
+        if drive_state.avg_brake > 0.0f32 {
+            let decel = drive_state.avg_brake * 11.8f32 * dt;
+            v_xz = v_xz.normalize_or_zero() * (v_xz.length() - decel).max(0.0);
         }
 
-        // --- Lateral Grip / Anti-Skid Force ---
-        let lateral_dir = if is_front {
-            Vec3::new(-steer_dir_world.z, 0.0, steer_dir_world.x).normalize_or_zero()
-        } else {
-            car_right
-        };
-        let lateral_dir_plane =
-            (lateral_dir - force_dir * lateral_dir.dot(force_dir)).normalize_or_zero();
-        let speed_lateral = velocity_at_wheel.dot(lateral_dir_plane);
-
-        let mut lateral_force_mag = Vec3::ZERO;
-        if grounded_wheels >= 2 {
-            let raw_lateral_force = -lateral_dir_plane * speed_lateral * mass_per_wheel * 10.0f32;
-            let max_lateral_force = mass_per_wheel * 9.81f32 * 1.2f32; // tire grip limit
-            lateral_force_mag = raw_lateral_force.clamp_length_max(max_lateral_force);
+        // Aerodynamic drag + rolling resistance.
+        let speed_xz = v_xz.length();
+        if speed_xz > 0.1f32 {
+            let drag_decel = (0.46f32 * speed_xz * speed_xz / drive_state.car_mass) + 0.59f32;
+            v_xz = v_xz.normalize_or_zero() * (speed_xz - drag_decel * dt).max(0.0);
         }
 
-        total_linear_force += lateral_force_mag;
-        total_torque += (mount_world - com_world).cross(lateral_force_mag);
+        // Grip: decay the lateral (sideways) velocity component so the car travels
+        // where it points. Lower grip = more drift.
+        let v_forward = fwd_xz * v_xz.dot(fwd_xz);
+        let v_lateral = (v_xz - v_forward) * (1.0 - (drive_state.grip * dt).min(1.0));
+        let v_xz = v_forward + v_lateral;
+
+        lin_vel.0.x = v_xz.x;
+        lin_vel.0.z = v_xz.z;
     }
-
-    // Apply the average height and push-up depenetration
-    if engaged_wheels_count > 0 {
-        drive_state.avg_suspension_height = total_engaged_height / engaged_wheels_count as f32;
-
-        if max_deficit > 0.0 {
-            let push_dir = (avg_normal / engaged_wheels_count as f32).normalize_or_zero();
-            if push_dir.length_squared() > 0.001f32 {
-                car_transform.translation += push_dir * max_deficit;
-            }
-        }
-    } else {
-        drive_state.avg_suspension_height = 0.0f32;
-    }
-
-    // Apply the accumulated forces & torques
-    car_forces.apply_force(total_linear_force);
-    car_forces.apply_torque(total_torque);
-
-    // Dynamic rotation correction to align velocity with steering direction at speed
-    if speed > 0.5f32 {
-        let current_velocity = car_forces.linear_velocity();
-        let vel_xz = Vec3::new(current_velocity.x, 0.0, current_velocity.z);
-        if vel_xz.length_squared() > 0.001f32 {
-            let speed_xz = vel_xz.length();
-            let vel_dir_xz = vel_xz / speed_xz;
-            let drive_dir = if drive_state.is_reverse {
-                -steer_dir_world
-            } else {
-                steer_dir_world
-            };
-            let drive_xz = Vec3::new(drive_dir.x, 0.0, drive_dir.z).normalize_or_zero();
-            let correction_factor = 4.5f32;
-            let new_dir_xz =
-                Vec3::lerp(vel_dir_xz, drive_xz, correction_factor * dt).normalize_or_zero();
-            let new_vel_xz = new_dir_xz * speed_xz;
-
-            let mut target_velocity = current_velocity;
-            target_velocity.x = new_vel_xz.x;
-            target_velocity.z = new_vel_xz.z;
-
-            let delta_vel = target_velocity - current_velocity;
-            let impulse = delta_vel * drive_state.car_mass;
-            car_forces.apply_linear_impulse(impulse);
-        }
-    }
-}
 }
 
 #[derive(Component)]
@@ -664,10 +596,76 @@ pub struct CosmeticWheel {
     pub wheel_idx: usize,
     pub parent_car: Entity,
     pub accumulated_rotation: f32,
+    /// World-space wheel radius measured from the loaded GLB (None until loaded).
+    pub measured_radius: Option<f32>,
+}
+
+/// Measures each cosmetic wheel's real rendered radius from its loaded GLB meshes.
+/// The wheel model's cylinder axis is +/-Z in Bevy, so the radius lives in the XY plane.
+pub fn init_cosmetic_wheels_system(
+    mut q_wheels: Query<(Entity, &Transform, &mut CosmeticWheel)>,
+    children_query: Query<&Children>,
+    mesh_query: Query<&Mesh3d>,
+    global_transform_query: Query<&GlobalTransform>,
+    meshes: Res<Assets<Mesh>>,
+) {
+    for (root_entity, root_transform, mut wheel) in q_wheels.iter_mut() {
+        if wheel.measured_radius.is_some() {
+            continue;
+        }
+        let Ok(children) = children_query.get(root_entity) else {
+            continue;
+        };
+
+        let mut mesh_entities = Vec::new();
+        let mut queue: Vec<Entity> = children.to_vec();
+        while let Some(ent) = queue.pop() {
+            if let Ok(m) = mesh_query.get(ent) {
+                mesh_entities.push((ent, m.0.clone()));
+            }
+            if let Ok(kids) = children_query.get(ent) {
+                queue.extend(kids.iter());
+            }
+        }
+        if mesh_entities.is_empty()
+            || mesh_entities.iter().any(|(_, h)| meshes.get(h).is_none())
+        {
+            continue;
+        }
+
+        let Ok(root_gt) = global_transform_query.get(root_entity) else {
+            continue;
+        };
+        let root_inv = root_gt.to_matrix().inverse();
+
+        let mut max_radius = 0.0f32;
+        for (ent, handle) in &mesh_entities {
+            let Ok(mesh_gt) = global_transform_query.get(*ent) else {
+                continue;
+            };
+            let Some(mesh) = meshes.get(handle) else {
+                continue;
+            };
+            if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(positions)) =
+                mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+            {
+                for pos in positions {
+                    let world_pos = mesh_gt.transform_point(Vec3::from(*pos));
+                    let local = root_inv.transform_point3(world_pos);
+                    max_radius = max_radius.max(Vec2::new(local.x, local.y).length());
+                }
+            }
+        }
+
+        if max_radius > 0.0 {
+            wheel.measured_radius = Some(max_radius * root_transform.scale.x);
+        }
+    }
 }
 
 pub fn update_cosmetic_wheels(
-    mut q_wheels: Query<(&mut Transform, &mut CosmeticWheel)>,
+    mut commands: Commands,
+    mut q_wheels: Query<(Entity, &mut Transform, &mut CosmeticWheel)>,
     q_cars: Query<
         (&Transform, &CarDriveState, &CarWheelsContactData, &LinearVelocity),
         (With<Car>, Without<CosmeticWheel>),
@@ -675,80 +673,92 @@ pub fn update_cosmetic_wheels(
     time: Res<Time>,
 ) {
     let dt = time.delta_secs();
-    for (mut wheel_transform, mut cosmetic_wheel) in q_wheels.iter_mut() {
-        if let Ok((car_transform, drive_state, contact_data, lin_vel)) =
+    for (wheel_entity, mut wheel_transform, mut cosmetic_wheel) in q_wheels.iter_mut() {
+        let Ok((car_transform, drive_state, contact_data, lin_vel)) =
             q_cars.get(cosmetic_wheel.parent_car)
-        {
-            let wheel_data = &contact_data.wheels[cosmetic_wheel.wheel_idx];
-
-            let is_front = cosmetic_wheel.wheel_idx == 0 || cosmetic_wheel.wheel_idx == 1;
-            let is_right = cosmetic_wheel.wheel_idx == 1 || cosmetic_wheel.wheel_idx == 3;
-
-            let x_offset = if is_right {
-                drive_state.car_half_width + 0.1
-            } else {
-                -drive_state.car_half_width - 0.1
-            };
-            let z_offset = if is_front {
-                -drive_state.car_half_length
-            } else {
-                drive_state.car_half_length
-            };
-
-            let mut engaged_dist = 0.0;
-            let mut engaged_count = 0;
-            for &dist in &wheel_data.ray_distances {
-                if dist != f32::MAX && dist <= drive_state.traction_loss_threshold {
-                    engaged_dist += dist;
-                    engaged_count += 1;
-                }
+        else {
+            // Parent car is gone; the wheel has no reason to exist.
+            if let Ok(mut e) = commands.get_entity(wheel_entity) {
+                e.despawn();
             }
+            continue;
+        };
 
-            let mut y_offset = drive_state.ray_start_y_offset
-                - drive_state.traction_loss_threshold
-                + drive_state.wheel_radius;
-            if engaged_count > 0 {
-                let avg_dist = engaged_dist / engaged_count as f32;
-                y_offset = drive_state.ray_start_y_offset - avg_dist + drive_state.wheel_radius;
+        let wheel_data = &contact_data.wheels[cosmetic_wheel.wheel_idx];
+
+        let is_front = cosmetic_wheel.wheel_idx == 0 || cosmetic_wheel.wheel_idx == 1;
+        let is_right = cosmetic_wheel.wheel_idx == 1 || cosmetic_wheel.wheel_idx == 3;
+
+        let radius = cosmetic_wheel
+            .measured_radius
+            .unwrap_or(drive_state.wheel_radius * 0.6);
+
+        let x_offset = if is_right {
+            drive_state.car_half_width + 0.1
+        } else {
+            -drive_state.car_half_width - 0.1
+        };
+        let z_offset = if is_front {
+            -drive_state.car_half_length
+        } else {
+            drive_state.car_half_length
+        };
+
+        let mut engaged_dist = 0.0;
+        let mut engaged_count = 0;
+        for &dist in &wheel_data.smoothed_distances {
+            if dist != f32::MAX && dist <= drive_state.traction_loss_threshold {
+                engaged_dist += dist;
+                engaged_count += 1;
             }
-
-            let local_pos = Vec3::new(x_offset, y_offset, z_offset);
-            wheel_transform.translation = car_transform.transform_point(local_pos);
-
-            let car_forward = car_transform.rotation * Vec3::NEG_Z;
-            let forward_speed = lin_vel.0.dot(car_forward);
-            let rot_speed = forward_speed / (drive_state.wheel_radius * 0.6);
-
-            cosmetic_wheel.accumulated_rotation += rot_speed * dt;
-
-            let steer_angle = if is_front {
-                let speed = lin_vel.0.length();
-                let max_steer = 1.2f32 / (1.0f32 + 0.3f32 * speed);
-                drive_state.current_steer_integrated * max_steer
-            } else {
-                0.0
-            };
-
-            let base_y_rot = if is_right {
-                std::f32::consts::FRAC_PI_2
-            } else {
-                -std::f32::consts::FRAC_PI_2
-            };
-
-            let total_y_rot = base_y_rot - steer_angle;
-
-            let rot_y = Quat::from_rotation_y(total_y_rot);
-            let rot_x = Quat::from_rotation_x(cosmetic_wheel.accumulated_rotation);
-
-            wheel_transform.rotation = car_transform.rotation * rot_y * rot_x;
         }
+
+        // Grounded: hub sits at ground contact + radius. Airborne: hang slightly
+        // below rest instead of stretching down the whole ray length.
+        let dist = if engaged_count > 0 {
+            engaged_dist / engaged_count as f32
+        } else {
+            (drive_state.suspension_rest + 0.1).min(drive_state.max_ray_length)
+        };
+        let y_offset = drive_state.ray_start_y_offset - dist + radius;
+
+        let local_pos = Vec3::new(x_offset, y_offset, z_offset);
+        wheel_transform.translation = car_transform.transform_point(local_pos);
+
+        let car_forward = car_transform.rotation * Vec3::NEG_Z;
+        let forward_speed = lin_vel.0.dot(car_forward);
+        // Rolling forward (car moving -Z) means the wheel top moves -Z: a negative
+        // rotation about the car-local X axle.
+        cosmetic_wheel.accumulated_rotation -= (forward_speed / radius.max(0.05)) * dt;
+
+        let steer_angle = if is_front {
+            let max_steer = 1.2f32 / (1.0f32 + 0.3f32 * forward_speed.abs());
+            drive_state.current_steer_integrated * max_steer
+        } else {
+            0.0
+        };
+
+        let base_y_rot = if is_right {
+            std::f32::consts::FRAC_PI_2
+        } else {
+            -std::f32::consts::FRAC_PI_2
+        };
+
+        // Order matters: the base yaw orients the GLB's cylinder axis (+/-Z) onto the
+        // car-local X axle FIRST; the spin then rolls about that axle; steering yaws on
+        // top. Composing the spin before the base yaw is what made wheels tumble around
+        // the car's forward axis.
+        wheel_transform.rotation = car_transform.rotation
+            * Quat::from_rotation_y(-steer_angle)
+            * Quat::from_rotation_x(cosmetic_wheel.accumulated_rotation)
+            * Quat::from_rotation_y(base_y_rot);
     }
 }
-
 
 pub fn update_wheel_contact_normals(
     spatial_query: SpatialQuery,
     mut q_cars: Query<(Entity, &Transform, &CarDriveState, &mut CarWheelsContactData), With<Car>>,
+    time: Res<Time>,
 ) {
     for (car_entity, car_transform, drive_state, mut contact_data) in q_cars.iter_mut() {
         for wheel_idx in 0..4 {
@@ -808,9 +818,6 @@ pub fn update_wheel_contact_normals(
 
             let mut distances = [f32::MAX; 9];
             let mut hit_points = [Vec3::ZERO; 9];
-            let mut normals = [Vec3::ZERO; 9];
-            let mut min_hit_dist = f32::MAX;
-            let mut raw_hits_count = 0;
 
             for i in 0..9 {
                 if let Some(hit) =
@@ -818,21 +825,28 @@ pub fn update_wheel_contact_normals(
                 {
                     distances[i] = hit.distance;
                     hit_points[i] = world_origins[i] + *ray_dir * hit.distance;
-                    normals[i] = hit.normal;
-                    min_hit_dist = min_hit_dist.min(hit.distance);
-                    raw_hits_count += 1;
                 }
             }
 
+            // Median-anchored validity window. Anchoring on the minimum (as before)
+            // backfires at tile seams: the shortest hit lands on the neighboring
+            // higher tile and every legit hit gets discarded, collapsing the wheel's
+            // support in one frame. The median lets the majority surface win, and
+            // still rejects lone rays through cracks or onto skirt lips.
+            let mut sorted = [0.0f32; 9];
+            let mut hit_total = 0usize;
+            for &d in &distances {
+                if d != f32::MAX {
+                    sorted[hit_total] = d;
+                    hit_total += 1;
+                }
+            }
             let mut hits_count = 0;
-            let mut sum_normals = Vec3::ZERO;
-
-            if raw_hits_count > 0 {
-                // Ignore rays that pass through cracks in the top surface mesh (> min_hit_dist + 0.25)
-                let max_valid_dist = min_hit_dist + 0.25;
+            if hit_total > 0 {
+                sorted[..hit_total].sort_unstable_by(|a, b| a.total_cmp(b));
+                let median = sorted[hit_total / 2];
                 for i in 0..9 {
-                    if distances[i] <= max_valid_dist {
-                        sum_normals += normals[i];
+                    if distances[i] != f32::MAX && (distances[i] - median).abs() <= 0.25 {
                         hits_count += 1;
                     } else {
                         distances[i] = f32::MAX;
@@ -842,6 +856,22 @@ pub fn update_wheel_contact_normals(
             }
 
             let w_contact = &mut contact_data.wheels[wheel_idx];
+
+            // Low-pass the per-ray distances (~0.06s, matching the input integration
+            // window) so a single frame of bad ray data can't spike the controller.
+            let alpha = (time.delta_secs() / 0.06f32).min(1.0f32);
+            for i in 0..9 {
+                let raw = distances[i];
+                let prev = w_contact.smoothed_distances[i];
+                w_contact.smoothed_distances[i] = if raw == f32::MAX {
+                    f32::MAX
+                } else if prev == f32::MAX {
+                    raw
+                } else {
+                    prev + (raw - prev) * alpha
+                };
+            }
+
             w_contact.ray_distances = distances;
             w_contact.hit_points = hit_points;
             w_contact.hits_count = hits_count;
@@ -855,73 +885,73 @@ pub fn draw_car_gizmos(
     mut gizmos: Gizmos,
     q_car: Query<(&Transform, &CarDriveState, &CarWheelsContactData), With<Car>>,
 ) {
-    for (car_transform, _drive_state, contact_data) in q_car.iter() {
+    for (car_transform, drive_state, contact_data) in q_car.iter() {
+        // Draw orange lines for 9 rays for each of the 4 virtual wheels
+        let ray_color = Color::srgb(1.0, 0.5, 0.0);
+        let star_color = Color::srgb(0.0, 0.0, 1.0);
+        let sphere_color = Color::srgb(0.0, 0.0, 1.0);
+        let local_down = car_transform.rotation * Vec3::NEG_Y;
+        let max_len = drive_state.max_ray_length;
 
-    // Draw orange lines for 9 rays for each of the 4 virtual wheels
-    let ray_color = Color::srgb(1.0, 0.5, 0.0);
-    let star_color = Color::srgb(0.0, 0.0, 1.0);
-    let sphere_color = Color::srgb(0.0, 0.0, 1.0);
-    let local_down = car_transform.rotation * Vec3::NEG_Y;
+        for wheel_idx in 0..4 {
+            let wheel_contact = &contact_data.wheels[wheel_idx];
 
-    for wheel_idx in 0..4 {
-        let wheel_contact = &contact_data.wheels[wheel_idx];
+            for i in 0..9 {
+                let start = wheel_contact.ray_origins[i];
+                let end = if wheel_contact.ray_distances[i] > max_len {
+                    start + local_down * max_len
+                } else {
+                    wheel_contact.hit_points[i]
+                };
+                gizmos.line(start, end, ray_color);
 
-        for i in 0..9 {
-            let start = wheel_contact.ray_origins[i];
-            let end = if wheel_contact.ray_distances[i] > 1.0f32 {
-                start + local_down * 1.0f32
+                // If hit ground and engaged, draw blue star and sphere
+                if wheel_contact.ray_distances[i] <= max_len {
+                    let hit = wheel_contact.hit_points[i];
+                    // Draw 3 perpendicular lines (star) of total span 0.3 (so each arm is 0.15)
+                    gizmos.line(hit - Vec3::X * 0.15, hit + Vec3::X * 0.15, star_color);
+                    gizmos.line(hit - Vec3::Y * 0.15, hit + Vec3::Y * 0.15, star_color);
+                    gizmos.line(hit - Vec3::Z * 0.15, hit + Vec3::Z * 0.15, star_color);
+
+                    // Draw small sphere
+                    let sphere = Sphere::new(0.05);
+                    gizmos.primitive_3d(&sphere, Isometry3d::from_translation(hit), sphere_color);
+                }
+            }
+
+            // Draw plane defining the plane segment (green for contact, red for no contact)
+            let mut centroid = Vec3::ZERO;
+            let mut engaged_count = 0;
+            for i in 0..9 {
+                if wheel_contact.ray_distances[i] <= max_len {
+                    centroid += wheel_contact.hit_points[i];
+                    engaged_count += 1;
+                }
+            }
+
+            let has_contact = engaged_count > 0;
+            let plane_center = if has_contact {
+                centroid / engaged_count as f32
             } else {
-                wheel_contact.hit_points[i]
+                wheel_contact.ray_origins.iter().sum::<Vec3>() / 9.0f32 + local_down * max_len
             };
-            gizmos.line(start, end, ray_color);
 
-            // If hit ground and engaged (<= 1.0m), draw blue star and sphere
-            if wheel_contact.ray_distances[i] <= 1.0f32 {
-                let hit = wheel_contact.hit_points[i];
-                // Draw 3 perpendicular lines (star) of total span 0.3 (so each arm is 0.15)
-                gizmos.line(hit - Vec3::X * 0.15, hit + Vec3::X * 0.15, star_color);
-                gizmos.line(hit - Vec3::Y * 0.15, hit + Vec3::Y * 0.15, star_color);
-                gizmos.line(hit - Vec3::Z * 0.15, hit + Vec3::Z * 0.15, star_color);
+            let box_color = if has_contact {
+                Color::srgb(0.0, 1.0, 0.0) // Green contact marker
+            } else {
+                Color::srgb(1.0, 0.0, 0.0) // Red no-contact marker
+            };
 
-                // Draw small sphere
-                let sphere = Sphere::new(0.05);
-                gizmos.primitive_3d(&sphere, Isometry3d::from_translation(hit), sphere_color);
-            }
+            // Rotated to the contact normal
+            let plane_rotation = Quat::from_rotation_arc(Vec3::Y, wheel_contact.contact_normal);
+
+            // Draw a nice plane segment using flat cuboid
+            let cuboid = Cuboid::new(0.5, 0.01, 0.5);
+            gizmos.primitive_3d(
+                &cuboid,
+                Isometry3d::new(plane_center, plane_rotation),
+                box_color,
+            );
         }
-
-        // Draw plane defining the plane segment (green for contact, red for no contact)
-        let mut centroid = Vec3::ZERO;
-        let mut engaged_count = 0;
-        for i in 0..9 {
-            if wheel_contact.ray_distances[i] <= 1.0f32 {
-                centroid += wheel_contact.hit_points[i];
-                engaged_count += 1;
-            }
-        }
-
-        let has_contact = engaged_count > 0;
-        let plane_center = if has_contact {
-            centroid / engaged_count as f32
-        } else {
-            wheel_contact.ray_origins.iter().sum::<Vec3>() / 9.0f32 + local_down * 1.0f32
-        };
-
-        let box_color = if has_contact {
-            Color::srgb(0.0, 1.0, 0.0) // Green contact marker
-        } else {
-            Color::srgb(1.0, 0.0, 0.0) // Red no-contact marker
-        };
-
-        // Rotated to the contact normal
-        let plane_rotation = Quat::from_rotation_arc(Vec3::Y, wheel_contact.contact_normal);
-
-        // Draw a nice plane segment using flat cuboid
-        let cuboid = Cuboid::new(0.5, 0.01, 0.5);
-        gizmos.primitive_3d(
-            &cuboid,
-            Isometry3d::new(plane_center, plane_rotation),
-            box_color,
-        );
     }
-}
 }

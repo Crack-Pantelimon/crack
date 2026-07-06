@@ -13,7 +13,7 @@ use bevy_egui::EguiContexts;
 
 use super::*;
 use crate::plugins::pedestrians::PedestrianAnimations;
-use crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::{EnteringCarTimer, ExitingCarTimer};
+use crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::EnteringCarTimer;
 use crate::plugins::weapons::{EquippedWeapon, FireGunEvent, GunState, ReloadGunEvent};
 use spawn::ControlledCharacter;
 
@@ -39,7 +39,10 @@ pub fn print_animation_catalog(anims: Res<PedestrianAnimations>, mut done: Local
 }
 
 /// Returns the graph node for the first available clip name, falling back to the default clip.
-fn node_for(anims: &PedestrianAnimations, candidates: &[&str]) -> Option<AnimationNodeIndex> {
+pub(super) fn node_for(
+    anims: &PedestrianAnimations,
+    candidates: &[&str],
+) -> Option<AnimationNodeIndex> {
     for c in candidates {
         if let Some(n) = anims.nodes.get(*c) {
             return Some(*n);
@@ -72,7 +75,6 @@ pub fn drive_character_animation(
             &mut AnimState,
             &mut CombatState,
             Option<&EnteringCarTimer>,
-            Option<&ExitingCarTimer>,
         ),
         With<CharacterController>,
     >,
@@ -100,7 +102,6 @@ pub fn drive_character_animation(
         mut anim,
         mut combat,
         entering,
-        exiting,
     )) = controllers.get_mut(controller)
     else {
         return;
@@ -186,8 +187,6 @@ pub fn drive_character_animation(
     let moving = speed > MOVE_ANIM_THRESHOLD;
     let base_candidates: &[&str] = if entering.is_some() {
         &["Sitting_Enter"]
-    } else if exiting.is_some() {
-        &["Sitting_Exit"]
     } else if climbing || rolling {
         // No dedicated climb clip exists in the catalog; play the "Roll" clip for climbs & rolls.
         &["Roll", "Jump_Loop"]
