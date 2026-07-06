@@ -18,7 +18,7 @@ use bevy_egui::EguiPrimaryContextPass;
 
 use crate::plugins::pedestrians::pedestrian_controller_plugin::locomotion::CharacterLocomotionPlugin;
 
-pub use faction::{Faction, Health, WarMatrix};
+pub use faction::{Dying, Faction, Health, WarMatrix, DEATH_ANIM_TIME, DEFAULT_HP};
 pub use spawn_ai::SpawnAiPedestrianEvent;
 
 // -------------------------------------------------------------------------------------
@@ -114,6 +114,12 @@ impl Plugin for PedestrianAiPlugin {
                     debug_ui::draw_ai_gizmos,
                 )
                     .chain(),
+            )
+            // Death handling: play the death clip once, then despawn the corpse. Runs regardless
+            // of control state so both AI peds and the player pedestrian are handled.
+            .add_systems(
+                Update,
+                (combat::start_ai_death_animation, combat::tick_dying),
             )
             .add_systems(EguiPrimaryContextPass, debug_ui::ai_debug_ui);
     }

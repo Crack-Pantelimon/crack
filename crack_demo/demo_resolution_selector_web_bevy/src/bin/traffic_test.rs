@@ -22,6 +22,7 @@ fn main() {
             show_traffic_debug: true,
             ..UiState::with_physics_debug()
         })
+        .init_resource::<GeoJsonDatabase>()
         .add_plugins(PhysicsPlugin)
         .add_plugins(GameStatesPlugin)
         .add_plugins(CarsAndDrivingPlugin)

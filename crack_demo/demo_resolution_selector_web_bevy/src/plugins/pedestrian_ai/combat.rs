@@ -1,7 +1,7 @@
 //! AI combat: directed gun fire, melee hits, punch, damage events, death.
 
 use avian3d::prelude::*;
-use bevy::prelude::*;
+use bevy::{ecs::query::Has, prelude::*};
 
 use crate::plugins::audio::audio_fx::{AudioFxEvent, AudioFxEventType};
 use crate::plugins::pedestrians::{
@@ -17,7 +17,7 @@ use crate::plugins::weapons::{
 
 use super::{
     AiCombatTimers, AiModel, AiPedestrian, AiPerception, AiState,
-    faction::Health,
+    faction::{Dying, Health, DEATH_ANIM_TIME},
 };
 
 // -------------------------------------------------------------------------------------
@@ -33,7 +33,7 @@ const PUNCH_RANGE: f32 = 1.5;
 const PUNCH_DAMAGE: f32 = 12.0;
 const PUNCH_INTERVAL: f32 = 0.6;
 /// How long a shot tracer stays visible.
-const TRACER_TTL: f32 = 5.0;
+const TRACER_TTL: f32 = 0.05;
 /// Length of the drawn ricochet (reflected bullet path) segment.
 const REFLECT_LEN: f32 = 0.5;
 
@@ -50,21 +50,64 @@ pub struct DamageEvent {
     pub source: Entity,
 }
 
-/// Observer: apply damage and handle death (immediate despawn).
+/// Observer: apply damage and, on death, mark the entity [`Dying`] so it plays a death clip
+/// before it is despawned by [`tick_dying`]. Applies to both AI peds and the player pedestrian.
 pub fn apply_damage_observer(
     trigger: On<DamageEvent>,
     mut commands: Commands,
-    mut healths: Query<(&mut Health, Option<&super::faction::Faction>)>,
+    mut healths: Query<(&mut Health, Option<&super::faction::Faction>, Has<Dying>)>,
 ) {
     let ev = trigger.event();
-    let Ok((mut health, faction)) = healths.get_mut(ev.target) else {
+    let Ok((mut health, faction, already_dying)) = healths.get_mut(ev.target) else {
         return;
     };
+    if already_dying {
+        return;
+    }
     health.current -= ev.amount;
     if health.current <= 0.0 {
+        health.current = 0.0;
         let faction_label = faction.map(|f| f.label()).unwrap_or("?");
         info!("[AI {:?}] DIED (faction {})", ev.target, faction_label);
-        commands.entity(ev.target).despawn();
+        commands
+            .entity(ev.target)
+            .insert(Dying { timer: DEATH_ANIM_TIME });
+    }
+}
+
+/// When an AI ped is freshly marked [`Dying`], play its death clip once (looped by the shared
+/// animation system until the corpse despawns). The player pedestrian has no [`AiModel`]; its
+/// death animation is handled by the character-controller animation driver instead.
+pub fn start_ai_death_animation(
+    mut commands: Commands,
+    newly_dead: Query<&AiModel, Added<Dying>>,
+) {
+    for ai_model in &newly_dead {
+        commands.trigger(crate::plugins::pedestrians::PedestrianAnimationControlEvent {
+            ped: ai_model.0,
+            animation: "Death01".to_string(),
+            speed: 1.0,
+        });
+    }
+}
+
+/// Counts down each corpse's death timer, freezing it in place, and despawns it when the timer
+/// elapses.
+pub fn tick_dying(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &mut Dying, Option<&mut LinearVelocity>)>,
+) {
+    let dt = time.delta_secs();
+    for (entity, mut dying, velocity) in &mut query {
+        if let Some(mut velocity) = velocity {
+            // Freeze the corpse in place (inner vector may be f32 or f64 depending on avian feature).
+            velocity.0 *= 0.0;
+        }
+        dying.timer -= dt;
+        if dying.timer <= 0.0 {
+            commands.entity(entity).despawn();
+        }
     }
 }
 

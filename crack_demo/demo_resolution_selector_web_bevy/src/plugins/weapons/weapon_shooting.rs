@@ -8,7 +8,7 @@ use crate::plugins::pedestrians::pedestrian_controller_plugin::{CharacterControl
 use crate::plugins::pedestrians::skeleton::PedestrianSkeleton;
 
 /// How long a shot tracer stays visible.
-const TRACER_TTL: f32 = 5.0;
+const TRACER_TTL: f32 = 0.05;
 /// Length of the drawn ricochet (reflected bullet path) segment.
 const REFLECT_LEN: f32 = 0.5;
 

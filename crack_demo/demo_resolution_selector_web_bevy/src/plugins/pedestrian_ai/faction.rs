@@ -5,6 +5,9 @@ use bevy::prelude::*;
 /// Default hit points for AI pedestrians.
 pub const DEFAULT_HP: f32 = 100.0;
 
+/// How long a corpse stays around playing its death clip before it despawns.
+pub const DEATH_ANIM_TIME: f32 = 2.5;
+
 /// Static faction roster. `Neutral` never fights and is never targeted.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Faction {
@@ -87,4 +90,13 @@ impl Health {
     pub fn full(max: f32) -> Self {
         Self { current: max, max }
     }
+}
+
+/// Marks a pedestrian (AI or player) that has died: it is playing its death clip and will be
+/// despawned once `timer` counts down to zero. While present, all AI systems ignore the entity
+/// (they already skip anything with `Health::current <= 0`).
+#[derive(Component)]
+pub struct Dying {
+    /// Seconds left before the corpse is despawned.
+    pub timer: f32,
 }

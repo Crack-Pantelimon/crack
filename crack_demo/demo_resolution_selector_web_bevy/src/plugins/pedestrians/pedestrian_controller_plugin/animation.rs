@@ -14,6 +14,7 @@ use bevy_egui::EguiContexts;
 use super::*;
 use crate::plugins::pedestrians::PedestrianAnimations;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::EnteringCarTimer;
+use crate::plugins::pedestrian_ai::Dying;
 use crate::plugins::weapons::{EquippedWeapon, FireGunEvent, GunState, ReloadGunEvent};
 use crate::plugins::weapons::weapon_attach::{WeaponModelState, WeaponModel};
 use spawn::ControlledCharacter;
@@ -78,6 +79,7 @@ pub fn drive_character_animation(
             Option<&EnteringCarTimer>,
             Option<&WeaponModelState>,
             &GlobalTransform,
+            Has<Dying>,
         ),
         With<CharacterController>,
     >,
@@ -108,6 +110,7 @@ pub fn drive_character_animation(
         entering,
         weapon_model_state,
         char_gt,
+        dying,
     )) = controllers.get_mut(controller)
     else {
         return;
@@ -166,6 +169,29 @@ pub fn drive_character_animation(
         anim.base_node = None;
         combat.node = None;
         combat.kind = CombatKind::None;
+    }
+
+    // --- Dead: play the death clip once and freeze; no locomotion or combat overlay. ----------
+    if dying {
+        // Drop any combat overlay so only the death clip reads.
+        if let Some(old) = combat.node {
+            player.stop(old);
+        }
+        combat.node = None;
+        combat.kind = CombatKind::None;
+
+        let death_node = node_for(&anims, &["Death01"]);
+        if anim.base_node != death_node {
+            if let Some(old) = anim.base_node {
+                player.stop(old);
+            }
+            if let Some(node) = death_node {
+                // No `.repeat()`: play once and hold on the final (downed) frame.
+                player.play(node).set_speed(anim_speed);
+            }
+            anim.base_node = death_node;
+        }
+        return;
     }
 
     // --- Base locomotion state machine ---------------------------------------------------------
