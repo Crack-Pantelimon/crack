@@ -53,6 +53,11 @@ packages/api_asscrack/.github/copilot-instructions.md:41  # TODO: get which is m
 packages/api_asscrack/.github/copilot-instructions.md:42  # TODO: s
 ```
 
+## changes (last 5 commits — 52 seconds ago)
+```
+crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/collision_sparks.rs +to
+```
+
 ## crack_demo
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/bin/car_sim.rs
@@ -71,6 +76,15 @@ pub fn get_random_car_type() → &'static str
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/camera_follow.rs
 ```
 pub fn camera_follows_car(time: Res<Time>, mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<ActivePlayerVehicle>)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/collision_sparks.rs
+```
+pub struct SparkRateLimiter
+pub struct CollisionMarker
+pub struct SparkParticle
+pub fn handle_car_collisions(mut commands: Commands, mut collision_events: MessageReader<CollisionStart>, mut rate_limiter: ResMut<SparkRateLimiter>, spatial_query: SpatialQuery, q_car: Query<&Car>, q_parent: Query<&ChildOf>, q_lin_vel: Query<&LinearVelocity>, q_gt: Query<&GlobalTransform>, q_name: Query<&Name>, time: Res<Time>,)
+pub fn update_and_draw_collision_effects(mut commands: Commands, time: Res<Time>, mut gizmos: Gizmos, q_markers: Query<(Entity, &CollisionMarker)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/keybinds_control.rs
@@ -126,45 +140,10 @@ pub fn init_cars_system(mut commands: Commands, query: Query<(Entity, &NeedCarBo
 pub fn speedometer_ui(mut contexts: EguiContexts, mut q_car: Query<(&avian3d::prelude::LinearVelocity, &mut CarDriveState)
 ```
 
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/mod.rs
-```
-pub struct MapPlugin
-pub struct MapTreeAssetInfo
-pub struct BBox
-pub struct MapTileAssetId
-pub struct MapTreeNodePath
-pub struct MapTreeNodeInfo
-pub struct MapTree
-pub struct MapLODState
-impl MapPlugin
-impl MapTileAssetId
-  pub fn get_octant_path(&self) → MapTreeNodePath
-impl MapTreeNodePath
-  pub fn get_parent(&self) → Option<MapTreeNodePath>
-```
-
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/pedestrian_controller_plugin/animation.rs
 ```
 pub fn print_animation_catalog(anims: Res<PedestrianAnimations>, mut done: Local<bool>)
 pub fn drive_character_animation(time: Res<Time>, anims: Res<PedestrianAnimations>, controlled: Res<ControlledCharacter>, mouse: Res<ButtonInput<MouseButton>>, keys: Res<ButtonInput<KeyCode>>, mut commands: Commands, mut contexts: EguiContexts, mut controllers: Query< ( &LinearVelocity, Has<Grounded>, &MovementModifiers, &CharacterScale, Has<Climbing>, Has<Rolling>, Option<&EquippedWeapon>, Option<&GunState>, &mut AnimState, &mut CombatState, Option<&EnteringCarTimer>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/pedestrian_controller_plugin/controller.rs
-```
-pub fn character_input(keys: Res<ButtonInput<KeyCode>>, camera: Query<&GlobalTransform, With<Camera3d>>, mut modifiers: Query<&mut MovementModifiers>, mut movement_writer: MessageWriter<MovementAction>,)
-pub fn update_grounded(mut commands: Commands, mut query: Query<(Entity, &GroundDetection, &GlobalTransform)
-pub fn movement(time: Res<Time>, mut movement_reader: MessageReader<MovementAction>, mut controllers: Query<( &CharacterMovementSettings, &mut LinearVelocity, Has<Grounded>,)
-pub fn apply_gravity(time: Res<Time>, mut controllers: Query<(&CharacterMovementSettings, &mut LinearVelocity)
-pub fn apply_movement_damping(mut query: Query<(&CharacterMovementSettings, &mut LinearVelocity)
-pub fn apply_speed_cap(time: Res<Time>, mut query: Query<(&mut MovementModifiers, &mut LinearVelocity, Has<Rolling>)
-pub fn move_and_slide(mut query: Query< ( Entity, Option<&GroundDetection>, Option<&mut CharacterCollisions>, &mut Transform, &mut LinearVelocity, &Collider,)
-pub fn apply_forces_to_dynamic_bodies(characters: Query<(&ComputedMass, &CharacterCollisions)
-pub fn face_movement(time: Res<Time>, mut query: Query<(&LinearVelocity, &mut Transform)
-pub fn respawn_if_fallen(mut query: Query<(&mut Transform, &mut LinearVelocity)
-pub fn jump_or_climb(keys: Res<ButtonInput<KeyCode>>, spatial_query: SpatialQuery, mut commands: Commands, mut movement_writer: MessageWriter<MovementAction>, map: Option<Res<MapTree>>, tiles: Query<()
-pub fn update_climb(time: Res<Time>, mut commands: Commands, mut query: Query<(Entity, &mut Transform, &mut LinearVelocity, &mut Climbing)
-pub fn update_roll(time: Res<Time>, mut commands: Commands, mut query: Query<(Entity, &Transform, &mut LinearVelocity, &mut Rolling)
-pub fn detect_fallen_off_map(map: Option<Res<MapTree>>, tiles: Query<()
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/pedestrian_controller_plugin/interaction_ui.rs
@@ -219,18 +198,6 @@ pub fn adopt_pedestrian(mut commands: Commands, mut controlled: ResMut<Controlle
 pub fn escape_to_freecam(keys: Res<ButtonInput<KeyCode>>, mut commands: Commands, mut controlled: ResMut<ControlledCharacter>, mut next_state: ResMut<NextState<GameControlState>>,)
 ```
 
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/skeleton.rs
-```
-pub struct PedestrianSkeleton
-pub struct JointData
-pub enum BoneLabel
-pub fn traverse_hierarchy_raw(entity: Entity, children_query: &Query<&Children>, name_query: &Query<&Name>, transform_query: &Query<&GlobalTransform>, nodes: &mut Vec<(Entity, String, Vec3)
-pub fn classify_skeleton(root_entity: Entity, joints: &[JointData],) → ( std::collections::HashMap...
-pub fn find_parent_of(entity: Entity, joints: &[JointData]) → Option<Entity>
-pub fn find_pos_of(entity: Entity, joints: &[JointData]) → Option<Vec3>
-pub fn classify_limb_path(tip_entity: Option<Entity>, spine_path: &[Entity], root_entity: Entity, joints: &[JointData], labels: &mut std::collections::HashMap<Entity, BoneLabel>, limb_main_label: BoneLabel, limb_shoulder_label: BoneLabel, limb_hand_label: BoneLabel,) → Option<(Entity, Entity, Ent...
-```
-
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/spawn_pedestrian.rs
 ```
 pub struct SpawnPedestrianEvent
@@ -242,55 +209,11 @@ pub fn spawn_pedestrian_observer(trigger: On<SpawnPedestrianEvent>, mut commands
 pub fn init_pedestrians_system(mut commands: Commands, query: Query<(Entity, &NeedAlignment, &Children)
 ```
 
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/mod.rs
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/physics_plugin.rs
 ```
-pub struct WeaponsPlugin
-impl WeaponsPlugin
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_attach.rs
-```
-pub struct EquippedWeapon
-pub struct EquipWeaponEvent
-pub struct WeaponGripOffset
-pub struct WeaponModelState
-pub struct WeaponModel
-pub struct PendingWeaponExtents
-pub struct WeaponExtents
-impl WeaponGripOffset
-pub fn equip_weapon_observer(trigger: On<EquipWeaponEvent>, mut commands: Commands)
-pub fn reconcile_weapon_model(mut commands: Commands, asset_server: Res<AssetServer>, mut characters: Query<(Entity, &EquippedWeapon, Option<&mut WeaponModelState>)
-pub fn finalize_weapon_extents(mut commands: Commands, pending: Query<(Entity, &Children)
-pub fn apply_grip_offset(grip: Res<WeaponGripOffset>, mut weapons: Query<&mut Transform, With<WeaponModel>>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_manifest.rs
-```
-pub struct GunInfo
-pub struct WeaponManifest
-pub struct WeaponManifestBootstrap
-pub enum WeaponId
-impl WeaponId
-  pub fn is_unarmed(&self) → bool
-  pub fn is_gun(&self) → bool
-  pub fn is_melee(&self) → bool
-  pub fn path(&self) → Option<&str>
-  pub fn gun_info(&self) → Option<&GunInfo>
-  pub fn label(&self) → String
-pub fn start_weapon_manifest_load(mut commands: Commands, asset_server: Res<AssetServer>)
-pub fn load_weapon_manifest_system(bootstrap: Option<Res<WeaponManifestBootstrap>>, text_assets: Res<Assets<TextAsset>>, mut manifest: ResMut<WeaponManifest>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_shooting.rs
-```
-pub struct GunState
-pub struct FireGunEvent
-pub struct ReloadGunEvent
-pub struct ShotTracer
-pub struct ShotTracers
-pub fn fire_gun_observer(trigger: On<FireGunEvent>, mut shooters: Query<(&mut GunState, &EquippedWeapon, Option<&WeaponModelState>)
-pub fn reload_gun_observer(trigger: On<ReloadGunEvent>, mut shooters: Query<&mut GunState>,)
-pub fn draw_shot_tracers(time: Res<Time>, mut gizmos: Gizmos, mut tracers: ResMut<ShotTracers>)
+pub struct PhysicsPlugin
+impl PhysicsPlugin
+pub fn sync_physics_debug_config(ui_state: Res<UiState>, mut gizmo_store: ResMut<GizmoConfigStore>,)
 ```
 
 ### crack_demo/AGENTS.md
@@ -450,6 +373,23 @@ pub fn tree_navigator_ui(mut contexts: EguiContexts, data_res: Res<MapTree>, mut
 pub fn draw_reference_points_gizmos(mut gizmos: Gizmos, data_res: Res<MapTree>, lod_state: Res<MapLODState>, camera_query: Query<&Transform, With<Camera>>,)
 ```
 
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/mod.rs
+```
+pub struct MapPlugin
+pub struct MapTreeAssetInfo
+pub struct BBox
+pub struct MapTileAssetId
+pub struct MapTreeNodePath
+pub struct MapTreeNodeInfo
+pub struct MapTree
+pub struct MapLODState
+impl MapPlugin
+impl MapTileAssetId
+  pub fn get_octant_path(&self) → MapTreeNodePath
+impl MapTreeNodePath
+  pub fn get_parent(&self) → Option<MapTreeNodePath>
+```
+
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/animation.rs
 ```
 pub struct AnimationInfo
@@ -498,11 +438,34 @@ pub fn orbit_camera_input(mouse_buttons: Res<ButtonInput<MouseButton>>, mouse_mo
 pub fn follow_camera(time: Res<Time>, controlled: Res<ControlledCharacter>, mut rig: ResMut<CameraRig>, controller: Query<&GlobalTransform, With<CharacterController>>, mut camera: Query<&mut Transform, With<Camera3d>>,)
 ```
 
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/physics_plugin.rs
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/pedestrian_controller_plugin/controller.rs
 ```
-pub struct PhysicsPlugin
-impl PhysicsPlugin
-pub fn sync_physics_debug_config(ui_state: Res<UiState>, mut gizmo_store: ResMut<GizmoConfigStore>,)
+pub fn character_input(keys: Res<ButtonInput<KeyCode>>, camera: Query<&GlobalTransform, With<Camera3d>>, mut modifiers: Query<&mut MovementModifiers>, mut movement_writer: MessageWriter<MovementAction>,)
+pub fn update_grounded(mut commands: Commands, mut query: Query<(Entity, &GroundDetection, &GlobalTransform)
+pub fn movement(time: Res<Time>, mut movement_reader: MessageReader<MovementAction>, mut controllers: Query<( &CharacterMovementSettings, &mut LinearVelocity, Has<Grounded>,)
+pub fn apply_gravity(time: Res<Time>, mut controllers: Query<(&CharacterMovementSettings, &mut LinearVelocity)
+pub fn apply_movement_damping(mut query: Query<(&CharacterMovementSettings, &mut LinearVelocity)
+pub fn apply_speed_cap(time: Res<Time>, mut query: Query<(&mut MovementModifiers, &mut LinearVelocity, Has<Rolling>)
+pub fn move_and_slide(mut query: Query< ( Entity, Option<&GroundDetection>, Option<&mut CharacterCollisions>, &mut Transform, &mut LinearVelocity, &Collider,)
+pub fn apply_forces_to_dynamic_bodies(characters: Query<(&ComputedMass, &CharacterCollisions)
+pub fn face_movement(time: Res<Time>, mut query: Query<(&LinearVelocity, &mut Transform)
+pub fn respawn_if_fallen(mut query: Query<(&mut Transform, &mut LinearVelocity)
+pub fn jump_or_climb(keys: Res<ButtonInput<KeyCode>>, spatial_query: SpatialQuery, mut commands: Commands, mut movement_writer: MessageWriter<MovementAction>, map: Option<Res<MapTree>>, tiles: Query<()
+pub fn update_climb(time: Res<Time>, mut commands: Commands, mut query: Query<(Entity, &mut Transform, &mut LinearVelocity, &mut Climbing)
+pub fn update_roll(time: Res<Time>, mut commands: Commands, mut query: Query<(Entity, &Transform, &mut LinearVelocity, &mut Rolling)
+pub fn detect_fallen_off_map(map: Option<Res<MapTree>>, tiles: Query<()
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/skeleton.rs
+```
+pub struct PedestrianSkeleton
+pub struct JointData
+pub enum BoneLabel
+pub fn traverse_hierarchy_raw(entity: Entity, children_query: &Query<&Children>, name_query: &Query<&Name>, transform_query: &Query<&GlobalTransform>, nodes: &mut Vec<(Entity, String, Vec3)
+pub fn classify_skeleton(root_entity: Entity, joints: &[JointData],) → ( std::collections::HashMap...
+pub fn find_parent_of(entity: Entity, joints: &[JointData]) → Option<Entity>
+pub fn find_pos_of(entity: Entity, joints: &[JointData]) → Option<Vec3>
+pub fn classify_limb_path(tip_entity: Option<Entity>, spine_path: &[Entity], root_entity: Entity, joints: &[JointData], labels: &mut std::collections::HashMap<Entity, BoneLabel>, limb_main_label: BoneLabel, limb_shoulder_label: BoneLabel, limb_hand_label: BoneLabel,) → Option<(Entity, Entity, Ent...
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/states/mod.rs
@@ -512,6 +475,57 @@ pub enum InitialMapLoadFinished
 pub enum OsmDatabaseLoadFinished
 pub enum GameControlState
 impl GameStatesPlugin
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/mod.rs
+```
+pub struct WeaponsPlugin
+impl WeaponsPlugin
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_attach.rs
+```
+pub struct EquippedWeapon
+pub struct EquipWeaponEvent
+pub struct WeaponGripOffset
+pub struct WeaponModelState
+pub struct WeaponModel
+pub struct PendingWeaponExtents
+pub struct WeaponExtents
+impl WeaponGripOffset
+pub fn equip_weapon_observer(trigger: On<EquipWeaponEvent>, mut commands: Commands)
+pub fn reconcile_weapon_model(mut commands: Commands, asset_server: Res<AssetServer>, mut characters: Query<(Entity, &EquippedWeapon, Option<&mut WeaponModelState>)
+pub fn finalize_weapon_extents(mut commands: Commands, pending: Query<(Entity, &Children)
+pub fn apply_grip_offset(grip: Res<WeaponGripOffset>, mut weapons: Query<&mut Transform, With<WeaponModel>>,)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_manifest.rs
+```
+pub struct GunInfo
+pub struct WeaponManifest
+pub struct WeaponManifestBootstrap
+pub enum WeaponId
+impl WeaponId
+  pub fn is_unarmed(&self) → bool
+  pub fn is_gun(&self) → bool
+  pub fn is_melee(&self) → bool
+  pub fn path(&self) → Option<&str>
+  pub fn gun_info(&self) → Option<&GunInfo>
+  pub fn label(&self) → String
+pub fn start_weapon_manifest_load(mut commands: Commands, asset_server: Res<AssetServer>)
+pub fn load_weapon_manifest_system(bootstrap: Option<Res<WeaponManifestBootstrap>>, text_assets: Res<Assets<TextAsset>>, mut manifest: ResMut<WeaponManifest>,)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_shooting.rs
+```
+pub struct GunState
+pub struct FireGunEvent
+pub struct ReloadGunEvent
+pub struct ShotTracer
+pub struct ShotTracers
+pub fn fire_gun_observer(trigger: On<FireGunEvent>, mut shooters: Query<(&mut GunState, &EquippedWeapon, Option<&WeaponModelState>)
+pub fn reload_gun_observer(trigger: On<ReloadGunEvent>, mut shooters: Query<&mut GunState>,)
+pub fn draw_shot_tracers(time: Res<Time>, mut gizmos: Gizmos, mut tracers: ResMut<ShotTracers>)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/ui_egui.rs
@@ -751,25 +765,6 @@ h3 src/lib.rs
 code-fence plain
 ```
 
-### packages/_crack_utils/Cargo.toml
-```
-table [package]
-table [dependencies]
-table [target.'cfg(target_family = "wasm")'.dependencies]
-table [target.'cfg(not(target_family = "wasm"))'.dependencies]
-table [lints]
-table [features]
-key name
-key version.workspace
-key authors.workspace
-key edition.workspace
-key n0-future
-key rand
-key getrandom
-key tokio.workspace
-key workspace
-```
-
 ### packages/_crack_utils/CLAUDE.md
 ```
 h2 Auto-generated signatures
@@ -785,14 +780,6 @@ h3 .github/gemini-context.md
 h2 src
 h3 src/lib.rs
 code-fence plain
-```
-
-### packages/_crack_utils/src/lib.rs
-```
-pub fn get_timestamp_now_ms() → i64
-pub fn spawn(f: F) → n0_future::task::JoinHandle...
-pub fn random_u32() → u32
-pub async fn sleep_ms(dt_ms: u32)
 ```
 
 ### packages/api_asscrack/.github/copilot-instructions.md
@@ -861,24 +848,6 @@ h3 src/crack_worker/mod.rs
 code-fence plain
 ```
 
-### packages/api_asscrack/Cargo.toml
-```
-table [package]
-table [dependencies]
-table [lints]
-key name
-key version.workspace
-key authors.workspace
-key edition.workspace
-key serde.workspace
-key tracing.workspace
-key anyhow.workspace
-key async-trait
-key paste
-key futures
-key workspace
-```
-
 ### packages/api_asscrack/CLAUDE.md
 ```
 h2 Auto-generated signatures
@@ -899,49 +868,6 @@ h3 src/api/api_worker_declarations.rs
 h3 src/crack_worker/api_worker.rs
 h3 src/crack_worker/mod.rs
 code-fence plain
-```
-
-### packages/api_asscrack/src/api/api_client.rs
-```
-pub struct ApiClient
-pub struct MessageLater
-impl ApiClient
-  pub fn new(pipe: WorkerPipe) → Self
-  pub async fn call(&self, arg: T::Arg) → anyhow::Result<T::Ret>
-```
-
-### packages/api_asscrack/src/api/api_method_macros.rs
-```
-pub struct ApiGroupDeclStatic
-pub struct ApiMethodInfo
-pub struct ApiMethodImpl
-pub trait ApiGroupDecl
-pub trait ApiGroupMethods
-pub trait ApiGroupImpls
-pub trait ApiMethodDecl
-impl ApiMethodImpl
-  pub fn fullname(&self) → String
-impl ApiMethodInfo
-  pub fn fullname(&self) → String
-```
-
-### packages/api_asscrack/src/api/api_worker_declarations.rs
-```
-pub async fn worker_ping(_x: () → anyhow::Result<()>
-```
-
-### packages/api_asscrack/src/crack_worker/api_worker.rs
-```
-pub struct ApiImplMapping
-pub fn make_api_mapping(groups: Vec<Arc<dyn ApiGroupImpls>>) → Arc<ApiImplMapping>
-pub async fn compute_response_message(_request: WorkerMessage, mapping: Arc<ApiImplMapping>,) → WorkerMessage
-```
-
-### packages/api_asscrack/src/crack_worker/mod.rs
-```
-pub struct WorkerPipe
-pub struct WorkerMessage
-pub trait WorkerLoaderFactory
 ```
 
 ### packages/consensus_crackhead/.github/copilot-instructions.md
@@ -987,16 +913,6 @@ h2 .github
 h3 .github/copilot-instructions.md
 h3 .github/gemini-context.md
 code-fence plain
-```
-
-### packages/consensus_crackhead/Cargo.toml
-```
-table [package]
-table [dependencies]
-key name
-key version.workspace
-key authors.workspace
-key edition.workspace
 ```
 
 ### packages/consensus_crackhead/CLAUDE.md
@@ -1057,16 +973,6 @@ h2 .github
 h3 .github/copilot-instructions.md
 h3 .github/gemini-context.md
 code-fence plain
-```
-
-### packages/net_crackpipe/Cargo.toml
-```
-table [package]
-table [dependencies]
-key name
-key version.workspace
-key authors.workspace
-key edition.workspace
 ```
 
 ### packages/net_crackpipe/CLAUDE.md
@@ -1150,26 +1056,6 @@ h3 src/types.rs
 code-fence plain
 ```
 
-### packages/storage_crackhouse/Cargo.toml
-```
-table [package]
-table [dependencies]
-table [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-key name
-key version.workspace
-key authors.workspace
-key edition.workspace
-key tracing.workspace
-key serde_json
-key anyhow.workspace
-key serde-wasm-bindgen
-key wasm-bindgen
-key wasm-bindgen-futures
-key lazy_static
-key sqlite-wasm-vfs
-key sqlite-wasm-rs
-```
-
 ### packages/storage_crackhouse/CLAUDE.md
 ```
 h2 Auto-generated signatures
@@ -1190,56 +1076,6 @@ h3 src/lib.rs
 h3 src/models.rs
 h3 src/types.rs
 code-fence plain
-```
-
-### packages/storage_crackhouse/src/api.rs
-```
-pub async fn execute_sql2(sql: String) → anyhow::Result<SqlResultSet>
-pub async fn execute_sql_params(req: SQLAndParams) → anyhow::Result<SqlResultSet>
-```
-
-### packages/storage_crackhouse/src/impl_rusqulite.rs
-```
-pub async fn sql_query(sql: SQLAndParams) → anyhow::Result<SqlResultSet>
-```
-
-### packages/storage_crackhouse/src/lib.rs
-```
-pub async fn install_opfs_sahpool() → anyhow::Result<()>
-pub async fn install_relaxed_idb() → anyhow::Result<()>
-```
-
-### packages/storage_crackhouse/src/models.rs
-```
-pub struct ModelColumnImpl
-pub trait ModelGroup
-pub trait ModelDef
-pub trait ModelSerial
-pub trait DbTypeMapping
-impl i64
-impl String
-impl f64
-impl Vec
-impl Option
-pub async fn run_migrate_tables(groups: impl Iterator<Item = Arc<dyn ModelGroup>>,) → anyhow::Result<()>
-```
-
-### packages/storage_crackhouse/src/types.rs
-```
-pub struct SQLAndParams
-pub struct SqlResultSet
-pub struct SqlResultRow
-pub enum DbValueType
-pub enum DbValue
-impl DbValueType
-  pub fn to_sql_str(&self) → &'static str
-impl DbValue
-  pub fn fold_option(value: Option<DbValue>) → DbValue
-impl TryFrom
-impl String
-impl i64
-impl f64
-impl Vec
 ```
 
 ### packages/thread_crackworker/.github/copilot-instructions.md
@@ -1293,22 +1129,6 @@ h3 src/lib.rs
 code-fence plain
 ```
 
-### packages/thread_crackworker/Cargo.toml
-```
-table [package]
-table [dependencies]
-table [lints]
-key name
-key version.workspace
-key authors.workspace
-key edition.workspace
-key anyhow.workspace
-key tracing.workspace
-key dioxus-logger
-key serde.workspace
-key workspace
-```
-
 ### packages/thread_crackworker/CLAUDE.md
 ```
 h2 Auto-generated signatures
@@ -1324,12 +1144,6 @@ h3 .github/gemini-context.md
 h2 src
 h3 src/lib.rs
 code-fence plain
-```
-
-### packages/thread_crackworker/src/lib.rs
-```
-pub struct ThreadWorkerFactory
-impl ThreadWorkerFactory
 ```
 
 ### packages/web_serviceworker_crackloader/.github/copilot-instructions.md
@@ -1386,22 +1200,6 @@ h3 src/old.rs
 code-fence plain
 ```
 
-### packages/web_serviceworker_crackloader/Cargo.toml
-```
-table [package]
-table [dependencies]
-table [dependencies.web-sys]
-table [lints]
-key name
-key version.workspace
-key authors.workspace
-key edition.workspace
-key tracing.workspace
-key serde.workspace
-key serde-wasm-bindgen
-key workspace
-```
-
 ### packages/web_serviceworker_crackloader/CLAUDE.md
 ```
 h2 Auto-generated signatures
@@ -1418,24 +1216,6 @@ h2 src
 h3 src/lib.rs
 h3 src/old.rs
 code-fence plain
-```
-
-### packages/web_serviceworker_crackloader/src/lib.rs
-```
-pub struct WebWorkerFactory
-impl WebWorkerFactory
-```
-
-### packages/web_serviceworker_crackloader/src/old.rs
-```
-pub struct WebWorkerFactory
-impl WebWorkerFactory
-```
-
-### packages/web_serviceworker_crackslave/.cargo/cargo.toml
-```
-table [build]
-key target
 ```
 
 ### packages/web_serviceworker_crackslave/.github/copilot-instructions.md
@@ -1498,25 +1278,6 @@ h3 src/old.rs
 code-fence plain
 ```
 
-### packages/web_serviceworker_crackslave/Cargo.toml
-```
-table [package]
-table [dependencies]
-table [dependencies.web-sys]
-table [lints]
-key name
-key version.workspace
-key authors.workspace
-key edition.workspace
-key anyhow.workspace
-key thiserror.workspace
-key tracing.workspace
-key dioxus-logger
-key serde.workspace
-key serde-wasm-bindgen
-key workspace
-```
-
 ### packages/web_serviceworker_crackslave/CLAUDE.md
 ```
 h2 Auto-generated signatures
@@ -1535,6 +1296,259 @@ h2 src
 h3 src/lib.rs
 h3 src/old.rs
 code-fence plain
+```
+
+### packages/_crack_utils/Cargo.toml
+```
+table [package]
+table [dependencies]
+table [target.'cfg(target_family = "wasm")'.dependencies]
+table [target.'cfg(not(target_family = "wasm"))'.dependencies]
+table [lints]
+table [features]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+key n0-future
+key rand
+key getrandom
+key tokio.workspace
+key workspace
+```
+
+### packages/_crack_utils/src/lib.rs
+```
+pub fn get_timestamp_now_ms() → i64
+pub fn spawn(f: F) → n0_future::task::JoinHandle...
+pub fn random_u32() → u32
+pub async fn sleep_ms(dt_ms: u32)
+```
+
+### packages/api_asscrack/Cargo.toml
+```
+table [package]
+table [dependencies]
+table [lints]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+key serde.workspace
+key tracing.workspace
+key anyhow.workspace
+key async-trait
+key paste
+key futures
+key workspace
+```
+
+### packages/api_asscrack/src/api/api_client.rs
+```
+pub struct ApiClient
+pub struct MessageLater
+impl ApiClient
+  pub fn new(pipe: WorkerPipe) → Self
+  pub async fn call(&self, arg: T::Arg) → anyhow::Result<T::Ret>
+```
+
+### packages/api_asscrack/src/api/api_method_macros.rs
+```
+pub struct ApiGroupDeclStatic
+pub struct ApiMethodInfo
+pub struct ApiMethodImpl
+pub trait ApiGroupDecl
+pub trait ApiGroupMethods
+pub trait ApiGroupImpls
+pub trait ApiMethodDecl
+impl ApiMethodImpl
+  pub fn fullname(&self) → String
+impl ApiMethodInfo
+  pub fn fullname(&self) → String
+```
+
+### packages/api_asscrack/src/api/api_worker_declarations.rs
+```
+pub async fn worker_ping(_x: () → anyhow::Result<()>
+```
+
+### packages/api_asscrack/src/crack_worker/api_worker.rs
+```
+pub struct ApiImplMapping
+pub fn make_api_mapping(groups: Vec<Arc<dyn ApiGroupImpls>>) → Arc<ApiImplMapping>
+pub async fn compute_response_message(_request: WorkerMessage, mapping: Arc<ApiImplMapping>,) → WorkerMessage
+```
+
+### packages/api_asscrack/src/crack_worker/mod.rs
+```
+pub struct WorkerPipe
+pub struct WorkerMessage
+pub trait WorkerLoaderFactory
+```
+
+### packages/consensus_crackhead/Cargo.toml
+```
+table [package]
+table [dependencies]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+```
+
+### packages/net_crackpipe/Cargo.toml
+```
+table [package]
+table [dependencies]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+```
+
+### packages/storage_crackhouse/Cargo.toml
+```
+table [package]
+table [dependencies]
+table [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+key tracing.workspace
+key serde_json
+key anyhow.workspace
+key serde-wasm-bindgen
+key wasm-bindgen
+key wasm-bindgen-futures
+key lazy_static
+key sqlite-wasm-vfs
+key sqlite-wasm-rs
+```
+
+### packages/storage_crackhouse/src/api.rs
+```
+pub async fn execute_sql2(sql: String) → anyhow::Result<SqlResultSet>
+pub async fn execute_sql_params(req: SQLAndParams) → anyhow::Result<SqlResultSet>
+```
+
+### packages/storage_crackhouse/src/impl_rusqulite.rs
+```
+pub async fn sql_query(sql: SQLAndParams) → anyhow::Result<SqlResultSet>
+```
+
+### packages/storage_crackhouse/src/lib.rs
+```
+pub async fn install_opfs_sahpool() → anyhow::Result<()>
+pub async fn install_relaxed_idb() → anyhow::Result<()>
+```
+
+### packages/storage_crackhouse/src/models.rs
+```
+pub struct ModelColumnImpl
+pub trait ModelGroup
+pub trait ModelDef
+pub trait ModelSerial
+pub trait DbTypeMapping
+impl i64
+impl String
+impl f64
+impl Vec
+impl Option
+pub async fn run_migrate_tables(groups: impl Iterator<Item = Arc<dyn ModelGroup>>,) → anyhow::Result<()>
+```
+
+### packages/storage_crackhouse/src/types.rs
+```
+pub struct SQLAndParams
+pub struct SqlResultSet
+pub struct SqlResultRow
+pub enum DbValueType
+pub enum DbValue
+impl DbValueType
+  pub fn to_sql_str(&self) → &'static str
+impl DbValue
+  pub fn fold_option(value: Option<DbValue>) → DbValue
+impl TryFrom
+impl String
+impl i64
+impl f64
+impl Vec
+```
+
+### packages/thread_crackworker/Cargo.toml
+```
+table [package]
+table [dependencies]
+table [lints]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+key anyhow.workspace
+key tracing.workspace
+key dioxus-logger
+key serde.workspace
+key workspace
+```
+
+### packages/thread_crackworker/src/lib.rs
+```
+pub struct ThreadWorkerFactory
+impl ThreadWorkerFactory
+```
+
+### packages/web_serviceworker_crackloader/Cargo.toml
+```
+table [package]
+table [dependencies]
+table [dependencies.web-sys]
+table [lints]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+key tracing.workspace
+key serde.workspace
+key serde-wasm-bindgen
+key workspace
+```
+
+### packages/web_serviceworker_crackloader/src/lib.rs
+```
+pub struct WebWorkerFactory
+impl WebWorkerFactory
+```
+
+### packages/web_serviceworker_crackloader/src/old.rs
+```
+pub struct WebWorkerFactory
+impl WebWorkerFactory
+```
+
+### packages/web_serviceworker_crackslave/.cargo/cargo.toml
+```
+table [build]
+key target
+```
+
+### packages/web_serviceworker_crackslave/Cargo.toml
+```
+table [package]
+table [dependencies]
+table [dependencies.web-sys]
+table [lints]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+key anyhow.workspace
+key thiserror.workspace
+key tracing.workspace
+key dioxus-logger
+key serde.workspace
+key serde-wasm-bindgen
+key workspace
 ```
 
 ### packages/web_serviceworker_crackslave/src/lib.rs

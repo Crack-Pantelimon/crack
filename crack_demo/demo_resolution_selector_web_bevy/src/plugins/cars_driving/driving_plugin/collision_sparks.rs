@@ -208,9 +208,11 @@ pub fn update_and_draw_collision_effects(
     mut gizmos: Gizmos,
     q_markers: Query<(Entity, &CollisionMarker)>,
     mut q_sparks: Query<(Entity, &mut Transform, &mut SparkParticle)>,
+    ui_state: Option<Res<crate::ui_egui::UiState>>,
 ) {
     let current_time = time.elapsed_secs();
     let dt = time.delta_secs();
+    let draw_spark_origin = ui_state.as_ref().map_or(false, |s| s.draw_spark_origin_gizmos);
 
     // 1. Draw collision markers (point and sphere for 5 seconds)
     for (entity, marker) in q_markers.iter() {
@@ -220,17 +222,19 @@ pub fn update_and_draw_collision_effects(
             continue;
         }
 
-        let alpha = (1.0 - (age / marker.lifetime)).clamp(0.0, 1.0);
-        let sphere_radius = 0.35 + (marker.relative_speed * 0.05).min(0.85);
+        if draw_spark_origin {
+            let alpha = (1.0 - (age / marker.lifetime)).clamp(0.0, 1.0);
+            let sphere_radius = 0.35 + (marker.relative_speed * 0.05).min(0.85);
 
-        // Gizmo point (bright inner sphere)
-        gizmos.sphere(marker.position, 0.08, Color::srgba(1.0, 1.0, 0.3, alpha));
-        // Gizmo sphere around collision location
-        gizmos.sphere(
-            marker.position,
-            sphere_radius,
-            Color::srgba(1.0, 0.5, 0.05, alpha * 0.85),
-        );
+            // Gizmo point (bright inner sphere)
+            gizmos.sphere(marker.position, 0.08, Color::srgba(1.0, 1.0, 0.3, alpha));
+            // Gizmo sphere around collision location
+            gizmos.sphere(
+                marker.position,
+                sphere_radius,
+                Color::srgba(1.0, 0.5, 0.05, alpha * 0.85),
+            );
+        }
     }
 
     // 2. Update spark positions (no physics colliders, fall through floor) & draw trails

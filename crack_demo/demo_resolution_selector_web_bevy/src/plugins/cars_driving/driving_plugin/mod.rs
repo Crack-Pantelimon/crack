@@ -942,117 +942,131 @@ pub fn draw_car_gizmos(
         ),
         With<Car>,
     >,
+    ui_state: Option<Res<crate::ui_egui::UiState>>,
 ) {
+    let draw_car_rays = ui_state.as_ref().map_or(false, |s| s.draw_car_rays);
+    let draw_rk4_gizmos = ui_state.as_ref().map_or(false, |s| s.draw_rk4_gizmos);
+
+    if !draw_car_rays && !draw_rk4_gizmos {
+        return;
+    }
+
     for (car_transform, drive_state, contact_data, speculative_data) in q_car.iter() {
-        // Draw orange lines for 9 rays for each of the 4 virtual wheels
-        let ray_color = Color::srgb(1.0, 0.5, 0.0);
-        let star_color = Color::srgb(0.0, 0.0, 1.0);
-        let sphere_color = Color::srgb(0.0, 0.0, 1.0);
-        let local_down = car_transform.rotation * Vec3::NEG_Y;
-        let max_len = drive_state.max_ray_length;
+        if draw_car_rays {
+            // Draw orange lines for 9 rays for each of the 4 virtual wheels
+            let ray_color = Color::srgb(1.0, 0.5, 0.0);
+            let star_color = Color::srgb(0.0, 0.0, 1.0);
+            let sphere_color = Color::srgb(0.0, 0.0, 1.0);
+            let local_down = car_transform.rotation * Vec3::NEG_Y;
+            let max_len = drive_state.max_ray_length;
 
-        for wheel_idx in 0..4 {
-            let wheel_contact = &contact_data.wheels[wheel_idx];
+            for wheel_idx in 0..4 {
+                let wheel_contact = &contact_data.wheels[wheel_idx];
 
-            for i in 0..9 {
-                let start = wheel_contact.ray_origins[i];
-                let end = if wheel_contact.ray_distances[i] > max_len {
-                    start + local_down * max_len
+                for i in 0..9 {
+                    let start = wheel_contact.ray_origins[i];
+                    let end = if wheel_contact.ray_distances[i] > max_len {
+                        start + local_down * max_len
+                    } else {
+                        wheel_contact.hit_points[i]
+                    };
+                    gizmos.line(start, end, ray_color);
+
+                    // If hit ground and engaged, draw blue star and sphere
+                    if wheel_contact.ray_distances[i] <= max_len {
+                        let hit = wheel_contact.hit_points[i];
+                        // Draw 3 perpendicular lines (star) of total span 0.3 (so each arm is 0.15)
+                        gizmos.line(hit - Vec3::X * 0.15, hit + Vec3::X * 0.15, star_color);
+                        gizmos.line(hit - Vec3::Y * 0.15, hit + Vec3::Y * 0.15, star_color);
+                        gizmos.line(hit - Vec3::Z * 0.15, hit + Vec3::Z * 0.15, star_color);
+
+                        // Draw small sphere
+                        let sphere = Sphere::new(0.05);
+                        gizmos.primitive_3d(&sphere, Isometry3d::from_translation(hit), sphere_color);
+                    }
+                }
+
+                // Draw plane defining the plane segment (green for contact, red for no contact)
+                let mut centroid = Vec3::ZERO;
+                let mut engaged_count = 0;
+                for i in 0..9 {
+                    if wheel_contact.ray_distances[i] <= max_len {
+                        centroid += wheel_contact.hit_points[i];
+                        engaged_count += 1;
+                    }
+                }
+
+                let has_contact = engaged_count > 0;
+                let plane_center = if has_contact {
+                    centroid / engaged_count as f32
                 } else {
-                    wheel_contact.hit_points[i]
+                    wheel_contact.ray_origins.iter().sum::<Vec3>() / 9.0f32 + local_down * max_len
                 };
-                gizmos.line(start, end, ray_color);
 
-                // If hit ground and engaged, draw blue star and sphere
-                if wheel_contact.ray_distances[i] <= max_len {
-                    let hit = wheel_contact.hit_points[i];
-                    // Draw 3 perpendicular lines (star) of total span 0.3 (so each arm is 0.15)
-                    gizmos.line(hit - Vec3::X * 0.15, hit + Vec3::X * 0.15, star_color);
-                    gizmos.line(hit - Vec3::Y * 0.15, hit + Vec3::Y * 0.15, star_color);
-                    gizmos.line(hit - Vec3::Z * 0.15, hit + Vec3::Z * 0.15, star_color);
+                let box_color = if has_contact {
+                    Color::srgb(0.0, 1.0, 0.0) // Green contact marker
+                } else {
+                    Color::srgb(1.0, 0.0, 0.0) // Red no-contact marker
+                };
 
-                    // Draw small sphere
-                    let sphere = Sphere::new(0.05);
-                    gizmos.primitive_3d(&sphere, Isometry3d::from_translation(hit), sphere_color);
-                }
+                // Rotated to the contact normal
+                let plane_rotation = Quat::from_rotation_arc(Vec3::Y, wheel_contact.contact_normal);
+
+                // Draw a nice plane segment using flat cuboid
+                let cuboid = Cuboid::new(0.5, 0.01, 0.5);
+                gizmos.primitive_3d(
+                    &cuboid,
+                    Isometry3d::new(plane_center, plane_rotation),
+                    box_color,
+                );
             }
-
-            // Draw plane defining the plane segment (green for contact, red for no contact)
-            let mut centroid = Vec3::ZERO;
-            let mut engaged_count = 0;
-            for i in 0..9 {
-                if wheel_contact.ray_distances[i] <= max_len {
-                    centroid += wheel_contact.hit_points[i];
-                    engaged_count += 1;
-                }
-            }
-
-            let has_contact = engaged_count > 0;
-            let plane_center = if has_contact {
-                centroid / engaged_count as f32
-            } else {
-                wheel_contact.ray_origins.iter().sum::<Vec3>() / 9.0f32 + local_down * max_len
-            };
-
-            let box_color = if has_contact {
-                Color::srgb(0.0, 1.0, 0.0) // Green contact marker
-            } else {
-                Color::srgb(1.0, 0.0, 0.0) // Red no-contact marker
-            };
-
-            // Rotated to the contact normal
-            let plane_rotation = Quat::from_rotation_arc(Vec3::Y, wheel_contact.contact_normal);
-
-            // Draw a nice plane segment using flat cuboid
-            let cuboid = Cuboid::new(0.5, 0.01, 0.5);
-            gizmos.primitive_3d(
-                &cuboid,
-                Isometry3d::new(plane_center, plane_rotation),
-                box_color,
-            );
         }
 
-        // Speculative Rays & RK4 Trajectory Gizmos (attached to car front ground point)
-        if let Some(spec) = speculative_data {
-            let trajectory_yellow = Color::srgb(1.0, 1.0, 0.0);
-            let speculative_blue = Color::srgb(0.4, 0.7, 1.0);
-            let star_blue = Color::srgb(0.2, 0.8, 1.0);
+        if draw_rk4_gizmos {
+            // Speculative Rays & RK4 Trajectory Gizmos (attached to car front ground point)
+            if let Some(spec) = speculative_data {
+                let trajectory_yellow = Color::srgb(1.0, 1.0, 0.0);
+                let speculative_blue = Color::srgb(0.4, 0.7, 1.0);
+                let star_blue = Color::srgb(0.2, 0.8, 1.0);
 
-            // Front ground projection point of the car
-            let car_fwd = car_transform.rotation * Vec3::NEG_Z;
-            let car_front = car_transform.translation + car_fwd * drive_state.car_half_length;
-            let current_front_ground = car_front + local_down * drive_state.suspension_rest;
+                let local_down = car_transform.rotation * Vec3::NEG_Y;
 
-            let mut path_points = vec![current_front_ground];
-            for step in &spec.steps {
-                path_points.push(step.predicted_ground_pos);
-            }
+                // Front ground projection point of the car
+                let car_fwd = car_transform.rotation * Vec3::NEG_Z;
+                let car_front = car_transform.translation + car_fwd * drive_state.car_half_length;
+                let current_front_ground = car_front + local_down * drive_state.suspension_rest;
 
-            // Draw yellow gizmo line connecting front ground point to predicted future ground positions
-            for window in path_points.windows(2) {
-                gizmos.line(window[0], window[1], trajectory_yellow);
-            }
+                let mut path_points = vec![current_front_ground];
+                for step in &spec.steps {
+                    path_points.push(step.predicted_ground_pos);
+                }
 
-            // Draw light blue speculative rays for left, center, right at each of the 8 future steps
-            let spec_max_len = drive_state.max_ray_length * 1.5;
-            for step in &spec.steps {
-                let spec_down = step.predicted_rotation * Vec3::NEG_Y;
+                // Draw yellow gizmo line connecting front ground point to predicted future ground positions
+                for window in path_points.windows(2) {
+                    gizmos.line(window[0], window[1], trajectory_yellow);
+                }
 
-                let draw_ray = |gizmos: &mut Gizmos, orig: Vec3, hit: Option<Vec3>| {
-                    let end = hit.unwrap_or(orig + spec_down * spec_max_len);
-                    gizmos.line(orig, end, speculative_blue);
-                    if let Some(h) = hit {
-                        gizmos.line(h - Vec3::X * 0.1, h + Vec3::X * 0.1, star_blue);
-                        gizmos.line(h - Vec3::Y * 0.1, h + Vec3::Y * 0.1, star_blue);
-                        gizmos.line(h - Vec3::Z * 0.1, h + Vec3::Z * 0.1, star_blue);
-                        let sphere = Sphere::new(0.04);
-                        gizmos.primitive_3d(&sphere, Isometry3d::from_translation(h), star_blue);
-                    }
-                };
+                // Draw light blue speculative rays for left, center, right at each of the 8 future steps
+                let spec_max_len = drive_state.max_ray_length * 1.5;
+                for step in &spec.steps {
+                    let spec_down = step.predicted_rotation * Vec3::NEG_Y;
 
-                draw_ray(&mut gizmos, step.left_ray_origin, step.left_hit_point);
-                draw_ray(&mut gizmos, step.right_ray_origin, step.right_hit_point);
-                draw_ray(&mut gizmos, step.center_ray_origin, step.center_hit_point);
+                    let draw_ray = |gizmos: &mut Gizmos, orig: Vec3, hit: Option<Vec3>| {
+                        let end = hit.unwrap_or(orig + spec_down * spec_max_len);
+                        gizmos.line(orig, end, speculative_blue);
+                        if let Some(h) = hit {
+                            gizmos.line(h - Vec3::X * 0.1, h + Vec3::X * 0.1, star_blue);
+                            gizmos.line(h - Vec3::Y * 0.1, h + Vec3::Y * 0.1, star_blue);
+                            gizmos.line(h - Vec3::Z * 0.1, h + Vec3::Z * 0.1, star_blue);
+                            let sphere = Sphere::new(0.04);
+                            gizmos.primitive_3d(&sphere, Isometry3d::from_translation(h), star_blue);
+                        }
+                    };
+
+                    draw_ray(&mut gizmos, step.left_ray_origin, step.left_hit_point);
+                    draw_ray(&mut gizmos, step.right_ray_origin, step.right_hit_point);
+                    draw_ray(&mut gizmos, step.center_ray_origin, step.center_hit_point);
+                }
             }
         }
     }

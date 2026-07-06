@@ -25,6 +25,9 @@ pub struct UiState {
     pub show_settings: bool,
     pub draw_map_bboxes: bool,
     pub draw_physics_debug: bool,
+    pub draw_car_rays: bool,
+    pub draw_rk4_gizmos: bool,
+    pub draw_spark_origin_gizmos: bool,
     pub show_lod_configurator: bool,
     pub show_geojson_database: bool,
 }
@@ -37,6 +40,9 @@ impl Default for UiState {
             show_settings: false,
             draw_map_bboxes: false,
             draw_physics_debug: false,
+            draw_car_rays: false,
+            draw_rk4_gizmos: false,
+            draw_spark_origin_gizmos: false,
             show_lod_configurator: false,
             show_geojson_database: false,
         }
@@ -51,6 +57,9 @@ impl UiState {
             show_settings: false,
             draw_map_bboxes: false,
             draw_physics_debug: true,
+            draw_car_rays: false,
+            draw_rk4_gizmos: false,
+            draw_spark_origin_gizmos: false,
             show_lod_configurator: false,
             show_geojson_database: false,
         }
@@ -159,6 +168,12 @@ fn ui_example_system(
                 ui.allocate_space(egui::Vec2::new(1.0, 5.0));
                 ui.checkbox(&mut ui_state.draw_map_bboxes, "Draw Map BBoxes");
                 ui.checkbox(&mut ui_state.draw_physics_debug, "Draw Physics Debug");
+                ui.checkbox(&mut ui_state.draw_car_rays, "Draw Car Rays & Contacts");
+                ui.checkbox(&mut ui_state.draw_rk4_gizmos, "Draw RK4 Prediction Gizmos");
+                ui.checkbox(
+                    &mut ui_state.draw_spark_origin_gizmos,
+                    "Draw Spark Contact Origin Gizmos",
+                );
 
                 ui.allocate_space(egui::Vec2::new(1.0, 10.0));
 
