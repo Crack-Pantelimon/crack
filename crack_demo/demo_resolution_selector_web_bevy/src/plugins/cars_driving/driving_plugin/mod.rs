@@ -69,6 +69,7 @@ pub enum GamePhysicsLayer {
 #[derive(Clone, Debug)]
 pub struct WheelContactData {
     pub ray_distances: [f32; 9],
+    pub smoothed_distances: [f32; 9],
     pub hit_points: [Vec3; 9],
     pub ray_origins: [Vec3; 9],
     pub contact_normal: Vec3,
@@ -79,6 +80,7 @@ impl Default for WheelContactData {
     fn default() -> Self {
         Self {
             ray_distances: [f32::MAX; 9],
+            smoothed_distances: [f32::MAX; 9],
             hit_points: [Vec3::ZERO; 9],
             ray_origins: [Vec3::ZERO; 9],
             contact_normal: Vec3::Y,
@@ -121,11 +123,9 @@ pub struct CarDriveState {
     pub spawn_position: Option<Vec3>,
 
     // Sliders
-    pub suspension_min: f32,
-    pub suspension_max: f32,
     pub suspension_rest: f32,
-    pub suspension_stiffness: f32,
-    pub suspension_damping: f32,
+    pub stiffness_scale: f32,
+    pub damping_ratio: f32,
     pub extra_spring_length: f32,
     pub avg_suspension_height: f32,
 
@@ -165,11 +165,9 @@ impl Default for CarDriveState {
             is_reverse: false,
             spawn_position: None,
 
-            suspension_min: 0.1,
-            suspension_max: 1.0,
-            suspension_rest: 0.3,
-            suspension_stiffness: 8.0,
-            suspension_damping: 0.8,
+            suspension_rest: 0.575,
+            stiffness_scale: 2.0,
+            damping_ratio: 0.8,
             extra_spring_length: 0.2,
             avg_suspension_height: 0.0,
 
@@ -317,6 +315,7 @@ pub fn apply_car_steering_and_drive(
         ),
         With<Car>,
     >,
+    sim_state: Option<Res<SimState>>,
     time: Res<Time>,
 ) {
     let dt = time.delta_secs().min(0.1);
@@ -324,339 +323,325 @@ pub fn apply_car_steering_and_drive(
         return;
     }
 
-    for (mut car_transform, body_center, mut drive_state, contact_data, mut car_forces) in
+    let is_sim = sim_state.as_ref().map(|s| s.is_sim).unwrap_or(false);
+
+    for (car_transform, body_center, mut drive_state, contact_data, mut car_forces) in
         q_car.iter_mut()
     {
         drive_state.suspension_rest = drive_state.max_ray_length * (drive_state.rest_length_pct / 100.0);
-        drive_state.suspension_min = drive_state.suspension_rest * 0.3;
         drive_state.traction_loss_threshold = drive_state.max_ray_length;
 
-    let speed = car_forces.linear_velocity().length();
-    let max_steer = 1.2f32 / (1.0f32 + 0.3f32 * speed);
-    let steer_angle = drive_state.current_steer_integrated * max_steer;
+        // Prune stale input history (>0.060s) and handle driverless decay
+        let current_time = time.elapsed_secs();
+        let threshold = current_time - 0.060;
+        drive_state.history.retain(|(t, _)| *t >= threshold);
 
-    let car_forward = car_transform.rotation * Vec3::NEG_Z;
-    let car_right = car_transform.rotation * Vec3::X;
-    let steer_dir_world =
-        car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, -steer_angle.cos());
+        if !is_sim && drive_state.history.is_empty() {
+            drive_state.avg_accelerate = 0.0;
+            drive_state.avg_brake = 0.0;
+            drive_state.avg_steer = 0.0;
 
-    let mut total_linear_force = Vec3::ZERO;
-    let mut total_torque = Vec3::ZERO;
-
-    let com_world = car_transform.transform_point(body_center.0);
-
-    // 1. Engine & Gearbox Simulation
-    let gear_ratios = [3.5f32, 2.1f32, 1.4f32, 1.0f32, 0.8f32];
-    let final_drive = 3.7f32;
-    let forward_speed = car_forces.linear_velocity().dot(car_forward);
-
-    // Calculate physical RPM matching the speed
-    let gear_ratio = if drive_state.is_reverse {
-        3.4f32
-    } else {
-        gear_ratios[(drive_state.current_gear - 1).min(4)]
-    };
-
-    let physical_rpm = (forward_speed.abs() * 60.0f32 * final_drive * gear_ratio)
-        / (2.0f32 * std::f32::consts::PI * drive_state.wheel_radius);
-
-    let mut target_rpm = physical_rpm;
-    if drive_state.avg_accelerate > 0.05f32 {
-        let throttle_rpm = 800.0f32 + drive_state.avg_accelerate * 2200.0f32;
-        target_rpm = target_rpm.max(throttle_rpm);
-        drive_state.engine_rpm = drive_state.engine_rpm.lerp(target_rpm, 10.0 * dt);
-    } else {
-        // Coasting: engine RPM decays towards physical_rpm or idle (800.0)
-        let decay_target = physical_rpm.max(800.0f32);
-        if drive_state.engine_rpm > decay_target {
-            drive_state.engine_rpm = (drive_state.engine_rpm - 2500.0 * dt).max(decay_target);
-        } else {
-            drive_state.engine_rpm = drive_state.engine_rpm.lerp(decay_target, 10.0 * dt);
-        }
-    }
-    drive_state.engine_rpm = drive_state.engine_rpm.min(6500.0);
-
-    // Automatic gear shifting
-    if !drive_state.is_reverse {
-        if drive_state.engine_rpm > 5500.0f32 && drive_state.current_gear < 5 {
-            drive_state.current_gear += 1;
-        } else if drive_state.engine_rpm < 1800.0f32 && drive_state.current_gear > 1 {
-            drive_state.current_gear -= 1;
-        }
-    } else {
-        drive_state.current_gear = 1;
-    }
-
-    // 2. Drive Force Calculation
-    let power_watts = drive_state.horsepower * 745.7f32;
-    let speed_for_power = forward_speed.abs().max(2.0f32);
-    let mut drive_force_mag = 0.0f32;
-
-    let mut grounded_wheels = 0;
-    for wheel in &contact_data.wheels {
-        let engaged_rays = wheel
-            .ray_distances
-            .iter()
-            .filter(|&&d| d != f32::MAX && d <= drive_state.traction_loss_threshold)
-            .count();
-        if engaged_rays > 0 {
-            grounded_wheels += 1;
-        }
-    }
-
-    if drive_state.avg_accelerate > 0.0f32 && grounded_wheels >= 2 {
-        let max_speed_mps = if drive_state.is_reverse {
-            40.0f32 / 3.6f32
-        } else {
-            drive_state.car_max_speed / 3.6f32
-        };
-        let speed_ratio = forward_speed.abs() / max_speed_mps;
-        let force_scale = (1.0f32 - speed_ratio).max(0.0f32);
-        drive_force_mag =
-            (power_watts / speed_for_power) * drive_state.avg_accelerate * force_scale;
-
-        // Engine force limit: 1G of engine traction limit
-        let max_engine_force = drive_state.car_mass * 9.81f32 * 1.0f32;
-        drive_force_mag = drive_force_mag.min(max_engine_force);
-    }
-
-    // Rolling resistance + Aerodynamic Drag (applies always)
-    if forward_speed.abs() > 0.1f32 {
-        let direction = forward_speed.signum();
-        let aero_drag = 0.46f32 * forward_speed * forward_speed;
-        let rolling_res = drive_state.car_mass * 9.81f32 * 0.06f32;
-        let total_drag = (aero_drag + rolling_res).min(drive_state.car_mass * 9.81f32 * 0.5f32);
-        total_linear_force += -car_forward * direction * total_drag;
-    }
-
-    // 3. Virtual Wheels Force Accumulation
-    let wheel_offsets = [
-        // FL
-        (
-            Vec3::new(
-                -drive_state.car_half_width,
-                -drive_state.car_half_height,
-                -drive_state.car_half_length,
-            ),
-            true,
-            true,
-        ),
-        // FR
-        (
-            Vec3::new(
-                drive_state.car_half_width + 0.1,
-                -drive_state.car_half_height,
-                -drive_state.car_half_length,
-            ),
-            true,
-            false,
-        ),
-        // RL
-        (
-            Vec3::new(
-                -drive_state.car_half_width,
-                -drive_state.car_half_height,
-                drive_state.car_half_length,
-            ),
-            false,
-            true,
-        ),
-        // RR
-        (
-            Vec3::new(
-                drive_state.car_half_width,
-                -drive_state.car_half_height,
-                drive_state.car_half_length,
-            ),
-            false,
-            false,
-        ),
-    ];
-
-    let mass_per_wheel = drive_state.car_mass / 4.0f32;
-    let mut total_engaged_height = 0.0f32;
-    let mut engaged_wheels_count = 0;
-    let mut avg_normal = Vec3::ZERO;
-    let mut max_deficit = 0.0f32;
-
-    for (wheel_idx, (offset, is_front, _is_left)) in wheel_offsets.into_iter().enumerate() {
-        let mut adjusted_offset = offset;
-        adjusted_offset.y += drive_state.wheel_y_offset;
-        let mount_world = car_transform.transform_point(adjusted_offset);
-
-        let velocity_at_wheel = car_forces.linear_velocity()
-            + car_forces.angular_velocity().cross(mount_world - com_world);
-        let w_contact = &contact_data.wheels[wheel_idx];
-
-        // --- Suspension Engagement & Length Check ---
-        let mut sum_dist = 0.0f32;
-        let mut engaged_rays = 0;
-        for &d in &w_contact.ray_distances {
-            if d != f32::MAX && d <= drive_state.traction_loss_threshold {
-                sum_dist += d;
-                engaged_rays += 1;
+            let shrink = 5.0 * dt;
+            if drive_state.current_steer_integrated > 0.0 {
+                drive_state.current_steer_integrated =
+                    (drive_state.current_steer_integrated - shrink).max(0.0);
+            } else if drive_state.current_steer_integrated < 0.0 {
+                drive_state.current_steer_integrated =
+                    (drive_state.current_steer_integrated + shrink).min(0.0);
             }
         }
 
-        if engaged_rays == 0 {
-            // Suspension is fully disengaged, no force is put on the car from this wheel
-            continue;
+        let speed = car_forces.linear_velocity().length();
+        let max_steer = 1.2f32 / (1.0f32 + 0.3f32 * speed);
+        let steer_angle = drive_state.current_steer_integrated * max_steer;
+
+        let car_forward = car_transform.rotation * Vec3::NEG_Z;
+        let car_right = car_transform.rotation * Vec3::X;
+        let steer_dir_world =
+            car_transform.rotation * Vec3::new(steer_angle.sin(), 0.0, -steer_angle.cos());
+
+        let mut total_linear_force = Vec3::ZERO;
+        let mut total_torque = Vec3::ZERO;
+
+        let com_world = car_transform.transform_point(body_center.0);
+
+        // 1. Engine & Gearbox Simulation
+        let gear_ratios = [3.5f32, 2.1f32, 1.4f32, 1.0f32, 0.8f32];
+        let final_drive = 3.7f32;
+        let forward_speed = car_forces.linear_velocity().dot(car_forward);
+
+        // Calculate physical RPM matching the speed
+        let gear_ratio = if drive_state.is_reverse {
+            3.4f32
+        } else {
+            gear_ratios[(drive_state.current_gear - 1).min(4)]
+        };
+
+        let physical_rpm = (forward_speed.abs() * 60.0f32 * final_drive * gear_ratio)
+            / (2.0f32 * std::f32::consts::PI * drive_state.wheel_radius);
+
+        let mut target_rpm = physical_rpm;
+        if drive_state.avg_accelerate > 0.05f32 {
+            let throttle_rpm = 800.0f32 + drive_state.avg_accelerate * 2200.0f32;
+            target_rpm = target_rpm.max(throttle_rpm);
+            drive_state.engine_rpm = drive_state.engine_rpm.lerp(target_rpm, 10.0 * dt);
+        } else {
+            // Coasting: engine RPM decays towards physical_rpm or idle (800.0)
+            let decay_target = physical_rpm.max(800.0f32);
+            if drive_state.engine_rpm > decay_target {
+                drive_state.engine_rpm = (drive_state.engine_rpm - 2500.0 * dt).max(decay_target);
+            } else {
+                drive_state.engine_rpm = drive_state.engine_rpm.lerp(decay_target, 10.0 * dt);
+            }
+        }
+        drive_state.engine_rpm = drive_state.engine_rpm.min(6500.0);
+
+        // Automatic gear shifting
+        if !drive_state.is_reverse {
+            if drive_state.engine_rpm > 5500.0f32 && drive_state.current_gear < 5 {
+                drive_state.current_gear += 1;
+            } else if drive_state.engine_rpm < 1800.0f32 && drive_state.current_gear > 1 {
+                drive_state.current_gear -= 1;
+            }
+        } else {
+            drive_state.current_gear = 1;
         }
 
-        let avg_length = sum_dist / engaged_rays as f32;
-        total_engaged_height += avg_length;
-        engaged_wheels_count += 1;
-        avg_normal += w_contact.contact_normal;
+        // 2. Drive Force Calculation
+        let power_watts = drive_state.horsepower * 745.7f32;
+        let speed_for_power = forward_speed.abs().max(2.0f32);
+        let mut drive_force_mag = 0.0f32;
 
-        // Comfortable length threshold check: (min + rest) / 2
-        let threshold = (drive_state.suspension_min + drive_state.suspension_rest) / 2.0f32;
-        if avg_length < threshold {
-            let deficit = threshold - avg_length;
-            if deficit > max_deficit {
-                max_deficit = deficit;
+        let mut grounded_wheels = 0;
+        for wheel in &contact_data.wheels {
+            let engaged_rays = wheel
+                .ray_distances
+                .iter()
+                .filter(|&&d| d != f32::MAX && d <= drive_state.traction_loss_threshold)
+                .count();
+            if engaged_rays > 0 {
+                grounded_wheels += 1;
             }
         }
 
-        // --- Suspension Force ---
-        let gravity_force = mass_per_wheel * 9.81f32;
-        let base_stiffness = gravity_force / drive_state.extra_spring_length.max(0.01f32);
-        let stiffness = base_stiffness * (drive_state.suspension_stiffness / 8.0f32);
-
-        let displacement =
-            (drive_state.suspension_rest + drive_state.extra_spring_length) - avg_length;
-
-        // More aggressive scaling if length is shorter than rest position (but avoid division by zero)
-        let scaling = if avg_length < drive_state.suspension_rest {
-            let remaining = (avg_length - drive_state.suspension_min).max(0.001f32);
-            ((drive_state.suspension_rest - drive_state.suspension_min) / remaining).max(1.0f32)
-        } else {
-            1.0f32
-        };
-
-        let spring_force = stiffness * displacement * scaling;
-
-        let force_dir = w_contact.contact_normal;
-        let speed_along_suspension = velocity_at_wheel.dot(force_dir);
-
-        // Critical damping coefficient dynamically computed based on stiffness
-        let damping_coef =
-            2.0f32 * (stiffness * mass_per_wheel).sqrt() * drive_state.suspension_damping;
-        let damping_force = -damping_coef * speed_along_suspension * scaling;
-
-        let mut total_suspension_force = (spring_force + damping_force).max(0.0f32);
-        // Suspension force limit: 5G max suspension force per wheel
-        let max_susp_force = mass_per_wheel * 9.81f32 * 5.0f32;
-        total_suspension_force = total_suspension_force.min(max_susp_force);
-
-        let suspension_force_vec = force_dir * total_suspension_force;
-
-        total_linear_force += suspension_force_vec;
-        total_torque += (mount_world - com_world).cross(suspension_force_vec);
-
-        // --- Driving / Traction Force (Front Wheels only) ---
-        if is_front && drive_force_mag > 0.0f32 {
-            let drive_dir = if drive_state.is_reverse {
-                -steer_dir_world
+        if drive_state.avg_accelerate > 0.0f32 && grounded_wheels >= 2 {
+            let max_speed_mps = if drive_state.is_reverse {
+                40.0f32 / 3.6f32
             } else {
-                steer_dir_world
+                drive_state.car_max_speed / 3.6f32
             };
-            let drive_dir_plane =
-                (drive_dir - force_dir * drive_dir.dot(force_dir)).normalize_or_zero();
-            let wheel_drive_force = drive_dir_plane * (drive_force_mag / 2.0f32);
+            let speed_ratio = forward_speed.abs() / max_speed_mps;
+            let force_scale = (1.0f32 - speed_ratio).max(0.0f32);
+            drive_force_mag =
+                (power_watts / speed_for_power) * drive_state.avg_accelerate * force_scale;
 
-            total_linear_force += wheel_drive_force;
-            total_torque += (mount_world - com_world).cross(wheel_drive_force);
+            // Engine force limit: 1G of engine traction limit
+            let max_engine_force = drive_state.car_mass * 9.81f32 * 1.0f32;
+            drive_force_mag = drive_force_mag.min(max_engine_force);
         }
 
-        // --- Braking Force ---
-        if drive_state.avg_brake > 0.0f32 && grounded_wheels >= 2 {
-            let forward_dir = if is_front {
-                steer_dir_world
+        // Rolling resistance + Aerodynamic Drag (applies always)
+        if forward_speed.abs() > 0.1f32 {
+            let direction = forward_speed.signum();
+            let aero_drag = 0.46f32 * forward_speed * forward_speed;
+            let rolling_res = drive_state.car_mass * 9.81f32 * 0.06f32;
+            let total_drag = (aero_drag + rolling_res).min(drive_state.car_mass * 9.81f32 * 0.5f32);
+            total_linear_force += -car_forward * direction * total_drag;
+        }
+
+        // 3. Virtual Wheels Force Accumulation
+        let wheel_offsets = [
+            // FL
+            (
+                Vec3::new(
+                    -drive_state.car_half_width,
+                    -drive_state.car_half_height,
+                    -drive_state.car_half_length,
+                ),
+                true,
+                true,
+            ),
+            // FR
+            (
+                Vec3::new(
+                    drive_state.car_half_width + 0.1,
+                    -drive_state.car_half_height,
+                    -drive_state.car_half_length,
+                ),
+                true,
+                false,
+            ),
+            // RL
+            (
+                Vec3::new(
+                    -drive_state.car_half_width,
+                    -drive_state.car_half_height,
+                    drive_state.car_half_length,
+                ),
+                false,
+                true,
+            ),
+            // RR
+            (
+                Vec3::new(
+                    drive_state.car_half_width,
+                    -drive_state.car_half_height,
+                    drive_state.car_half_length,
+                ),
+                false,
+                false,
+            ),
+        ];
+
+        let mass_per_wheel = drive_state.car_mass / 4.0f32;
+        let ray_share = mass_per_wheel / 9.0f32;
+        let base_stiffness = (ray_share * 9.81f32) / drive_state.extra_spring_length.max(0.01f32);
+        let max_ray_susp_force = ray_share * 9.81f32 * 2.5f32;
+
+        let mut total_valid_ray_sum = 0.0f32;
+        let mut total_valid_ray_count = 0;
+
+        for (wheel_idx, (offset, is_front, _is_left)) in wheel_offsets.into_iter().enumerate() {
+            let mut adjusted_offset = offset;
+            adjusted_offset.y += drive_state.wheel_y_offset;
+            let mount_world = car_transform.transform_point(adjusted_offset);
+
+            let velocity_at_wheel = car_forces.linear_velocity()
+                + car_forces.angular_velocity().cross(mount_world - com_world);
+            let w_contact = &contact_data.wheels[wheel_idx];
+
+            let mut wheel_engaged_count = 0;
+
+            for i in 0..9 {
+                let ray_dist = w_contact.smoothed_distances[i];
+                if ray_dist != f32::MAX && ray_dist <= drive_state.traction_loss_threshold {
+                    wheel_engaged_count += 1;
+                    total_valid_ray_sum += ray_dist;
+                    total_valid_ray_count += 1;
+
+                    let ray_origin = w_contact.ray_origins[i];
+                    let vel_at_ray = car_forces.linear_velocity()
+                        + car_forces.angular_velocity().cross(ray_origin - com_world);
+
+                    let displacement = (drive_state.suspension_rest + drive_state.extra_spring_length) - ray_dist;
+                    let c = ((drive_state.suspension_rest - ray_dist) / drive_state.suspension_rest.max(0.01f32)).clamp(0.0, 1.0);
+                    let scaling = 1.0f32 + drive_state.stiffness_scale * c * c;
+
+                    let spring_force = base_stiffness * displacement * scaling;
+                    let speed_along_suspension = vel_at_ray.dot(Vec3::Y);
+                    let damping_coef = 2.0f32 * (base_stiffness * ray_share).sqrt() * drive_state.damping_ratio;
+                    let damping_force = -damping_coef * speed_along_suspension;
+
+                    let ray_susp_force_mag = (spring_force + damping_force).max(0.0f32).min(max_ray_susp_force);
+                    let ray_susp_force_vec = Vec3::Y * ray_susp_force_mag;
+
+                    total_linear_force += ray_susp_force_vec;
+                    total_torque += (ray_origin - com_world).cross(ray_susp_force_vec);
+                }
+            }
+
+            if wheel_engaged_count == 0 {
+                continue;
+            }
+
+            let force_dir = Vec3::Y;
+
+            // --- Driving / Traction Force (Front Wheels only) ---
+            if is_front && drive_force_mag > 0.0f32 {
+                let drive_dir = if drive_state.is_reverse {
+                    -steer_dir_world
+                } else {
+                    steer_dir_world
+                };
+                let drive_dir_plane =
+                    (drive_dir - force_dir * drive_dir.dot(force_dir)).normalize_or_zero();
+                let wheel_drive_force = drive_dir_plane * (drive_force_mag / 2.0f32);
+
+                total_linear_force += wheel_drive_force;
+                total_torque += (mount_world - com_world).cross(wheel_drive_force);
+            }
+
+            // --- Braking Force ---
+            if drive_state.avg_brake > 0.0f32 && grounded_wheels >= 2 {
+                let forward_dir = if is_front {
+                    steer_dir_world
+                } else {
+                    car_forward
+                };
+                let forward_dir_plane =
+                    (forward_dir - force_dir * forward_dir.dot(force_dir)).normalize_or_zero();
+                let speed_forward = velocity_at_wheel.dot(forward_dir_plane);
+                let raw_brake_force = -forward_dir_plane
+                    * speed_forward
+                    * (drive_state.avg_brake * mass_per_wheel * 4.0f32);
+
+                // Braking force limit: 1.2G limit per wheel
+                let max_brake_force = mass_per_wheel * 9.81f32 * 1.2f32;
+                let wheel_brake_force = raw_brake_force.clamp_length_max(max_brake_force);
+
+                total_linear_force += wheel_brake_force;
+                total_torque += (mount_world - com_world).cross(wheel_brake_force);
+            }
+
+            // --- Lateral Grip / Anti-Skid Force ---
+            let lateral_dir = if is_front {
+                Vec3::new(-steer_dir_world.z, 0.0, steer_dir_world.x).normalize_or_zero()
             } else {
-                car_forward
+                car_right
             };
-            let forward_dir_plane =
-                (forward_dir - force_dir * forward_dir.dot(force_dir)).normalize_or_zero();
-            let speed_forward = velocity_at_wheel.dot(forward_dir_plane);
-            let raw_brake_force = -forward_dir_plane
-                * speed_forward
-                * (drive_state.avg_brake * mass_per_wheel * 4.0f32);
+            let lateral_dir_plane =
+                (lateral_dir - force_dir * lateral_dir.dot(force_dir)).normalize_or_zero();
+            let speed_lateral = velocity_at_wheel.dot(lateral_dir_plane);
 
-            // Braking force limit: 1.2G limit per wheel
-            let max_brake_force = mass_per_wheel * 9.81f32 * 1.2f32;
-            let wheel_brake_force = raw_brake_force.clamp_length_max(max_brake_force);
+            let mut lateral_force_mag = Vec3::ZERO;
+            if grounded_wheels >= 2 {
+                let raw_lateral_force = -lateral_dir_plane * speed_lateral * mass_per_wheel * 10.0f32;
+                let max_lateral_force = mass_per_wheel * 9.81f32 * 1.2f32; // tire grip limit
+                lateral_force_mag = raw_lateral_force.clamp_length_max(max_lateral_force);
+            }
 
-            total_linear_force += wheel_brake_force;
-            total_torque += (mount_world - com_world).cross(wheel_brake_force);
+            total_linear_force += lateral_force_mag;
+            total_torque += (mount_world - com_world).cross(lateral_force_mag);
         }
 
-        // --- Lateral Grip / Anti-Skid Force ---
-        let lateral_dir = if is_front {
-            Vec3::new(-steer_dir_world.z, 0.0, steer_dir_world.x).normalize_or_zero()
+        if total_valid_ray_count > 0 {
+            drive_state.avg_suspension_height = total_valid_ray_sum / total_valid_ray_count as f32;
         } else {
-            car_right
-        };
-        let lateral_dir_plane =
-            (lateral_dir - force_dir * lateral_dir.dot(force_dir)).normalize_or_zero();
-        let speed_lateral = velocity_at_wheel.dot(lateral_dir_plane);
-
-        let mut lateral_force_mag = Vec3::ZERO;
-        if grounded_wheels >= 2 {
-            let raw_lateral_force = -lateral_dir_plane * speed_lateral * mass_per_wheel * 10.0f32;
-            let max_lateral_force = mass_per_wheel * 9.81f32 * 1.2f32; // tire grip limit
-            lateral_force_mag = raw_lateral_force.clamp_length_max(max_lateral_force);
+            drive_state.avg_suspension_height = 0.0f32;
         }
 
-        total_linear_force += lateral_force_mag;
-        total_torque += (mount_world - com_world).cross(lateral_force_mag);
-    }
+        // Apply the accumulated forces & torques
+        car_forces.apply_force(total_linear_force);
+        car_forces.apply_torque(total_torque);
 
-    // Apply the average height and push-up depenetration
-    if engaged_wheels_count > 0 {
-        drive_state.avg_suspension_height = total_engaged_height / engaged_wheels_count as f32;
+        // Dynamic rotation correction to align velocity with steering direction at speed
+        if speed > 0.5f32 {
+            let current_velocity = car_forces.linear_velocity();
+            let vel_xz = Vec3::new(current_velocity.x, 0.0, current_velocity.z);
+            if vel_xz.length_squared() > 0.001f32 {
+                let speed_xz = vel_xz.length();
+                let vel_dir_xz = vel_xz / speed_xz;
+                let drive_dir = if drive_state.is_reverse {
+                    -steer_dir_world
+                } else {
+                    steer_dir_world
+                };
+                let drive_xz = Vec3::new(drive_dir.x, 0.0, drive_dir.z).normalize_or_zero();
+                let correction_factor = 4.5f32;
+                let new_dir_xz =
+                    Vec3::lerp(vel_dir_xz, drive_xz, correction_factor * dt).normalize_or_zero();
+                let new_vel_xz = new_dir_xz * speed_xz;
 
-        if max_deficit > 0.0 {
-            let push_dir = (avg_normal / engaged_wheels_count as f32).normalize_or_zero();
-            if push_dir.length_squared() > 0.001f32 {
-                car_transform.translation += push_dir * max_deficit;
+                let mut target_velocity = current_velocity;
+                target_velocity.x = new_vel_xz.x;
+                target_velocity.z = new_vel_xz.z;
+
+                let delta_vel = target_velocity - current_velocity;
+                let impulse = delta_vel * drive_state.car_mass;
+                car_forces.apply_linear_impulse(impulse);
             }
         }
-    } else {
-        drive_state.avg_suspension_height = 0.0f32;
     }
-
-    // Apply the accumulated forces & torques
-    car_forces.apply_force(total_linear_force);
-    car_forces.apply_torque(total_torque);
-
-    // Dynamic rotation correction to align velocity with steering direction at speed
-    if speed > 0.5f32 {
-        let current_velocity = car_forces.linear_velocity();
-        let vel_xz = Vec3::new(current_velocity.x, 0.0, current_velocity.z);
-        if vel_xz.length_squared() > 0.001f32 {
-            let speed_xz = vel_xz.length();
-            let vel_dir_xz = vel_xz / speed_xz;
-            let drive_dir = if drive_state.is_reverse {
-                -steer_dir_world
-            } else {
-                steer_dir_world
-            };
-            let drive_xz = Vec3::new(drive_dir.x, 0.0, drive_dir.z).normalize_or_zero();
-            let correction_factor = 4.5f32;
-            let new_dir_xz =
-                Vec3::lerp(vel_dir_xz, drive_xz, correction_factor * dt).normalize_or_zero();
-            let new_vel_xz = new_dir_xz * speed_xz;
-
-            let mut target_velocity = current_velocity;
-            target_velocity.x = new_vel_xz.x;
-            target_velocity.z = new_vel_xz.z;
-
-            let delta_vel = target_velocity - current_velocity;
-            let impulse = delta_vel * drive_state.car_mass;
-            car_forces.apply_linear_impulse(impulse);
-        }
-    }
-}
 }
 
 #[derive(Component)]
@@ -745,11 +730,13 @@ pub fn update_cosmetic_wheels(
     }
 }
 
-
 pub fn update_wheel_contact_normals(
     spatial_query: SpatialQuery,
+    time: Res<Time>,
     mut q_cars: Query<(Entity, &Transform, &CarDriveState, &mut CarWheelsContactData), With<Car>>,
 ) {
+    let dt = time.delta_secs().min(0.1);
+
     for (car_entity, car_transform, drive_state, mut contact_data) in q_cars.iter_mut() {
         for wheel_idx in 0..4 {
             let (x_min, x_max, z_min, z_max) = match wheel_idx {
@@ -809,8 +796,6 @@ pub fn update_wheel_contact_normals(
             let mut distances = [f32::MAX; 9];
             let mut hit_points = [Vec3::ZERO; 9];
             let mut normals = [Vec3::ZERO; 9];
-            let mut min_hit_dist = f32::MAX;
-            let mut raw_hits_count = 0;
 
             for i in 0..9 {
                 if let Some(hit) =
@@ -819,24 +804,29 @@ pub fn update_wheel_contact_normals(
                     distances[i] = hit.distance;
                     hit_points[i] = world_origins[i] + *ray_dir * hit.distance;
                     normals[i] = hit.normal;
-                    min_hit_dist = min_hit_dist.min(hit.distance);
-                    raw_hits_count += 1;
+                }
+            }
+
+            let mut valid_dists: Vec<f32> = Vec::with_capacity(9);
+            for i in 0..9 {
+                if distances[i] != f32::MAX {
+                    valid_dists.push(distances[i]);
                 }
             }
 
             let mut hits_count = 0;
-            let mut sum_normals = Vec3::ZERO;
+            if !valid_dists.is_empty() {
+                valid_dists.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let median = valid_dists[valid_dists.len() / 2];
 
-            if raw_hits_count > 0 {
-                // Ignore rays that pass through cracks in the top surface mesh (> min_hit_dist + 0.25)
-                let max_valid_dist = min_hit_dist + 0.25;
                 for i in 0..9 {
-                    if distances[i] <= max_valid_dist {
-                        sum_normals += normals[i];
-                        hits_count += 1;
-                    } else {
-                        distances[i] = f32::MAX;
-                        hit_points[i] = Vec3::ZERO;
+                    if distances[i] != f32::MAX {
+                        if (distances[i] - median).abs() <= 0.25 {
+                            hits_count += 1;
+                        } else {
+                            distances[i] = f32::MAX;
+                            hit_points[i] = Vec3::ZERO;
+                        }
                     }
                 }
             }
@@ -844,9 +834,24 @@ pub fn update_wheel_contact_normals(
             let w_contact = &mut contact_data.wheels[wheel_idx];
             w_contact.ray_distances = distances;
             w_contact.hit_points = hit_points;
-            w_contact.hits_count = hits_count;
-
+            w_contact.hits_count = hits_count as u8;
             w_contact.contact_normal = Vec3::Y;
+
+            // Low-pass temporal filter on ray distances (0.06s time constant)
+            for i in 0..9 {
+                let raw = distances[i];
+                if raw != f32::MAX {
+                    let prev_smoothed = w_contact.smoothed_distances[i];
+                    if prev_smoothed == f32::MAX {
+                        w_contact.smoothed_distances[i] = raw;
+                    } else if dt > 0.0 {
+                        let alpha = (dt / 0.06).min(1.0);
+                        w_contact.smoothed_distances[i] = prev_smoothed + (raw - prev_smoothed) * alpha;
+                    }
+                } else {
+                    w_contact.smoothed_distances[i] = f32::MAX;
+                }
+            }
         }
     }
 }

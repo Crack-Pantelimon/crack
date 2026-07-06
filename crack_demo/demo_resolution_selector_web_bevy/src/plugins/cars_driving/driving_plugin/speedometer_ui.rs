@@ -75,6 +75,26 @@ pub fn speedometer_ui(
                                 );
                             });
                             ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Stiffness scale:").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut drive_state.stiffness_scale,
+                                        0.0..=6.0,
+                                    )
+                                    .step_by(0.1),
+                                );
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Damping ratio:").size(9.0));
+                                ui.add(
+                                    egui::Slider::new(
+                                        &mut drive_state.damping_ratio,
+                                        0.2..=2.0,
+                                    )
+                                    .step_by(0.05),
+                                );
+                            });
+                            ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Max Speed:").size(9.0));
                                 ui.add(
                                     egui::Slider::new(
