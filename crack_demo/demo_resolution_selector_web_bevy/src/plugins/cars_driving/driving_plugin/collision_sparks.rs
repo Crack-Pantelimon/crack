@@ -184,6 +184,14 @@ pub fn handle_car_collisions(
             other_gt.z,
         );
 
+        if rel_speed >= 1.5 {
+            commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                fx: crate::plugins::audio::audio_fx::AudioFxEventType::CarCrash { rel_speed },
+                position: collision_point,
+                follow: None,
+            });
+        }
+
         // Spawn gizmo collision marker (lives for 5s)
         commands.spawn(CollisionMarker {
             position: collision_point,

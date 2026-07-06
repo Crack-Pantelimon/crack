@@ -53,6 +53,7 @@ impl<S: States> Plugin for DrivingPlugin<S> {
                 update_wheel_contact_normals,
                 update_speculative_contacts_system,
                 apply_car_steering_and_drive,
+                detect_gear_shifts,
                 handle_car_collisions,
                 update_and_draw_collision_effects,
                 draw_car_gizmos,
@@ -345,6 +346,25 @@ pub fn update_vehicle_physics_from_tuning(
     }
 }
 
+fn get_gear_ratio(gear: usize, is_reverse: bool, wheel_radius: f32, car_max_speed: f32) -> f32 {
+    let final_drive = 3.7f32;
+    let shift_up_rpm = 5500.0f32;
+    let gear_speed_fracs = [0.18f32, 0.32f32, 0.50f32, 0.72f32, 1.0f32];
+    
+    let idx = if is_reverse {
+        0
+    } else {
+        (gear - 1).min(4)
+    };
+    let speed_frac = gear_speed_fracs[idx];
+    
+    let car_max_speed_mps = car_max_speed / 3.6f32;
+    
+    let ratio = (shift_up_rpm * 2.0f32 * std::f32::consts::PI * wheel_radius)
+        / (speed_frac * car_max_speed_mps * 60.0f32 * final_drive);
+    ratio
+}
+
 /// Arcade "hover controller" car physics.
 ///
 /// The car is a dynamic rigid body, but while grounded (>= 2 virtual wheels with valid ray
@@ -450,13 +470,13 @@ pub fn apply_car_steering_and_drive(
         let forward_speed = lin_vel.0.dot(car_forward);
 
         // --- Engine & Gearbox Simulation (RPM/gear UI + drive force magnitude) ---
-        let gear_ratios = [3.5f32, 2.1f32, 1.4f32, 1.0f32, 0.8f32];
         let final_drive = 3.7f32;
-        let gear_ratio = if drive_state.is_reverse {
-            3.4f32
-        } else {
-            gear_ratios[(drive_state.current_gear - 1).min(4)]
-        };
+        let gear_ratio = get_gear_ratio(
+            drive_state.current_gear,
+            drive_state.is_reverse,
+            drive_state.wheel_radius,
+            drive_state.car_max_speed,
+        );
 
         let physical_rpm = (forward_speed.abs() * 60.0f32 * final_drive * gear_ratio)
             / (2.0f32 * std::f32::consts::PI * drive_state.wheel_radius);
@@ -479,9 +499,9 @@ pub fn apply_car_steering_and_drive(
 
         // Automatic gear shifting
         if !drive_state.is_reverse {
-            if drive_state.engine_rpm > 5500.0f32 && drive_state.current_gear < 5 {
+            if physical_rpm > 5500.0f32 && drive_state.current_gear < 5 {
                 drive_state.current_gear += 1;
-            } else if drive_state.engine_rpm < 1800.0f32 && drive_state.current_gear > 1 {
+            } else if physical_rpm < 1800.0f32 && drive_state.current_gear > 1 {
                 drive_state.current_gear -= 1;
             }
         } else {
@@ -632,6 +652,25 @@ pub fn apply_car_steering_and_drive(
 
         lin_vel.0.x = v_xz.x;
         lin_vel.0.z = v_xz.z;
+    }
+}
+
+pub fn detect_gear_shifts(
+    mut last_gears: Local<std::collections::HashMap<Entity, usize>>,
+    query: Query<(Entity, &Transform, &CarDriveState), With<Car>>,
+    mut commands: Commands,
+) {
+    last_gears.retain(|e, _| query.get(*e).is_ok());
+    for (entity, transform, drive_state) in &query {
+        let last_gear = *last_gears.get(&entity).unwrap_or(&drive_state.current_gear);
+        if drive_state.current_gear > last_gear {
+            commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                fx: crate::plugins::audio::audio_fx::AudioFxEventType::GearShiftWhoosh,
+                position: transform.translation,
+                follow: None,
+            });
+        }
+        last_gears.insert(entity, drive_state.current_gear);
     }
 }
 

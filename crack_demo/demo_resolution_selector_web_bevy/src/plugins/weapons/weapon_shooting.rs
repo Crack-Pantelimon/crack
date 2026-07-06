@@ -17,6 +17,7 @@ const REFLECT_LEN: f32 = 0.5;
 pub struct GunState {
     pub rounds: u32,
     pub clip_size: u32,
+    pub gunshot_sound_idx: usize,
 }
 
 /// Fire the shooter's gun once (ammo permitting).
@@ -93,6 +94,7 @@ pub fn fire_gun_observer(
     q_driver: Query<(), With<DriverMesh>>,
     mut tracers: ResMut<ShotTracers>,
     mut sparks: ResMut<BulletSparks>,
+    mut commands: Commands,
 ) {
     let shooter = trigger.event().shooter;
     let Ok((mut gun, equipped, model_state)) = shooters.get_mut(shooter) else {
@@ -126,6 +128,12 @@ pub fn fire_gun_observer(
         })
         .unwrap_or(origin);
 
+    commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+        fx: crate::plugins::audio::audio_fx::AudioFxEventType::GunShot { sound_idx: gun.gunshot_sound_idx },
+        position: muzzle,
+        follow: None,
+    });
+
     let filter = SpatialQueryFilter::from_excluded_entities([shooter]);
     if let Some(hit) = spatial.cast_ray(origin, dir, info.range, true, &filter) {
         let impact = origin + *dir * hit.distance;
@@ -136,6 +144,12 @@ pub fn fire_gun_observer(
             to: impact,
             reflect_to: Some(impact + reflect * REFLECT_LEN),
             ttl: TRACER_TTL,
+        });
+
+        commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+            fx: crate::plugins::audio::audio_fx::AudioFxEventType::BulletImpact,
+            position: impact,
+            follow: None,
         });
 
         let is_person = is_person_entity(
@@ -192,9 +206,20 @@ pub fn fire_gun_observer(
     }
 }
 
-pub fn reload_gun_observer(trigger: On<ReloadGunEvent>, mut shooters: Query<&mut GunState>) {
-    if let Ok(mut gun) = shooters.get_mut(trigger.event().shooter) {
-        gun.rounds = gun.clip_size;
+pub fn reload_gun_observer(
+    trigger: On<ReloadGunEvent>,
+    mut shooters: Query<(&mut GunState, &GlobalTransform)>,
+    mut commands: Commands,
+) {
+    if let Ok((mut gun, gt)) = shooters.get_mut(trigger.event().shooter) {
+        if gun.rounds < gun.clip_size {
+            gun.rounds = gun.clip_size;
+            commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                fx: crate::plugins::audio::audio_fx::AudioFxEventType::GunReload,
+                position: gt.translation(),
+                follow: None,
+            });
+        }
     }
 }
 
@@ -250,4 +275,65 @@ pub fn draw_bullet_sparks(time: Res<Time>, mut gizmos: Gizmos, mut sparks: ResMu
 
         true
     });
+}
+
+#[derive(Component)]
+pub struct PendingMeleeHit {
+    pub timer: f32,
+    pub is_melee: bool,
+}
+
+pub fn tick_pending_melee_hits(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut query: Query<(Entity, &GlobalTransform, &mut PendingMeleeHit)>,
+    spatial: SpatialQuery,
+    parents: Query<&ChildOf>,
+    q_controller: Query<(), With<CharacterController>>,
+    q_model: Query<(), With<ModelRoot>>,
+    q_skel: Query<(), With<PedestrianSkeleton>>,
+    q_driver: Query<(), With<DriverMesh>>,
+) {
+    let dt = time.delta_secs();
+    for (entity, gt, mut pending) in &mut query {
+        pending.timer -= dt;
+        if pending.timer <= 0.0 {
+            let origin = gt.translation() + Vec3::Y * 0.5;
+            let forward = gt.forward();
+            let filter = SpatialQueryFilter::from_excluded_entities([entity]);
+            if let Some(hit) = spatial.cast_ray(origin, forward, 1.5, true, &filter) {
+                let hit_pos = origin + *forward * hit.distance;
+                let is_person = is_person_entity(
+                    hit.entity,
+                    &parents,
+                    &q_controller,
+                    &q_model,
+                    &q_skel,
+                    &q_driver,
+                );
+                if is_person {
+                    if pending.is_melee {
+                        commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                            fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeHitMeat,
+                            position: hit_pos,
+                            follow: None,
+                        });
+                    } else {
+                        commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                            fx: crate::plugins::audio::audio_fx::AudioFxEventType::PunchHit,
+                            position: hit_pos,
+                            follow: None,
+                        });
+                    }
+                } else if pending.is_melee {
+                    commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                        fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeClash,
+                        position: hit_pos,
+                        follow: None,
+                    });
+                }
+            }
+            commands.entity(entity).remove::<PendingMeleeHit>();
+        }
+    }
 }

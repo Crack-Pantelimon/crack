@@ -25,6 +25,7 @@ use weapon_attach::{
 use weapon_manifest::{load_weapon_manifest_system, start_weapon_manifest_load};
 use weapon_shooting::{
     draw_bullet_sparks, draw_shot_tracers, fire_gun_observer, reload_gun_observer,
+    tick_pending_melee_hits,
 };
 
 pub struct WeaponsPlugin;
@@ -48,6 +49,7 @@ impl Plugin for WeaponsPlugin {
                     reconcile_weapon_model,
                     finalize_weapon_extents,
                     update_weapon_transforms,
+                    tick_pending_melee_hits,
                 )
                     .chain(),
             )

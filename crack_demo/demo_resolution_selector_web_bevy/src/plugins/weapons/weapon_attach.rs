@@ -63,17 +63,42 @@ pub struct WeaponExtents {
     pub max_y: f32,
 }
 
-pub fn equip_weapon_observer(trigger: On<EquipWeaponEvent>, mut commands: Commands) {
+pub fn equip_weapon_observer(
+    trigger: On<EquipWeaponEvent>,
+    mut commands: Commands,
+    transforms: Query<&GlobalTransform>,
+) {
     let ev = trigger.event();
     commands
         .entity(ev.character)
         .insert(EquippedWeapon(ev.weapon.clone()));
+
+    let pos = transforms
+        .get(ev.character)
+        .map(|gt| gt.translation())
+        .unwrap_or(Vec3::ZERO);
+
     // Guns carry ammo state (a fresh full clip); anything else has none.
     match &ev.weapon {
         WeaponId::Gun(info) => {
+            let sound_idx = (_crack_utils::random_u32() as usize) % crate::plugins::audio::audio_fx::GUNSHOT_SOUNDS.len();
             commands.entity(ev.character).insert(super::GunState {
                 rounds: info.clip_size,
                 clip_size: info.clip_size,
+                gunshot_sound_idx: sound_idx,
+            });
+            commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                fx: crate::plugins::audio::audio_fx::AudioFxEventType::DrawGun,
+                position: pos,
+                follow: None,
+            });
+        }
+        WeaponId::Melee(_) => {
+            commands.entity(ev.character).remove::<super::GunState>();
+            commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                fx: crate::plugins::audio::audio_fx::AudioFxEventType::DrawMelee,
+                position: pos,
+                follow: None,
             });
         }
         _ => {

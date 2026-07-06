@@ -15,6 +15,7 @@ use super::*;
 use crate::plugins::pedestrians::PedestrianAnimations;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::EnteringCarTimer;
 use crate::plugins::weapons::{EquippedWeapon, FireGunEvent, GunState, ReloadGunEvent};
+use crate::plugins::weapons::weapon_attach::{WeaponModelState, WeaponModel};
 use spawn::ControlledCharacter;
 
 /// Base weight while a combat overlay is active, so the overlay reads on top of locomotion.
@@ -75,11 +76,14 @@ pub fn drive_character_animation(
             &mut AnimState,
             &mut CombatState,
             Option<&EnteringCarTimer>,
+            Option<&WeaponModelState>,
+            &GlobalTransform,
         ),
         With<CharacterController>,
     >,
     mut players: Query<(Entity, &mut AnimationPlayer)>,
     parents: Query<&ChildOf>,
+    weapon_models: Query<&GlobalTransform, With<WeaponModel>>,
 ) {
     if !anims.ready {
         return;
@@ -102,6 +106,8 @@ pub fn drive_character_animation(
         mut anim,
         mut combat,
         entering,
+        weapon_model_state,
+        char_gt,
     )) = controllers.get_mut(controller)
     else {
         return;
@@ -246,6 +252,12 @@ pub fn drive_character_animation(
     // A press starts (or restarts) a one-shot clip depending on the equipped weapon.
     let mut pressed_node = None;
     if lmb {
+        let whoosh_pos = weapon_model_state
+            .and_then(|wms| wms.entity)
+            .and_then(|e| weapon_models.get(e).ok())
+            .map(|gt| gt.translation())
+            .unwrap_or_else(|| char_gt.translation());
+
         if is_gun {
             // Only fire (and animate) when there are rounds left in the clip.
             if can_shoot {
@@ -256,10 +268,30 @@ pub fn drive_character_animation(
             }
         } else if is_melee {
             pressed_node = node_for(&anims, &["Sword_Attack"]);
-        } else if rand::random::<bool>() {
-            pressed_node = node_for(&anims, &["Punch_Jab", "Punch_Cross"]);
+            commands.entity(controller).insert(crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
+                timer: 0.25,
+                is_melee: true,
+            });
+            commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeWhoosh { volume: 1.0 },
+                position: whoosh_pos,
+                follow: None,
+            });
         } else {
-            pressed_node = node_for(&anims, &["Punch_Cross", "Punch_Jab"]);
+            if rand::random::<bool>() {
+                pressed_node = node_for(&anims, &["Punch_Jab", "Punch_Cross"]);
+            } else {
+                pressed_node = node_for(&anims, &["Punch_Cross", "Punch_Jab"]);
+            }
+            commands.entity(controller).insert(crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
+                timer: 0.25,
+                is_melee: false,
+            });
+            commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeWhoosh { volume: 0.4 },
+                position: whoosh_pos,
+                follow: None,
+            });
         }
     } else if reload_pressed && is_gun && gun_state.is_some_and(|g| g.rounds < g.clip_size) {
         pressed_node = node_for(&anims, &["Pistol_Reload"]);

@@ -6,7 +6,10 @@
 
 use demo_resolution_selector_web_bevy::{
     basic_app::make_basic_app,
-    plugins::{audio::AudioDemoPlugin, physics_plugin::PhysicsPlugin},
+    plugins::{
+        audio::{AudioDemoPlugin, GameAudioPlugin},
+        physics_plugin::PhysicsPlugin,
+    },
     ui_egui::UiState,
     utils::setup_debug_scene::SetupDebugScenePlugin,
 };
@@ -19,6 +22,7 @@ fn main() {
         // Needed for `SpatialQuery` raycasting against the debug ground colliders.
         .add_plugins(PhysicsPlugin)
         .add_plugins(SetupDebugScenePlugin)
+        .add_plugins(GameAudioPlugin)
         .add_plugins(AudioDemoPlugin)
         .run();
 }

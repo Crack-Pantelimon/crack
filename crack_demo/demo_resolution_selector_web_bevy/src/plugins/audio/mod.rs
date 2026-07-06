@@ -1,20 +1,14 @@
-//! Audio demo plugin.
+//! Audio engine plugin.
 //!
 //! Loads the sound-fx manifest (a plain-text list of `.ogg` / `.mp3` clip paths relative to the
 //! manifest's own folder), preloads every clip as a [`bevy::audio::AudioSource`], and exposes them
 //! through the [`SoundManifest`] resource. Once the manifest is parsed the
 //! [`SoundManifestLoadFinished`](crate::plugins::states::SoundManifestLoadFinished) state flips to
 //! `Finished`.
-//!
-//! The demo UI (see [`ui`]-suffixed systems below) lets the user:
-//! - pick a clip from a scrollable list (click "Select" or scroll the mouse wheel),
-//! - tune the playback **volume**, **speed** and the listener **ear distance** with sliders,
-//! - click the ground to raycast a world position, drop a gizmo there and fire a
-//!   [`PlaySoundEvent`] so the chosen clip plays in 3D at that spot.
-//!
-//! Rapid clicks are debounced by [`SOUND_DEBOUNCE_SECS`].
 
-use bevy::audio::{PlaybackMode, PlaybackSettings, SpatialListener, Volume};
+pub mod audio_fx;
+
+use bevy::audio::{PlaybackMode, PlaybackSettings, SpatialListener, Volume, SpatialScale};
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
@@ -34,6 +28,8 @@ pub struct SoundEntry {
     pub url: String,
     /// Preloaded audio clip handle.
     pub handle: Handle<AudioSource>,
+    /// Hand-picked attenuation distance.
+    pub attenuation: f32,
 }
 
 /// Global resource holding every clip listed in the manifest.
@@ -44,6 +40,13 @@ pub struct SoundManifest {
     pub loaded: bool,
 }
 
+impl SoundManifest {
+    /// Returns the sound entry matching name (linear scan).
+    pub fn get(&self, name: &str) -> Option<&SoundEntry> {
+        self.sounds.iter().find(|s| s.name == name)
+    }
+}
+
 /// Internal bootstrap: handle to the manifest text + the folder used to resolve relative paths.
 #[derive(Resource)]
 struct SoundManifestBootstrap {
@@ -51,71 +54,74 @@ struct SoundManifestBootstrap {
     manifest_handle: Handle<TextAsset>,
 }
 
-/// Fired whenever the user clicks the ground with a clip selected. Carries everything the playback
-/// observer needs to spawn a one-shot 3D emitter.
+/// Fired whenever a sound needs to play. Carries everything the playback
+/// observer needs to spawn a 3D emitter (one-shot or looping/parented).
 #[derive(Event, Clone)]
 pub struct PlaySoundEvent {
     pub handle: Handle<AudioSource>,
-    /// World-space location the sound plays at.
+    /// World-space location the sound plays at (ignored if follow is Some).
     pub position: Vec3,
     /// Linear volume multiplier.
     pub volume: f32,
     /// Playback speed / pitch multiplier.
     pub speed: f32,
+    /// Attenuation distance.
+    pub attenuation: f32,
+    /// Entity to attach the emitter to as a child (for looping sounds).
+    pub follow: Option<Entity>,
+    /// Whether the sound is looping.
+    pub looped: bool,
 }
 
-/// Demo UI + interaction state.
-#[derive(Resource)]
-pub struct AudioDemoState {
-    /// Index into [`SoundManifest::sounds`] of the currently selected clip.
-    pub selected: usize,
-    /// Linear volume (slider).
-    pub volume: f32,
-    /// Playback speed (slider).
-    pub speed: f32,
-    /// Distance between the listener's ears in meters (slider).
-    pub ear_gap: f32,
-    /// `Time::elapsed_secs` of the last fired sound, for debouncing.
-    pub last_played: f32,
-    /// Last picked ground position, drawn as a gizmo until the next click.
-    pub last_pick: Option<Vec3>,
-}
+/// Core audio plugin for real gameplay audio playback.
+pub struct GameAudioPlugin;
 
-impl Default for AudioDemoState {
-    fn default() -> Self {
-        Self {
-            selected: 0,
-            volume: 1.0,
-            speed: 1.0,
-            ear_gap: 0.25,
-            last_played: -1.0,
-            last_pick: None,
-        }
-    }
-}
-
-pub struct AudioDemoPlugin;
-
-impl Plugin for AudioDemoPlugin {
+impl Plugin for GameAudioPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<TextAsset>()
-            .init_asset_loader::<TextAssetLoader>()
-            .init_state::<SoundManifestLoadFinished>()
+        // Guard against double-init of TextAsset loader
+        if !app.world().contains_resource::<Assets<TextAsset>>() {
+            app.init_asset::<TextAsset>()
+                .init_asset_loader::<TextAssetLoader>();
+        }
+        app.init_state::<SoundManifestLoadFinished>()
             .init_resource::<SoundManifest>()
-            .init_resource::<AudioDemoState>()
             .add_observer(play_sound_observer)
+            .add_observer(audio_fx::audio_fx_observer)
             .add_systems(Startup, (start_sound_manifest_load, setup_spatial_listener))
             .add_systems(
                 Update,
                 (
                     load_sound_manifest_system,
-                    update_listener_ears,
-                    scroll_select_sound,
-                    click_ground_to_play,
-                    draw_pick_gizmo,
+                    add_spatial_listener_to_new_cameras,
+                    audio_fx::spawn_car_engine_sounds,
+                    audio_fx::manage_car_engine_sound_pitch_volume,
+                    audio_fx::manage_footsteps_system,
                 ),
-            )
-            .add_systems(EguiPrimaryContextPass, audio_demo_ui);
+            );
+    }
+}
+
+/// Attach a [`SpatialListener`] to the scene camera so 3D sounds have a set of ears.
+fn setup_spatial_listener(
+    mut commands: Commands,
+    cameras: Query<Entity, With<Camera3d>>,
+) {
+    for cam in cameras.iter() {
+        commands
+            .entity(cam)
+            .insert(SpatialListener::new(0.25));
+    }
+}
+
+/// Automatically attach a [`SpatialListener`] to any newly spawned `Camera3d`.
+fn add_spatial_listener_to_new_cameras(
+    mut commands: Commands,
+    cameras: Query<Entity, (Added<Camera3d>, Without<SpatialListener>)>,
+) {
+    for cam in cameras.iter() {
+        commands
+            .entity(cam)
+            .insert(SpatialListener::new(0.25));
     }
 }
 
@@ -156,12 +162,23 @@ fn load_sound_manifest_system(
         if line.is_empty() {
             continue;
         }
-        let url = format!("{}{}", bootstrap.folder, line);
+        let mut parts = line.split(',');
+        let name = parts.next().unwrap_or("").trim().to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let attenuation = parts
+            .next()
+            .and_then(|s| s.trim().parse::<f32>().ok())
+            .unwrap_or(1.0);
+
+        let url = format!("{}{}", bootstrap.folder, name);
         let handle = asset_server.load::<AudioSource>(url.clone());
         sounds.push(SoundEntry {
-            name: line.to_string(),
+            name,
             url,
             handle,
+            attenuation,
         });
     }
 
@@ -171,16 +188,84 @@ fn load_sound_manifest_system(
     next_state.set(SoundManifestLoadFinished::Finished);
 }
 
-/// Attach a [`SpatialListener`] to the scene camera so 3D sounds have a set of ears.
-fn setup_spatial_listener(
-    mut commands: Commands,
-    state: Res<AudioDemoState>,
-    cameras: Query<Entity, With<Camera3d>>,
-) {
-    for cam in cameras.iter() {
-        commands
-            .entity(cam)
-            .insert(SpatialListener::new(state.ear_gap));
+/// Spawn a spatial audio emitter (one-shot or looping/parented).
+fn play_sound_observer(trigger: On<PlaySoundEvent>, mut commands: Commands) {
+    let ev = trigger.event();
+    let mode = if ev.looped {
+        PlaybackMode::Loop
+    } else {
+        PlaybackMode::Despawn
+    };
+    
+    let scale_factor = 1.0 / ev.attenuation.max(0.001);
+    let playback_settings = PlaybackSettings {
+        mode,
+        volume: Volume::Linear(ev.volume),
+        speed: ev.speed,
+        spatial: true,
+        spatial_scale: Some(SpatialScale(Vec3::splat(scale_factor))),
+        ..default()
+    };
+
+    let mut emitter = commands.spawn((
+        Name::new("SoundEmitter"),
+        AudioPlayer::new(ev.handle.clone()),
+        playback_settings,
+    ));
+
+    if let Some(parent_entity) = ev.follow {
+        emitter.insert((ChildOf(parent_entity), Transform::IDENTITY));
+    } else {
+        emitter.insert(Transform::from_translation(ev.position));
+    }
+}
+
+/// Demo UI + interaction state.
+#[derive(Resource)]
+pub struct AudioDemoState {
+    /// Index into [`SoundManifest::sounds`] of the currently selected clip.
+    pub selected: usize,
+    /// Linear volume (slider).
+    pub volume: f32,
+    /// Playback speed (slider).
+    pub speed: f32,
+    /// Distance between the listener's ears in meters (slider).
+    pub ear_gap: f32,
+    /// `Time::elapsed_secs` of the last played sound, for debouncing.
+    pub last_played: f32,
+    /// Last picked ground position, drawn as a gizmo until the next click.
+    pub last_pick: Option<Vec3>,
+}
+
+impl Default for AudioDemoState {
+    fn default() -> Self {
+        Self {
+            selected: 0,
+            volume: 1.0,
+            speed: 1.0,
+            ear_gap: 0.25,
+            last_played: -1.0,
+            last_pick: None,
+        }
+    }
+}
+
+/// Demo-specific UI plugin.
+pub struct AudioDemoPlugin;
+
+impl Plugin for AudioDemoPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<AudioDemoState>()
+            .add_systems(
+                Update,
+                (
+                    update_listener_ears,
+                    scroll_select_sound,
+                    click_ground_to_play,
+                    draw_pick_gizmo,
+                ),
+            )
+            .add_systems(EguiPrimaryContextPass, audio_demo_ui);
     }
 }
 
@@ -292,24 +377,10 @@ fn click_ground_to_play(
         position: hit_point,
         volume: state.volume,
         speed: state.speed,
+        attenuation: entry.attenuation,
+        follow: None,
+        looped: false,
     });
-}
-
-/// Spawn a one-shot spatial audio emitter at the event's world position.
-fn play_sound_observer(trigger: On<PlaySoundEvent>, mut commands: Commands) {
-    let ev = trigger.event();
-    commands.spawn((
-        Name::new("SoundEmitter"),
-        AudioPlayer::new(ev.handle.clone()),
-        PlaybackSettings {
-            mode: PlaybackMode::Despawn,
-            volume: Volume::Linear(ev.volume),
-            speed: ev.speed,
-            spatial: true,
-            ..default()
-        },
-        Transform::from_translation(ev.position),
-    ));
 }
 
 /// Draw a marker at the last-picked ground location.
