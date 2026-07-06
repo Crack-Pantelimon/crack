@@ -78,9 +78,13 @@ pub fn pedestrian_animation_control_observer(
         target.name = ev.animation.clone();
         target.speed = ev.speed;
     } else {
-        commands.entity(ev.ped).insert(TargetAnimation {
-            name: ev.animation.clone(),
-            speed: ev.speed,
+        let anim_name = ev.animation.clone();
+        let anim_speed = ev.speed;
+        commands.entity(ev.ped).queue_silenced(move |mut entity: EntityWorldMut| {
+            entity.insert(TargetAnimation {
+                name: anim_name,
+                speed: anim_speed,
+            });
         });
     }
 }

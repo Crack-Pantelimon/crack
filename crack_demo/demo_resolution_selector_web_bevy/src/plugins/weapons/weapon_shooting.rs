@@ -55,7 +55,7 @@ pub struct BulletSpark {
 #[derive(Resource, Default)]
 pub struct BulletSparks(pub Vec<BulletSpark>);
 
-fn is_person_entity(
+pub(crate) fn is_person_entity(
     hit_entity: Entity,
     parents: &Query<&ChildOf>,
     q_controller: &Query<(), With<CharacterController>>,

@@ -22,6 +22,7 @@ mod animation;
 mod camera;
 mod controller;
 mod interaction_ui;
+pub mod locomotion;
 mod spawn;
 
 use avian3d::{math::*, prelude::*};
@@ -35,11 +36,8 @@ pub use spawn::{ControlledCharacter, SpawnControlledPedestrianEvent};
 
 use animation::{drive_character_animation, print_animation_catalog};
 use camera::{follow_camera, orbit_camera_input};
-use controller::{
-    apply_forces_to_dynamic_bodies, apply_gravity, apply_movement_damping, apply_speed_cap,
-    character_input, detect_fallen_off_map, face_movement, jump_or_climb, move_and_slide, movement,
-    respawn_if_fallen, update_climb, update_grounded, update_roll,
-};
+use controller::{character_input, jump_or_climb};
+use locomotion::CharacterLocomotionPlugin;
 use interaction_ui::{
     CarSeatOffset, WeaponSelection, apply_seat_offset, car_seat_debug_ui, crosshair_ui,
     detect_car_interaction, drive_driver_mesh_animation, equip_on_new_character, handle_exit_car,
@@ -129,15 +127,17 @@ const CAM_PITCH_MIN: f32 = -85.0 * (std::f32::consts::PI / 180.0);
 const CAM_PITCH_MAX: f32 = 85.0 * (std::f32::consts::PI / 180.0);
 
 // ---------------------------------------------------------------------------------------------
-// Shared components / resources / messages
+// Shared components / resources
 // ---------------------------------------------------------------------------------------------
 
-/// A [`Message`] written for a movement input action.
-#[derive(Message)]
-pub enum MovementAction {
-    /// Desired planar move direction, mapped as the avian example does: `x -> +x`, `y -> -z`.
-    Move(Vector2),
-    Jump,
+/// Per-entity desired locomotion, written by whoever drives this controller
+/// (keyboard for the player, the AI brain for NPCs). Consumed by `movement`.
+#[derive(Component, Default)]
+pub struct LocomotionInput {
+    /// Planar move direction, avian convention: `x -> +x`, `y -> -z`. Zero = no input.
+    pub move_dir: Vec2,
+    /// Set true for one frame to request a jump; `movement` consumes and clears it.
+    pub jump: bool,
 }
 
 /// Marker for the kinematic character body. Requires a kinematic rigid body and disables Avian's
@@ -295,8 +295,12 @@ pub struct PedestrianControllerPlugin;
 
 impl Plugin for PedestrianControllerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<MovementAction>()
-            .init_resource::<ControlledCharacter>()
+        // Guard-add the shared locomotion plugin (AI plugin may also add it).
+        if !app.is_plugin_added::<CharacterLocomotionPlugin>() {
+            app.add_plugins(CharacterLocomotionPlugin);
+        }
+
+        app.init_resource::<ControlledCharacter>()
             .init_resource::<camera::CameraRig>()
             .init_resource::<SpawnChoicePopup>()
             .init_resource::<CarSeatOffset>()
@@ -318,32 +322,10 @@ impl Plugin for PedestrianControllerPlugin {
                 (character_input, jump_or_climb)
                     .run_if(in_state(GameControlState::ControllingPedestrian)),
             )
-            // Movement in FixedUpdate for frame-rate independence. Skipped while climbing (the climb
-            // tween owns the transform then).
-            .add_systems(
-                FixedUpdate,
-                (
-                    update_grounded,
-                    apply_gravity,
-                    movement,
-                    apply_movement_damping,
-                    apply_speed_cap,
-                    move_and_slide,
-                    apply_forces_to_dynamic_bodies,
-                )
-                    .chain()
-                    .run_if(in_state(GameControlState::ControllingPedestrian))
-                    .run_if(no_one_climbing),
-            )
             .add_systems(
                 Update,
                 (
                     adopt_pedestrian,
-                    respawn_if_fallen,
-                    detect_fallen_off_map,
-                    update_climb,
-                    update_roll,
-                    face_movement,
                     orbit_camera_input,
                     follow_camera,
                     drive_character_animation,
@@ -380,6 +362,6 @@ impl Plugin for PedestrianControllerPlugin {
 }
 
 /// Run condition: true when no character is mid-climb (so the movement chain can run).
-fn no_one_climbing(q: Query<(), With<Climbing>>) -> bool {
+pub fn no_one_climbing(q: Query<(), With<Climbing>>) -> bool {
     q.is_empty()
 }

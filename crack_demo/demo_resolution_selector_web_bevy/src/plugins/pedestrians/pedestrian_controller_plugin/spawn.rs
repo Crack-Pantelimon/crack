@@ -87,6 +87,7 @@ pub fn spawn_controlled_pedestrian_observer(
         CharacterMovementSettings::default(),
         CharacterCollisions::default(),
         MovementModifiers::default(),
+        LocomotionInput::default(),
         AnimState::default(),
         CombatState::default(),
         GroundDetection {

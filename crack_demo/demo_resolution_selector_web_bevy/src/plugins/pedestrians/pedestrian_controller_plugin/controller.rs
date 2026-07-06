@@ -12,10 +12,16 @@ use crate::plugins::map_plugin::{MapTree, TreeMapTile};
 pub fn character_input(
     keys: Res<ButtonInput<KeyCode>>,
     camera: Query<&GlobalTransform, With<Camera3d>>,
-    mut modifiers: Query<&mut MovementModifiers>,
-    mut movement_writer: MessageWriter<MovementAction>,
+    controlled: Res<crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter>,
+    mut query: Query<(&mut LocomotionInput, &mut MovementModifiers), With<CharacterController>>,
 ) {
     let Ok(cam) = camera.single() else {
+        return;
+    };
+    let Some(controller_entity) = controlled.controller else {
+        return;
+    };
+    let Ok((mut input, mut modifiers)) = query.get_mut(controller_entity) else {
         return;
     };
 
@@ -34,18 +40,15 @@ pub fn character_input(
 
     let world = (forward * f as f32 + right * r as f32).normalize_or_zero();
     if world != Vec3::ZERO {
-        movement_writer.write(MovementAction::Move(Vector2::new(
-            world.x as Scalar,
-            -world.z as Scalar,
-        )));
+        input.move_dir = Vec2::new(world.x, -world.z);
+    } else {
+        input.move_dir = Vec2::ZERO;
     }
 
     // Space is handled by `jump_or_climb` (it decides between jumping and climbing a ledge).
 
-    for mut m in &mut modifiers {
-        m.crouch = keys.pressed(KeyCode::KeyC);
-        m.sprint = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    }
+    modifiers.crouch = keys.pressed(KeyCode::KeyC);
+    modifiers.sprint = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
 }
 
 /// Updates the [`Grounded`] status for character controllers.
@@ -84,11 +87,11 @@ pub fn update_grounded(
     }
 }
 
-/// Responds to [`MovementAction`] events and accelerates/jumps character controllers.
+/// Responds to per-entity [`LocomotionInput`] and accelerates/jumps character controllers.
 pub fn movement(
     time: Res<Time>,
-    mut movement_reader: MessageReader<MovementAction>,
     mut controllers: Query<(
+        &mut LocomotionInput,
         &CharacterMovementSettings,
         &mut LinearVelocity,
         Has<Grounded>,
@@ -96,20 +99,20 @@ pub fn movement(
 ) {
     let delta_secs = time.delta_secs_f64().adjust_precision();
 
-    for event in movement_reader.read() {
-        for (movement, mut linear_velocity, is_grounded) in &mut controllers {
-            match event {
-                MovementAction::Move(direction) => {
-                    linear_velocity.x += direction.x * movement.acceleration * delta_secs;
-                    linear_velocity.z -= direction.y * movement.acceleration * delta_secs;
-                }
-                MovementAction::Jump => {
-                    if is_grounded {
-                        linear_velocity.y = movement.jump_impulse;
-                    }
-                }
-            }
+    for (mut input, movement, mut linear_velocity, is_grounded) in &mut controllers {
+        let direction = input.move_dir;
+        if direction != Vec2::ZERO {
+            linear_velocity.x += direction.x as Scalar * movement.acceleration * delta_secs;
+            linear_velocity.z -= direction.y as Scalar * movement.acceleration * delta_secs;
         }
+
+        if input.jump && is_grounded {
+            linear_velocity.y = movement.jump_impulse;
+        }
+
+        // Consume the per-frame inputs.
+        input.move_dir = Vec2::ZERO;
+        input.jump = false;
     }
 }
 
@@ -386,15 +389,16 @@ pub fn jump_or_climb(
     keys: Res<ButtonInput<KeyCode>>,
     spatial_query: SpatialQuery,
     mut commands: Commands,
-    mut movement_writer: MessageWriter<MovementAction>,
+    controlled: Res<crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter>,
     map: Option<Res<MapTree>>,
     tiles: Query<(), With<TreeMapTile>>,
-    query: Query<
+    mut query: Query<
         (
             Entity,
             &GlobalTransform,
             &CharacterScale,
             &MovementModifiers,
+            &mut LocomotionInput,
             Has<Grounded>,
         ),
         (
@@ -407,37 +411,42 @@ pub fn jump_or_climb(
     if !keys.just_pressed(KeyCode::Space) {
         return;
     }
+    let Some(controller_entity) = controlled.controller else {
+        return;
+    };
     // Extra off-map safety checks only make sense in the main game (map loaded + tiles active).
     let map_active = map.map(|m| m.parsed).unwrap_or(false) && !tiles.is_empty();
 
-    for (entity, gt, scale, modifiers, grounded) in &query {
-        // Crouch + Space = forward roll.
-        if modifiers.crouch {
-            if grounded {
-                commands.entity(entity).insert(Rolling {
-                    elapsed: 0.0,
-                    duration: ROLL_DURATION,
-                });
-            }
-            continue;
-        }
-        if let Some((start, target)) = detect_climb(gt, scale.0, &spatial_query, entity, map_active)
-        {
-            commands.entity(entity).insert(Climbing {
-                start,
-                target,
+    let Ok((entity, gt, scale, modifiers, mut input, grounded)) = query.get_mut(controller_entity) else {
+        return;
+    };
+
+    // Crouch + Space = forward roll.
+    if modifiers.crouch {
+        if grounded {
+            commands.entity(entity).insert(Rolling {
                 elapsed: 0.0,
-                duration: CLIMB_DURATION,
+                duration: ROLL_DURATION,
             });
-        } else {
-            movement_writer.write(MovementAction::Jump);
         }
+        return;
+    }
+    if let Some((start, target)) = detect_climb(gt, scale.0, &spatial_query, entity, map_active)
+    {
+        commands.entity(entity).insert(Climbing {
+            start,
+            target,
+            elapsed: 0.0,
+            duration: CLIMB_DURATION,
+        });
+    } else {
+        input.jump = true;
     }
 }
 
 /// Casts a few rays to detect a climbable ledge directly in front of the character. Returns the
 /// climb start and target positions (capsule center) if one is found.
-fn detect_climb(
+pub(crate) fn detect_climb(
     gt: &GlobalTransform,
     scale: f32,
     spatial_query: &SpatialQuery,
