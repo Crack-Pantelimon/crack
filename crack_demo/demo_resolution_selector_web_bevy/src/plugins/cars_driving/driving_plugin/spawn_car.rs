@@ -124,9 +124,9 @@ pub fn spawn_car_request_event_observer(
     // Mark as active player vehicle so camera follows and player can drive immediately
     commands.entity(car_entity).insert(ActivePlayerVehicle);
 
-    let wheel_names = ["car-wheel_00003_", "car-wheel_00005_"];
-    let selected_wheel_name = if rand::random::<bool>() { wheel_names[0] } else { wheel_names[1] };
-    let wheel_handle = get_wheel_asset(selected_wheel_name, &asset_server);
+    // let wheel_names = ["car-wheel_00003_", "car-wheel_00005_"];
+    // let selected_wheel_name = if rand::random::<bool>() { wheel_names[0] } else { wheel_names[1] };
+    let wheel_handle = get_wheel_asset("car-wheel_00005_", &asset_server);
 
     for i in 0..4 {
         commands.spawn((
@@ -192,11 +192,15 @@ pub fn init_cars_system(
         let mut max_y = f32::MIN;
         let mut found = false;
 
-        let Ok(root_gt) = global_transform_query.get(root_entity) else { continue; };
+        let Ok(root_gt) = global_transform_query.get(root_entity) else {
+            continue;
+        };
         let root_inv = root_gt.to_matrix().inverse();
 
         for (ent, handle) in &mesh_entities {
-            let Ok(mesh_gt) = global_transform_query.get(*ent) else { continue; };
+            let Ok(mesh_gt) = global_transform_query.get(*ent) else {
+                continue;
+            };
             if let Some(mesh) = meshes.get(handle) {
                 if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(positions)) =
                     mesh.attribute(Mesh::ATTRIBUTE_POSITION)
@@ -219,6 +223,8 @@ pub fn init_cars_system(
             }
         }
 
-        commands.entity(root_entity).remove::<NeedCarBoundsCompute>();
+        commands
+            .entity(root_entity)
+            .remove::<NeedCarBoundsCompute>();
     }
 }
