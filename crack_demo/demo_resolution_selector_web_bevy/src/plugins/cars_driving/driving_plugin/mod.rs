@@ -696,23 +696,35 @@ pub fn init_cosmetic_wheels_system(
 pub fn update_cosmetic_wheels(
     mut commands: Commands,
     mut q_wheels: Query<(Entity, &mut Transform, &mut CosmeticWheel)>,
+    q_car_exists: Query<(), With<Car>>,
     q_cars: Query<
-        (&Transform, &CarDriveState, &CarWheelsContactData, &LinearVelocity),
+        (
+            &Transform,
+            &CarDriveState,
+            &CarWheelsContactData,
+            Option<&LinearVelocity>,
+        ),
         (With<Car>, Without<CosmeticWheel>),
     >,
     time: Res<Time>,
 ) {
     let dt = time.delta_secs();
     for (wheel_entity, mut wheel_transform, mut cosmetic_wheel) in q_wheels.iter_mut() {
-        let Ok((car_transform, drive_state, contact_data, lin_vel)) =
-            q_cars.get(cosmetic_wheel.parent_car)
-        else {
+        if q_car_exists.get(cosmetic_wheel.parent_car).is_err() {
             // Parent car is gone; the wheel has no reason to exist.
             if let Ok(mut e) = commands.get_entity(wheel_entity) {
                 e.despawn();
             }
             continue;
+        }
+
+        let Ok((car_transform, drive_state, contact_data, opt_lin_vel)) =
+            q_cars.get(cosmetic_wheel.parent_car)
+        else {
+            continue;
         };
+
+        let lin_vel = opt_lin_vel.map(|v| v.0).unwrap_or(Vec3::ZERO);
 
         let wheel_data = &contact_data.wheels[cosmetic_wheel.wheel_idx];
 
@@ -756,7 +768,7 @@ pub fn update_cosmetic_wheels(
         wheel_transform.translation = car_transform.transform_point(local_pos);
 
         let car_forward = car_transform.rotation * Vec3::NEG_Z;
-        let forward_speed = lin_vel.0.dot(car_forward);
+        let forward_speed = lin_vel.dot(car_forward);
         // Rolling forward (car moving -Z) means the wheel top moves -Z: a negative
         // rotation about the car-local X axle.
         cosmetic_wheel.accumulated_rotation -= (forward_speed / radius.max(0.05)) * dt;

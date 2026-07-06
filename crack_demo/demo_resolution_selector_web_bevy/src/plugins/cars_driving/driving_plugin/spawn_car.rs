@@ -8,8 +8,8 @@ use crate::plugins::{
 use avian3d::{
     dynamics::ccd::SweptCcd,
     prelude::{
-        ColliderConstructor, ColliderConstructorHierarchy, CollisionLayers, MassPropertiesBundle,
-        RigidBody, SleepingDisabled,
+        AngularVelocity, ColliderConstructor, ColliderConstructorHierarchy, CollisionLayers,
+        LinearVelocity, MassPropertiesBundle, RigidBody, SleepingDisabled,
     },
 };
 use bevy::prelude::*;
@@ -64,14 +64,11 @@ pub fn spawn_car_request_event_observer(
         Quat::from_rotation_y(random_angle)
     });
 
-    let default_drive_state = CarDriveState {
-        spawn_position: Some(pos),
-        ..default()
-    };
-
+    let default_drive_state = CarDriveState::default();
     let car_half_width = default_drive_state.car_half_width;
-    let car_half_length = default_drive_state.car_half_length;
     let car_half_height = default_drive_state.car_half_height;
+    let car_half_length = default_drive_state.car_half_length;
+
     let car_mass = default_drive_state.car_mass;
 
     let car_body_volume =
@@ -82,34 +79,44 @@ pub fn spawn_car_request_event_observer(
 
     let car_entity = commands
         .spawn((
-            Transform::from_translation(pos).with_rotation(car_rot),
-            RigidBody::Dynamic,
-            MassPropertiesBundle::from_shape(
-                &Cuboid::new(
-                    car_half_width * 2.0,
-                    car_half_height * 2.0,
-                    car_half_length * 2.0,
+            (
+                Transform::from_translation(pos).with_rotation(car_rot),
+                RigidBody::Dynamic,
+                LinearVelocity::ZERO,
+                AngularVelocity::ZERO,
+                MassPropertiesBundle::from_shape(
+                    &Cuboid::new(
+                        car_half_width * 2.0,
+                        car_half_height * 2.0,
+                        car_half_length * 2.0,
+                    ),
+                    car_mass / car_body_volume,
                 ),
-                car_mass / car_body_volume,
+                WorldAssetRoot(car_asset_handle),
             ),
-            WorldAssetRoot(car_asset_handle),
-            ColliderConstructorHierarchy::new(ColliderConstructor::ConvexDecompositionFromMesh)
+            (
+                ColliderConstructorHierarchy::new(
+                    ColliderConstructor::ConvexDecompositionFromMesh,
+                )
                 .with_default_layers(CollisionLayers::new(
                     [GamePhysicsLayer::Car],
                     [GamePhysicsLayer::Map, GamePhysicsLayer::Car],
                 )),
-            CollisionLayers::new(
-                [GamePhysicsLayer::Car],
-                [GamePhysicsLayer::Map, GamePhysicsLayer::Car],
+                CollisionLayers::new(
+                    [GamePhysicsLayer::Car],
+                    [GamePhysicsLayer::Map, GamePhysicsLayer::Car],
+                ),
+                SleepingDisabled,
+                SweptCcd::default(),
             ),
-            SleepingDisabled,
-            SweptCcd::default(),
-            default_drive_state.clone(),
-            CarWheelsContactData::default(),
-            CarSpeculativeContactData::default(),
-            NeedCarBoundsCompute,
-            Visibility::default(),
-            InheritedVisibility::default(),
+            (
+                default_drive_state.clone(),
+                CarWheelsContactData::default(),
+                CarSpeculativeContactData::default(),
+                NeedCarBoundsCompute,
+                Visibility::default(),
+                InheritedVisibility::default(),
+            ),
         ))
         .id();
 
@@ -124,9 +131,13 @@ pub fn spawn_car_request_event_observer(
     // Mark as active player vehicle so camera follows and player can drive immediately
     commands.entity(car_entity).insert(ActivePlayerVehicle);
 
-    // let wheel_names = ["car-wheel_00003_", "car-wheel_00005_"];
-    // let selected_wheel_name = if rand::random::<bool>() { wheel_names[0] } else { wheel_names[1] };
-    let wheel_handle = get_wheel_asset("car-wheel_00005_", &asset_server);
+    let wheel_names = ["car-wheel_00003_", "car-wheel_00005_"];
+    let selected_wheel_name = if rand::random::<bool>() {
+        wheel_names[0]
+    } else {
+        wheel_names[1]
+    };
+    let wheel_handle = get_wheel_asset(selected_wheel_name, &asset_server);
 
     for i in 0..4 {
         commands.spawn((
@@ -139,6 +150,7 @@ pub fn spawn_car_request_event_observer(
                 measured_radius: None,
             },
             Visibility::default(),
+            InheritedVisibility::default(),
         ));
     }
 
