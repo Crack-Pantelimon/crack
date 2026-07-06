@@ -1,5 +1,27 @@
-target
+# SigMap ignore file — gitignore syntax
+# Files and directories listed here are excluded from signature extraction.
+# This file is union-merged with .repomixignore if present.
+
+node_modules/
+dist/
+build/
+out/
+.next/
+coverage/
+target/
+vendor/
+*.generated.*
+*.pb.*
+*_pb.*
+*.min.js
+*.min.css
+
+*.glb
+*.blend
+*.jpg
+*.png
+*.mp3
+3d_data_v2
+3d_data
 _data
-_slop
-.agents
-scripts/
+scripts
