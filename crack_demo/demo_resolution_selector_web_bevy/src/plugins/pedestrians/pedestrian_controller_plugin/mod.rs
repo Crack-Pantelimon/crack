@@ -44,8 +44,8 @@ use interaction_ui::{
     handle_freecam_right_click, spawn_choice_popup_ui, tick_driver_mesh_exit, tick_entering_car,
     weapon_hud_ui, weapon_wheel,
 };
-use spawn::{
-    SpawnChoicePopup, adopt_pedestrian, escape_to_freecam, spawn_controlled_pedestrian_observer,
+pub use spawn::{
+    SpawnChoicePopup, escape_to_freecam, spawn_controlled_pedestrian_observer,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -325,7 +325,6 @@ impl Plugin for PedestrianControllerPlugin {
             .add_systems(
                 Update,
                 (
-                    adopt_pedestrian,
                     orbit_camera_input,
                     follow_camera,
                     drive_character_animation,

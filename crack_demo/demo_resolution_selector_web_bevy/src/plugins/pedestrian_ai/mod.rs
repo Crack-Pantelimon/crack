@@ -99,13 +99,11 @@ impl Plugin for PedestrianAiPlugin {
 
         app.init_resource::<WarMatrix>()
             .init_resource::<debug_ui::AiDebug>()
-            .init_resource::<spawn_ai::PendingAiAdopts>()
             .add_observer(spawn_ai::spawn_ai_pedestrian_observer)
             .add_observer(combat::apply_damage_observer)
             .add_systems(
                 Update,
                 (
-                    spawn_ai::adopt_ai_pedestrian,
                     perception::ai_perception,
                     brain::ai_brain,
                     movement_ai::ai_movement,

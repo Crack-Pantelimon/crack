@@ -92,6 +92,7 @@ pub fn fire_gun_observer(
     q_model: Query<(), With<ModelRoot>>,
     q_skel: Query<(), With<PedestrianSkeleton>>,
     q_driver: Query<(), With<DriverMesh>>,
+    healths: Query<&crate::plugins::pedestrian_ai::faction::Health>,
     mut tracers: ResMut<ShotTracers>,
     mut sparks: ResMut<BulletSparks>,
     mut commands: Commands,
@@ -189,6 +190,26 @@ pub fn fire_gun_observer(
                 is_person,
                 lifetime: 1.0,
             });
+        }
+
+        if is_person {
+            let mut cur = hit.entity;
+            loop {
+                if q_controller.contains(cur) {
+                    break;
+                }
+                match parents.get(cur) {
+                    Ok(child_of) => cur = child_of.parent(),
+                    Err(_) => break,
+                }
+            }
+            if healths.get(cur).is_ok() {
+                commands.trigger(crate::plugins::pedestrian_ai::combat::DamageEvent {
+                    target: cur,
+                    amount: info.damage,
+                    source: shooter,
+                });
+            }
         }
 
         info!(
@@ -294,13 +315,14 @@ pub fn tick_pending_melee_hits(
     q_skel: Query<(), With<PedestrianSkeleton>>,
     q_driver: Query<(), With<DriverMesh>>,
     healths: Query<&crate::plugins::pedestrian_ai::faction::Health>,
+    mut sparks: ResMut<BulletSparks>,
 ) {
     let dt = time.delta_secs();
     for (entity, gt, mut pending) in &mut query {
         pending.timer -= dt;
         if pending.timer <= 0.0 {
             let origin = gt.translation() + Vec3::Y * 0.5;
-            let forward = gt.forward();
+            let forward = Dir3::new(gt.rotation() * Vec3::Z).unwrap_or(Dir3::Z);
             let filter = SpatialQueryFilter::from_excluded_entities([entity]);
             if let Some(hit) = spatial.cast_ray(origin, forward, 1.8, true, &filter) {
                 let hit_pos = origin + *forward * hit.distance;
@@ -312,6 +334,37 @@ pub fn tick_pending_melee_hits(
                     &q_skel,
                     &q_driver,
                 );
+                
+                // Spawn 3 sparks jumping at random speeds around contact point +/- 0.1m
+                for _ in 0..3 {
+                    let offset = Vec3::new(
+                        (rand::random::<f32>() * 2.0 - 1.0) * 0.1,
+                        (rand::random::<f32>() * 2.0 - 1.0) * 0.1,
+                        (rand::random::<f32>() * 2.0 - 1.0) * 0.1,
+                    );
+                    let spawn_pos = hit_pos + offset;
+
+                    let rx = rand::random::<f32>() * 2.0 - 1.0;
+                    let ry = rand::random::<f32>() * 1.5 + 0.3;
+                    let rz = rand::random::<f32>() * 2.0 - 1.0;
+                    let jump_dir = Vec3::new(rx, ry, rz).normalize_or_zero();
+
+                    let speed = if is_person {
+                        // Red and slower for persons
+                        rand::random::<f32>() * 1.5 + 0.8
+                    } else {
+                        // Metallic clashing sparks
+                        rand::random::<f32>() * 4.0 + 3.0
+                    };
+
+                    sparks.0.push(BulletSpark {
+                        position: spawn_pos,
+                        velocity: jump_dir * speed,
+                        is_person,
+                        lifetime: 1.0,
+                    });
+                }
+
                 if is_person {
                     if pending.is_melee {
                         commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {

@@ -15,6 +15,8 @@ use crate::plugins::pedestrians::skeleton::{
 pub struct SpawnPedestrianEvent {
     pub url: PedestrianUrl,
     pub position: Vec3,
+    pub controller: Entity,
+    pub parent: Entity,
 }
 
 #[derive(Component)]
@@ -31,6 +33,9 @@ pub struct PedestrianGltf {
 
 #[derive(Component)]
 pub struct NeedAlignment;
+
+#[derive(Component)]
+pub struct ModelController(pub Entity);
 
 /// Monotonic index handed to each spawned pedestrian (spawn order).
 #[derive(Resource, Default)]
@@ -56,7 +61,8 @@ pub fn spawn_pedestrian_observer(
 
     commands
         .spawn((
-            Transform::from_translation(req.position),
+            ChildOf(req.parent),
+            Transform::IDENTITY,
             Visibility::default(),
             InheritedVisibility::default(),
             ModelRoot {
@@ -68,6 +74,7 @@ pub fn spawn_pedestrian_observer(
                 handle: gltf_handle,
             },
             NeedAlignment,
+            ModelController(req.controller),
         ))
         .with_children(|parent| {
             parent.spawn((
@@ -79,6 +86,26 @@ pub fn spawn_pedestrian_observer(
                 InheritedVisibility::default(),
             ));
         });
+}
+
+pub fn link_pedestrian_model(
+    mut commands: Commands,
+    mut controlled: Option<ResMut<crate::plugins::pedestrians::pedestrian_controller_plugin::ControlledCharacter>>,
+    q_models: Query<(Entity, &ModelController), Added<ModelRoot>>,
+    q_ai: Query<(), With<crate::plugins::pedestrian_ai::AiPedestrian>>,
+) {
+    for (model_ent, controller_ref) in &q_models {
+        let controller = controller_ref.0;
+        if q_ai.get(controller).is_ok() {
+            // It's an AI pedestrian!
+            commands.entity(controller).insert(crate::plugins::pedestrian_ai::AiModel(model_ent));
+        } else if let Some(ref mut controlled) = controlled {
+            // It's the player!
+            commands.entity(model_ent).insert(crate::plugins::pedestrians::ManualAnimation);
+            controlled.ped = Some(model_ent);
+            controlled.awaiting = false;
+        }
+    }
 }
 
 fn get_mesh_descendants(

@@ -8,7 +8,7 @@ use super::*;
 use crate::plugins::{
     cars_driving::driving_plugin::GamePhysicsLayer,
     pedestrians::{
-        ManualAnimation, ModelRoot, PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent,
+        PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent,
     },
     states::GameControlState,
 };
@@ -133,35 +133,11 @@ pub fn spawn_controlled_pedestrian_observer(
     commands.trigger(SpawnPedestrianEvent {
         url,
         position: controller_pos,
+        controller,
+        parent: scale_node,
     });
 
     next_state.set(GameControlState::ControllingPedestrian);
-}
-
-/// Adopts a freshly spawned pedestrian model as the visual child of the pending controller.
-pub fn adopt_pedestrian(
-    mut commands: Commands,
-    mut controlled: ResMut<ControlledCharacter>,
-    new_peds: Query<Entity, Added<ModelRoot>>,
-) {
-    if !controlled.awaiting {
-        return;
-    }
-    let Some(scale_node) = controlled.scale_node else {
-        return;
-    };
-    for ped in new_peds.iter() {
-        commands.entity(ped).insert((
-            // Parent under the scale node; the vertical offset + scale live on that node.
-            ChildOf(scale_node),
-            Transform::IDENTITY,
-            // Drive this model's animations manually (skip the shared play_animations_system).
-            ManualAnimation,
-        ));
-        controlled.ped = Some(ped);
-        controlled.awaiting = false;
-        break;
-    }
 }
 
 /// Escape leaves pedestrian control: despawn the character and return to freecam.

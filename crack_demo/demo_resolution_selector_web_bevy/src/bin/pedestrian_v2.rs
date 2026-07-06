@@ -101,9 +101,14 @@ fn spawn_grid_system(
         let z = (row as f32 - (((count as f32 / cols as f32).ceil() - 1.0) / 2.0)) * GRID_SIZE;
         let y = 0.0;
 
+        let dummy_parent = commands.spawn(
+            Transform::from_translation(Vec3::new(x, y, z))
+        ).id();
         commands.trigger(SpawnPedestrianEvent {
             url: url.clone(),
             position: Vec3::new(x, y, z),
+            controller: dummy_parent,
+            parent: dummy_parent,
         });
     }
 

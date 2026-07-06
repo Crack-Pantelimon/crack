@@ -34,6 +34,7 @@ use draw_skel_debug::draw_skeletons_system;
 use manifest::{TextAsset, TextAssetLoader, load_pedestrian_manifest_system, start_manifest_load};
 use spawn_pedestrian::{
     PedestrianSpawnCounter, init_pedestrians_system, spawn_pedestrian_observer,
+    link_pedestrian_model,
 };
 
 pub struct PedestriansPlugin;
@@ -54,6 +55,7 @@ impl Plugin for PedestriansPlugin {
                 (
                     load_pedestrian_manifest_system,
                     init_pedestrians_system,
+                    link_pedestrian_model,
                     setup_animation_players_system,
                     play_animations_system,
                     draw_skeletons_system,
