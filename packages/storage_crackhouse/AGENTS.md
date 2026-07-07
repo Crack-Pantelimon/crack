@@ -17,26 +17,26 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## todos
 ```
-.github/copilot-instructions.md:22  # TODO: s
-.github/copilot-instructions.md:24  # TODO: s
-.github/copilot-instructions.md:25  # TODO: s
-.github/copilot-instructions.md:26  # TODO: s
-.github/copilot-instructions.md:27  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:28  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:29  # TODO: s
-.github/copilot-instructions.md:30  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:31  # TODO: s
-.github/copilot-instructions.md:32  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:33  # TODO: s
-.github/copilot-instructions.md:34  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:35  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:36  # TODO: s
-.github/copilot-instructions.md:37  # TODO: s
-.github/copilot-instructions.md:38  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:39  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:40  # TODO: s
-.github/copilot-instructions.md:41  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-.github/copilot-instructions.md:42  # TODO: s
+.github\copilot-instructions.md:22  # TODO: s
+.github\copilot-instructions.md:24  # TODO: s
+.github\copilot-instructions.md:25  # TODO: s
+.github\copilot-instructions.md:26  # TODO: s
+.github\copilot-instructions.md:27  # TODO: s
+.github\copilot-instructions.md:28  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
+.github\copilot-instructions.md:29  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
+.github\copilot-instructions.md:30  # TODO: s
+.github\copilot-instructions.md:31  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
+.github\copilot-instructions.md:32  # TODO: s
+.github\copilot-instructions.md:33  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
+.github\copilot-instructions.md:34  # TODO: s
+.github\copilot-instructions.md:35  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
+.github\copilot-instructions.md:36  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
+.github\copilot-instructions.md:37  # TODO: s
+.github\copilot-instructions.md:38  # TODO: s
+.github\copilot-instructions.md:39  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
+.github\copilot-instructions.md:40  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
+.github\copilot-instructions.md:41  # TODO: s
+.github\copilot-instructions.md:42  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
 ```
 
 ## .
@@ -48,30 +48,8 @@ h1 Code signatures
 h2 SigMap commands
 h2 todos
 h2 .
-h3 CLAUDE.md
 h3 AGENTS.md
-h3 Cargo.toml
-h2 .github
-h3 .github/copilot-instructions.md
-h3 .github/gemini-context.md
-h2 src
-h3 src/api.rs
-h3 src/impl_rusqulite.rs
-h3 src/lib.rs
-h3 src/models.rs
-h3 src/types.rs
-code-fence plain
-```
-
-### CLAUDE.md
-```
-h2 Auto-generated signatures
-h1 Code signatures
-h2 SigMap commands
-h2 todos
-h2 .
 h3 CLAUDE.md
-h3 AGENTS.md
 h3 Cargo.toml
 h2 .github
 h3 .github/copilot-instructions.md
@@ -105,17 +83,15 @@ key sqlite-wasm-vfs
 key sqlite-wasm-rs
 ```
 
-## .github
-
-### .github/copilot-instructions.md
+### CLAUDE.md
 ```
 h2 Auto-generated signatures
 h1 Code signatures
 h2 SigMap commands
 h2 todos
 h2 .
-h3 CLAUDE.md
 h3 AGENTS.md
+h3 CLAUDE.md
 h3 Cargo.toml
 h2 .github
 h3 .github/copilot-instructions.md
@@ -129,15 +105,39 @@ h3 src/types.rs
 code-fence plain
 ```
 
-### .github/gemini-context.md
+## .github
+
+### .github\copilot-instructions.md
+```
+h2 Auto-generated signatures
+h1 Code signatures
+h2 SigMap commands
+h2 todos
+h2 .
+h3 AGENTS.md
+h3 CLAUDE.md
+h3 Cargo.toml
+h2 .github
+h3 .github/copilot-instructions.md
+h3 .github/gemini-context.md
+h2 src
+h3 src/api.rs
+h3 src/impl_rusqulite.rs
+h3 src/lib.rs
+h3 src/models.rs
+h3 src/types.rs
+code-fence plain
+```
+
+### .github\gemini-context.md
 ```
 h2 Auto-generated signatures
 h2 Code Signatures
 h2 SigMap commands
 h2 todos
 h2 .
-h3 CLAUDE.md
 h3 AGENTS.md
+h3 CLAUDE.md
 h3 Cargo.toml
 h2 .github
 h3 .github/copilot-instructions.md
@@ -153,24 +153,24 @@ code-fence plain
 
 ## src
 
-### src/api.rs
+### src\api.rs
 ```
 pub async fn execute_sql2(sql: String) → anyhow::Result<SqlResultSet>
 pub async fn execute_sql_params(req: SQLAndParams) → anyhow::Result<SqlResultSet>
 ```
 
-### src/impl_rusqulite.rs
+### src\impl_rusqulite.rs
 ```
 pub async fn sql_query(sql: SQLAndParams) → anyhow::Result<SqlResultSet>
 ```
 
-### src/lib.rs
+### src\lib.rs
 ```
 pub async fn install_opfs_sahpool() → anyhow::Result<()>
 pub async fn install_relaxed_idb() → anyhow::Result<()>
 ```
 
-### src/models.rs
+### src\models.rs
 ```
 pub struct ModelColumnImpl
 pub trait ModelGroup
@@ -185,7 +185,7 @@ impl Option
 pub async fn run_migrate_tables(groups: impl Iterator<Item = Arc<dyn ModelGroup>>,) → anyhow::Result<()>
 ```
 
-### src/types.rs
+### src\types.rs
 ```
 pub struct SQLAndParams
 pub struct SqlResultSet

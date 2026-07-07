@@ -1,0 +1,52 @@
+use dioxus::prelude::*;
+use protocol::{
+    api::{
+        api_declarations::GetUserProfile, client_api_manager::ClientApiManager,
+    },
+    global_matchmaker::GlobalMatchmaker,
+    user_identity::UserIdentity,
+};
+
+use crate::comp::users::top_players_tables::DisplayUserProfileCard;
+
+#[component]
+pub fn UserProfileDisplay(
+    api: ReadSignal<ClientApiManager>,
+    mm: ReadSignal<GlobalMatchmaker>,
+    user_id: ReadSignal<UserIdentity>,
+) -> Element {
+    let nickname = user_id.read().nickname();
+    let mut err = use_signal(String::new);
+
+    let data = use_resource(move || {
+        let api = api.read().clone();
+        let user_id = *user_id.read();
+        async move {
+            let x = api
+                .call_method::<GetUserProfile>(user_id)
+                .await
+                .map_err(|e| format!("{e:#?}"));
+            if let Err(ref e) = x {
+                err.set(e.to_string());
+            };
+            x
+        }
+    });
+    let data = use_memo(move || data.read().clone().and_then(|x| x.ok()));
+
+    rsx! {
+
+        h1 {
+            "User \"{nickname}\""
+        }
+        if let Some(d) = data.read().as_ref() {
+            DisplayUserProfileCard {item: d.clone()}
+        }
+        if !err.read().is_empty() {
+            div {
+                style:"color:red;",
+                "{err}"
+            }
+        }
+    }
+}

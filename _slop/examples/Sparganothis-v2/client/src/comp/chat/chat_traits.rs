@@ -1,0 +1,77 @@
+use dioxus::prelude::*;
+use protocol::{
+    chat::global_chat::{
+        GlobalChatMessageContent, GlobalChatPresence, GlobalChatRoomType,
+    },
+    IChatRoomType as ChatMessageType2,
+};
+
+pub trait ChatMessageType:
+    ChatMessageType2 + RenderElement + FromUserInput + Clone
+{
+}
+impl<T> ChatMessageType for T where
+    T: ChatMessageType2 + RenderElement + FromUserInput + Clone
+{
+}
+pub trait RenderElement: ChatMessageType2 {
+    fn render_message(message: <Self as ChatMessageType2>::M) -> Element;
+    fn render_presence(
+        payload: Option<<Self as ChatMessageType2>::P>,
+    ) -> Element;
+}
+pub trait FromUserInput: ChatMessageType2 {
+    fn from_user_input(input: String) -> <Self as ChatMessageType2>::M;
+}
+
+impl FromUserInput for GlobalChatRoomType {
+    fn from_user_input(input: String) -> <Self as ChatMessageType2>::M {
+        GlobalChatMessageContent::TextMessage { text: input }
+    }
+}
+impl RenderElement for GlobalChatRoomType {
+    fn render_message(message: <Self as ChatMessageType2>::M) -> Element {
+        match message {
+            GlobalChatMessageContent::TextMessage { text } => rsx! {
+                {text}
+            },
+            _x => {
+                // format!("{:#?}", _x)
+                dioxus::logger::tracing::info!(
+                    "global chat message: {:#?}",
+                    _x
+                );
+                rsx! {}
+            }
+        }
+    }
+    fn render_presence(payload: Option<GlobalChatPresence>) -> Element {
+        match payload {
+            Some(payload) => {
+                rsx! {
+                    br{}
+                    if ! payload.platform.is_empty() {
+                        small {
+                            "{truncate_str(payload.platform.clone())}:"
+                        }
+                    }
+                    if ! payload.url.is_empty() {
+                        small {
+                            "{truncate_str(payload.url.clone())}"
+                        }
+                    }
+                }
+            }
+            None => rsx! {
+                br{}
+            },
+        }
+    }
+}
+
+fn truncate_str(s: String) -> String {
+    if s.len() < 20 {
+        return s;
+    }
+    s[0..20].to_string()
+}

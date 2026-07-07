@@ -33,6 +33,7 @@ getrandom = { version = "0.4.3" }
 tracing = "*"
 anyhow = { workspace = true }
 _crack_utils = { path = "../../packages/_crack_utils" }
+net_crackpipe = { path = "../../packages/net_crackpipe" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 game_logic = { path = "../../crack_demo/game_logic" }

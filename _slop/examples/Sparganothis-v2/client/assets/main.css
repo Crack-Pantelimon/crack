@@ -1,0 +1,40 @@
+.global_parent {
+  background-color: var(--pico-background-color);
+  color: var(--pico-color);
+  width:100dvw;
+  height:100dvh;
+  margin:0;
+  padding:0;
+  border: 0;
+  overflow: hidden;
+}
+.chat-window-container {
+  display: flex;
+  flex-direction: row;
+  height: calc(100% - 20px);
+  overflow: hidden;
+  margin: 0px; padding: 0px;
+}
+.chat-left-pane { 
+  overflow-x: hidden;
+  overflow-y: auto;
+  height: calc(100% - 10px);
+  width: 20%;
+  margin: 0px; padding: 0px;
+}
+.chat-main-pane {
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 10px);
+  width: 80%;
+  margin: 0px; padding: 0px;
+}
+.chat-bottom { 
+  height: 110px;
+  margin: 0px; padding: 0px;
+}
+.chat-main { 
+  overflow: auto;
+  height: calc(99% - 120px);
+  margin: 0px; padding: 0px;
+}

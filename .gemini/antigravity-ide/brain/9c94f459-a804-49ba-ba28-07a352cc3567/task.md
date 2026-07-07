@@ -1,0 +1,11 @@
+- [x] Restore net_crackpipe library to an exact carbon copy of Sparganothis protocol
+    - [x] Copy protocol files over
+    - [x] Add `game` dependency to net_crackpipe Cargo.toml
+- [x] Create packages/game dummy crate
+    - [x] Create Cargo.toml
+    - [x] Implement src/lib.rs
+    - [x] Add to workspace Cargo.toml members
+- [x] Update workers with bootstrap spawning logic
+    - [x] Add logic in thread_worker/src/lib.rs
+    - [x] Add logic in web_worker/src/lib.rs
+- [/] Verify everything compiles and chat runs successfully

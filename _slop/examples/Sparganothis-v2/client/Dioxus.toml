@@ -1,0 +1,25 @@
+[application]
+
+# App (Project) Name
+name = "client"
+
+[web.app]
+# base_path = "Sparganothis-v2"
+# HTML title tag content
+title = "Sparganothis"
+
+# include `assets` in web platform
+[web.resource]
+
+# Additional CSS style files
+# style = ["/assets/main.css", "/assets/pico.jade.min.css"]
+style = []
+
+# Additional JavaScript files
+script = []
+
+[web.resource.dev]
+
+# Javascript code file
+# serve: [dev-server] only
+script = []

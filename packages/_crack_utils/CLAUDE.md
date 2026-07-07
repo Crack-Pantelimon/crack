@@ -23,25 +23,8 @@ h2 Auto-generated signatures
 h1 Code signatures
 h2 SigMap commands
 h2 .
-h3 CLAUDE.md
 h3 AGENTS.md
-h3 Cargo.toml
-h2 .github
-h3 .github/copilot-instructions.md
-h3 .github/gemini-context.md
-h2 src
-h3 src/lib.rs
-code-fence plain
-```
-
-### CLAUDE.md
-```
-h2 Auto-generated signatures
-h1 Code signatures
-h2 SigMap commands
-h2 .
 h3 CLAUDE.md
-h3 AGENTS.md
 h3 Cargo.toml
 h2 .github
 h3 .github/copilot-instructions.md
@@ -70,16 +53,14 @@ key tokio.workspace
 key workspace
 ```
 
-## .github
-
-### .github/copilot-instructions.md
+### CLAUDE.md
 ```
 h2 Auto-generated signatures
 h1 Code signatures
 h2 SigMap commands
 h2 .
-h3 CLAUDE.md
 h3 AGENTS.md
+h3 CLAUDE.md
 h3 Cargo.toml
 h2 .github
 h3 .github/copilot-instructions.md
@@ -89,14 +70,33 @@ h3 src/lib.rs
 code-fence plain
 ```
 
-### .github/gemini-context.md
+## .github
+
+### .github\copilot-instructions.md
+```
+h2 Auto-generated signatures
+h1 Code signatures
+h2 SigMap commands
+h2 .
+h3 AGENTS.md
+h3 CLAUDE.md
+h3 Cargo.toml
+h2 .github
+h3 .github/copilot-instructions.md
+h3 .github/gemini-context.md
+h2 src
+h3 src/lib.rs
+code-fence plain
+```
+
+### .github\gemini-context.md
 ```
 h2 Auto-generated signatures
 h2 Code Signatures
 h2 SigMap commands
 h2 .
-h3 CLAUDE.md
 h3 AGENTS.md
+h3 CLAUDE.md
 h3 Cargo.toml
 h2 .github
 h3 .github/copilot-instructions.md
@@ -108,7 +108,7 @@ code-fence plain
 
 ## src
 
-### src/lib.rs
+### src\lib.rs
 ```
 pub fn get_timestamp_now_ms() → i64
 pub fn spawn(f: F) → n0_future::task::JoinHandle...

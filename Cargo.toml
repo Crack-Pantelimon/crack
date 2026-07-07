@@ -48,6 +48,7 @@ members = [
     "packages/storage_crackhouse",
     "packages/web_serviceworker_crackloader",
     "packages/web_serviceworker_crackslave",
+    "packages/game",
 
     "packages/api_asscrack",
     "packages/thread_crackworker",

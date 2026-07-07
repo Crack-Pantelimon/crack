@@ -1,0 +1,54 @@
+[package]
+name = "client"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+# desktop = ["dioxus/desktop" , "dep:dioxus-native"]
+# mobile = ["dioxus/mobile"]
+
+
+
+[dependencies]
+
+dioxus = { version = "0.7.9", features = ["router"] }
+dioxus-sdk = { version = "0.7", features = ["time", "storage"]  }
+dioxus-free-icons = { version = "0.10", features = ["bootstrap"] }
+tracing-wasm = "0.2.1"
+game = { path = "../game" }
+protocol = { path = "../protocol" }
+web-time = "1"
+uuid = { workspace = true }
+
+anyhow = "1.0.86"
+async-channel = "2.3.1"
+clap = { version = "4.5.30", features = ["derive"], optional = true }
+console_error_panic_hook = "0.1.7"
+getrandom = { version = "0.2", features = ["js"] }
+rand = { version = "0.8" }
+iroh.workspace = true
+n0-future = "0.1.2"
+serde = "1.0.217"
+serde-wasm-bindgen = "0.6.5"
+tokio = { version = "1.43.0", default-features = false, features = ["sync"] }
+tokio-stream = { version = "0.1.17", default-features = false, features = ["sync"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-subscriber-wasm = "0.1.0"
+wasm-bindgen = "=0.2.100"
+wasm-bindgen-futures = "0.4.50"
+wasm-streams = "0.4.2"
+chrono = "0.4.40"
+pretty-duration = "0.1.1"
+# dioxus-native = { version = "0.1.0-alpha.1", optional = true }
+futures-util = "0.3.31"
+keyboard-types = {version = "0.7.0", features = ["serde"]}
+bincode = "1"
+base64 = "0.22"
+game_net = {path = "../game_net"}
+web-sys = {version = "0.3", features = ["Clipboard", "Window", "Navigator", "Permissions"] }
