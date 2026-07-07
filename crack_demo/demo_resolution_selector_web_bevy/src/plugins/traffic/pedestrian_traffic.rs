@@ -1,24 +1,18 @@
-use bevy::prelude::*;
 use avian3d::prelude::*;
+use bevy::prelude::*;
 
+use super::road_graph::{RerouteMode, TrafficRoadGraph, pick_continuation, quantize};
+use super::spawn::get_ground_y;
+use super::{
+    LOOKAHEAD_XZ, PED_ROAD_OFFSET, PED_SPAWN_SPACING, PED_STUCK_REROUTE_S, SPAWN_MIN_CAMERA_DIST,
+    SpawnTrafficPedestrianEvent, TrafficConfig, TrafficPedestrian, VIEW_RAYCAST_HZ,
+    WAYPOINT_REACHED_XZ,
+};
 use crate::plugins::{
     map_plugin::MapTree,
-    pedestrians::{
-        pedestrian_controller_plugin::LocomotionInput,
-    },
-    pedestrian_ai::{
-        AiPedestrian, AiState, Faction,
-        spawn_ai::SpawnAiPedestrianEvent,
-    },
+    pedestrian_ai::{AiPedestrian, AiState, Faction, spawn_ai::SpawnAiPedestrianEvent},
+    pedestrians::pedestrian_controller_plugin::LocomotionInput,
 };
-use super::{
-    TrafficConfig, TrafficPedestrian, SpawnTrafficPedestrianEvent,
-    SPAWN_MIN_CAMERA_DIST, PED_SPAWN_SPACING,
-    WAYPOINT_REACHED_XZ, LOOKAHEAD_XZ, PED_ROAD_OFFSET,
-    PED_STUCK_REROUTE_S, VIEW_RAYCAST_HZ,
-};
-use super::road_graph::{TrafficRoadGraph, quantize, pick_continuation, RerouteMode};
-use super::spawn::get_ground_y;
 
 #[derive(Resource, Default)]
 pub struct PendingTrafficPeds {
@@ -61,7 +55,10 @@ pub fn traffic_pedestrian_spawner(
         return;
     };
 
-    let existing = q_all_peds.iter().map(|tf| tf.translation).collect::<Vec<_>>();
+    let existing = q_all_peds
+        .iter()
+        .map(|tf| tf.translation)
+        .collect::<Vec<_>>();
 
     if let Some(candidate_point) = super::common::pick_spawn_candidate(
         &graph,
@@ -97,7 +94,8 @@ pub fn spawn_traffic_pedestrian_observer(
 
     let req_pos = trigger.event().position;
 
-    let Some((closest_seg_idx, path_points)) = super::common::build_path_from(&graph, req_pos) else {
+    let Some((closest_seg_idx, path_points)) = super::common::build_path_from(&graph, req_pos)
+    else {
         return;
     };
 
@@ -111,7 +109,11 @@ pub fn spawn_traffic_pedestrian_observer(
     let perp = Vec3::new(dir.z, 0.0, -dir.x);
     let offset_spawn = start_pos + perp * offset_sign * PED_ROAD_OFFSET;
 
-    let ground_y = get_ground_y(offset_spawn, map_tree.as_ref().map(|r| &**r), &spatial_query);
+    let ground_y = get_ground_y(
+        offset_spawn,
+        map_tree.as_ref().map(|r| &**r),
+        &spatial_query,
+    );
     let spawn_pos = Vec3::new(offset_spawn.x, ground_y, offset_spawn.z);
 
     let faction = match rand::random::<u32>() % 5 {
@@ -230,7 +232,9 @@ pub fn drive_traffic_pedestrians(
                 tp.state.current_seg = next_seg;
             } else {
                 // Snap to nearest segment overall fallback
-                if let Some((closest_seg, path_points)) = super::common::build_path_from(&graph, ped_pos) {
+                if let Some((closest_seg, path_points)) =
+                    super::common::build_path_from(&graph, ped_pos)
+                {
                     tp.state.path = path_points;
                     tp.state.next_idx = 1;
                     tp.state.current_seg = closest_seg;
@@ -243,7 +247,8 @@ pub fn drive_traffic_pedestrians(
         while tp.state.next_idx < tp.state.path.len() {
             let target = tp.state.path[tp.state.next_idx];
             let dir = if tp.state.next_idx > 0 {
-                (tp.state.path[tp.state.next_idx] - tp.state.path[tp.state.next_idx - 1]).normalize_or_zero()
+                (tp.state.path[tp.state.next_idx] - tp.state.path[tp.state.next_idx - 1])
+                    .normalize_or_zero()
             } else if tp.state.path.len() >= 2 {
                 (tp.state.path[1] - tp.state.path[0]).normalize_or_zero()
             } else {
@@ -255,7 +260,8 @@ pub fn drive_traffic_pedestrians(
                 offset_target += perp * tp.offset_sign * PED_ROAD_OFFSET;
             }
 
-            let dist_xz = Vec2::new(ped_pos.x - offset_target.x, ped_pos.z - offset_target.z).length();
+            let dist_xz =
+                Vec2::new(ped_pos.x - offset_target.x, ped_pos.z - offset_target.z).length();
             if dist_xz < WAYPOINT_REACHED_XZ {
                 tp.state.next_idx += 1;
             } else {
@@ -407,4 +413,3 @@ pub fn despawn_traffic_pedestrians(
         }
     }
 }
-

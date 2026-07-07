@@ -18,7 +18,7 @@ use bevy_egui::EguiPrimaryContextPass;
 
 use crate::plugins::pedestrians::pedestrian_controller_plugin::locomotion::CharacterLocomotionPlugin;
 
-pub use faction::{Dying, Enemies, Faction, Health, WarMatrix, DEATH_ANIM_TIME, DEFAULT_HP};
+pub use faction::{DEATH_ANIM_TIME, DEFAULT_HP, Dying, Enemies, Faction, Health, WarMatrix};
 pub use spawn_ai::SpawnAiPedestrianEvent;
 
 /// Emitted whenever any pedestrian (AI or player) dies, so grudge lists can be pruned.

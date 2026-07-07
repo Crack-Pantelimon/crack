@@ -55,6 +55,12 @@
  * ============================================================================
  */
 
+// Ping/pong tuning. wasm-bindgen init + OPFS install can take a while on a cold
+// load, so give the handshake generous headroom before declaring a worker dead.
+const PING_TIMEOUT_MS = 500;   // how long to wait for a single pong
+const PING_SLEEP_MS = 250;     // backoff between failed ping attempts
+const PING_MAX_ATTEMPTS = 40;  // total attempts before giving up (~30s worst case)
+
 export function init_workers2() {
     console.log('[Client] init_workers2() invoked.');
 
@@ -79,8 +85,8 @@ export function init_workers2() {
 
     // Ping/pong check with timeout = 120ms, after fail sleep = 120ms, retry count = 10
     async function verifyConnection() {
-        for (let attempt = 1; attempt <= 10; attempt++) {
-            console.log(`[Client] Sending ping attempt ${attempt}/10...`);
+        for (let attempt = 1; attempt <= PING_MAX_ATTEMPTS; attempt++) {
+            console.log(`[Client] Sending ping attempt ${attempt}/${PING_MAX_ATTEMPTS}...`);
             const pingId = Math.random().toString(36).substring(2);
             let pongReceived = false;
 
@@ -93,9 +99,9 @@ export function init_workers2() {
             sharedWorker.port.addEventListener('message', pingListener);
             sharedWorker.port.postMessage({ type: 'ping', id: pingId });
 
-            // Wait up to 120ms for pong
+            // Wait up to PING_TIMEOUT_MS for pong
             await Promise.race([
-                sleep(120),
+                sleep(PING_TIMEOUT_MS),
                 new Promise((resolve) => {
                     const checkInterval = setInterval(() => {
                         if (pongReceived) {
@@ -114,13 +120,13 @@ export function init_workers2() {
                 pingSuccessful = true;
                 break;
             } else {
-                console.warn(`[Client] Ping attempt ${attempt} timed out. Sleeping 120ms before retry...`);
-                await sleep(120);
+                console.warn(`[Client] Ping attempt ${attempt} timed out. Sleeping ${PING_SLEEP_MS}ms before retry...`);
+                await sleep(PING_SLEEP_MS);
             }
         }
 
         if (!pingSuccessful) {
-            console.error('[Client] Failed to establish ping/pong connection with Shared Worker after 10 attempts.');
+            console.error(`[Client] Failed to establish ping/pong connection with Shared Worker after ${PING_MAX_ATTEMPTS} attempts.`);
         }
     }
 
@@ -149,8 +155,8 @@ export function init_workers2() {
 
         // 1. Ping/pong loop with Dedicated Worker (timeout = 120ms, after fail sleep = 120ms, retry count = 10)
         let workerPingSucceeded = false;
-        for (let attempt = 1; attempt <= 10; attempt++) {
-            console.log(`[Client] Dedicated Worker direct ping attempt ${attempt}/10...`);
+        for (let attempt = 1; attempt <= PING_MAX_ATTEMPTS; attempt++) {
+            console.log(`[Client] Dedicated Worker direct ping attempt ${attempt}/${PING_MAX_ATTEMPTS}...`);
             const pingId = Math.random().toString(36).substring(2);
             let pongReceived = false;
 
@@ -163,9 +169,9 @@ export function init_workers2() {
             dedicatedWorker.addEventListener('message', listener);
             dedicatedWorker.postMessage({ type: 'ping', id: pingId });
 
-            // Wait up to 120ms for pong
+            // Wait up to PING_TIMEOUT_MS for pong
             await Promise.race([
-                sleep(120),
+                sleep(PING_TIMEOUT_MS),
                 new Promise((resolve) => {
                     const checkInterval = setInterval(() => {
                         if (pongReceived) {
@@ -183,13 +189,13 @@ export function init_workers2() {
                 workerPingSucceeded = true;
                 break;
             } else {
-                console.warn(`[Client] Dedicated Worker ping attempt ${attempt} timed out. Sleeping 120ms...`);
-                await sleep(120);
+                console.warn(`[Client] Dedicated Worker ping attempt ${attempt} timed out. Sleeping ${PING_SLEEP_MS}ms...`);
+                await sleep(PING_SLEEP_MS);
             }
         }
 
         if (!workerPingSucceeded) {
-            console.error('[Client] Dedicated Worker ping/pong failed after 10 attempts.');
+            console.error(`[Client] Dedicated Worker ping/pong failed after ${PING_MAX_ATTEMPTS} attempts.`);
             if (dedicatedWorker) {
                 dedicatedWorker.terminate();
                 dedicatedWorker = null;

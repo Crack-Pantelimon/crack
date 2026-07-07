@@ -5,10 +5,13 @@ use bevy::prelude::*;
 
 use crate::plugins::cars_driving::driving_plugin::spawn_car::{Car, DisabledCar};
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{
-    CharacterController, DriverMesh, CAPSULE_HALF_HEIGHT,
+    CAPSULE_HALF_HEIGHT, CharacterController, DriverMesh,
 };
 
-use super::{AiPedestrian, AiPerception, AiThink, faction::{Enemies, Faction, Health, WarMatrix}};
+use super::{
+    AiPedestrian, AiPerception, AiThink,
+    faction::{Enemies, Faction, Health, WarMatrix},
+};
 
 /// Maximum distance at which an AI ped can perceive enemies.
 const SIGHT_RANGE: f32 = 50.0;
@@ -31,13 +34,17 @@ pub fn ai_perception(
     spatial_query: SpatialQuery,
     war: Res<WarMatrix>,
     mut ai_query: Query<
-        (Entity, &GlobalTransform, &Faction, &Enemies, &AiThink, &mut AiPerception),
+        (
+            Entity,
+            &GlobalTransform,
+            &Faction,
+            &Enemies,
+            &AiThink,
+            &mut AiPerception,
+        ),
         With<AiPedestrian>,
     >,
-    targets_query: Query<
-        (Entity, &GlobalTransform, &Faction, &Health),
-        With<CharacterController>,
-    >,
+    targets_query: Query<(Entity, &GlobalTransform, &Faction, &Health), With<CharacterController>>,
     q_cars: Query<(Entity, &GlobalTransform, &Children), (With<Car>, Without<DisabledCar>)>,
     q_driver_faction: Query<&Faction, With<DriverMesh>>,
     parents: Query<&ChildOf>,
@@ -69,20 +76,29 @@ pub fn ai_perception(
         let my_head = my_pos + Vec3::Y * HEAD_OFFSET;
 
         // Build a hostile candidate list: at-war factions plus anyone on the personal grudge list.
-        let is_hostile = |e: Entity, f: Faction| war.at_war(*my_faction, f) || my_enemies.0.contains(&e);
+        let is_hostile =
+            |e: Entity, f: Faction| war.at_war(*my_faction, f) || my_enemies.0.contains(&e);
 
         let mut candidates: Vec<Candidate> = Vec::new();
         for (e, pos, f, alive) in &ped_candidates {
             if *e == my_entity || !*alive || !is_hostile(*e, *f) {
                 continue;
             }
-            candidates.push(Candidate { entity: *e, pos: *pos, is_car: false });
+            candidates.push(Candidate {
+                entity: *e,
+                pos: *pos,
+                is_car: false,
+            });
         }
         for (e, pos, f) in &car_candidates {
             if !is_hostile(*e, *f) {
                 continue;
             }
-            candidates.push(Candidate { entity: *e, pos: *pos, is_car: true });
+            candidates.push(Candidate {
+                entity: *e,
+                pos: *pos,
+                is_car: true,
+            });
         }
 
         // Sort nearest-first and cull beyond sight range.
@@ -98,7 +114,11 @@ pub fn ai_perception(
 
         for (idx, dist) in sorted {
             let c = &candidates[idx];
-            let aim_off = if c.is_car { CAR_AIM_OFFSET } else { HEAD_OFFSET };
+            let aim_off = if c.is_car {
+                CAR_AIM_OFFSET
+            } else {
+                HEAD_OFFSET
+            };
             let their_head = c.pos + Vec3::Y * aim_off;
             let ray_dir = (their_head - my_head).normalize_or_zero();
             let ray_len = dist + HEAD_OFFSET; // a bit of slack

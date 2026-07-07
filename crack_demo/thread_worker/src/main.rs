@@ -24,14 +24,7 @@ async fn main() -> anyhow::Result<()> {
     dioxus_logger::init(Level::INFO).expect("logger failed to init");
     tracing::info!("tracing...");
 
-    let _f = ThreadWorkerFactory {
-        impl_mapping: make_api_mapping(vec![
-            Arc::new(WorkerApiGroup2),
-            Arc::new(StorageCrackhouseApiGroup),
-        ]),
-    }
-    .load_worker()
-    .await?;
+    let _f = thread_worker::spawn_in_process_worker().await?;
 
     let c = ApiClient::new(_f);
     c.call::<WorkerPing>(()).await?;

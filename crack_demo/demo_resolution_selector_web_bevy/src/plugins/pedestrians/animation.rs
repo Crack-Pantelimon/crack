@@ -80,12 +80,14 @@ pub fn pedestrian_animation_control_observer(
     } else {
         let anim_name = ev.animation.clone();
         let anim_speed = ev.speed;
-        commands.entity(ev.ped).queue_silenced(move |mut entity: EntityWorldMut| {
-            entity.insert(TargetAnimation {
-                name: anim_name,
-                speed: anim_speed,
+        commands
+            .entity(ev.ped)
+            .queue_silenced(move |mut entity: EntityWorldMut| {
+                entity.insert(TargetAnimation {
+                    name: anim_name,
+                    speed: anim_speed,
+                });
             });
-        });
     }
 }
 

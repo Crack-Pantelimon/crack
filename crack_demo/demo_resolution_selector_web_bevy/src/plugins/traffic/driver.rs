@@ -1,18 +1,24 @@
-use bevy::prelude::*;
-use avian3d::prelude::LinearVelocity;
-use crate::plugins::cars_driving::driving_plugin::{CarDriveState, Drive};
+use super::road_graph::{RerouteMode, TrafficRoadGraph, pick_continuation, quantize};
 use super::{
-    TrafficConfig, TrafficCar, TrafficDriveMode,
-    WAYPOINT_REACHED_XZ, LOOKAHEAD_XZ, STUCK_SPEED_EPS, STUCK_TRIGGER_S, REVERSE_DURATION_S,
+    LOOKAHEAD_XZ, REVERSE_DURATION_S, STUCK_SPEED_EPS, STUCK_TRIGGER_S, TrafficCar, TrafficConfig,
+    TrafficDriveMode, WAYPOINT_REACHED_XZ,
 };
-use super::road_graph::{pick_continuation, RerouteMode, TrafficRoadGraph, quantize};
+use crate::plugins::cars_driving::driving_plugin::{CarDriveState, Drive};
+use avian3d::prelude::LinearVelocity;
+use bevy::prelude::*;
 
 pub fn drive_traffic_cars(
     time: Res<Time>,
     config: Res<TrafficConfig>,
     graph: Res<TrafficRoadGraph>,
     mut q_cars: Query<
-        (Entity, &Transform, &LinearVelocity, &mut CarDriveState, &mut TrafficCar),
+        (
+            Entity,
+            &Transform,
+            &LinearVelocity,
+            &mut CarDriveState,
+            &mut TrafficCar,
+        ),
         Without<crate::plugins::cars_driving::driving_plugin::spawn_car::DisabledCar>,
     >,
     mut commands: Commands,
@@ -58,7 +64,8 @@ pub fn drive_traffic_cars(
                         traffic_car.state.current_seg,
                         RerouteMode::ClosestAngle(car_fwd),
                     ) {
-                        let mut new_path = traffic_car.state.path[traffic_car.state.next_idx..].to_vec();
+                        let mut new_path =
+                            traffic_car.state.path[traffic_car.state.next_idx..].to_vec();
                         new_path.extend(next_points[1..].iter().cloned());
                         traffic_car.state.path = new_path;
                         traffic_car.state.next_idx = 0;
@@ -73,7 +80,8 @@ pub fn drive_traffic_cars(
                             seg.points.iter().cloned().rev().collect()
                         };
 
-                        let mut new_path = traffic_car.state.path[traffic_car.state.next_idx..].to_vec();
+                        let mut new_path =
+                            traffic_car.state.path[traffic_car.state.next_idx..].to_vec();
                         new_path.extend(reversed_points[1..].iter().cloned());
                         traffic_car.state.path = new_path;
                         traffic_car.state.next_idx = 0;
@@ -99,7 +107,8 @@ pub fn drive_traffic_cars(
                 // 4. Steering controller
                 let car_fwd = transform.rotation * Vec3::NEG_Z;
                 let fwd_xz = Vec2::new(car_fwd.x, car_fwd.z).normalize_or_zero();
-                let to_target = Vec2::new(target.x - car_pos.x, target.z - car_pos.z).normalize_or_zero();
+                let to_target =
+                    Vec2::new(target.x - car_pos.x, target.z - car_pos.z).normalize_or_zero();
 
                 // Perp-dot product for signed angle/steer input
                 let cross = fwd_xz.x * to_target.y - fwd_xz.y * to_target.x;
@@ -187,7 +196,9 @@ pub fn drive_traffic_cars(
                         traffic_car.state.current_seg = next_seg;
                     } else {
                         // Snap to nearest segment overall fallback using build_path_from
-                        if let Some((closest_seg_idx, path_points)) = super::common::build_path_from(&graph, car_pos) {
+                        if let Some((closest_seg_idx, path_points)) =
+                            super::common::build_path_from(&graph, car_pos)
+                        {
                             traffic_car.state.path = path_points;
                             traffic_car.state.next_idx = 1;
                             traffic_car.state.current_seg = closest_seg_idx;

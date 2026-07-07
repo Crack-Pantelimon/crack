@@ -284,7 +284,10 @@ pub fn car_pedestrian_damage(
     q_car: Query<&Car>,
     q_parent: Query<&ChildOf>,
     q_lin_vel: Query<&LinearVelocity>,
-    q_controller: Query<(), With<crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterController>>,
+    q_controller: Query<
+        (),
+        With<crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterController>,
+    >,
     healths: Query<&crate::plugins::pedestrian_ai::faction::Health>,
     time: Res<Time>,
     mut recently_hit: Local<HashMap<(Entity, Entity), f32>>,
@@ -292,7 +295,9 @@ pub fn car_pedestrian_damage(
     let current_time = time.elapsed_secs();
 
     // Clean up expired hit cooldowns
-    recently_hit.retain(|_, last_time| current_time - *last_time <= crate::plugins::traffic::CAR_HIT_COOLDOWN_S);
+    recently_hit.retain(|_, last_time| {
+        current_time - *last_time <= crate::plugins::traffic::CAR_HIT_COOLDOWN_S
+    });
 
     for ev in collision_events.read() {
         let car1_opt = find_car_entity(ev.collider1, &q_car, &q_parent)

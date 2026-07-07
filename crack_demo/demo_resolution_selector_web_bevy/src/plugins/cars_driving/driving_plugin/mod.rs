@@ -12,7 +12,9 @@ pub use rk4_prediction::{
 
 use crate::plugins::cars_driving::driving_plugin::{
     camera_follow::camera_follows_car,
-    collision_sparks::{handle_car_collisions, update_and_draw_collision_effects, car_pedestrian_damage},
+    collision_sparks::{
+        car_pedestrian_damage, handle_car_collisions, update_and_draw_collision_effects,
+    },
     spawn_car::Car,
 };
 use avian3d::prelude::{
@@ -354,16 +356,12 @@ fn get_gear_ratio(gear: usize, is_reverse: bool, wheel_radius: f32, car_max_spee
     let final_drive = 3.7f32;
     let shift_up_rpm = 5500.0f32;
     let gear_speed_fracs = [0.18f32, 0.32f32, 0.50f32, 0.72f32, 1.0f32];
-    
-    let idx = if is_reverse {
-        0
-    } else {
-        (gear - 1).min(4)
-    };
+
+    let idx = if is_reverse { 0 } else { (gear - 1).min(4) };
     let speed_frac = gear_speed_fracs[idx];
-    
+
     let car_max_speed_mps = car_max_speed / 3.6f32;
-    
+
     let ratio = (shift_up_rpm * 2.0f32 * std::f32::consts::PI * wheel_radius)
         / (speed_frac * car_max_speed_mps * 60.0f32 * final_drive);
     ratio

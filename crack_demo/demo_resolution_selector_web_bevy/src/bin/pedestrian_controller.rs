@@ -13,14 +13,23 @@ use bevy::world_serialization::WorldAssetRoot;
 use bevy_egui::EguiPlugin;
 
 use demo_resolution_selector_web_bevy::{
-    basic_app::make_basic_app, plugins::{
-        audio::GameAudioPlugin, cars_driving::{car_info::{get_car_asset, get_random_car_type}, driving_plugin::GamePhysicsLayer}, pedestrians::{
+    basic_app::make_basic_app,
+    plugins::{
+        audio::GameAudioPlugin,
+        cars_driving::{
+            car_info::{get_car_asset, get_random_car_type},
+            driving_plugin::GamePhysicsLayer,
+        },
+        pedestrians::{
             PedestrianManifest, PedestriansPlugin,
             pedestrian_controller_plugin::{
                 PedestrianControllerPlugin, SpawnControlledPedestrianEvent,
             },
-        }, states::GameControlState, weapons::WeaponsPlugin,
-    }, utils::setup_debug_scene::SetupDebugScenePlugin,
+        },
+        states::GameControlState,
+        weapons::WeaponsPlugin,
+    },
+    utils::setup_debug_scene::SetupDebugScenePlugin,
 };
 
 /// Approximate car body extents (matches `CarDriveState` defaults) used for the mass density.

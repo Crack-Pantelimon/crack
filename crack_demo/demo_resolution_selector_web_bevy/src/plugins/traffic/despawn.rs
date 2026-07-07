@@ -1,13 +1,8 @@
-use bevy::prelude::*;
 use avian3d::prelude::SpatialQuery;
+use bevy::prelude::*;
 
-use crate::plugins::{
-    cars_driving::driving_plugin::{CarDriveState},
-};
-use super::{
-    TrafficConfig, TrafficCar,
-    VIEW_RAYCAST_HZ, CAR_TOP_FUDGE,
-};
+use super::{CAR_TOP_FUDGE, TrafficCar, TrafficConfig, VIEW_RAYCAST_HZ};
+use crate::plugins::cars_driving::driving_plugin::CarDriveState;
 
 pub fn despawn_traffic_cars(
     time: Res<Time>,
@@ -79,4 +74,3 @@ pub fn despawn_traffic_cars(
         }
     }
 }
-

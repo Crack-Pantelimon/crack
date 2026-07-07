@@ -81,7 +81,8 @@ pub fn equip_weapon_observer(
     // Guns carry ammo state (a fresh full clip); anything else has none.
     match &ev.weapon {
         WeaponId::Gun(info) => {
-            let sound_idx = (_crack_utils::random_u32() as usize) % crate::plugins::audio::audio_fx::GUNSHOT_SOUNDS.len();
+            let sound_idx = (_crack_utils::random_u32() as usize)
+                % crate::plugins::audio::audio_fx::GUNSHOT_SOUNDS.len();
             commands.entity(ev.character).insert(super::GunState {
                 rounds: info.clip_size,
                 clip_size: info.clip_size,

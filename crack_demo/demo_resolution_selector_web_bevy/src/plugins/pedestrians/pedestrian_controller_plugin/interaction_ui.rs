@@ -8,19 +8,19 @@ use bevy::input::mouse::MouseWheel;
 use rand::seq::IndexedRandom;
 
 use super::spawn::{SpawnChoicePopup, SpawnControlledPedestrianEvent};
+use super::{AnimState, CAPSULE_HALF_HEIGHT, CombatState, character_physics_bundle};
 use crate::plugins::cars_driving::{
     car_info::get_random_car_type, driving_plugin::spawn_car::SpawnCarRequestEvent,
 };
+use crate::plugins::pedestrian_ai::faction::{Enemies, Health};
+use crate::plugins::pedestrian_ai::{
+    AiAnim, AiCombatTimers, AiModel, AiPedestrian, AiPerception, AiState, AiSteer, AiThink,
+    faction::{DEFAULT_HP, Faction},
+};
+use crate::plugins::pedestrians::ManualAnimation;
 use crate::plugins::weapons::{
     EquipWeaponEvent, EquippedWeapon, GunState, WeaponId, WeaponManifest,
 };
-use crate::plugins::pedestrians::ManualAnimation;
-use crate::plugins::pedestrian_ai::faction::{Enemies, Health};
-use crate::plugins::pedestrian_ai::{
-    AiPedestrian, AiModel, AiState, AiPerception, AiCombatTimers, AiSteer, AiAnim, AiThink,
-    faction::{Faction, DEFAULT_HP},
-};
-use super::{CAPSULE_HALF_HEIGHT, AnimState, CombatState, character_physics_bundle};
 
 /// On right-click in freecam, raycast to the map and open the choice popup at that point.
 pub fn handle_freecam_right_click(
@@ -313,7 +313,10 @@ pub fn tick_entering_car(
                 }
             }
 
-            let (faction, health) = q_player_fh.get(entity).map(|(f, h)| (*f, *h)).unwrap_or((Faction::Neutral, Health::full(DEFAULT_HP)));
+            let (faction, health) = q_player_fh
+                .get(entity)
+                .map(|(f, h)| (*f, *h))
+                .unwrap_or((Faction::Neutral, Health::full(DEFAULT_HP)));
 
             // Steal the visual model from the controller and seat it in the car; the
             // physics capsule and controller components despawn with the controller.
@@ -447,12 +450,13 @@ pub fn eject_driver_as_ai(
         ))
         .id();
 
-    commands.entity(driver_mesh_entity).insert((
-        ChildOf(scale_node),
-        Transform::IDENTITY,
-    ));
+    commands
+        .entity(driver_mesh_entity)
+        .insert((ChildOf(scale_node), Transform::IDENTITY));
 
-    commands.entity(controller).insert(AiModel(driver_mesh_entity));
+    commands
+        .entity(controller)
+        .insert(AiModel(driver_mesh_entity));
 }
 
 /// Plays the driving loop on seated driver meshes, or `Sitting_Exit` while getting out.

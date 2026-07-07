@@ -1,6 +1,6 @@
-use bevy::prelude::*;
+use super::road_graph::{RerouteMode, TrafficRoadGraph, pick_continuation, quantize};
 use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
-use super::road_graph::{TrafficRoadGraph, quantize, pick_continuation, RerouteMode};
+use bevy::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct TrafficAgentState {
@@ -54,10 +54,15 @@ pub fn update_visibility(
     q_parent: &Query<&ChildOf>,
 ) -> bool {
     let camera_pos = cam_gt.translation();
-    
+
     // Check frustum first
     let in_frustum = if let Some(ndc) = camera.world_to_ndc(cam_gt, probe_point) {
-        ndc.x >= -1.0 && ndc.x <= 1.0 && ndc.y >= -1.0 && ndc.y <= 1.0 && ndc.z >= 0.0 && ndc.z <= 1.0
+        ndc.x >= -1.0
+            && ndc.x <= 1.0
+            && ndc.y >= -1.0
+            && ndc.y <= 1.0
+            && ndc.z >= 0.0
+            && ndc.z <= 1.0
     } else {
         false
     };
@@ -79,18 +84,20 @@ pub fn update_visibility(
         return false;
     };
 
-    if let Some(hit) = spatial_query.cast_ray(camera_pos, hit_dir, dist - 0.1, true, &SpatialQueryFilter::default()) {
+    if let Some(hit) = spatial_query.cast_ray(
+        camera_pos,
+        hit_dir,
+        dist - 0.1,
+        true,
+        &SpatialQueryFilter::default(),
+    ) {
         walk_up_to_root(hit.entity, root_entity, q_parent)
     } else {
         true
     }
 }
 
-pub fn should_despawn(
-    dist_to_camera: f32,
-    spawn_radius: f32,
-    state: &TrafficAgentState,
-) -> bool {
+pub fn should_despawn(dist_to_camera: f32, spawn_radius: f32, state: &TrafficAgentState) -> bool {
     if dist_to_camera > spawn_radius * super::OUT_OF_RANGE_FACTOR && !state.last_visible {
         return true;
     }
@@ -109,7 +116,10 @@ pub fn should_despawn(
 pub fn build_path_from(
     graph: &TrafficRoadGraph,
     pos: Vec3,
-) -> Option<(usize /*closest_seg_idx*/, Vec<Vec3> /*path_points*/)> {
+) -> Option<(
+    usize,     /*closest_seg_idx*/
+    Vec<Vec3>, /*path_points*/
+)> {
     if graph.segments.is_empty() {
         return None;
     }
@@ -143,7 +153,11 @@ pub fn build_path_from(
     let mut path_points = if forward {
         seg.points[closest_pt_idx..].to_vec()
     } else {
-        seg.points[..=closest_pt_idx].iter().cloned().rev().collect::<Vec<_>>()
+        seg.points[..=closest_pt_idx]
+            .iter()
+            .cloned()
+            .rev()
+            .collect::<Vec<_>>()
     };
 
     if path_points.len() >= 2 {

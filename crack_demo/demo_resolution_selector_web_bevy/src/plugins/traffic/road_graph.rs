@@ -67,10 +67,7 @@ fn process_points(
         return;
     }
 
-    let length: f32 = points
-        .windows(2)
-        .map(|w| w[0].distance(w[1]))
-        .sum();
+    let length: f32 = points.windows(2).map(|w| w[0].distance(w[1])).sum();
 
     if length < 20.0 {
         return;

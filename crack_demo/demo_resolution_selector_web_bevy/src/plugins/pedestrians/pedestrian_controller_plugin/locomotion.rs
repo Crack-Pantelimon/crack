@@ -14,8 +14,8 @@ use bevy::prelude::*;
 use super::no_one_climbing;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::controller::{
     apply_forces_to_dynamic_bodies, apply_gravity, apply_movement_damping, apply_speed_cap,
-    face_movement, move_and_slide, movement, respawn_if_fallen, update_climb, update_grounded,
-    update_roll, detect_fallen_off_map,
+    detect_fallen_off_map, face_movement, move_and_slide, movement, respawn_if_fallen,
+    update_climb, update_grounded, update_roll,
 };
 
 /// Registers the **un-gated** per-entity locomotion physics chain for all

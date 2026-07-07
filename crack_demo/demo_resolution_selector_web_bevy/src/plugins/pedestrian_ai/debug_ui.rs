@@ -3,7 +3,10 @@
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
-use super::{AiPedestrian, AiPerception, AiSteer, faction::{Faction, Health}};
+use super::{
+    AiPedestrian, AiPerception, AiSteer,
+    faction::{Faction, Health},
+};
 
 /// Toggle for AI debug visualization.
 #[derive(Resource, Default)]

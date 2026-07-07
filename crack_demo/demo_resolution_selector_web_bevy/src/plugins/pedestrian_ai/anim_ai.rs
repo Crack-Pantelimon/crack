@@ -35,8 +35,17 @@ pub fn ai_animation(
         With<AiPedestrian>,
     >,
 ) {
-    for (velocity, modifiers, _state, char_scale, ai_model, mut anim, health, equipped, ejected_driver) in
-        query.iter_mut()
+    for (
+        velocity,
+        modifiers,
+        _state,
+        char_scale,
+        ai_model,
+        mut anim,
+        health,
+        equipped,
+        ejected_driver,
+    ) in query.iter_mut()
     {
         if health.current <= 0.0 {
             continue;
@@ -56,11 +65,7 @@ pub fn ai_animation(
                 "Crouch_Idle_Loop"
             }
         } else if speed < MOVE_ANIM_THRESHOLD {
-            if is_melee {
-                "Sword_Idle"
-            } else {
-                "Idle_Loop"
-            }
+            if is_melee { "Sword_Idle" } else { "Idle_Loop" }
         } else if speed < WALK_MAX_SPEED {
             "Walk_Loop"
         } else if speed < JOG_MAX_SPEED {

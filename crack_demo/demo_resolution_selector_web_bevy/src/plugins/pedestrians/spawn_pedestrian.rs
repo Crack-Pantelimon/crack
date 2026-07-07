@@ -90,7 +90,9 @@ pub fn spawn_pedestrian_observer(
 
 pub fn link_pedestrian_model(
     mut commands: Commands,
-    mut controlled: Option<ResMut<crate::plugins::pedestrians::pedestrian_controller_plugin::ControlledCharacter>>,
+    mut controlled: Option<
+        ResMut<crate::plugins::pedestrians::pedestrian_controller_plugin::ControlledCharacter>,
+    >,
     q_models: Query<(Entity, &ModelController), Added<ModelRoot>>,
     q_ai: Query<(), With<crate::plugins::pedestrian_ai::AiPedestrian>>,
 ) {
@@ -98,10 +100,14 @@ pub fn link_pedestrian_model(
         let controller = controller_ref.0;
         if q_ai.get(controller).is_ok() {
             // It's an AI pedestrian!
-            commands.entity(controller).insert(crate::plugins::pedestrian_ai::AiModel(model_ent));
+            commands
+                .entity(controller)
+                .insert(crate::plugins::pedestrian_ai::AiModel(model_ent));
         } else if let Some(ref mut controlled) = controlled {
             // It's the player!
-            commands.entity(model_ent).insert(crate::plugins::pedestrians::ManualAnimation);
+            commands
+                .entity(model_ent)
+                .insert(crate::plugins::pedestrians::ManualAnimation);
             controlled.ped = Some(model_ent);
             controlled.awaiting = false;
         }

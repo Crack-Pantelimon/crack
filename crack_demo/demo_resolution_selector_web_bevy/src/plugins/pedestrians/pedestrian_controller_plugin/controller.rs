@@ -5,15 +5,17 @@ use avian3d::{math::*, prelude::*};
 use bevy::{ecs::query::Has, prelude::*};
 
 use super::*;
+use crate::plugins::audio::audio_fx::{AudioFxEvent, AudioFxEventType};
 use crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
 use crate::plugins::map_plugin::{MapTree, TreeMapTile};
-use crate::plugins::audio::audio_fx::{AudioFxEvent, AudioFxEventType};
 
 /// Reads WASD into a camera-relative move direction and updates modifiers. Space -> jump.
 pub fn character_input(
     keys: Res<ButtonInput<KeyCode>>,
     camera: Query<&GlobalTransform, With<Camera3d>>,
-    controlled: Res<crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter>,
+    controlled: Res<
+        crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter,
+    >,
     mut query: Query<(&mut LocomotionInput, &mut MovementModifiers), With<CharacterController>>,
     q_ejected: Query<&super::EjectedDriver>,
 ) {
@@ -400,7 +402,9 @@ pub fn jump_or_climb(
     keys: Res<ButtonInput<KeyCode>>,
     spatial_query: SpatialQuery,
     mut commands: Commands,
-    controlled: Res<crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter>,
+    controlled: Res<
+        crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter,
+    >,
     map: Option<Res<MapTree>>,
     tiles: Query<(), With<TreeMapTile>>,
     mut query: Query<
@@ -428,7 +432,8 @@ pub fn jump_or_climb(
     // Extra off-map safety checks only make sense in the main game (map loaded + tiles active).
     let map_active = map.map(|m| m.parsed).unwrap_or(false) && !tiles.is_empty();
 
-    let Ok((entity, gt, scale, modifiers, mut input, grounded)) = query.get_mut(controller_entity) else {
+    let Ok((entity, gt, scale, modifiers, mut input, grounded)) = query.get_mut(controller_entity)
+    else {
         return;
     };
 
@@ -442,8 +447,7 @@ pub fn jump_or_climb(
         }
         return;
     }
-    if let Some((start, target)) = detect_climb(gt, scale.0, &spatial_query, entity, map_active)
-    {
+    if let Some((start, target)) = detect_climb(gt, scale.0, &spatial_query, entity, map_active) {
         commands.entity(entity).insert(Climbing {
             start,
             target,

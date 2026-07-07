@@ -5,9 +5,7 @@ use rand::seq::IndexedRandom;
 
 use super::*;
 use crate::plugins::{
-    pedestrians::{
-        PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent,
-    },
+    pedestrians::{PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent},
     states::GameControlState,
 };
 
@@ -84,19 +82,20 @@ pub fn spawn_controlled_pedestrian_observer(
         .health
         .unwrap_or_else(|| crate::plugins::pedestrian_ai::faction::Health::full(100.0));
 
-    let controller = commands.spawn((
-        Name::new("PedestrianController"),
-        super::character_physics_bundle(
-            scale,
-            Transform::from_translation(controller_pos)
-                .with_rotation(event.rotation.unwrap_or(Quat::IDENTITY)),
-        ),
-        AnimState::default(),
-        CombatState::default(),
-        health,
-        crate::plugins::pedestrian_ai::faction::Faction::Neutral,
-    ))
-    .id();
+    let controller = commands
+        .spawn((
+            Name::new("PedestrianController"),
+            super::character_physics_bundle(
+                scale,
+                Transform::from_translation(controller_pos)
+                    .with_rotation(event.rotation.unwrap_or(Quat::IDENTITY)),
+            ),
+            AnimState::default(),
+            CombatState::default(),
+            health,
+            crate::plugins::pedestrian_ai::faction::Faction::Neutral,
+        ))
+        .id();
 
     // Intermediate scale node: child of controller, parent of the model. Scaling here keeps the
     // model's feet at the capsule bottom and does not affect the animation playback.

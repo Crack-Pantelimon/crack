@@ -21,6 +21,13 @@ const messageQueue = [];
 let currentProcessingItem = null;
 let processingTimeoutId = null;
 
+// How long a single API call may run before we assume the Dedicated Worker is dead.
+// This must be generous: real calls fetch + parse remote assets (e.g. the map
+// manifest parquet from a remote host), which can take many seconds. A too-small
+// value here terminates a perfectly-healthy worker mid-request, and because the
+// failed message is re-queued, it loops forever. See handleDedicatedWorkerFailure.
+const PROCESSING_TIMEOUT_MS = 120000; // 2 minutes
+
 // Track active shutdown resolver
 self.pendingShutdownResolver = null;
 
@@ -207,11 +214,11 @@ function processQueue() {
   const item = currentProcessingItem;
   // console.log(`[SharedWorker] Dispatching message for client ${item.clientId} to Dedicated Worker:`, item.payload);
 
-  // Set response timeout (500ms). If no reply comes back, we assume the worker was killed.
+  // Set response timeout. If no reply comes back, we assume the worker was killed.
   processingTimeoutId = setTimeout(() => {
-    console.warn('[SharedWorker] Dedicated Worker message processing timed out! Assuming worker was killed.');
+    console.warn(`[SharedWorker] Dedicated Worker message processing timed out after ${PROCESSING_TIMEOUT_MS}ms (msg_type=${item.payload && item.payload.msg_type})! Assuming worker was killed.`);
     handleDedicatedWorkerFailure();
-  }, 500);
+  }, PROCESSING_TIMEOUT_MS);
 
   try {
     dbWorkerPort.postMessage({

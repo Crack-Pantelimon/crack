@@ -1,9 +1,9 @@
-use bevy::prelude::*;
-use bevy::audio::SpatialAudioSink;
-use avian3d::prelude::LinearVelocity;
 use crate::plugins::audio::{PlaySoundEvent, SoundManifest};
 use crate::plugins::cars_driving::driving_plugin::CarDriveState;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{CharacterController, Grounded};
+use avian3d::prelude::LinearVelocity;
+use bevy::audio::SpatialAudioSink;
+use bevy::prelude::*;
 
 pub const GUNSHOT_SOUNDS: &[&str] = &[
     "weapons/guns/gunshot-22lr-snap.mp3",
@@ -32,35 +32,33 @@ pub const CAR_BUMP_SOUNDS: &[&str] = &[
     "car-sounds/car_crash_bump_2.mp3",
 ];
 
-pub const CAR_CRASH_SOUNDS: &[&str] = &[
-    "car-sounds/car-crash-1.mp3",
-    "car-sounds/car-crash-v2.mp3",
-];
+pub const CAR_CRASH_SOUNDS: &[&str] =
+    &["car-sounds/car-crash-1.mp3", "car-sounds/car-crash-v2.mp3"];
 
 #[derive(Clone, Copy, Debug)]
 pub enum AudioFxEventType {
-    GunShot { sound_idx: usize },   // index into GUNSHOT_SOUNDS, chosen at equip
+    GunShot { sound_idx: usize }, // index into GUNSHOT_SOUNDS, chosen at equip
     GunReload,
-    BulletImpact,                   // random from BULLET_IMPACT_SOUNDS
-    DrawGun,                        // get_weapon_from_holster
-    DrawMelee,                      // sword-getout
+    BulletImpact, // random from BULLET_IMPACT_SOUNDS
+    DrawGun,      // get_weapon_from_holster
+    DrawMelee,    // sword-getout
     MeleeWhoosh { volume: f32 },
-    MeleeHitMeat,                   // sword_hit_meat
+    MeleeHitMeat, // sword_hit_meat
     MeleeClash,
     PunchHit,
-    CarCrash { rel_speed: f32 },    // observer picks bump vs crash-1/v2 by speed
+    CarCrash { rel_speed: f32 }, // observer picks bump vs crash-1/v2 by speed
     GearShiftWhoosh,
-    FootstepLoop,                   // looped, attached
-    EngineLoop { sound_idx: usize },// looped, attached; index into ENGINE_IDLE_SOUNDS
+    FootstepLoop,                    // looped, attached
+    EngineLoop { sound_idx: usize }, // looped, attached; index into ENGINE_IDLE_SOUNDS
     Climb,
-    DeathThud,                      // played when a pedestrian dies
+    DeathThud, // played when a pedestrian dies
 }
 
 #[derive(Event, Clone, Copy, Debug)]
 pub struct AudioFxEvent {
     pub fx: AudioFxEventType,
     pub position: Vec3,
-    pub follow: Option<Entity>,     // for loops
+    pub follow: Option<Entity>, // for loops
 }
 
 pub fn audio_fx_observer(
@@ -91,15 +89,16 @@ pub fn audio_fx_observer(
             let jitter = ((_crack_utils::random_u32() % 1000) as f32 / 1000.0) * 0.2 - 0.1;
             (path, 1.0, 1.0 + jitter, false)
         }
-        AudioFxEventType::DrawGun => {
-            ("weapons/guns/get_weapon_from_holster.mp3", 1.0, 1.0, false)
-        }
-        AudioFxEventType::DrawMelee => {
-            ("weapons/melee/sword-getout.mp3", 1.0, 1.0, false)
-        }
+        AudioFxEventType::DrawGun => ("weapons/guns/get_weapon_from_holster.mp3", 1.0, 1.0, false),
+        AudioFxEventType::DrawMelee => ("weapons/melee/sword-getout.mp3", 1.0, 1.0, false),
         AudioFxEventType::MeleeWhoosh { volume } => {
             let jitter = ((_crack_utils::random_u32() % 1000) as f32 / 1000.0) * 0.2 - 0.1;
-            ("weapons/melee/sword_whoosh.mp3", volume, 1.0 + jitter, false)
+            (
+                "weapons/melee/sword_whoosh.mp3",
+                volume,
+                1.0 + jitter,
+                false,
+            )
         }
         AudioFxEventType::MeleeHitMeat => {
             let jitter = ((_crack_utils::random_u32() % 1000) as f32 / 1000.0) * 0.2 - 0.1;
@@ -129,19 +128,18 @@ pub fn audio_fx_observer(
         AudioFxEventType::GearShiftWhoosh => {
             ("car-sounds/engine-turbocharger-whoosh.mp3", 0.8, 1.0, false)
         }
-        AudioFxEventType::FootstepLoop => {
-            ("pedestrian-sounds/barefoot_footsteps_on_gravel.mp3", 0.6, 1.0, true)
-        }
+        AudioFxEventType::FootstepLoop => (
+            "pedestrian-sounds/barefoot_footsteps_on_gravel.mp3",
+            0.6,
+            1.0,
+            true,
+        ),
         AudioFxEventType::EngineLoop { sound_idx } => {
             let idx = sound_idx % ENGINE_IDLE_SOUNDS.len();
             (ENGINE_IDLE_SOUNDS[idx], 1.0, 1.0, true)
         }
-        AudioFxEventType::Climb => {
-            ("weapons/melee/sword_whoosh.mp3", 0.8, 0.7, false)
-        }
-        AudioFxEventType::DeathThud => {
-            ("misc-sounds/deep-thud.mp3", 1.0, 1.0, false)
-        }
+        AudioFxEventType::Climb => ("weapons/melee/sword_whoosh.mp3", 0.8, 0.7, false),
+        AudioFxEventType::DeathThud => ("misc-sounds/deep-thud.mp3", 1.0, 1.0, false),
     };
 
     if let Some(entry) = manifest.get(path) {
@@ -164,7 +162,13 @@ pub struct EngineSoundEmitter {
 
 pub fn spawn_car_engine_sounds(
     mut commands: Commands,
-    query: Query<Entity, (With<crate::plugins::cars_driving::driving_plugin::spawn_car::Car>, Without<EngineSoundEmitter>)>,
+    query: Query<
+        Entity,
+        (
+            With<crate::plugins::cars_driving::driving_plugin::spawn_car::Car>,
+            Without<EngineSoundEmitter>,
+        ),
+    >,
     manifest: Res<SoundManifest>,
 ) {
     if !manifest.loaded {
@@ -172,13 +176,15 @@ pub fn spawn_car_engine_sounds(
     }
     for car_entity in &query {
         let sound_idx = (_crack_utils::random_u32() as usize) % ENGINE_IDLE_SOUNDS.len();
-        
-        let emitter = commands.spawn((
-            Name::new("CarEngineEmitter"),
-            Transform::IDENTITY,
-            Visibility::default(),
-            InheritedVisibility::default(),
-        )).id();
+
+        let emitter = commands
+            .spawn((
+                Name::new("CarEngineEmitter"),
+                Transform::IDENTITY,
+                Visibility::default(),
+                InheritedVisibility::default(),
+            ))
+            .id();
         commands.entity(car_entity).add_child(emitter);
 
         commands.trigger(AudioFxEvent {
@@ -187,7 +193,9 @@ pub fn spawn_car_engine_sounds(
             follow: Some(emitter),
         });
 
-        commands.entity(car_entity).insert(EngineSoundEmitter { emitter });
+        commands
+            .entity(car_entity)
+            .insert(EngineSoundEmitter { emitter });
     }
 }
 
@@ -214,7 +222,10 @@ pub fn manage_car_engine_sound_pitch_volume(
                 let playback_speed = 0.33 + rpm_pct * (3.0 - 0.33);
                 sink.set_speed(playback_speed);
 
-                let base_vol = manifest.get("car-sounds/engine-idle-2.mp3").map(|e| e.volume).unwrap_or(0.6);
+                let base_vol = manifest
+                    .get("car-sounds/engine-idle-2.mp3")
+                    .map(|e| e.volume)
+                    .unwrap_or(0.6);
                 let throttle_vol = (1.0 + drive_state.avg_accelerate * 0.5) * base_vol;
                 sink.set_volume(bevy::audio::Volume::Linear(throttle_vol));
             }
@@ -229,7 +240,15 @@ pub struct FootstepEmitter {
 
 pub fn manage_footsteps_system(
     mut commands: Commands,
-    query: Query<(Entity, &LinearVelocity, Has<Grounded>, Option<&FootstepEmitter>), With<CharacterController>>,
+    query: Query<
+        (
+            Entity,
+            &LinearVelocity,
+            Has<Grounded>,
+            Option<&FootstepEmitter>,
+        ),
+        With<CharacterController>,
+    >,
     mut sinks: Query<&mut SpatialAudioSink>,
     children_query: Query<&Children>,
 ) {
@@ -237,12 +256,14 @@ pub fn manage_footsteps_system(
         let emitter_entity = if let Some(emitter) = emitter_opt {
             emitter.emitter
         } else {
-            let child_entity = commands.spawn((
-                Name::new("FootstepEmitter"),
-                Transform::from_translation(Vec3::new(0.0, -0.8, 0.0)),
-                Visibility::default(),
-                InheritedVisibility::default(),
-            )).id();
+            let child_entity = commands
+                .spawn((
+                    Name::new("FootstepEmitter"),
+                    Transform::from_translation(Vec3::new(0.0, -0.8, 0.0)),
+                    Visibility::default(),
+                    InheritedVisibility::default(),
+                ))
+                .id();
             commands.entity(char_entity).add_child(child_entity);
 
             commands.trigger(AudioFxEvent {
@@ -251,7 +272,9 @@ pub fn manage_footsteps_system(
                 follow: Some(child_entity),
             });
 
-            commands.entity(char_entity).insert(FootstepEmitter { emitter: child_entity });
+            commands.entity(char_entity).insert(FootstepEmitter {
+                emitter: child_entity,
+            });
             child_entity
         };
 

@@ -3,7 +3,7 @@
 ## Auto-generated signatures
 <!-- Updated by gen-context.js -->
 You are a coding assistant with complete knowledge of this codebase.
-The following code signatures were extracted by SigMap v8.9.1 on 2026-07-06T12:44:48.350Z.
+The following code signatures were extracted by SigMap v8.9.1 on 2026-07-07T13:11:20.932Z.
 <!-- sigmap: version=8.9.1 -->
 
 These signatures represent every public function, class, and type in the project.
@@ -23,7 +23,7 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## .
 
-### CLAUDE.md
+### AGENTS.md
 ```
 h2 Auto-generated signatures
 h1 Code signatures
@@ -40,7 +40,7 @@ h3 src/lib.rs
 code-fence plain
 ```
 
-### AGENTS.md
+### CLAUDE.md
 ```
 h2 Auto-generated signatures
 h1 Code signatures

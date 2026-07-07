@@ -3306,19 +3306,24 @@ name = "demo_resolution_selector_web_bevy"
 version = "0.1.0"
 dependencies = [
  "_crack_utils",
+ "anyhow",
+ "api_asscrack",
  "avian3d",
  "bevy",
  "bevy_egui",
- "bytes",
+ "game_logic",
  "getrandom 0.4.3",
  "log",
- "parquet",
  "rand 0.10.1",
  "rand_chacha 0.10.0",
  "serde",
  "serde_json",
+ "thread_worker",
+ "tokio",
  "tracing",
+ "wasm-bindgen-futures",
  "web-sys",
+ "web_serviceworker_crackloader",
 ]
 
 [[package]]
@@ -4617,6 +4622,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
 dependencies = [
  "byteorder",
+]
+
+[[package]]
+name = "game_logic"
+version = "0.1.0"
+dependencies = [
+ "_crack_utils",
+ "anyhow",
+ "api_asscrack",
+ "bytes",
+ "glam 0.32.1",
+ "parquet",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "storage_crackhouse",
+ "tokio",
+ "tracing",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -9992,6 +10016,7 @@ name = "thread_worker"
 version = "0.1.0"
 dependencies = [
  "crack",
+ "game_logic",
 ]
 
 [[package]]
@@ -11050,6 +11075,7 @@ name = "web_worker"
 version = "0.1.0"
 dependencies = [
  "crack",
+ "game_logic",
 ]
 
 [[package]]

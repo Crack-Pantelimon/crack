@@ -1,12 +1,13 @@
 pub mod audio;
 pub mod cars_driving;
+pub mod crack_plugin;
 pub mod game_freecam;
 pub mod geojson;
 pub mod main_scene_plugin;
 pub mod map_plugin;
-pub mod pedestrians;
 pub mod pedestrian_ai;
+pub mod pedestrians;
 pub mod physics_plugin;
 pub mod states;
-pub mod weapons;
 pub mod traffic;
+pub mod weapons;

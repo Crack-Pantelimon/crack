@@ -33,8 +33,8 @@ use animation::{
 use draw_skel_debug::draw_skeletons_system;
 use manifest::{TextAsset, TextAssetLoader, load_pedestrian_manifest_system, start_manifest_load};
 use spawn_pedestrian::{
-    PedestrianSpawnCounter, init_pedestrians_system, spawn_pedestrian_observer,
-    link_pedestrian_model,
+    PedestrianSpawnCounter, init_pedestrians_system, link_pedestrian_model,
+    spawn_pedestrian_observer,
 };
 
 pub struct PedestriansPlugin;

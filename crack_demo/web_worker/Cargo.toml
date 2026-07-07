@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 crack = {path="../../", features=["web_serviceworker_worker"]}
+game_logic = { path = "../game_logic", features = ["worker"] }
 
 [lints]
 workspace = true

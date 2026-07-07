@@ -55,6 +55,7 @@ members = [
     
     "crack_demo/web_worker",
     "crack_demo/thread_worker",
+    "crack_demo/game_logic",
     "crack_demo/web_frontend",
     "crack_demo/demo_resolution_selector_web_bevy",
 ]

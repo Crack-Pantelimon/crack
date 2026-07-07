@@ -17,7 +17,7 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## .
 
-### CLAUDE.md
+### AGENTS.md
 ```
 h2 Auto-generated signatures
 h1 Code signatures
@@ -35,7 +35,7 @@ h3 src/old.rs
 code-fence plain
 ```
 
-### AGENTS.md
+### CLAUDE.md
 ```
 h2 Auto-generated signatures
 h1 Code signatures

@@ -12,11 +12,11 @@ use bevy::{ecs::query::Has, prelude::*};
 use bevy_egui::EguiContexts;
 
 use super::*;
+use crate::plugins::pedestrian_ai::Dying;
 use crate::plugins::pedestrians::PedestrianAnimations;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::EnteringCarTimer;
-use crate::plugins::pedestrian_ai::Dying;
+use crate::plugins::weapons::weapon_attach::{WeaponModel, WeaponModelState};
 use crate::plugins::weapons::{EquippedWeapon, FireGunEvent, GunState, ReloadGunEvent};
-use crate::plugins::weapons::weapon_attach::{WeaponModelState, WeaponModel};
 use spawn::ControlledCharacter;
 
 /// Base weight while a combat overlay is active, so the overlay reads on top of locomotion.
@@ -321,10 +321,12 @@ pub fn drive_character_animation(
             }
         } else if is_melee {
             pressed_node = node_for(&anims, &["Sword_Attack"]);
-            commands.entity(controller).insert(crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
-                timer: 0.25,
-                is_melee: true,
-            });
+            commands.entity(controller).insert(
+                crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
+                    timer: 0.25,
+                    is_melee: true,
+                },
+            );
             commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
                 fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeWhoosh { volume: 1.0 },
                 position: whoosh_pos,
@@ -336,10 +338,12 @@ pub fn drive_character_animation(
             } else {
                 pressed_node = node_for(&anims, &["Punch_Cross", "Punch_Jab"]);
             }
-            commands.entity(controller).insert(crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
-                timer: 0.25,
-                is_melee: false,
-            });
+            commands.entity(controller).insert(
+                crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
+                    timer: 0.25,
+                    is_melee: false,
+                },
+            );
             commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
                 fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeWhoosh { volume: 0.4 },
                 position: whoosh_pos,

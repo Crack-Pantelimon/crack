@@ -76,9 +76,7 @@ pub fn ai_movement(
         modifiers.sprint = false;
 
         let dir = match state {
-            AiState::Idle => {
-                Vec3::ZERO
-            }
+            AiState::Idle => Vec3::ZERO,
 
             AiState::Hunt => {
                 if !perception.visible {
@@ -105,15 +103,35 @@ pub fn ai_movement(
                             let filter = SpatialQueryFilter::from_excluded_entities([entity]);
 
                             let right_clear = spatial_query
-                                .cast_ray(my_pos, Dir3::new(right).unwrap_or(Dir3::X), FLANK_PROBE, true, &filter)
+                                .cast_ray(
+                                    my_pos,
+                                    Dir3::new(right).unwrap_or(Dir3::X),
+                                    FLANK_PROBE,
+                                    true,
+                                    &filter,
+                                )
                                 .is_none();
                             let left_clear = spatial_query
-                                .cast_ray(my_pos, Dir3::new(left).unwrap_or(Dir3::NEG_X), FLANK_PROBE, true, &filter)
+                                .cast_ray(
+                                    my_pos,
+                                    Dir3::new(left).unwrap_or(Dir3::NEG_X),
+                                    FLANK_PROBE,
+                                    true,
+                                    &filter,
+                                )
                                 .is_none();
 
                             if record_probes {
-                                steer.last_probes.push((my_pos, my_pos + right * FLANK_PROBE, Color::srgb(1.0, 1.0, 0.0)));
-                                steer.last_probes.push((my_pos, my_pos + left * FLANK_PROBE, Color::srgb(1.0, 1.0, 0.0)));
+                                steer.last_probes.push((
+                                    my_pos,
+                                    my_pos + right * FLANK_PROBE,
+                                    Color::srgb(1.0, 1.0, 0.0),
+                                ));
+                                steer.last_probes.push((
+                                    my_pos,
+                                    my_pos + left * FLANK_PROBE,
+                                    Color::srgb(1.0, 1.0, 0.0),
+                                ));
                             }
 
                             let chosen = if right_clear && !left_clear {
@@ -139,7 +157,10 @@ pub fn ai_movement(
                     let knee = my_pos + Vec3::Y * 0.3;
                     let filter = SpatialQueryFilter::from_excluded_entities([entity]);
                     if let Ok(fwd) = Dir3::new(dir) {
-                        if spatial_query.cast_ray(knee, fwd, 1.0, true, &filter).is_some() {
+                        if spatial_query
+                            .cast_ray(knee, fwd, 1.0, true, &filter)
+                            .is_some()
+                        {
                             input.jump = true;
                         }
                     }
@@ -182,7 +203,11 @@ pub fn ai_movement(
                             }
 
                             if record_probes {
-                                steer.last_probes.push((my_pos, my_pos + probe_dir * dist.min(10.0), Color::srgb(1.0, 1.0, 0.0)));
+                                steer.last_probes.push((
+                                    my_pos,
+                                    my_pos + probe_dir * dist.min(10.0),
+                                    Color::srgb(1.0, 1.0, 0.0),
+                                ));
                             }
                         }
                     }
@@ -222,7 +247,11 @@ pub fn ai_movement(
                                 } else {
                                     Color::srgba(0.0, 0.8, 0.8, 0.5)
                                 };
-                                steer.last_probes.push((my_pos, my_pos + probe_dir * dist.min(30.0), c));
+                                steer.last_probes.push((
+                                    my_pos,
+                                    my_pos + probe_dir * dist.min(30.0),
+                                    c,
+                                ));
                             }
 
                             if score > best_dist {

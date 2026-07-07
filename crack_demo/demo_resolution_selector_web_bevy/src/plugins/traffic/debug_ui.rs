@@ -1,12 +1,11 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
-use crate::ui_egui::UiState;
-use super::{
-    TrafficConfig, TrafficCar, SpawnTrafficCarEvent,
-    TrafficPedestrian, SpawnTrafficPedestrianEvent,
-};
 use super::road_graph::TrafficRoadGraph;
+use super::{
+    SpawnTrafficCarEvent, SpawnTrafficPedestrianEvent, TrafficCar, TrafficConfig, TrafficPedestrian,
+};
+use crate::ui_egui::UiState;
 
 pub fn traffic_debug_ui(
     mut contexts: EguiContexts,
@@ -151,14 +150,22 @@ pub fn draw_traffic_gizmos(
     for (transform, traffic_car) in q_cars.iter() {
         let car_pos = transform.translation;
         let mut prev = car_pos;
-        for &pt in traffic_car.state.path.iter().skip(traffic_car.state.next_idx) {
+        for &pt in traffic_car
+            .state
+            .path
+            .iter()
+            .skip(traffic_car.state.next_idx)
+        {
             gizmos.line(prev, pt, car_path_color);
             prev = pt;
         }
 
         // Draw lookahead point
         if traffic_car.state.next_idx < traffic_car.state.path.len() {
-            let target = traffic_car.state.path[traffic_car.state.next_idx.min(traffic_car.state.path.len() - 1)];
+            let target = traffic_car.state.path[traffic_car
+                .state
+                .next_idx
+                .min(traffic_car.state.path.len() - 1)];
             gizmos.sphere(target, 0.4, Color::srgb(1.0, 0.0, 0.0));
         }
     }
@@ -168,14 +175,22 @@ pub fn draw_traffic_gizmos(
     for (transform, traffic_ped) in q_peds.iter() {
         let ped_pos = transform.translation;
         let mut prev = ped_pos;
-        for &pt in traffic_ped.state.path.iter().skip(traffic_ped.state.next_idx) {
+        for &pt in traffic_ped
+            .state
+            .path
+            .iter()
+            .skip(traffic_ped.state.next_idx)
+        {
             gizmos.line(prev, pt, ped_path_color);
             prev = pt;
         }
 
         // Draw lookahead target
         if traffic_ped.state.next_idx < traffic_ped.state.path.len() {
-            let target = traffic_ped.state.path[traffic_ped.state.next_idx.min(traffic_ped.state.path.len() - 1)];
+            let target = traffic_ped.state.path[traffic_ped
+                .state
+                .next_idx
+                .min(traffic_ped.state.path.len() - 1)];
             gizmos.sphere(target, 0.25, Color::srgb(0.0, 0.0, 1.0));
         }
     }

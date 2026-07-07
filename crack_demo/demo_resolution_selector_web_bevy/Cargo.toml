@@ -31,11 +31,20 @@ rand_chacha = "0.10.0"
 getrandom = { version = "0.4.3" }
 # web-sys = { version = "0.3.77", optional = true, features = ["Window", "Document", "Element", "HtmlCanvasElement", "CssStyleDeclaration", "HtmlDivElement"] }
 tracing = "*"
-parquet = { version = "53", default-features = false, features = ["snap"] }
-bytes = "1.12.0"
+anyhow = { workspace = true }
 _crack_utils = { path = "../../packages/_crack_utils" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+game_logic = { path = "../../crack_demo/game_logic" }
+api_asscrack = { path = "../../packages/api_asscrack" }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+thread_worker = { path = "../../crack_demo/thread_worker" }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "sync"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+web_serviceworker_crackloader = { path = "../../packages/web_serviceworker_crackloader" }
+wasm-bindgen-futures = { workspace = true }
 [dependencies.web-sys]
 optional = true
 version = "0.3.77"

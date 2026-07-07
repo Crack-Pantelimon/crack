@@ -26,6 +26,7 @@ fn init_worker() -> std::result::Result<(), JsValue> {
         let _r = web_worker_registration(make_api_mapping(vec![
             Arc::new(StorageCrackhouseApiGroup),
             Arc::new(WorkerApiGroup2),
+            Arc::new(game_logic::api::GameLogicApiGroup),
         ]))
         .await;
         match _r {

@@ -9,6 +9,7 @@ impl Plugin for MainGamePlugin {
             .add_plugins(crate::plugins::main_scene_plugin::MainScenePlugin)
             .add_plugins(crate::plugins::game_freecam::camera_controls::CameraControlsPlugin)
             .add_plugins(crate::plugins::physics_plugin::PhysicsPlugin)
+            .add_plugins(crate::plugins::crack_plugin::CrackPlugin)
             .add_plugins(crate::plugins::map_plugin::MapPlugin)
             .add_plugins(crate::plugins::geojson::GeoJsonPlugin)
             .add_plugins(crate::plugins::cars_driving::CarsAndDrivingPlugin)

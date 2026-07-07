@@ -20,12 +20,8 @@ pub enum Faction {
 
 impl Faction {
     /// All factions that actively participate in combat.
-    pub const COMBATANTS: [Faction; 4] = [
-        Faction::Red,
-        Faction::Green,
-        Faction::Blue,
-        Faction::Yellow,
-    ];
+    pub const COMBATANTS: [Faction; 4] =
+        [Faction::Red, Faction::Green, Faction::Blue, Faction::Yellow];
 
     /// Gizmo/tint color for this faction.
     pub fn color(self) -> Color {

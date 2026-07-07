@@ -3,7 +3,7 @@
 ## Auto-generated signatures
 <!-- Updated by gen-context.js -->
 You are a coding assistant with complete knowledge of this codebase.
-The following code signatures were extracted by SigMap v8.9.1 on 2026-07-06T12:44:48.373Z.
+The following code signatures were extracted by SigMap v8.9.1 on 2026-07-07T13:11:20.985Z.
 <!-- sigmap: version=8.9.1 -->
 
 These signatures represent every public function, class, and type in the project.
@@ -23,31 +23,31 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## todos
 ```
-CLAUDE.md:18  # TODO: s
-CLAUDE.md:20  # TODO: s
-CLAUDE.md:21  # TODO: s
-CLAUDE.md:22  # TODO: get which is missing...
-CLAUDE.md:23  # TODO: get which is missing...
-CLAUDE.md:24  # TODO: s
-CLAUDE.md:25  # TODO: get which is missing...
-CLAUDE.md:26  # TODO: s
-CLAUDE.md:27  # TODO: get which is missing...
-CLAUDE.md:28  # TODO: s
-CLAUDE.md:29  # TODO: get which is missing...
-CLAUDE.md:30  # TODO: get which is missing...
-CLAUDE.md:31  # TODO: s
-CLAUDE.md:32  # TODO: s
-CLAUDE.md:33  # TODO: get which is missing...
-CLAUDE.md:34  # TODO: get which is missing...
-CLAUDE.md:35  # TODO: s
-CLAUDE.md:36  # TODO: get which is missing...
-CLAUDE.md:37  # TODO: s
-CLAUDE.md:38  # TODO: get which is missing...
+.github/copilot-instructions.md:22  # TODO: s
+.github/copilot-instructions.md:24  # TODO: s
+.github/copilot-instructions.md:25  # TODO: s
+.github/copilot-instructions.md:26  # TODO: s
+.github/copilot-instructions.md:27  # TODO: get which is missing...
+.github/copilot-instructions.md:28  # TODO: get which is missing...
+.github/copilot-instructions.md:29  # TODO: s
+.github/copilot-instructions.md:30  # TODO: get which is missing...
+.github/copilot-instructions.md:31  # TODO: s
+.github/copilot-instructions.md:32  # TODO: get which is missing...
+.github/copilot-instructions.md:33  # TODO: s
+.github/copilot-instructions.md:34  # TODO: get which is missing...
+.github/copilot-instructions.md:35  # TODO: get which is missing...
+.github/copilot-instructions.md:36  # TODO: s
+.github/copilot-instructions.md:37  # TODO: s
+.github/copilot-instructions.md:38  # TODO: get which is missing...
+.github/copilot-instructions.md:39  # TODO: get which is missing...
+.github/copilot-instructions.md:40  # TODO: s
+.github/copilot-instructions.md:41  # TODO: get which is missing...
+.github/copilot-instructions.md:42  # TODO: s
 ```
 
 ## .
 
-### CLAUDE.md
+### AGENTS.md
 ```
 h2 Auto-generated signatures
 h1 Code signatures
@@ -69,7 +69,7 @@ h3 src/crack_worker/mod.rs
 code-fence plain
 ```
 
-### AGENTS.md
+### CLAUDE.md
 ```
 h2 Auto-generated signatures
 h1 Code signatures

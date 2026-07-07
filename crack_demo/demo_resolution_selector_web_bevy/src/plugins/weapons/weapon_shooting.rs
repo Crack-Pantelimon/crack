@@ -131,7 +131,9 @@ pub fn fire_gun_observer(
         .unwrap_or(origin);
 
     commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
-        fx: crate::plugins::audio::audio_fx::AudioFxEventType::GunShot { sound_idx: gun.gunshot_sound_idx },
+        fx: crate::plugins::audio::audio_fx::AudioFxEventType::GunShot {
+            sound_idx: gun.gunshot_sound_idx,
+        },
         position: muzzle,
         follow: None,
     });
@@ -350,7 +352,7 @@ pub fn tick_pending_melee_hits(
                     &q_skel,
                     &q_driver,
                 );
-                
+
                 // Spawn 3 sparks jumping at random speeds around contact point +/- 0.1m
                 for _ in 0..3 {
                     let offset = Vec3::new(

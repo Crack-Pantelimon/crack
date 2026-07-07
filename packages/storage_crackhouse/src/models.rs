@@ -5,7 +5,7 @@ use crate::{
     types::{DbValue, DbValueType, SQLAndParams},
 };
 
-pub trait ModelGroup {
+pub trait ModelGroup: Send + Sync {
     fn grp_name(&self) -> &'static str;
     fn model_infos(&self) -> &'static [&'static dyn ModelDef];
 }
@@ -19,7 +19,7 @@ pub trait ModelGroup {
 //     }
 // }
 
-pub trait ModelDef {
+pub trait ModelDef: Send + Sync {
     fn table_name(&self) -> &'static str;
     fn model_grp(&self) -> &'static str;
     fn user_columns(&self) -> &'static [ModelColumnImpl];

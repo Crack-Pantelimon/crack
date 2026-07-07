@@ -3,7 +3,7 @@
 use bevy::ecs::query::Has;
 use bevy::prelude::*;
 
-use super::spawn_car::{ActivePlayerVehicle, Car, CarHealth, DisabledCar, CAR_DISABLE_HP};
+use super::spawn_car::{ActivePlayerVehicle, CAR_DISABLE_HP, Car, CarHealth, DisabledCar};
 use crate::plugins::pedestrian_ai::faction::{Faction, Health};
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{
     DriverMesh, SpawnControlledPedestrianEvent, eject_driver_as_ai,
@@ -15,7 +15,13 @@ use crate::plugins::pedestrians::pedestrian_controller_plugin::{
 pub fn disable_low_health_cars(
     mut commands: Commands,
     q_cars: Query<
-        (Entity, &GlobalTransform, &CarHealth, Has<ActivePlayerVehicle>, Option<&Children>),
+        (
+            Entity,
+            &GlobalTransform,
+            &CarHealth,
+            Has<ActivePlayerVehicle>,
+            Option<&Children>,
+        ),
         (With<Car>, Without<DisabledCar>),
     >,
     q_driver: Query<(Entity, &Faction, &Health, &Transform), With<DriverMesh>>,

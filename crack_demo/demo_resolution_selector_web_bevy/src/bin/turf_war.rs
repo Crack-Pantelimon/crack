@@ -12,7 +12,7 @@ use avian3d::prelude::*;
 use bevy::ecs::query::Has;
 use bevy::prelude::*;
 use bevy::world_serialization::WorldAssetRoot;
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 use demo_resolution_selector_web_bevy::{
     basic_app::make_basic_app,
@@ -23,14 +23,14 @@ use demo_resolution_selector_web_bevy::{
             driving_plugin::GamePhysicsLayer,
         },
         pedestrian_ai::{
-            Faction, Health, PedestrianAiPlugin, SpawnAiPedestrianEvent, WarMatrix, DEFAULT_HP,
+            DEFAULT_HP, Faction, Health, PedestrianAiPlugin, SpawnAiPedestrianEvent, WarMatrix,
         },
         pedestrians::{
+            PedestrianManifest, PedestriansPlugin,
             pedestrian_controller_plugin::{
                 CharacterController, ControlledCharacter, PedestrianControllerPlugin,
                 SpawnControlledPedestrianEvent,
             },
-            PedestrianManifest, PedestriansPlugin,
         },
         states::GameControlState,
         weapons::{WeaponManifest, WeaponsPlugin},
@@ -162,8 +162,7 @@ fn player_hp_ui(
 /// Override the debug scene camera to look down on the arena.
 fn setup_overhead_camera(mut camera_query: Query<&mut Transform, With<Camera3d>>) {
     for mut transform in &mut camera_query {
-        *transform =
-            Transform::from_xyz(0.0, 55.0, 40.0).looking_at(Vec3::ZERO, Vec3::Y);
+        *transform = Transform::from_xyz(0.0, 55.0, 40.0).looking_at(Vec3::ZERO, Vec3::Y);
     }
 }
 
@@ -278,7 +277,11 @@ fn spawn_factions_once(
     ];
 
     let total = Faction::COMBATANTS.len() * PEDS_PER_FACTION;
-    info!("Turf war: spawning {} peds across {} factions", total, Faction::COMBATANTS.len());
+    info!(
+        "Turf war: spawning {} peds across {} factions",
+        total,
+        Faction::COMBATANTS.len()
+    );
 
     for (i, &faction) in Faction::COMBATANTS.iter().enumerate() {
         let base = corners[i];

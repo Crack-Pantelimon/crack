@@ -15,7 +15,7 @@ use crate::plugins::{
 
 use super::{
     AiAnim, AiCombatTimers, AiPedestrian, AiPerception, AiState, AiSteer, AiThink,
-    faction::{Enemies, Faction, Health, DEFAULT_HP},
+    faction::{DEFAULT_HP, Enemies, Faction, Health},
 };
 
 /// Spawn an AI-driven pedestrian at `position` with the given `faction`.
@@ -28,8 +28,6 @@ pub struct SpawnAiPedestrianEvent {
     /// `None` picks a random weapon from the manifest.
     pub weapon: Option<WeaponId>,
 }
-
-
 
 pub fn spawn_ai_pedestrian_observer(
     trigger: On<SpawnAiPedestrianEvent>,
@@ -108,5 +106,3 @@ pub fn spawn_ai_pedestrian_observer(
         parent: scale_node,
     });
 }
-
-

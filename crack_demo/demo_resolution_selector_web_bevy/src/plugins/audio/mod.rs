@@ -8,7 +8,7 @@
 
 pub mod audio_fx;
 
-use bevy::audio::{PlaybackMode, PlaybackSettings, SpatialListener, Volume, SpatialScale};
+use bevy::audio::{PlaybackMode, PlaybackSettings, SpatialListener, SpatialScale, Volume};
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
@@ -104,14 +104,9 @@ impl Plugin for GameAudioPlugin {
 }
 
 /// Attach a [`SpatialListener`] to the scene camera so 3D sounds have a set of ears.
-fn setup_spatial_listener(
-    mut commands: Commands,
-    cameras: Query<Entity, With<Camera3d>>,
-) {
+fn setup_spatial_listener(mut commands: Commands, cameras: Query<Entity, With<Camera3d>>) {
     for cam in cameras.iter() {
-        commands
-            .entity(cam)
-            .insert(SpatialListener::new(0.25));
+        commands.entity(cam).insert(SpatialListener::new(0.25));
     }
 }
 
@@ -121,9 +116,7 @@ fn add_spatial_listener_to_new_cameras(
     cameras: Query<Entity, (Added<Camera3d>, Without<SpatialListener>)>,
 ) {
     for cam in cameras.iter() {
-        commands
-            .entity(cam)
-            .insert(SpatialListener::new(0.25));
+        commands.entity(cam).insert(SpatialListener::new(0.25));
     }
 }
 
@@ -203,7 +196,7 @@ fn play_sound_observer(trigger: On<PlaySoundEvent>, mut commands: Commands) {
     } else {
         PlaybackMode::Despawn
     };
-    
+
     let scale_factor = 1.0 / ev.attenuation.max(0.001);
     let playback_settings = PlaybackSettings {
         mode,
@@ -277,10 +270,7 @@ impl Plugin for AudioDemoPlugin {
 }
 
 /// Keep the listener's ear offsets in sync with the ear-distance slider.
-fn update_listener_ears(
-    state: Res<AudioDemoState>,
-    mut listeners: Query<&mut SpatialListener>,
-) {
+fn update_listener_ears(state: Res<AudioDemoState>, mut listeners: Query<&mut SpatialListener>) {
     if !state.is_changed() {
         return;
     }
@@ -442,8 +432,11 @@ fn audio_demo_ui(
 
             ui.separator();
             ui.label(
-                egui::RichText::new(format!("Sounds ({}) — scroll wheel to cycle", manifest.sounds.len()))
-                    .strong(),
+                egui::RichText::new(format!(
+                    "Sounds ({}) — scroll wheel to cycle",
+                    manifest.sounds.len()
+                ))
+                .strong(),
             );
 
             let selected = state.selected;

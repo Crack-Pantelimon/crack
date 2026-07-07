@@ -4,13 +4,13 @@ use bevy_egui::EguiPrimaryContextPass;
 pub mod consts;
 pub use consts::*;
 
+pub mod common;
+pub mod debug_ui;
+pub mod despawn;
+pub mod driver;
+pub mod pedestrian_traffic;
 pub mod road_graph;
 pub mod spawn;
-pub mod driver;
-pub mod despawn;
-pub mod debug_ui;
-pub mod pedestrian_traffic;
-pub mod common;
 
 #[derive(Default, PartialEq, Clone, Copy, Debug)]
 pub enum TrafficDriveMode {
@@ -61,8 +61,8 @@ pub struct SpawnTrafficCarEvent {
 #[derive(Component)]
 pub struct TrafficPedestrian {
     pub state: common::TrafficAgentState,
-    pub offset_sign: f32,      // +1 / -1: which side of the road centre
-    pub last_pos: Vec3,        // for stuck check
+    pub offset_sign: f32, // +1 / -1: which side of the road centre
+    pub last_pos: Vec3,   // for stuck check
 }
 
 #[derive(Event, Clone, Debug)]
@@ -94,7 +94,9 @@ impl Plugin for TrafficPlugin {
                     .chain()
                     .run_if(
                         in_state(crate::plugins::states::OsmDatabaseLoadFinished::OsmFinished)
-                            .and_then(in_state(crate::plugins::states::InitialMapLoadFinished::Finished)),
+                            .and_then(in_state(
+                                crate::plugins::states::InitialMapLoadFinished::Finished,
+                            )),
                     ),
             )
             .add_systems(
@@ -103,7 +105,9 @@ impl Plugin for TrafficPlugin {
                     .after(crate::plugins::pedestrian_ai::movement_ai::ai_movement)
                     .run_if(
                         in_state(crate::plugins::states::OsmDatabaseLoadFinished::OsmFinished)
-                            .and_then(in_state(crate::plugins::states::InitialMapLoadFinished::Finished)),
+                            .and_then(in_state(
+                                crate::plugins::states::InitialMapLoadFinished::Finished,
+                            )),
                     ),
             )
             .add_systems(EguiPrimaryContextPass, debug_ui::traffic_debug_ui);

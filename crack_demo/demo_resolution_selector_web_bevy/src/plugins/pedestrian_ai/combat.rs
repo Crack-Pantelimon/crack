@@ -17,7 +17,7 @@ use crate::plugins::weapons::{
 
 use super::{
     AiCombatTimers, AiModel, AiPedestrian, AiPerception, AiState, AiThink, PedestrianDied,
-    faction::{Dying, Enemies, Health, DEATH_ANIM_TIME},
+    faction::{DEATH_ANIM_TIME, Dying, Enemies, Health},
 };
 use crate::plugins::cars_driving::driving_plugin::spawn_car::CarHealth;
 
@@ -89,25 +89,24 @@ pub fn apply_damage_observer(
             });
         }
         deaths.write(PedestrianDied { entity: ev.target });
-        commands
-            .entity(ev.target)
-            .insert(Dying { timer: DEATH_ANIM_TIME });
+        commands.entity(ev.target).insert(Dying {
+            timer: DEATH_ANIM_TIME,
+        });
     }
 }
 
 /// When an AI ped is freshly marked [`Dying`], play its death clip once (looped by the shared
 /// animation system until the corpse despawns). The player pedestrian has no [`AiModel`]; its
 /// death animation is handled by the character-controller animation driver instead.
-pub fn start_ai_death_animation(
-    mut commands: Commands,
-    newly_dead: Query<&AiModel, Added<Dying>>,
-) {
+pub fn start_ai_death_animation(mut commands: Commands, newly_dead: Query<&AiModel, Added<Dying>>) {
     for ai_model in &newly_dead {
-        commands.trigger(crate::plugins::pedestrians::PedestrianAnimationControlEvent {
-            ped: ai_model.0,
-            animation: "Death01".to_string(),
-            speed: 1.0,
-        });
+        commands.trigger(
+            crate::plugins::pedestrians::PedestrianAnimationControlEvent {
+                ped: ai_model.0,
+                animation: "Death01".to_string(),
+                speed: 1.0,
+            },
+        );
     }
 }
 
@@ -248,8 +247,10 @@ pub fn ai_combat(
             let target_head = perception.target_pos;
             let base_dir = (target_head - muzzle).normalize_or_zero();
             let spread_rad = AIM_SPREAD_DEG.to_radians();
-            let jitter_yaw = ((_crack_utils::random_u32() % 1000) as f32 / 500.0 - 1.0) * spread_rad;
-            let jitter_pitch = ((_crack_utils::random_u32() % 1000) as f32 / 500.0 - 1.0) * spread_rad;
+            let jitter_yaw =
+                ((_crack_utils::random_u32() % 1000) as f32 / 500.0 - 1.0) * spread_rad;
+            let jitter_pitch =
+                ((_crack_utils::random_u32() % 1000) as f32 / 500.0 - 1.0) * spread_rad;
             let dir = Quat::from_euler(bevy::math::EulerRot::YXZ, jitter_yaw, jitter_pitch, 0.0)
                 * base_dir;
 
@@ -271,7 +272,8 @@ pub fn ai_combat(
                 continue;
             };
 
-            if let Some(hit) = spatial_query.cast_ray(muzzle, ray_dir, gun_info.range, true, &filter)
+            if let Some(hit) =
+                spatial_query.cast_ray(muzzle, ray_dir, gun_info.range, true, &filter)
             {
                 let impact = muzzle + dir * hit.distance;
                 let normal: Vec3 = hit.normal;
@@ -291,7 +293,12 @@ pub fn ai_combat(
                 });
 
                 let hit_is_person = is_person_entity(
-                    hit.entity, &parents, &q_controller, &q_model, &q_skel, &q_driver,
+                    hit.entity,
+                    &parents,
+                    &q_controller,
+                    &q_model,
+                    &q_skel,
+                    &q_driver,
                 );
 
                 // Sparks

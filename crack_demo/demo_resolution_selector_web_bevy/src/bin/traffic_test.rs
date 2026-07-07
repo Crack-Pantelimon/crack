@@ -1,22 +1,22 @@
-use bevy::prelude::*;
 use bevy::input::mouse::MouseMotion;
+use bevy::prelude::*;
 use std::collections::BTreeMap;
 
 use demo_resolution_selector_web_bevy::{
     basic_app::make_basic_app,
     plugins::{
+        audio::GameAudioPlugin,
+        cars_driving::CarsAndDrivingPlugin,
+        geojson::{FeatureGeometry, GeoJsonDatabase, GeoJsonFeature},
+        pedestrian_ai::PedestrianAiPlugin,
+        pedestrians::pedestrian_controller_plugin::PedestrianControllerPlugin,
         physics_plugin::PhysicsPlugin,
         states::GameStatesPlugin,
-        cars_driving::CarsAndDrivingPlugin,
         traffic::TrafficPlugin,
-        pedestrians::pedestrian_controller_plugin::PedestrianControllerPlugin,
         weapons::WeaponsPlugin,
-        pedestrian_ai::PedestrianAiPlugin,
-        audio::GameAudioPlugin,
-        geojson::{GeoJsonDatabase, GeoJsonFeature, FeatureGeometry},
     },
-    utils::setup_debug_scene::SetupDebugScenePlugin,
     ui_egui::UiState,
+    utils::setup_debug_scene::SetupDebugScenePlugin,
 };
 
 fn main() {
@@ -36,22 +36,30 @@ fn main() {
         .add_plugins(WeaponsPlugin)
         .add_plugins(PedestrianAiPlugin)
         .add_plugins(GameAudioPlugin)
-        .add_systems(Startup, (inject_hardcoded_intersection, force_loaded_states))
+        .add_systems(
+            Startup,
+            (inject_hardcoded_intersection, force_loaded_states),
+        )
         .add_systems(Update, simple_camera_movement)
         .run();
 }
 
 fn force_loaded_states(
-    mut next_osm: ResMut<NextState<demo_resolution_selector_web_bevy::plugins::states::OsmDatabaseLoadFinished>>,
-    mut next_map: ResMut<NextState<demo_resolution_selector_web_bevy::plugins::states::InitialMapLoadFinished>>,
+    mut next_osm: ResMut<
+        NextState<demo_resolution_selector_web_bevy::plugins::states::OsmDatabaseLoadFinished>,
+    >,
+    mut next_map: ResMut<
+        NextState<demo_resolution_selector_web_bevy::plugins::states::InitialMapLoadFinished>,
+    >,
 ) {
-    next_osm.set(demo_resolution_selector_web_bevy::plugins::states::OsmDatabaseLoadFinished::OsmFinished);
-    next_map.set(demo_resolution_selector_web_bevy::plugins::states::InitialMapLoadFinished::Finished);
+    next_osm.set(
+        demo_resolution_selector_web_bevy::plugins::states::OsmDatabaseLoadFinished::OsmFinished,
+    );
+    next_map
+        .set(demo_resolution_selector_web_bevy::plugins::states::InitialMapLoadFinished::Finished);
 }
 
-fn inject_hardcoded_intersection(
-    mut database: ResMut<GeoJsonDatabase>,
-) {
+fn inject_hardcoded_intersection(mut database: ResMut<GeoJsonDatabase>) {
     let mut categories = BTreeMap::new();
 
     // 1. North-South Road: from (0, 0.5, -200) to (0, 0.5, 200) every 10m
@@ -113,7 +121,7 @@ fn simple_camera_movement(
     let Some(mut transform) = camera_query.iter_mut().next() else {
         return;
     };
-    
+
     // Rotate
     if mouse_button.pressed(MouseButton::Left) {
         let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);

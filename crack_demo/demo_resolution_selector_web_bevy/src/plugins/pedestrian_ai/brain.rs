@@ -33,7 +33,9 @@ pub fn ai_brain(
 ) {
     let dt = time.delta_secs();
 
-    for (entity, health, equipped, gun_state, perception, mut state, mut timers, ejected_driver) in &mut query {
+    for (entity, health, equipped, gun_state, perception, mut state, mut timers, ejected_driver) in
+        &mut query
+    {
         if health.current <= 0.0 {
             continue;
         }
@@ -50,9 +52,7 @@ pub fn ai_brain(
 
         // Priority 1: Flee.
         let low_hp = health.current <= FLEE_HP;
-        let panic = is_gun
-            && perception.visible
-            && perception.target_dist < PANIC_RANGE;
+        let panic = is_gun && perception.visible && perception.target_dist < PANIC_RANGE;
         if low_hp || panic {
             *state = AiState::Flee;
         }

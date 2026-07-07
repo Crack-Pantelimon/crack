@@ -1,5 +1,6 @@
 #!/bin/bash
 set -ex
+./build_worker.sh
 
 (
     cd crack_demo/demo_resolution_selector_web_bevy
