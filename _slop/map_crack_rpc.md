@@ -618,6 +618,7 @@ Both `web_worker` and `thread_worker` already register `GameLogicApiGroup` — t
 ### Risk 4: In-memory asset loading path in Bevy 0.19
 - **Impact**: Need to load GLB from `Vec<u8>` instead of a URL
 - **Mitigation**: Investigate Bevy 0.19's `AssetServer` API for `load_from_bytes` or custom `AssetSource`. Fallback: write a custom `AssetReader` backed by `Arc<RwLock<HashMap<String, Vec<u8>>>>` that the tile flow inserts bytes into, then load via a custom `tile://` scheme.
+- _slop/memory_asset_reader.md -- see how to insert the bytes into the reader
 
 ### Risk 5: Material fix-up pipeline
 - **Impact**: The `auto_apply_new_materials` system in `map_material_edit.rs` reacts to `AssetEvent<StandardMaterial>::Added` events. If we change how tiles are loaded, this must still fire.

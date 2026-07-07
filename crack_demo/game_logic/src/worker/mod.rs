@@ -5,13 +5,16 @@ pub mod http;
 pub mod manifest_impl;
 pub mod models;
 pub mod osm_impl;
+pub mod tile_impl;
 
 implement_api_group2! { GameLogicApiGroup, [
     (FetchMapManifest, manifest_impl::fetch_map_manifest),
     (FetchOsmData, osm_impl::fetch_osm_data),
     (ComputeLodChanges, compute_lod_changes_api),
     (RunGameMigrations, models::run_game_migrations),
+    (FetchMapTile, tile_impl::fetch_map_tile),
 ] }
+
 
 async fn compute_lod_changes_api(
     req: crate::lod::LodComputeRequest,

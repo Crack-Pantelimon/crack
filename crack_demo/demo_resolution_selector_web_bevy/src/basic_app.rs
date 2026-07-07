@@ -9,6 +9,11 @@ use bevy::{
     window::WindowResolution,
 };
 
+#[derive(Resource, Clone, Default)]
+pub struct MemoryDir {
+    pub dir: bevy::asset::io::memory::Dir,
+}
+
 /// Create a basic app where we override only the DefaultPlugin, render settings, window reactivity settings.
 pub fn make_basic_app(title: &str) -> App {
     info!("exec main_bevy()...");
@@ -20,6 +25,17 @@ pub fn make_basic_app(title: &str) -> App {
     info!("backends: {:?}", backends);
 
     let mut app = App::new();
+
+    let memory_dir = MemoryDir::default();
+    let reader = bevy::asset::io::memory::MemoryAssetReader {
+        root: memory_dir.dir.clone(),
+    };
+    app.register_asset_source(
+        bevy::asset::io::AssetSourceId::new(Some("memory")),
+        bevy::asset::io::AssetSourceBuilder::new(move || Box::new(reader.clone())),
+    );
+    app.insert_resource(memory_dir);
+
     app.add_plugins(
         DefaultPlugins
             .build()

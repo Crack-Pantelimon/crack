@@ -1,11 +1,13 @@
 use crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
 use crate::plugins::map_plugin::{MapLODState, MapTileAssetId, MapTree, MapTreeNodePath};
 use crate::plugins::states::{InitialMapLoadFinished, OsmDatabaseLoadFinished};
+use crate::basic_app::MemoryDir;
 use avian3d::collision::collider::CollisionMargin;
 use avian3d::prelude::CollisionLayers;
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
-use std::collections::BTreeSet;
+use bevy::tasks::futures_lite::future;
+use std::collections::{BTreeSet, HashMap};
 
 #[derive(Component)]
 pub struct TreeMapTile {
@@ -15,23 +17,18 @@ pub struct TreeMapTile {
 
 fn spawn_node_tiles(
     commands: &mut Commands,
-    assets: &[(MapTileAssetId, Handle<WorldAsset>)],
+    assets: &[(MapTileAssetId, Handle<WorldAsset>, Option<avian3d::prelude::Collider>)],
     node_path: &MapTreeNodePath,
     hidden: bool,
 ) -> Vec<Entity> {
-    // tracing::info!(
-    //     "spawn_node_tiles({:?}, assets count: {})",
-    //     node_path,
-    //     assets.len()
-    // );
     let visibility = if hidden {
         Visibility::Hidden
     } else {
         Visibility::Visible
     };
     let mut spawned = Vec::with_capacity(assets.len());
-    for (asset_id, handle) in assets {
-        let entity = commands
+    for (asset_id, handle, collider_opt) in assets {
+        let mut entity_cmds = commands
             .spawn((
                 WorldAssetRoot(handle.clone()),
                 visibility,
@@ -41,18 +38,6 @@ fn spawn_node_tiles(
                     asset_id: asset_id.clone(),
                 },
                 avian3d::prelude::RigidBody::Static,
-                avian3d::prelude::ColliderConstructorHierarchy::new(
-                    avian3d::prelude::ColliderConstructor::TrimeshFromMesh,
-                    // avian3d::prelude::ColliderConstructor::ConvexDecompositionFromMesh,
-                )
-                .with_default_layers(CollisionLayers::new(
-                    [GamePhysicsLayer::Map],
-                    [
-                        GamePhysicsLayer::Map,
-                        GamePhysicsLayer::Car,
-                        GamePhysicsLayer::Wheel,
-                    ],
-                )),
                 CollisionMargin(0.2),
                 avian3d::prelude::Restitution::ZERO
                     .with_combine_rule(avian3d::prelude::CoefficientCombine::Min),
@@ -65,9 +50,11 @@ fn spawn_node_tiles(
                         GamePhysicsLayer::Wheel,
                     ],
                 ),
-            ))
-            .id();
-        spawned.push(entity);
+            ));
+        if let Some(collider) = collider_opt {
+            entity_cmds.insert(collider.clone());
+        }
+        spawned.push(entity_cmds.id());
     }
     spawned
 }
@@ -75,51 +62,64 @@ fn spawn_node_tiles(
 pub fn spawn_root_map_tiles(
     mut commands: Commands,
     data_res: Res<MapTree>,
-    asset_server: Res<AssetServer>,
+    client: Option<Res<crate::plugins::crack_plugin::CrackClient>>,
 ) {
+    let Some(client) = client else {
+        return;
+    };
     if !data_res.is_changed() {
         return;
     }
     if !data_res.parsed {
         return;
     }
-    let mut new_tiles = Vec::new();
+
+    let mut tasks = Vec::new();
+    let mut asset_ids = Vec::new();
+    let mut asset_to_node = HashMap::new();
+
     for root in &data_res.roots {
-        let mut assets_and_handles = Vec::new();
         for asset in &root.assets {
-            let glb_url = format!("{}/3d_data_v2/{}", crate::config::DATA_BASE_URL, asset.glb_path);
-            let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
-            assets_and_handles.push((asset.name.clone(), asset_server.load(asset_path)));
+            let api_client = client.0.clone();
+            let base_url = crate::config::DATA_BASE_URL.to_string();
+            let glb_path = asset.glb_path.clone();
+            let tile_id = asset.name.0.clone();
+            let asset_id = asset.name.clone();
+
+            let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+                api_client
+                    .call::<game_logic::api::FetchMapTile>(game_logic::tile::FetchTileRequest {
+                        base_url,
+                        glb_path,
+                        tile_id,
+                    })
+                    .await
+            });
+            tasks.push(Some(task));
+            asset_ids.push(asset_id.clone());
+            asset_to_node.insert(asset_id, root.path.clone());
         }
-        new_tiles.extend(spawn_node_tiles(
-            &mut commands,
-            &assets_and_handles,
-            &root.path,
-            true,
-        ));
     }
-    // Root tiles have nothing to replace, but still defer their reveal so the browser never shows
-    // the one-frame default-material flash on first appearance.
-    if !new_tiles.is_empty() {
-        commands.spawn(PendingTileReveal {
-            new_tiles,
-            drop_parent: None,
-            drop_descendants_of: Vec::new(),
-            countdown: TILE_REVEAL_DELAY_FRAMES,
+
+    if !tasks.is_empty() {
+        commands.spawn(PendingTileGroupFetch {
+            purpose: TileGroupFetchPurpose::Root { asset_to_node },
+            tasks,
+            asset_ids,
+            results: Vec::new(),
         });
     }
 }
 
-
 #[derive(Component, Debug)]
 pub struct TileShouldMerge {
     pub drop_children: BTreeSet<MapTreeNodePath>,
-    pub load_parent: (MapTreeNodePath, Vec<(MapTileAssetId, Handle<WorldAsset>)>),
+    pub load_parent: (MapTreeNodePath, Vec<(MapTileAssetId, Handle<WorldAsset>, Option<avian3d::prelude::Collider>)>),
 }
 
 #[derive(Component, Debug)]
 pub struct TileShouldSplit {
-    pub load_children: Vec<(MapTreeNodePath, Vec<(MapTileAssetId, Handle<WorldAsset>)>)>,
+    pub load_children: Vec<(MapTreeNodePath, Vec<(MapTileAssetId, Handle<WorldAsset>, Option<avian3d::prelude::Collider>)>)>,
     pub drop_parent: MapTreeNodePath,
 }
 
@@ -129,35 +129,50 @@ pub struct TileSwapRequests {
     pub merge_requests: Vec<game_logic::lod::MergeRequestSummary>,
 }
 
-/// Frames to keep a freshly-spawned tile hidden before revealing it and dropping the tile it
-/// replaces. During this window the tile's GLB scene instantiates and the material/texture fix-up
-/// systems run, so when it is finally shown it already has its matte material — no one-frame
-/// default-material flash (the bug was only visible on the single-threaded web build). Because the
-/// old tile stays alive until the new one is revealed, the swap is atomic: there is never a frame
-/// with neither the old nor the new tile present.
 const TILE_REVEAL_DELAY_FRAMES: u8 = 3;
 
-/// A batch of freshly-spawned (hidden) tiles waiting to be revealed, along with the tiles they
-/// replace (dropped atomically at reveal time). While any of these exist, `recompute_lod_mark_changes`
-/// is blocked so no new swap is started mid-transition.
 #[derive(Component)]
 pub struct PendingTileReveal {
-    /// Newly-spawned, currently-hidden tile entities to reveal.
     new_tiles: Vec<Entity>,
-    /// Split case: the exact parent node path whose tiles are dropped on reveal.
     drop_parent: Option<MapTreeNodePath>,
-    /// Merge case: descendant paths whose tiles are dropped on reveal.
     drop_descendants_of: Vec<MapTreeNodePath>,
     countdown: u8,
+}
+
+#[derive(Debug, Clone)]
+pub enum TileGroupFetchPurpose {
+    Root {
+        asset_to_node: HashMap<MapTileAssetId, MapTreeNodePath>,
+    },
+    Split {
+        split_summary: game_logic::lod::SplitRequestSummary,
+    },
+    Merge {
+        drop_children: BTreeSet<MapTreeNodePath>,
+        parent_path: MapTreeNodePath,
+        merge_summary: game_logic::lod::MergeRequestSummary,
+    },
+}
+
+#[derive(Component)]
+pub struct PendingTileGroupFetch {
+    pub purpose: TileGroupFetchPurpose,
+    pub tasks: Vec<Option<bevy::tasks::Task<anyhow::Result<game_logic::tile::FetchTileResponse>>>>,
+    pub asset_ids: Vec<MapTileAssetId>,
+    pub results: Vec<(MapTileAssetId, game_logic::tile::FetchTileResponse)>,
 }
 
 pub fn start_tile_swap_requests(
     mut commands: Commands,
     mut res_tiles: ResMut<TileSwapRequests>,
-    asset_server: Res<AssetServer>,
+    client: Option<Res<crate::plugins::crack_plugin::CrackClient>>,
     q_split: Query<&TileShouldSplit>,
     q_merge: Query<&TileShouldMerge>,
+    q_fetch: Query<&PendingTileGroupFetch>,
 ) {
+    let Some(client) = client else {
+        return;
+    };
     if res_tiles.merge_requests.is_empty() && res_tiles.split_requests.is_empty() {
         return;
     }
@@ -166,8 +181,9 @@ pub fn start_tile_swap_requests(
     const PARALLEL_MERGE_FETCH: i32 = 3;
     let current_splits = q_split.iter().len() as i32;
     let current_merges = q_merge.iter().len() as i32;
-    let mut split_budget = PARALLEL_SPLIT_FETCH - current_splits;
-    let mut merge_budget = PARALLEL_MERGE_FETCH - current_merges;
+    let current_fetches = q_fetch.iter().len() as i32;
+    let mut split_budget = PARALLEL_SPLIT_FETCH - (current_splits + current_fetches);
+    let mut merge_budget = PARALLEL_MERGE_FETCH - (current_merges + current_fetches);
 
     let mut split_done = Vec::new();
     for split in &res_tiles.split_requests {
@@ -176,18 +192,35 @@ pub fn start_tile_swap_requests(
         }
         split_budget -= 1;
 
-        let children = split.children.iter().map(|child| {
-            let handles = child.assets.iter().map(|asset| {
-                let glb_url = format!("{}/3d_data_v2/{}", crate::config::DATA_BASE_URL, asset.glb_path);
-                let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
-                (asset.name.clone(), asset_server.load(asset_path))
-            }).collect::<Vec<_>>();
-            (child.path.clone(), handles)
-        }).collect::<Vec<_>>();
+        let mut tasks = Vec::new();
+        let mut asset_ids = Vec::new();
+        for child in &split.children {
+            for asset in &child.assets {
+                let api_client = client.0.clone();
+                let base_url = crate::config::DATA_BASE_URL.to_string();
+                let glb_path = asset.glb_path.clone();
+                let tile_id = asset.name.0.clone();
+                let asset_id = asset.name.clone();
 
-        commands.spawn(TileShouldSplit {
-            load_children: children,
-            drop_parent: split.parent_path.clone(),
+                let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+                    api_client
+                        .call::<game_logic::api::FetchMapTile>(game_logic::tile::FetchTileRequest {
+                            base_url,
+                            glb_path,
+                            tile_id,
+                        })
+                        .await
+                });
+                tasks.push(Some(task));
+                asset_ids.push(asset_id);
+            }
+        }
+
+        commands.spawn(PendingTileGroupFetch {
+            purpose: TileGroupFetchPurpose::Split { split_summary: split.clone() },
+            tasks,
+            asset_ids,
+            results: Vec::new(),
         });
         split_done.push(split.parent_path.clone());
     }
@@ -199,15 +232,37 @@ pub fn start_tile_swap_requests(
         }
         merge_budget -= 1;
 
-        let parent_handles = merge.parent_assets.iter().map(|asset| {
-            let glb_url = format!("{}/3d_data_v2/{}", crate::config::DATA_BASE_URL, asset.glb_path);
-            let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
-            (asset.name.clone(), asset_server.load(asset_path))
-        }).collect::<Vec<_>>();
+        let mut tasks = Vec::new();
+        let mut asset_ids = Vec::new();
+        for asset in &merge.parent_assets {
+            let api_client = client.0.clone();
+            let base_url = crate::config::DATA_BASE_URL.to_string();
+            let glb_path = asset.glb_path.clone();
+            let tile_id = asset.name.0.clone();
+            let asset_id = asset.name.clone();
 
-        commands.spawn(TileShouldMerge {
-            drop_children: merge.drop_children.clone(),
-            load_parent: (merge.parent_path.clone(), parent_handles),
+            let task = bevy::tasks::AsyncComputeTaskPool::get().spawn(async move {
+                api_client
+                    .call::<game_logic::api::FetchMapTile>(game_logic::tile::FetchTileRequest {
+                        base_url,
+                        glb_path,
+                        tile_id,
+                    })
+                    .await
+            });
+            tasks.push(Some(task));
+            asset_ids.push(asset_id);
+        }
+
+        commands.spawn(PendingTileGroupFetch {
+            purpose: TileGroupFetchPurpose::Merge {
+                drop_children: merge.drop_children.clone(),
+                parent_path: merge.parent_path.clone(),
+                merge_summary: merge.clone(),
+            },
+            tasks,
+            asset_ids,
+            results: Vec::new(),
         });
 
         merge_done.push(merge.parent_path.clone());
@@ -215,6 +270,118 @@ pub fn start_tile_swap_requests(
 
     res_tiles.split_requests.retain(|x| !split_done.contains(&x.parent_path));
     res_tiles.merge_requests.retain(|x| !merge_done.contains(&x.parent_path));
+}
+
+pub fn poll_tile_group_fetches(
+    mut commands: Commands,
+    mut q_fetches: Query<(Entity, &mut PendingTileGroupFetch)>,
+    memory_dir: ResMut<MemoryDir>,
+    asset_server: Res<AssetServer>,
+) {
+    for (entity, mut fetch) in q_fetches.iter_mut() {
+        for i in 0..fetch.tasks.len() {
+            if let Some(mut task) = fetch.tasks[i].take() {
+                if let Some(res) = future::block_on(future::poll_once(&mut task)) {
+                    match res {
+                        Ok(response) => {
+                            let asset_id = fetch.asset_ids[i].clone();
+                            fetch.results.push((asset_id, response));
+                        }
+                        Err(e) => {
+                            tracing::error!("Tile fetch worker RPC error: {e:?}");
+                        }
+                    }
+                } else {
+                    fetch.tasks[i] = Some(task);
+                }
+            }
+        }
+
+        let all_done = fetch.tasks.iter().all(|t| t.is_none());
+        if all_done {
+            let mut loaded_assets = Vec::new();
+            for (asset_id, response) in &fetch.results {
+                let sanitized_id = response.tile_id.replace('/', "_").replace('\\', "_").replace('.', "_");
+                let memory_path = format!("{}.glb", sanitized_id);
+
+                memory_dir.dir.insert_asset(std::path::Path::new(&memory_path), response.glb_bytes.clone());
+
+                let asset_path = GltfAssetLabel::Scene(0).from_asset(format!("memory://{}", memory_path));
+                let handle = asset_server.load(asset_path);
+
+                let mut collider_opt = None;
+                if let Some(mesh_data) = &response.collider_mesh {
+                    let vertices: Vec<Vec3> = mesh_data.vertices.iter()
+                        .map(|v| Vec3::new(v[0], v[1], v[2]))
+                        .collect();
+                    if let Ok(trimesh) = avian3d::prelude::Collider::try_trimesh(vertices, mesh_data.indices.clone()) {
+                        collider_opt = Some(trimesh);
+                    } else {
+                        tracing::warn!("Failed to build trimesh collider for tile {}", response.tile_id);
+                    }
+                }
+
+                loaded_assets.push((asset_id.clone(), handle, collider_opt));
+            }
+
+            match &fetch.purpose {
+                TileGroupFetchPurpose::Root { asset_to_node } => {
+                    let mut node_to_assets = HashMap::new();
+                    for (asset_id, handle, collider) in loaded_assets {
+                        if let Some(node_path) = asset_to_node.get(&asset_id) {
+                            node_to_assets.entry(node_path.clone())
+                                .or_insert_with(Vec::new)
+                                .push((asset_id, handle, collider));
+                        }
+                    }
+
+                    let mut new_tiles = Vec::new();
+                    for (node_path, assets) in node_to_assets {
+                        new_tiles.extend(spawn_node_tiles(
+                            &mut commands,
+                            &assets,
+                            &node_path,
+                            true,
+                        ));
+                    }
+
+                    if !new_tiles.is_empty() {
+                        commands.spawn(PendingTileReveal {
+                            new_tiles,
+                            drop_parent: None,
+                            drop_descendants_of: Vec::new(),
+                            countdown: TILE_REVEAL_DELAY_FRAMES,
+                        });
+                    }
+                }
+                TileGroupFetchPurpose::Split { split_summary } => {
+                    let mut children_data = Vec::new();
+                    for child_summary in &split_summary.children {
+                        let mut child_assets = Vec::new();
+                        for (asset_id, handle, collider) in &loaded_assets {
+                            if child_summary.assets.iter().any(|a| &a.name == asset_id) {
+                                child_assets.push((asset_id.clone(), handle.clone(), collider.clone()));
+                            }
+                        }
+                        children_data.push((child_summary.path.clone(), child_assets));
+                    }
+
+                    commands.spawn(TileShouldSplit {
+                        load_children: children_data,
+                        drop_parent: split_summary.parent_path.clone(),
+                    });
+                }
+                TileGroupFetchPurpose::Merge { drop_children, parent_path, merge_summary: _ } => {
+                    commands.spawn(TileShouldMerge {
+                        drop_children: drop_children.clone(),
+                        load_parent: (parent_path.clone(), loaded_assets),
+                    });
+                }
+            }
+
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 const SPLIT_PER_FRAME: usize = 1;
@@ -230,7 +397,7 @@ pub fn do_split_requests(
     let mut k = 0;
     for (split_req, _req_ent) in q_split.iter() {
         let assets_ready = split_req.load_children.iter().all(|x| {
-            x.1.iter().all(|(_, handle)| {
+            x.1.iter().all(|(_, handle, _)| {
                 matches!(
                     asset_server.get_load_state(handle),
                     Some(bevy::asset::LoadState::Loaded)
@@ -252,7 +419,7 @@ pub fn do_split_requests(
             .iter()
             .flat_map(|x| {
                 x.1.iter()
-                    .filter_map(|(_, handle)| match asset_server.get_load_state(handle) {
+                    .filter_map(|(_, handle, _)| match asset_server.get_load_state(handle) {
                         Some(bevy::asset::LoadState::Failed(_e)) => Some(_e),
                         _ => None,
                     })
@@ -269,8 +436,6 @@ pub fn do_split_requests(
         }
     }
     for split_req in split_finished {
-        // Spawn the children hidden and defer the reveal. The parent tile stays visible until the
-        // children are revealed (see `reveal_pending_tiles`), so the swap has no gap and no flash.
         let mut new_tiles = Vec::new();
         for (child_path, child_assets) in split_req.load_children.iter() {
             new_tiles.extend(spawn_node_tiles(
@@ -298,7 +463,7 @@ pub fn do_merge_requests(
 
     let mut k = 0;
     for (merge_req, req_ent) in q_merge.iter() {
-        let parent_ready = merge_req.load_parent.1.iter().all(|(_, handle)| {
+        let parent_ready = merge_req.load_parent.1.iter().all(|(_, handle, _)| {
             matches!(
                 asset_server.get_load_state(handle),
                 Some(bevy::asset::LoadState::Loaded)
@@ -316,7 +481,7 @@ pub fn do_merge_requests(
             .load_parent
             .1
             .iter()
-            .filter_map(|(_, handle)| match asset_server.get_load_state(handle) {
+            .filter_map(|(_, handle, _)| match asset_server.get_load_state(handle) {
                 Some(bevy::asset::LoadState::Failed(error)) => Some(error),
                 _ => None,
             })
@@ -330,8 +495,6 @@ pub fn do_merge_requests(
         }
     }
     for merge_req in merge_finished {
-        // Spawn the merged parent hidden and defer the reveal. The child tiles stay visible until
-        // the parent is revealed (see `reveal_pending_tiles`), so the swap has no gap and no flash.
         let new_tiles = spawn_node_tiles(
             &mut commands,
             &merge_req.load_parent.1,
@@ -347,8 +510,6 @@ pub fn do_merge_requests(
     }
 }
 
-/// Reveals hidden freshly-spawned tiles once their delay elapses, dropping the tiles they replace
-/// in the same step so the swap is atomic (no gap, and the new tile's material is already fixed).
 pub fn reveal_pending_tiles(
     mut commands: Commands,
     mut q_pending: Query<(Entity, &mut PendingTileReveal)>,
@@ -361,14 +522,12 @@ pub fn reveal_pending_tiles(
             continue;
         }
 
-        // Reveal the new tiles.
         for tile_ent in &pending.new_tiles {
             if let Ok(mut vis) = q_vis.get_mut(*tile_ent) {
                 *vis = Visibility::Visible;
             }
         }
 
-        // Drop the tiles being replaced, atomically with the reveal.
         if let Some(parent) = &pending.drop_parent {
             for (tile, ent) in q_nodes.iter() {
                 if &tile.node_path == parent {

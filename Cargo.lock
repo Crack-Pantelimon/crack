@@ -4633,6 +4633,7 @@ dependencies = [
  "api_asscrack",
  "bytes",
  "glam 0.32.1",
+ "gltf",
  "parquet",
  "reqwest",
  "serde",

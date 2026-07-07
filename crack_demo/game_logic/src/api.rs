@@ -11,4 +11,5 @@ declare_api_group2! { GameLogicApiGroup, [
     (FetchOsmData, FetchArgs, crate::osm::OsmDataResult),
     (ComputeLodChanges, crate::lod::LodComputeRequest, crate::lod::LodComputeResponse),
     (RunGameMigrations, (), ()),
+    (FetchMapTile, crate::tile::FetchTileRequest, crate::tile::FetchTileResponse),
 ] }

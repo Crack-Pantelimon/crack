@@ -31,86 +31,12 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## crack_demo
 
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/audio/mod.rs
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/mod.rs
 ```
-pub struct SoundEntry
-pub struct SoundManifest
-pub struct PlaySoundEvent
-pub struct GameAudioPlugin
-pub struct AudioDemoState
-pub struct AudioDemoPlugin
-impl SoundManifest
-  pub fn get(&self, name: &str) → Option<&SoundEntry>
-impl GameAudioPlugin
-impl AudioDemoState
-impl AudioDemoPlugin
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/cars_driving/driving_plugin/car_disable.rs
-```
-pub fn disable_low_health_cars(mut commands: Commands, q_cars: Query< (Entity, &GlobalTransform, &CarHealth, Has<ActivePlayerVehicle>, Option<&Children>)
-pub fn draw_disabled_car_gizmos(mut gizmos: Gizmos, q: Query<&GlobalTransform, With<DisabledCar>>)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/geojson.rs
-```
-pub struct GeoJsonPlugin
-pub struct GeoJsonDatabase
-pub struct GeoJsonSearchState
-pub struct GeoJsonSelection
-pub struct GameLoadingStatus
-pub struct TooltipNotificationState
-pub struct OsmOverlayState
-pub struct Bus335Marker
-pub struct MovingBus
-impl GeoJsonPlugin
-impl OsmOverlayState
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrian_ai/anim_ai.rs
-```
-pub fn ai_animation(mut commands: Commands, mut query: Query< ( &LinearVelocity, &MovementModifiers, &AiState, &CharacterScale, &AiModel, &mut AiAnim, &super::faction::Health, Option<&EquippedWeapon>, Option<&crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedDriver>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrian_ai/brain.rs
-```
-pub fn ai_brain(time: Res<Time>, mut commands: Commands, mut query: Query< ( Entity, &Health, Option<&EquippedWeapon>, Option<&GunState>, &AiPerception, &mut AiState, &mut AiCombatTimers, Option<&crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedDriver>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrian_ai/combat.rs
-```
-pub struct DamageEvent
-pub fn apply_damage_observer(trigger: On<DamageEvent>, mut commands: Commands, mut healths: Query<(&mut Health, Has<Dying>)
-pub fn start_ai_death_animation(mut commands: Commands, newly_dead: Query<&AiModel, Added<Dying>>,)
-pub fn tick_dying(mut commands: Commands, time: Res<Time>, mut query: Query<(Entity, &mut Dying, Option<&mut LinearVelocity>)
-pub fn ai_combat(mut commands: Commands, spatial_query: SpatialQuery, mut tracers: ResMut<ShotTracers>, mut sparks: ResMut<BulletSparks>, mut query: Query< ( Entity, &GlobalTransform, &AiState, &AiPerception, &AiThink, &mut AiCombatTimers, Option<&EquippedWeapon>, Option<&mut GunState>, Option<&WeaponModelState>, Option<&AiModel>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrian_ai/debug_ui.rs
-```
-pub struct AiDebug
-pub fn ai_debug_ui(mut contexts: EguiContexts, mut ai_debug: ResMut<AiDebug>, query: Query<(&Faction, &Health)
-pub fn draw_ai_gizmos(ai_debug: Res<AiDebug>, mut gizmos: Gizmos, query: Query< (&GlobalTransform, &Faction, &Health, &AiPerception, &AiSteer)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrian_ai/faction.rs
-```
-pub struct WarMatrix
-pub struct Health
-pub struct Enemies
-pub struct Dying
-pub enum Faction
-impl Faction
-  pub fn color(self) → Color
-  pub fn label(self) → &'static str
-impl WarMatrix
-  pub fn all_out_war() → Self
-  pub fn gang_wars() → Self
-  pub fn at_war(&self, a: Faction, b: Faction) → bool
-impl Health
-  pub fn full(max: f32) → Self
-impl Enemies
-  pub fn insert(&mut self, who: Entity)
+pub struct MapPlugin
+pub struct MapTree
+pub struct MapLODState
+impl MapPlugin
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrian_ai/mod.rs
@@ -138,7 +64,7 @@ pub fn ai_movement(spatial_query: SpatialQuery, ai_debug: Res<AiDebug>, mut quer
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrian_ai/perception.rs
 ```
-pub fn ai_perception(spatial_query: SpatialQuery, war: Res<WarMatrix>, mut ai_query: Query< (Entity, &GlobalTransform, &Faction, &Enemies, &AiThink, &mut AiPerception)
+pub fn ai_perception(spatial_query: SpatialQuery, war: Res<WarMatrix>, mut ai_query: Query< ( Entity, &GlobalTransform, &Faction, &Enemies, &AiThink, &mut AiPerception,)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrian_ai/spawn_ai.rs
@@ -176,7 +102,7 @@ pub fn drive_character_animation(time: Res<Time>, anims: Res<PedestrianAnimation
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/pedestrians/pedestrian_controller_plugin/controller.rs
 ```
-pub fn character_input(keys: Res<ButtonInput<KeyCode>>, camera: Query<&GlobalTransform, With<Camera3d>>, controlled: Res<crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter>, mut query: Query<(&mut LocomotionInput, &mut MovementModifiers)
+pub fn character_input(keys: Res<ButtonInput<KeyCode>>, camera: Query<&GlobalTransform, With<Camera3d>>, controlled: Res< crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter, >, mut query: Query<(&mut LocomotionInput, &mut MovementModifiers)
 pub fn update_grounded(mut commands: Commands, mut query: Query<(Entity, &GroundDetection, &GlobalTransform)
 pub fn movement(time: Res<Time>, mut controllers: Query<( &mut LocomotionInput, &CharacterMovementSettings, &mut LinearVelocity, Has<Grounded>,)
 pub fn apply_gravity(time: Res<Time>, mut controllers: Query<(&CharacterMovementSettings, &mut LinearVelocity)
@@ -186,7 +112,7 @@ pub fn move_and_slide(mut query: Query< ( Entity, Option<&GroundDetection>, Opti
 pub fn apply_forces_to_dynamic_bodies(characters: Query<(&ComputedMass, &CharacterCollisions)
 pub fn face_movement(time: Res<Time>, mut query: Query<(&LinearVelocity, &mut Transform)
 pub fn respawn_if_fallen(mut query: Query<(&mut Transform, &mut LinearVelocity)
-pub fn jump_or_climb(keys: Res<ButtonInput<KeyCode>>, spatial_query: SpatialQuery, mut commands: Commands, controlled: Res<crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter>, map: Option<Res<MapTree>>, tiles: Query<()
+pub fn jump_or_climb(keys: Res<ButtonInput<KeyCode>>, spatial_query: SpatialQuery, mut commands: Commands, controlled: Res< crate::plugins::pedestrians::pedestrian_controller_plugin::spawn::ControlledCharacter, >, map: Option<Res<MapTree>>, tiles: Query<()
 pub fn update_climb(time: Res<Time>, mut commands: Commands, mut query: Query<(Entity, &mut Transform, &mut LinearVelocity, &mut Climbing)
 pub fn update_roll(time: Res<Time>, mut commands: Commands, mut query: Query<(Entity, &Transform, &mut LinearVelocity, &mut Rolling)
 pub fn detect_fallen_off_map(map: Option<Res<MapTree>>, tiles: Query<()
@@ -270,7 +196,7 @@ pub struct NeedAlignment
 pub struct ModelController
 pub struct PedestrianSpawnCounter
 pub fn spawn_pedestrian_observer(trigger: On<SpawnPedestrianEvent>, mut commands: Commands, asset_server: Res<AssetServer>, mut counter: ResMut<PedestrianSpawnCounter>,)
-pub fn link_pedestrian_model(mut commands: Commands, mut controlled: Option<ResMut<crate::plugins::pedestrians::pedestrian_controller_plugin::ControlledCharacter>>, q_models: Query<(Entity, &ModelController)
+pub fn link_pedestrian_model(mut commands: Commands, mut controlled: Option< ResMut<crate::plugins::pedestrians::pedestrian_controller_plugin::ControlledCharacter>, >, q_models: Query<(Entity, &ModelController)
 pub fn init_pedestrians_system(mut commands: Commands, query: Query<(Entity, &NeedAlignment, &Children)
 ```
 
@@ -281,8 +207,8 @@ impl TrafficAgentState
   pub fn new(path: Vec<Vec3>, current_seg: usize) → Self
 pub fn walk_up_to_root(hit_entity: Entity, root_entity: Entity, q_parent: &Query<&ChildOf>,) → bool
 pub fn update_visibility(camera: &Camera, cam_gt: &GlobalTransform, spatial_query: &SpatialQuery, root_entity: Entity, probe_point: Vec3, q_parent: &Query<&ChildOf>,) → bool
-pub fn should_despawn(dist_to_camera: f32, spawn_radius: f32, state: &TrafficAgentState,) → bool
-pub fn build_path_from(graph: &TrafficRoadGraph, pos: Vec3,) → Option<(usize , Vec<Vec3> )>
+pub fn should_despawn(dist_to_camera: f32, spawn_radius: f32, state: &TrafficAgentState) → bool
+pub fn build_path_from(graph: &TrafficRoadGraph, pos: Vec3,) → Option<( usize, Vec<Vec3>, )>
 pub fn pick_spawn_candidate(graph: &TrafficRoadGraph, camera: &Camera, cam_gt: &GlobalTransform, radius: f32, min_dist: f32, spacing: f32, existing: &[Vec3], fast_fill: bool,) → Option<Vec3>
 ```
 
@@ -299,7 +225,7 @@ pub fn despawn_traffic_cars(time: Res<Time>, config: Res<TrafficConfig>, mut q_c
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/traffic/driver.rs
 ```
-pub fn drive_traffic_cars(time: Res<Time>, config: Res<TrafficConfig>, graph: Res<TrafficRoadGraph>, mut q_cars: Query< (Entity, &Transform, &LinearVelocity, &mut CarDriveState, &mut TrafficCar)
+pub fn drive_traffic_cars(time: Res<Time>, config: Res<TrafficConfig>, graph: Res<TrafficRoadGraph>, mut q_cars: Query< ( Entity, &Transform, &LinearVelocity, &mut CarDriveState, &mut TrafficCar,)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/traffic/mod.rs
@@ -341,12 +267,6 @@ pub fn pick_continuation(graph: &TrafficRoadGraph, node: IVec2, from_seg: usize,
 pub fn get_ground_y(pos: Vec3, map_tree: Option<&MapTree>, spatial_query: &avian3d::prelude::SpatialQuery,) → f32
 pub fn traffic_network_spawner(time: Res<Time>, mut last_spawn: Local<f32>, config: Res<TrafficConfig>, graph: Res<TrafficRoadGraph>, q_camera: Query<(&Camera, &GlobalTransform)
 pub fn spawn_traffic_car_observer(trigger: On<SpawnTrafficCarEvent>, mut commands: Commands, graph: Res<TrafficRoadGraph>, asset_server: Res<AssetServer>, map_tree: Option<Res<MapTree>>, spatial_query: avian3d::prelude::SpatialQuery, manifest: Option<Res<PedestrianManifest>>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/mod.rs
-```
-pub struct WeaponsPlugin
-impl WeaponsPlugin
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/weapons/weapon_attach.rs
@@ -393,4 +313,130 @@ impl UiState
   pub fn with_physics_debug() → Self
 impl UiState
 pub fn web_set_loading_status(_show: bool, _message: &str)
+```
+
+### crack_demo/game_logic/Cargo.toml
+```
+table [package]
+table [features]
+table [dependencies]
+table [target.'cfg(target_family = "wasm")'.dependencies]
+key name
+key version.workspace
+key edition.workspace
+key authors.workspace
+```
+
+### crack_demo/game_logic/src/api.rs
+```
+pub struct FetchArgs
+```
+
+### crack_demo/game_logic/src/geo.rs
+```
+pub struct GeoBBox
+pub struct ProjectionRef
+impl GeoBBox
+  pub fn contains(&self, lat: f64, lon: f64) → bool
+pub fn octant_path_to_geobbox(path: &str) → Option<GeoBBox>
+pub fn find_tile_for_lat_lon(lat: f64, lon: f64, map_tree: &'a MapTreeData,) → Option<&'a MapTreeNodeInfo>
+pub fn get_enu_rotation_matrix(ref_point: Vec3) → [Vec3
+pub fn lat_lon_to_ecef(lat_deg: f32, lon_deg: f32) → Vec3
+pub fn lat_lon_to_bevy(lat_deg: f32, lon_deg: f32, ref_point: Vec3, rot_matrix: &[Vec3; 3],) → Vec3
+pub fn parse_bbox_from_txt(text: &str) → Option<(f32, f32)>
+pub fn project_point(lat: f64, lon: f64, map_tree: &MapTreeData, coord_res: &ProjectionRef,) → Vec3
+```
+
+### crack_demo/game_logic/src/lod.rs
+```
+pub struct Score
+pub struct LodComputeRequest
+pub struct SplitRequestSummary
+pub struct MergeRequestSummary
+pub struct LodComputeResponse
+impl Score
+impl Score
+pub fn compute_distance_to_aabb(bbox: &BBox, p: Vec3) → f32
+pub fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) → LodComputeResponse
+```
+
+### crack_demo/game_logic/src/map.rs
+```
+pub struct BBox
+pub struct MapTileAssetId
+pub struct MapTreeNodePath
+pub struct MapTreeAssetInfo
+pub struct MapTreeNodeInfo
+pub struct MapTreeData
+pub struct MapTileAssetInfoSummary
+pub struct MapRootNodeSummary
+pub struct MapManifestResult
+impl MapTileAssetId
+  pub fn get_octant_path(&self) → MapTreeNodePath
+impl MapTreeNodePath
+  pub fn get_parent(&self) → Option<MapTreeNodePath>
+```
+
+### crack_demo/game_logic/src/osm.rs
+```
+pub struct RawGeoJsonFeature
+pub struct GeoJsonFeature
+pub struct OsmDataResult
+pub enum RawFeatureGeometry
+pub enum FeatureGeometry
+```
+
+### crack_demo/game_logic/src/worker/http.rs
+```
+pub async fn http_get_bytes(url: &str) → anyhow::Result<bytes::Bytes>
+pub async fn http_get_text(url: &str) → anyhow::Result<String>
+pub async fn http_get_bytes(url: &str) → anyhow::Result<bytes::Bytes>
+pub async fn http_get_text(url: &str) → anyhow::Result<String>
+```
+
+### crack_demo/game_logic/src/worker/manifest_impl.rs
+```
+pub async fn get_manifest_cache() → anyhow::Result<Arc<MapTreeD...
+pub async fn fetch_map_manifest(args: FetchArgs) → anyhow::Result<MapManifestR...
+```
+
+### crack_demo/game_logic/src/worker/models.rs
+```
+pub async fn run_game_migrations(_: () → anyhow::Result<()>
+```
+
+### crack_demo/game_logic/src/worker/osm_impl.rs
+```
+pub async fn fetch_osm_data(args: FetchArgs) → anyhow::Result<OsmDataResult>
+```
+
+### crack_demo/thread_worker/Cargo.toml
+```
+table [package]
+table [dependencies]
+table [lints]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+key workspace
+```
+
+### crack_demo/thread_worker/src/lib.rs
+```
+pub fn make_registered_mapping() → Arc<ApiImplMapping>
+pub async fn spawn_in_process_worker() → anyhow::Result<WorkerPipe>
+```
+
+### crack_demo/web_worker/Cargo.toml
+```
+table [package]
+table [lib]
+table [dependencies]
+table [lints]
+key name
+key version.workspace
+key authors.workspace
+key edition.workspace
+key workspace
 ```
