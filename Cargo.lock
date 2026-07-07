@@ -11055,6 +11055,7 @@ dependencies = [
 name = "web_serviceworker_crackslave"
 version = "0.1.0"
 dependencies = [
+ "_crack_utils",
  "anyhow",
  "api_asscrack",
  "dioxus-logger",

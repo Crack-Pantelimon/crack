@@ -6,7 +6,6 @@ pub use map_lod::TreeMapTile;
 
 use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
-use std::collections::{BTreeMap, BTreeSet};
 
 use crate::plugins::map_plugin::map_lod::{
     TileSwapRequests, check_map_loaded_status, do_merge_requests, do_split_requests,
@@ -46,16 +45,13 @@ impl Plugin for MapPlugin {
 
 pub use game_logic::map::{
     BBox, MapTileAssetId, MapTreeAssetInfo, MapTreeData, MapTreeNodeInfo, MapTreeNodePath,
+    MapRootNodeSummary, MapTileAssetInfoSummary,
 };
 
 #[derive(Resource, Default, Debug)]
 pub struct MapTree {
-    pub assets: BTreeMap<MapTileAssetId, MapTreeAssetInfo>,
-    pub all_nodes: BTreeMap<MapTreeNodePath, MapTreeNodeInfo>,
-    pub children: BTreeMap<MapTreeNodePath, BTreeSet<MapTreeNodePath>>,
-    pub parents: BTreeMap<MapTreeNodePath, MapTreeNodePath>,
     pub bbox: BBox,
-    pub roots: BTreeSet<MapTreeNodePath>,
+    pub roots: Vec<MapRootNodeSummary>,
     pub parsed: bool,
 }
 

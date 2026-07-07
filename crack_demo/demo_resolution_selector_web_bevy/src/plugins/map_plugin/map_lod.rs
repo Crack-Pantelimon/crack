@@ -1,44 +1,16 @@
 use crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer;
-use crate::plugins::map_plugin::{BBox, MapLODState, MapTileAssetId, MapTree, MapTreeNodePath};
+use crate::plugins::map_plugin::{MapLODState, MapTileAssetId, MapTree, MapTreeNodePath};
 use crate::plugins::states::{InitialMapLoadFinished, OsmDatabaseLoadFinished};
-use _crack_utils::get_timestamp_now_ms;
 use avian3d::collision::collider::CollisionMargin;
 use avian3d::prelude::CollisionLayers;
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
-use bevy_egui::egui::emath::OrderedFloat;
-use std::collections::BTreeMap;
-use std::collections::{BTreeSet, BinaryHeap};
+use std::collections::BTreeSet;
 
 #[derive(Component)]
 pub struct TreeMapTile {
     pub node_path: MapTreeNodePath,
     pub asset_id: MapTileAssetId,
-}
-
-fn get_node_assets_and_handles(
-    data_res: &Res<MapTree>,
-    asset_server: &Res<AssetServer>,
-    node_path: &MapTreeNodePath,
-) -> Vec<(MapTileAssetId, Handle<WorldAsset>)> {
-    let Some(node) = data_res.all_nodes.get(node_path) else {
-        tracing::warn!("Node {:?} not found in data_res.nodes", node_path);
-        return Vec::new();
-    };
-    let mut assets_and_handles = Vec::new();
-    for asset_id in &node.assets {
-        let Some(asset_info) = data_res.assets.get(asset_id) else {
-            continue;
-        };
-        let Some(ref glb_path) = asset_info.glb_path else {
-            continue;
-        };
-
-        let glb_url = format!("{}/3d_data_v2/{}", crate::config::DATA_BASE_URL, glb_path);
-        let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
-        assets_and_handles.push((asset_id.clone(), asset_server.load(asset_path)));
-    }
-    assets_and_handles
 }
 
 fn spawn_node_tiles(
@@ -112,12 +84,17 @@ pub fn spawn_root_map_tiles(
         return;
     }
     let mut new_tiles = Vec::new();
-    for node_path in data_res.roots.iter() {
-        let assets_and_handles = get_node_assets_and_handles(&data_res, &asset_server, node_path);
+    for root in &data_res.roots {
+        let mut assets_and_handles = Vec::new();
+        for asset in &root.assets {
+            let glb_url = format!("{}/3d_data_v2/{}", crate::config::DATA_BASE_URL, asset.glb_path);
+            let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
+            assets_and_handles.push((asset.name.clone(), asset_server.load(asset_path)));
+        }
         new_tiles.extend(spawn_node_tiles(
             &mut commands,
             &assets_and_handles,
-            node_path,
+            &root.path,
             true,
         ));
     }
@@ -133,22 +110,6 @@ pub fn spawn_root_map_tiles(
     }
 }
 
-#[inline]
-fn compute_distance_to_aabb(bbox: &BBox, p: Vec3) -> f32 {
-    let cx =
-        p.x.clamp(bbox.min.x.min(bbox.max.x), bbox.min.x.max(bbox.max.x));
-    let cy =
-        p.y.clamp(bbox.min.y.min(bbox.max.y), bbox.min.y.max(bbox.max.y));
-    let cz =
-        p.z.clamp(bbox.min.z.min(bbox.max.z), bbox.min.z.max(bbox.max.z));
-    let d1 = p.distance(Vec3::new(cx, cy, cz));
-    let middle = Vec3::new(
-        (bbox.min.x + bbox.max.x) / 2.0,
-        (bbox.min.y + bbox.max.y) / 2.0,
-        (bbox.min.z + bbox.max.z) / 2.0,
-    );
-    (d1 + p.distance(middle)) / 2.0
-}
 
 #[derive(Component, Debug)]
 pub struct TileShouldMerge {
@@ -164,8 +125,8 @@ pub struct TileShouldSplit {
 
 #[derive(Resource, Default)]
 pub struct TileSwapRequests {
-    pub split_requests: BTreeSet<MapTreeNodePath>,
-    pub merge_requests: BTreeSet<MapTreeNodePath>,
+    pub split_requests: Vec<game_logic::lod::SplitRequestSummary>,
+    pub merge_requests: Vec<game_logic::lod::MergeRequestSummary>,
 }
 
 /// Frames to keep a freshly-spawned tile hidden before revealing it and dropping the tile it
@@ -196,8 +157,6 @@ pub fn start_tile_swap_requests(
     asset_server: Res<AssetServer>,
     q_split: Query<&TileShouldSplit>,
     q_merge: Query<&TileShouldMerge>,
-
-    data_res: Res<MapTree>,
 ) {
     if res_tiles.merge_requests.is_empty() && res_tiles.split_requests.is_empty() {
         return;
@@ -210,65 +169,52 @@ pub fn start_tile_swap_requests(
     let mut split_budget = PARALLEL_SPLIT_FETCH - current_splits;
     let mut merge_budget = PARALLEL_MERGE_FETCH - current_merges;
 
-    let mut split_done = BTreeSet::new();
-    for split in res_tiles.split_requests.iter() {
+    let mut split_done = Vec::new();
+    for split in &res_tiles.split_requests {
         if split_budget <= 0 {
             break;
         }
         split_budget -= 1;
-        let children: Vec<_> = data_res
-            .children
-            .get(&split)
-            .map(|x| x.iter().cloned().collect())
-            .unwrap_or_default();
-        let children = children
-            .iter()
-            .map(|x| {
-                (
-                    x.clone(),
-                    get_node_assets_and_handles(&data_res, &asset_server, &x),
-                )
-            })
-            .collect::<Vec<_>>();
+
+        let children = split.children.iter().map(|child| {
+            let handles = child.assets.iter().map(|asset| {
+                let glb_url = format!("{}/3d_data_v2/{}", crate::config::DATA_BASE_URL, asset.glb_path);
+                let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
+                (asset.name.clone(), asset_server.load(asset_path))
+            }).collect::<Vec<_>>();
+            (child.path.clone(), handles)
+        }).collect::<Vec<_>>();
 
         commands.spawn(TileShouldSplit {
             load_children: children,
-            drop_parent: split.clone(),
+            drop_parent: split.parent_path.clone(),
         });
-        split_done.insert(split.clone());
+        split_done.push(split.parent_path.clone());
     }
 
-    let mut merge_done = BTreeSet::new();
-    for merge in res_tiles.merge_requests.iter() {
+    let mut merge_done = Vec::new();
+    for merge in &res_tiles.merge_requests {
         if merge_budget <= 0 {
             break;
         }
         merge_budget -= 1;
 
-        let drop_children = data_res.children.get(&merge).cloned().unwrap_or_default();
-
-        // let drop_children = nodes
-        //     .iter()
-        //     .filter(|n| n.0.starts_with(&merge.0) && n.0 != merge.0)
-        //     .cloned()
-        //     .collect::<Vec<_>>();
-
-        let parent_handles = get_node_assets_and_handles(&data_res, &asset_server, &merge);
+        let parent_handles = merge.parent_assets.iter().map(|asset| {
+            let glb_url = format!("{}/3d_data_v2/{}", crate::config::DATA_BASE_URL, asset.glb_path);
+            let asset_path = GltfAssetLabel::Scene(0).from_asset(glb_url);
+            (asset.name.clone(), asset_server.load(asset_path))
+        }).collect::<Vec<_>>();
 
         commands.spawn(TileShouldMerge {
-            drop_children,
-            load_parent: (merge.clone(), parent_handles),
+            drop_children: merge.drop_children.clone(),
+            load_parent: (merge.parent_path.clone(), parent_handles),
         });
 
-        merge_done.insert(merge.clone());
+        merge_done.push(merge.parent_path.clone());
     }
 
-    for item in split_done {
-        res_tiles.split_requests.remove(&item);
-    }
-    for item in merge_done {
-        res_tiles.merge_requests.remove(&item);
-    }
+    res_tiles.split_requests.retain(|x| !split_done.contains(&x.parent_path));
+    res_tiles.merge_requests.retain(|x| !merge_done.contains(&x.parent_path));
 }
 
 const SPLIT_PER_FRAME: usize = 1;

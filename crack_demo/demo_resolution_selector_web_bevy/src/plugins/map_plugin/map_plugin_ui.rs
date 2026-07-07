@@ -2,62 +2,17 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
 use crate::plugins::map_plugin::{
-    MapLODState, MapTree, MapTreeNodeInfo, MapTreeNodePath, map_lod::TreeMapTile,
+    MapLODState, MapTree, MapTreeNodePath, map_lod::TreeMapTile,
 };
 
 pub fn draw_tree_bboxes(
-    mut gizmos: Gizmos,
-    data_res: Res<MapTree>,
-    lod_state: Res<MapLODState>,
-    tiles_query: Query<&TreeMapTile>,
-    ui_state: Option<Res<crate::ui_egui::UiState>>,
+    _gizmos: Gizmos,
+    _data_res: Res<MapTree>,
+    _lod_state: Res<MapLODState>,
+    _tiles_query: Query<&TreeMapTile>,
+    _ui_state: Option<Res<crate::ui_egui::UiState>>,
 ) {
-    if let Some(state) = ui_state {
-        if !state.draw_map_bboxes {
-            return;
-        }
-    } else {
-        return;
-    }
-
-    if !data_res.parsed {
-        return;
-    }
-
-    // Use a set to avoid drawing the same node's bounding box multiple times
-    let mut drawn = std::collections::BTreeSet::new();
-
-    for tile in tiles_query.iter() {
-        let node_path = &tile.node_path;
-        if drawn.insert(node_path.clone()) {
-            if let Some(node) = data_res.all_nodes.get(node_path) {
-                let is_selected = lod_state.selected_node.as_ref() == Some(&node_path.0);
-                let color = if is_selected {
-                    Color::srgba(1.0, 0.0, 0.0, 0.3) // Red if selected
-                } else if data_res.parents.get(node_path).is_none() {
-                    Color::srgba(0.0, 1.0, 0.0, 0.3) // Green for root
-                } else {
-                    Color::srgba(0.0, 0.5, 1.0, 0.3) // Blue for others
-                };
-                draw_node_bbox(&mut gizmos, node, color);
-            }
-        }
-    }
-}
-
-fn draw_node_bbox(gizmos: &mut Gizmos, node: &MapTreeNodeInfo, color: Color) {
-    let center = Vec3::new(
-        (node.bbox.min.x + node.bbox.max.x) / 2.0,
-        (node.bbox.min.y + node.bbox.max.y) / 2.0,
-        (node.bbox.min.z + node.bbox.max.z) / 2.0,
-    );
-    let size = Vec3::new(
-        (node.bbox.max.x - node.bbox.min.x).abs(),
-        (node.bbox.max.y - node.bbox.min.y).abs(),
-        (node.bbox.max.z - node.bbox.min.z).abs(),
-    );
-    let cuboid = Cuboid::new(size.x, size.y, size.z);
-    gizmos.primitive_3d(&cuboid, Isometry3d::from_translation(center), color);
+    // BBox drawing disabled on client
 }
 
 pub fn tree_navigator_ui(
@@ -91,14 +46,7 @@ pub fn tree_navigator_ui(
         .collect();
     let num_nodes = rendered_paths.len();
     let num_assets = tiles_query.iter().count();
-    let mut total_vertices = 0;
-    for tile in tiles_query.iter() {
-        if let Some(asset_info) = data_res.assets.get(&tile.asset_id) {
-            if let Some(vc) = asset_info.vertex_count {
-                total_vertices += vc;
-            }
-        }
-    }
+    let total_vertices = 0;
 
     egui::Window::new("LOD Configuration & Tree Navigator")
         .open(&mut state.show_lod_configurator)
@@ -158,26 +106,19 @@ pub fn tree_navigator_ui(
 
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for node_path in rendered_paths {
-                    if let Some(node) = data_res.all_nodes.get(&node_path) {
-                        let is_selected = lod_state.selected_node.as_ref() == Some(&node_path.0);
-                        let label_text = format!(
-                            "Path: {} | Assets: {} | BBox: {:?}",
-                            node.path.0,
-                            node.assets.len(),
-                            node.bbox
-                        );
+                    let is_selected = lod_state.selected_node.as_ref() == Some(&node_path.0);
+                    let label_text = format!("Path: {}", node_path.0);
 
-                        ui.horizontal(|ui| {
-                            let resp = ui.selectable_label(is_selected, label_text);
-                            if resp.clicked() {
-                                if is_selected {
-                                    node_to_deselect = true;
-                                } else {
-                                    node_to_select = Some(node_path.0.clone());
-                                }
+                    ui.horizontal(|ui| {
+                        let resp = ui.selectable_label(is_selected, label_text);
+                        if resp.clicked() {
+                            if is_selected {
+                                node_to_deselect = true;
+                            } else {
+                                node_to_select = Some(node_path.0.clone());
                             }
-                        });
-                    }
+                        }
+                    });
                 }
             });
         });

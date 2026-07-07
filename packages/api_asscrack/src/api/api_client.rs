@@ -79,7 +79,9 @@ impl ApiClient {
         };
         self.tx.send(msg).await?;
 
+        let start_call = _crack_utils::get_timestamp_now_ms();
         let ret = one_rx.await?;
+        let elapsed_call = _crack_utils::get_timestamp_now_ms() - start_call;
 
         let ret_type = ret.msg_type;
         if ret_type != "return" {
@@ -89,7 +91,15 @@ impl ApiClient {
         }
         let ret = ret.msg_content;
 
+        let start_deserialize = _crack_utils::get_timestamp_now_ms();
         let ret: Result<<T as ApiMethodDecl>::Ret, String> = postcard::from_bytes(&ret)?;
+        let elapsed_deserialize = _crack_utils::get_timestamp_now_ms() - start_deserialize;
+        tracing::info!(
+            "ApiClient: call {} took {} ms, deserialization took {} ms",
+            T::fullname(),
+            elapsed_call,
+            elapsed_deserialize
+        );
         ret.map_err(|e| anyhow::anyhow!("{e}"))
     }
 }

@@ -88,16 +88,29 @@ async fn make_worker() -> anyhow::Result<WorkerPipe> {
 
     tracing::info!("set onmessage.");
 
-    let closure = move |data| {
+    let closure = move |data: JsValue| {
         let one_tx = one_tx.clone();
 
-        let data = serde_wasm_bindgen::from_value::<WorkerMessage>(data);
-        let data = match data {
-            Ok(d) => d,
-            Err(e) => {
-                tracing::error!("cannot deserialize message: {e:?}");
-                return;
-            }
+        let msg_id = match js_sys::Reflect::get(&data, &"msg_id".into()) {
+            Ok(v) => v.as_f64().unwrap_or(0.0) as u32,
+            Err(_) => 0,
+        };
+        let msg_type = match js_sys::Reflect::get(&data, &"msg_type".into()) {
+            Ok(v) => v.as_string().unwrap_or_default(),
+            Err(_) => String::new(),
+        };
+        let js_content = match js_sys::Reflect::get(&data, &"msg_content".into()) {
+            Ok(v) => v,
+            Err(_) => JsValue::UNDEFINED,
+        };
+
+        let uint8_array = js_sys::Uint8Array::from(js_content);
+        let msg_content = uint8_array.to_vec();
+
+        let data = WorkerMessage {
+            msg_id,
+            msg_type,
+            msg_content,
         };
 
         if &data.msg_type == "pong" {
@@ -143,7 +156,13 @@ async fn make_worker() -> anyhow::Result<WorkerPipe> {
     const N: i32 = 200;
     let mut _ok = false;
     for _i in 1..=N {
-        js_handles.send_message(&serde_wasm_bindgen::to_value(&ping)?);
+        let js_ping = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&js_ping, &"msg_id".into(), &JsValue::from(0));
+        let _ = js_sys::Reflect::set(&js_ping, &"msg_type".into(), &JsValue::from("ping"));
+        let view = unsafe { js_sys::Uint8Array::view(&ping.msg_content) };
+        let uint8_array = view.slice(0, ping.msg_content.len() as u32);
+        let _ = js_sys::Reflect::set(&js_ping, &"msg_content".into(), &uint8_array);
+        js_handles.send_message(&js_ping.into());
 
         // wait for response
         tracing::info!("waiting for response from worker...");
@@ -168,14 +187,15 @@ async fn make_worker() -> anyhow::Result<WorkerPipe> {
 
     wasm_bindgen_futures::spawn_local(async move {
         while let Some(req) = req_rx.recv().await {
-            match &serde_wasm_bindgen::to_value(&req) {
-                Ok(o) => {
-                    js_handles.send_message(o);
-                }
-                Err(e) => {
-                    tracing::error!("to_value() error: {e:#?}");
-                }
-            }
+            let js_req = js_sys::Object::new();
+            let _ = js_sys::Reflect::set(&js_req, &"msg_id".into(), &JsValue::from(req.msg_id));
+            let _ = js_sys::Reflect::set(&js_req, &"msg_type".into(), &JsValue::from(&req.msg_type));
+            
+            let view = unsafe { js_sys::Uint8Array::view(&req.msg_content) };
+            let uint8_array = view.slice(0, req.msg_content.len() as u32);
+            let _ = js_sys::Reflect::set(&js_req, &"msg_content".into(), &uint8_array);
+            
+            js_handles.send_message(&js_req.into());
         }
     });
 

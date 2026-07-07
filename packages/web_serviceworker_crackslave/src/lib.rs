@@ -42,35 +42,70 @@ async fn _compute_payload_2(msg: JsValue) -> anyhow::Result<JsValue> {
         anyhow::bail!("no API mapping");
     };
 
-    let data = match serde_wasm_bindgen::from_value::<WorkerMessage>(msg) {
-        Ok(data) => data,
-        Err(e) => {
-            tracing::error!("deserialization error on message: {e:?}");
-            anyhow::bail!("deserialization error on message: {e:?}");
-        }
-    };
+    let t0 = _crack_utils::get_timestamp_now_ms();
+    let msg_id = js_sys::Reflect::get(&msg, &"msg_id".into())
+        .map_err(|e| anyhow::anyhow!("Reflect error on msg_id: {e:?}"))?
+        .as_f64()
+        .ok_or_else(|| anyhow::anyhow!("msg_id is not a number"))? as u32;
 
-    // tracing::info!("on_message data: {:#?}", data);
+    let msg_type = js_sys::Reflect::get(&msg, &"msg_type".into())
+        .map_err(|e| anyhow::anyhow!("Reflect error on msg_type: {e:?}"))?
+        .as_string()
+        .ok_or_else(|| anyhow::anyhow!("msg_type is not a string"))?;
+
+    let js_content = js_sys::Reflect::get(&msg, &"msg_content".into())
+        .map_err(|e| anyhow::anyhow!("Reflect error on msg_content: {e:?}"))?;
+
+    let uint8_array = js_sys::Uint8Array::from(js_content);
+    let msg_content = uint8_array.to_vec();
+    let t_extract = _crack_utils::get_timestamp_now_ms();
+
+    let data = WorkerMessage {
+        msg_id,
+        msg_type: msg_type.clone(),
+        msg_content,
+    };
 
     if &data.msg_type == "ping" {
         let client_version = data.msg_content;
 
         tracing::info!("Create message type=pong");
-        let data2 = WorkerMessage {
-            msg_id: 0,
-            msg_type: "pong".to_string(),
-            msg_content: client_version,
-        };
-        let data2 = serde_wasm_bindgen::to_value(&data2).context("serialize")?;
-        return Ok(data2);
+        let js_response = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&js_response, &"msg_id".into(), &JsValue::from(0));
+        let _ = js_sys::Reflect::set(&js_response, &"msg_type".into(), &JsValue::from("pong"));
+        
+        let view = unsafe { js_sys::Uint8Array::view(&client_version) };
+        let uint8_array = view.slice(0, client_version.len() as u32);
+        let _ = js_sys::Reflect::set(&js_response, &"msg_content".into(), &uint8_array);
+        
+        return Ok(js_response.into());
     } else {
         tracing::info!("Got App Message, type = {}({})", data.msg_type, data.msg_id);
         let mapping = mapping.clone();
 
+        let t_start_func = _crack_utils::get_timestamp_now_ms();
         let response =
             api_asscrack::crack_worker::api_worker::compute_response_message(data, mapping).await;
-        let response = serde_wasm_bindgen::to_value(&response).context("serialize")?;
-        return Ok(response);
+        let t_end_func = _crack_utils::get_timestamp_now_ms();
+
+        let js_response = js_sys::Object::new();
+        let _ = js_sys::Reflect::set(&js_response, &"msg_id".into(), &JsValue::from(response.msg_id));
+        let _ = js_sys::Reflect::set(&js_response, &"msg_type".into(), &JsValue::from(&response.msg_type));
+        
+        let view = unsafe { js_sys::Uint8Array::view(&response.msg_content) };
+        let uint8_array = view.slice(0, response.msg_content.len() as u32);
+        let _ = js_sys::Reflect::set(&js_response, &"msg_content".into(), &uint8_array);
+        let t_serialize = _crack_utils::get_timestamp_now_ms();
+
+        tracing::info!(
+            "Worker handler loops: extract={} ms, func={} ms, serialize={} ms (size={} bytes)",
+            t_extract - t0,
+            t_end_func - t_start_func,
+            t_serialize - t_end_func,
+            response.msg_content.len()
+        );
+
+        return Ok(js_response.into());
     }
 }
 

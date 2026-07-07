@@ -21,35 +21,74 @@ pub async fn get_manifest_cache() -> anyhow::Result<Arc<MapTreeData>> {
     anyhow::bail!("LOD requested before manifest was fetched")
 }
 
+fn map_tree_to_manifest_result(tree: &MapTreeData) -> MapManifestResult {
+    let mut roots_summary = Vec::new();
+    for root_path in &tree.roots {
+        let mut assets_summary = Vec::new();
+        if let Some(node_info) = tree.all_nodes.get(root_path) {
+            for asset_id in &node_info.assets {
+                if let Some(asset_info) = tree.assets.get(asset_id) {
+                    if let Some(glb_path) = &asset_info.glb_path {
+                        assets_summary.push(crate::map::MapTileAssetInfoSummary {
+                            name: asset_id.clone(),
+                            glb_path: glb_path.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        roots_summary.push(crate::map::MapRootNodeSummary {
+            path: root_path.clone(),
+            assets: assets_summary,
+        });
+    }
+
+    let lod_budget = (tree.roots.iter().map(|i| tree.all_nodes.get(i).unwrap().assets.len()).sum::<usize>() + 320) as u32;
+
+    MapManifestResult {
+        bbox: tree.bbox,
+        roots: roots_summary,
+        lod_budget,
+    }
+}
+
 pub async fn fetch_map_manifest(args: FetchArgs) -> anyhow::Result<MapManifestResult> {
     {
+        let t0 = _crack_utils::get_timestamp_now_ms();
         let guard = MANIFEST_CACHE.read().await;
         if let Some(cache) = &*guard {
-            return Ok(MapManifestResult {
-                tree: (**cache).clone(),
-            });
+            let res = map_tree_to_manifest_result(&**cache);
+            let t2 = _crack_utils::get_timestamp_now_ms();
+            tracing::info!("fetch_map_manifest (cached): read guard and map took {} ms", t2 - t0);
+            return Ok(res);
         }
     }
 
+    let t0 = _crack_utils::get_timestamp_now_ms();
     let mut guard = MANIFEST_CACHE.write().await;
     if let Some(cache) = &*guard {
-        return Ok(MapManifestResult {
-            tree: (**cache).clone(),
-        });
+        return Ok(map_tree_to_manifest_result(&**cache));
     }
 
     let url = format!("{}/3d_data_v2/data_out/manifest.parquet", args.base_url);
     tracing::info!("Worker fetching manifest from {}", url);
 
     let bytes = super::http::http_get_bytes(&url).await?;
+    let t_fetch = _crack_utils::get_timestamp_now_ms();
+    tracing::info!("Worker fetched parquet bytes in {} ms", t_fetch - t0);
+
     let tree = build_map_tree(&bytes)?;
+    let t_build = _crack_utils::get_timestamp_now_ms();
+    tracing::info!("Worker built map tree in {} ms", t_build - t_fetch);
 
     let arc = Arc::new(tree);
     *guard = Some(arc.clone());
 
-    Ok(MapManifestResult {
-        tree: (*arc).clone(),
-    })
+    let res = map_tree_to_manifest_result(&*arc);
+    let t_clone = _crack_utils::get_timestamp_now_ms();
+    tracing::info!("Worker construct of manifest result took {} ms", t_clone - t_build);
+
+    Ok(res)
 }
 
 fn get_string(field: Field) -> Option<String> {
@@ -141,10 +180,12 @@ fn parse_tree_nodes(bytes: &[u8]) -> anyhow::Result<Vec<MapTreeAssetInfo>> {
 }
 
 fn build_map_tree(bytes: &[u8]) -> anyhow::Result<MapTreeData> {
+    let t0 = _crack_utils::get_timestamp_now_ms();
     let mut parsed_nodes = parse_tree_nodes(bytes)?;
+    let t_parse = _crack_utils::get_timestamp_now_ms();
     parsed_nodes.sort_by(|a, b| a.name.cmp(&b.name));
 
-    tracing::info!("Worker parsed {} raw assets.", parsed_nodes.len());
+    tracing::info!("Worker parsed {} raw assets in {} ms.", parsed_nodes.len(), t_parse - t0);
 
     let mut assets = BTreeMap::new();
     for asset in parsed_nodes {

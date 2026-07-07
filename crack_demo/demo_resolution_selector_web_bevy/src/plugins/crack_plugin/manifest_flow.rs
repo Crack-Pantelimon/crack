@@ -34,9 +34,8 @@ pub fn poll_manifest_task(
             match res {
                 Ok(manifest) => {
                     tracing::info!("Manifest loaded via RPC successfully!");
-                    let tree = manifest.tree;
 
-                    let middle = (tree.bbox.min + tree.bbox.max) / 2.0;
+                    let middle = (manifest.bbox.min + manifest.bbox.max) / 2.0;
                     let camera_pos = Vec3::new(middle.x, middle.y + 100.0, middle.z);
                     let target = camera_pos + Vec3::new(1.0, -0.2, 1.0);
 
@@ -50,22 +49,12 @@ pub fn poll_manifest_task(
                             Transform::from_translation(camera_pos).looking_at(target, Vec3::Y);
                     }
 
-                    map_tree.assets = tree.assets;
-                    map_tree.all_nodes = tree.all_nodes;
-                    map_tree.children = tree.children;
-                    map_tree.parents = tree.parents;
-                    map_tree.bbox = tree.bbox;
-                    map_tree.roots = tree.roots.clone();
+                    map_tree.bbox = manifest.bbox;
+                    map_tree.roots = manifest.roots;
                     map_tree.parsed = true;
 
                     lod_state.selected_node = None;
-                    let budget = map_tree
-                        .roots
-                        .iter()
-                        .map(|i| map_tree.all_nodes.get(i).unwrap().assets.len())
-                        .sum::<usize>()
-                        + 320;
-                    lod_state.lod_budget = budget as u32;
+                    lod_state.lod_budget = manifest.lod_budget;
                     let timeout = 0.1 + rand::random::<f32>() * 0.1;
                     lod_state.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
                     lod_state.max_lod = 24;

@@ -23,10 +23,23 @@ pub struct LodComputeRequest {
     pub tiles_per_diagonal: f32,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SplitRequestSummary {
+    pub parent_path: MapTreeNodePath,
+    pub children: Vec<crate::map::MapRootNodeSummary>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MergeRequestSummary {
+    pub parent_path: MapTreeNodePath,
+    pub parent_assets: Vec<crate::map::MapTileAssetInfoSummary>,
+    pub drop_children: BTreeSet<MapTreeNodePath>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LodComputeResponse {
-    pub split_requests: BTreeSet<MapTreeNodePath>,
-    pub merge_requests: BTreeSet<MapTreeNodePath>,
+    pub split_requests: Vec<SplitRequestSummary>,
+    pub merge_requests: Vec<MergeRequestSummary>,
 }
 
 #[inline]
@@ -148,10 +161,37 @@ pub fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) -> L
         }
     }
 
-    let mut split_requests = BTreeSet::new();
+    let mut split_count = 0;
+    let mut resolved_splits = Vec::new();
     for item in &proposed_splits {
         if nodes.contains(item) {
-            split_requests.insert(item.clone());
+            split_count += 1;
+            let mut children_summary = Vec::new();
+            if let Some(child_paths) = data_res.children.get(item) {
+                for cp in child_paths {
+                    let mut assets_summary = Vec::new();
+                    if let Some(node_info) = data_res.all_nodes.get(cp) {
+                        for asset_id in &node_info.assets {
+                            if let Some(asset_info) = data_res.assets.get(asset_id) {
+                                if let Some(glb_path) = &asset_info.glb_path {
+                                    assets_summary.push(crate::map::MapTileAssetInfoSummary {
+                                        name: asset_id.clone(),
+                                        glb_path: glb_path.clone(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    children_summary.push(crate::map::MapRootNodeSummary {
+                        path: cp.clone(),
+                        assets: assets_summary,
+                    });
+                }
+            }
+            resolved_splits.push(SplitRequestSummary {
+                parent_path: item.clone(),
+                children: children_summary,
+            });
         }
     }
 
@@ -168,8 +208,8 @@ pub fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) -> L
     }
 
     let mut rem = vec![];
-    for a in merge_requests.iter() {
-        for b in merge_requests.iter() {
+    for a in &merge_requests {
+        for b in &merge_requests {
             if Some(a.clone()) == b.get_parent() {
                 rem.push(b.clone());
             }
@@ -179,19 +219,42 @@ pub fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) -> L
         merge_requests.remove(&b);
     }
 
+    let mut resolved_merges = Vec::new();
+    for proposed in &merge_requests {
+        let mut parent_assets = Vec::new();
+        if let Some(node_info) = data_res.all_nodes.get(proposed) {
+            for asset_id in &node_info.assets {
+                if let Some(asset_info) = data_res.assets.get(asset_id) {
+                    if let Some(glb_path) = &asset_info.glb_path {
+                        parent_assets.push(crate::map::MapTileAssetInfoSummary {
+                            name: asset_id.clone(),
+                            glb_path: glb_path.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        let drop_children = data_res.children.get(proposed).cloned().unwrap_or_default();
+        resolved_merges.push(MergeRequestSummary {
+            parent_path: proposed.clone(),
+            parent_assets,
+            drop_children,
+        });
+    }
+
     let t1 = _crack_utils::get_timestamp_now_ms();
     let dt = t1 - t0;
     if dt > 12 {
         tracing::info!(
             "{} split requests / {} merge requests. compute_lod_changes took {} ms",
-            split_requests.len(),
-            merge_requests.len(),
+            split_count,
+            resolved_merges.len(),
             dt
         );
     }
 
     LodComputeResponse {
-        split_requests,
-        merge_requests,
+        split_requests: resolved_splits,
+        merge_requests: resolved_merges,
     }
 }

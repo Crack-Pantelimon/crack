@@ -33,7 +33,7 @@ pub fn spawn_lod_task(
     {
         return;
     }
-    if map_tree.all_nodes.is_empty() || q_nodes.is_empty() {
+    if !map_tree.parsed || q_nodes.is_empty() {
         return;
     }
 

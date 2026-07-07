@@ -57,7 +57,21 @@ pub struct MapTreeData {
     pub roots: BTreeSet<MapTreeNodePath>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MapTileAssetInfoSummary {
+    pub name: MapTileAssetId,
+    pub glb_path: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MapRootNodeSummary {
+    pub path: MapTreeNodePath,
+    pub assets: Vec<MapTileAssetInfoSummary>,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct MapManifestResult {
-    pub tree: MapTreeData,
+    pub bbox: BBox,
+    pub roots: Vec<MapRootNodeSummary>,
+    pub lod_budget: u32,
 }

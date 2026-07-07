@@ -55,7 +55,11 @@ pub trait ApiMethodDecl {
                     };
                 }
             };
+            let start = _crack_utils::get_timestamp_now_ms();
             let ret = _func(arg).await;
+            let elapsed_func = _crack_utils::get_timestamp_now_ms() - start;
+
+            let start_serialize = _crack_utils::get_timestamp_now_ms();
             let ret: Result<<Self as ApiMethodDecl>::Ret, String> =
                 ret.map_err(|e| format!("{e:#?}"));
 
@@ -69,6 +73,14 @@ pub trait ApiMethodDecl {
                     };
                 }
             };
+            let elapsed_serialize = _crack_utils::get_timestamp_now_ms() - start_serialize;
+            tracing::info!(
+                "Worker: API call {} took run={} ms, serialize={} ms (size={} bytes)",
+                Self::fullname(),
+                elapsed_func,
+                elapsed_serialize,
+                msg_content.len()
+            );
 
             WorkerMessage {
                 msg_id,
