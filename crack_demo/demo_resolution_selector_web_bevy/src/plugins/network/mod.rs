@@ -9,6 +9,7 @@ use net_crackpipe::{
     chat::global_chat::{GlobalChatMessageContent, GlobalChatPresence},
     network_manager::NetworkManager,
     user_identity::UserIdentitySecrets,
+    PublicKey,
 };
 
 pub mod global_chat_ui;
@@ -45,12 +46,19 @@ pub enum ChatEvent {
         nickname: String,
         text: String,
         color: (u8, u8, u8),
+        node_id: PublicKey,
     },
     PresenceUpdate(Vec<(String, (u8, u8, u8))>),
     StatusUpdate(String),
 }
 
 use crate::plugins::crack_plugin::CrackClient;
+
+#[derive(Resource, Default)]
+pub struct ChatBubbles {
+    pub by_node: std::collections::HashMap<PublicKey, (String, f64)>, // node_id -> (text, expiry_secs)
+    pub own: Option<(String, f64)>,
+}
 
 #[derive(Resource, Default)]
 pub struct NetworkSetupState {
@@ -74,6 +82,7 @@ impl Plugin for NetworkPlugin {
         }
 
         app.init_resource::<NetworkSetupState>();
+        app.init_resource::<ChatBubbles>();
         app.add_systems(
             Update,
             (
@@ -359,10 +368,12 @@ async fn chat_main_task(
                 Ok(sent_preview) => {
                     let nickname = sent_preview.from.nickname().to_string();
                     let color = sent_preview.from.rgb_color();
+                    let node_id = sent_preview.from.node_id().clone();
                     let _ = incoming_tx_msg.try_send(ChatEvent::Message {
                         nickname,
                         text,
                         color,
+                        node_id,
                     });
                     let _ = proxy_outgoing.send_event(WinitUserEvent::WakeUp);
                 }
@@ -471,11 +482,13 @@ async fn chat_main_task(
                 tracing::info!("Bevy received message from {}: {:?}", nickname, msg.message);
                 match msg.message {
                     GlobalChatMessageContent::TextMessage { text } => {
+                        let node_id = msg.from.node_id().clone();
                         if incoming_tx
                             .try_send(ChatEvent::Message {
                                 nickname,
                                 text,
                                 color,
+                                node_id,
                             })
                             .is_err()
                         {
@@ -506,10 +519,15 @@ fn drain_chat_events(
     mut next_state: ResMut<NextState<NetworkConnectionState>>,
     mut commands: Commands,
     mut stats: Option<ResMut<MultiplayerStats>>,
+    mut bubbles: ResMut<ChatBubbles>,
+    time: Res<Time>,
 ) {
     let Some(mut state) = state else {
         return;
     };
+    let now = time.elapsed_secs_f64();
+    bubbles.by_node.retain(|_, (_, expiry)| *expiry > now);
+
     while let Ok(event) = state.incoming_rx.try_recv() {
         match event {
             ChatEvent::Connected => {
@@ -530,7 +548,15 @@ fn drain_chat_events(
                 nickname,
                 text,
                 color,
+                node_id,
             } => {
+                let is_longer = text.chars().count() > 70;
+                let mut bubble_text: String = text.chars().take(70).collect();
+                if is_longer {
+                    bubble_text.push('…');
+                }
+                bubbles.by_node.insert(node_id, (bubble_text, now + 3.0));
+
                 state.msg_history.push((nickname, text, color));
                 // Badge counter; cleared by the chat UI while the window is open.
                 state.unread_count = state.unread_count.saturating_add(1);

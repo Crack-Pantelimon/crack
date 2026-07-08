@@ -6,14 +6,15 @@ use bevy_egui::EguiContexts;
 pub fn camera_follows_car(
     time: Res<Time>,
     mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<ActivePlayerVehicle>)>,
-    car_query: Query<(&Transform, &LinearVelocity), (With<ActivePlayerVehicle>, Without<Camera3d>)>,
+    car_query: Query<(Entity, &Transform, &LinearVelocity), (With<ActivePlayerVehicle>, Without<Camera3d>)>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<bevy::input::mouse::MouseMotion>,
     mut contexts: EguiContexts,
     mut local_orbit: Local<Option<(f32, f32)>>, // (yaw, pitch)
     capture_state: Res<crate::plugins::states::MouseCaptureState>,
+    spatial_query: avian3d::prelude::SpatialQuery,
 ) {
-    let Ok((car_transform, linear_velocity)) = car_query.single() else {
+    let Ok((car_entity, car_transform, linear_velocity)) = car_query.single() else {
         return;
     };
     let Ok(mut camera_transform) = camera_query.single_mut() else {
@@ -79,6 +80,18 @@ pub fn camera_follows_car(
         r * pitch.sin(),
         r * yaw.cos() * pitch.cos(),
     );
-    camera_transform.translation = center + offset;
+    if let Some(dir) = Dir3::new(offset).ok() {
+        let filter = avian3d::prelude::SpatialQueryFilter::from_mask([crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer::Map])
+            .with_excluded_entities([car_entity]);
+        if let Some(hit) = spatial_query.cast_ray(center, dir, r, true, &filter) {
+            let dist = (hit.distance * 0.9).min(r);
+            camera_transform.translation = center + offset.normalize() * dist;
+        } else {
+            camera_transform.translation = center + offset;
+        }
+    } else {
+        camera_transform.translation = center + offset;
+    }
     camera_transform.look_at(center, Vec3::Y);
 }
+

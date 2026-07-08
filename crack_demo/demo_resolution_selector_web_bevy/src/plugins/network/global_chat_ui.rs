@@ -1,4 +1,4 @@
-use crate::plugins::network::{ChatState, NetworkConnectionState};
+use crate::plugins::network::{ChatBubbles, ChatState, NetworkConnectionState};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
@@ -44,6 +44,8 @@ fn draw_chat_ui_system(
     mut chat_ui_state: ResMut<GlobalChatUiState>,
     chat_state: Option<ResMut<ChatState>>,
     network_state: Res<State<NetworkConnectionState>>,
+    mut bubbles: Option<ResMut<ChatBubbles>>,
+    time: Res<Time>,
 ) {
     if !chat_ui_state.always_visible && !chat_ui_state.show_window {
         return;
@@ -194,7 +196,15 @@ fn draw_chat_ui_system(
                             if do_send {
                                 let text = state.input_buffer.trim().to_string();
                                 if !text.is_empty() {
-                                    let _ = state.outgoing_tx.try_send(text);
+                                    let _ = state.outgoing_tx.try_send(text.clone());
+                                    if let Some(ref mut bubbles) = bubbles {
+                                        let is_longer = text.chars().count() > 70;
+                                        let mut bubble_text: String = text.chars().take(70).collect();
+                                        if is_longer {
+                                            bubble_text.push('…');
+                                        }
+                                        bubbles.own = Some((bubble_text, time.elapsed_secs_f64() + 3.0));
+                                    }
                                     state.input_buffer.clear();
                                 }
                             }
@@ -203,7 +213,8 @@ fn draw_chat_ui_system(
                 });
             }
         }
-    });
+    }
+    );
 
     if !chat_ui_state.always_visible {
         chat_ui_state.show_window = show_window;

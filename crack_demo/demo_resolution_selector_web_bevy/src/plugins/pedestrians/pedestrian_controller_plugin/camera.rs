@@ -57,6 +57,7 @@ pub fn follow_camera(
     mut rig: ResMut<CameraRig>,
     controller: Query<&GlobalTransform, With<CharacterController>>,
     mut camera: Query<&mut Transform, With<Camera3d>>,
+    spatial_query: avian3d::prelude::SpatialQuery,
 ) {
     let Some(controller_ent) = controlled.controller else {
         return;
@@ -99,6 +100,18 @@ pub fn follow_camera(
     let anchor = pos_target + Vec3::Y * CAM_LOOK_HEIGHT;
     let offset = Quat::from_euler(EulerRot::YXZ, rig.yaw, rig.pitch, 0.0)
         * Vec3::new(0.0, 0.0, CAM_DISTANCE);
-    cam.translation = anchor + offset;
+    if let Some(dir) = Dir3::new(offset).ok() {
+        let filter = avian3d::prelude::SpatialQueryFilter::from_mask([crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer::Map])
+            .with_excluded_entities([controller_ent]);
+        if let Some(hit) = spatial_query.cast_ray(anchor, dir, CAM_DISTANCE, true, &filter) {
+            let dist = (hit.distance * 0.9).min(CAM_DISTANCE);
+            cam.translation = anchor + offset.normalize() * dist;
+        } else {
+            cam.translation = anchor + offset;
+        }
+    } else {
+        cam.translation = anchor + offset;
+    }
     cam.look_at(look_pos + Vec3::Y * CAM_LOOK_HEIGHT, Vec3::Y);
 }
+

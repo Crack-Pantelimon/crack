@@ -7,3 +7,7 @@
 - when someone talks in global chat, show a chat bubble with their name and the chat message text (max first 70 characters truncated with ... if longer) for 3s above their character.
 - main game: show our own hp bar and character name as we show for the other players.
 - car physics: car can never stay still (have speed of zero), it's always 1km/h either direction. need to add some logic to make it detect that it's currently slow and zero out its forces and put it in "park" mode, maybe even by putting some kind of support underneath it and putting it to sleep. 
+
+
+- default global volume
+  - add default global volume slider default 60% under Options > Sound panel which will be multiplied with all the sound levels

@@ -29,6 +29,7 @@ use crate::plugins::weapons::{
 };
 use crate::ui_egui::UiState;
 use net_crackpipe::PublicKey;
+use crate::plugins::network::{ChatBubbles, ChatState};
 
 // ---------------------------------------------------------------------------------------------
 // Gameplay Room / Protocol Definition
@@ -269,6 +270,7 @@ impl Plugin for MultiplayerPlugin {
                 bevy_egui::EguiPrimaryContextPass,
                 (
                     draw_remote_billboards.run_if(in_state(NetworkConnectionState::Connected)),
+                    draw_self_billboard.run_if(in_state(NetworkConnectionState::Connected)),
                     multiplayer_debug_ui,
                 ),
             );
@@ -1677,6 +1679,10 @@ fn draw_remote_billboards(
     remote_players: Res<RemotePlayers>,
     q_transforms: Query<(&Transform, &RemoteAvatarMarker)>,
     q_ped_scale: Query<&CharacterScale>,
+    mut bubbles: Option<ResMut<ChatBubbles>>,
+    time: Res<Time>,
+    _q_local_ped: Query<(&Transform, Option<&CharacterScale>), With<CharacterController>>,
+    q_local_car: Query<&Transform, With<ActivePlayerVehicle>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -1684,6 +1690,11 @@ fn draw_remote_billboards(
     let Some((camera, camera_transform)) = q_camera.iter().next() else {
         return;
     };
+
+    let now = time.elapsed_secs_f64();
+    if let Some(ref mut bubbles) = bubbles {
+        bubbles.by_node.retain(|_, (_, expiry)| *expiry > now);
+    }
 
     for (transform, marker) in q_transforms.iter() {
         let Some(player) = remote_players.0.get(&marker.node_id) else {
@@ -1705,11 +1716,30 @@ fn draw_remote_billboards(
         if let Ok(screen_pos) = camera.world_to_viewport(camera_transform, world_pos) {
             let egui_pos = egui::pos2(screen_pos.x, screen_pos.y);
 
+            let mut show_bubble = None;
+            if let Some(ref bubbles) = bubbles {
+                if let Some((bubble_text, expiry)) = bubbles.by_node.get(&marker.node_id) {
+                    if *expiry > now {
+                        show_bubble = Some(bubble_text.clone());
+                    }
+                }
+            }
+
             egui::Area::new(egui::Id::new(format!("billboard_{}", marker.node_id)))
                 .fixed_pos(egui_pos)
                 .pivot(egui::Align2::CENTER_BOTTOM)
                 .show(ctx, |ui| {
                     ui.vertical(|ui| {
+                        if let Some(text) = show_bubble {
+                            egui::Frame::default()
+                                .fill(egui::Color32::from_black_alpha(180))
+                                .corner_radius(4)
+                                .inner_margin(egui::Margin::symmetric(8, 4))
+                                .show(ui, |ui| {
+                                    ui.label(text);
+                                });
+                        }
+
                         let color =
                             egui::Color32::from_rgb(player.color.0, player.color.1, player.color.2);
                         ui.colored_label(color, &player.nickname);
@@ -1770,12 +1800,142 @@ fn draw_remote_billboards(
                     .fixed_pos(egui_pos)
                     .pivot(egui::Align2::CENTER_BOTTOM)
                     .show(ctx, |ui| {
-                        let color =
-                            egui::Color32::from_rgb(player.color.0, player.color.1, player.color.2);
-                        ui.colored_label(color, &player.nickname);
+                        ui.vertical(|ui| {
+                            if let Some(ref bubbles) = bubbles {
+                                if let Some((bubble_text, expiry)) = bubbles.by_node.get(node_id) {
+                                    if *expiry > now {
+                                        egui::Frame::default()
+                                            .fill(egui::Color32::from_black_alpha(180))
+                                            .corner_radius(4)
+                                            .inner_margin(egui::Margin::symmetric(8, 4))
+                                            .show(ui, |ui| {
+                                                ui.label(bubble_text);
+                                            });
+                                    }
+                                }
+                            }
+
+                            let color =
+                                egui::Color32::from_rgb(player.color.0, player.color.1, player.color.2);
+                            ui.colored_label(color, &player.nickname);
+                        });
                     });
             }
         }
+    }
+
+    // Third pass: Draw own chat bubble if present and not expired (only when in car; when on foot, draw_self_billboard handles it)
+    if let Some(ref bubbles) = bubbles {
+        if let Some((bubble_text, expiry)) = &bubbles.own {
+            if *expiry > now {
+                let mut local_pos = None;
+                let mut height = 1.2;
+                if let Some(car_transform) = q_local_car.iter().next() {
+                    local_pos = Some(car_transform.translation);
+                    height = 1.6;
+                }
+
+                if let Some(pos) = local_pos {
+                    let world_pos = pos + Vec3::Y * height;
+                    if let Ok(screen_pos) = camera.world_to_viewport(camera_transform, world_pos) {
+                        let egui_pos = egui::pos2(screen_pos.x, screen_pos.y);
+                        egui::Area::new(egui::Id::new("own_chat_bubble"))
+                            .fixed_pos(egui_pos)
+                            .pivot(egui::Align2::CENTER_BOTTOM)
+                            .show(ctx, |ui| {
+                                egui::Frame::default()
+                                    .fill(egui::Color32::from_black_alpha(180))
+                                    .corner_radius(4)
+                                    .inner_margin(egui::Margin::symmetric(8, 4))
+                                    .show(ui, |ui| {
+                                        ui.label(bubble_text);
+                                    });
+                            });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn draw_self_billboard(
+    mut contexts: EguiContexts,
+    q_camera: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
+    controlled: Res<ControlledCharacter>,
+    q_controlled_data: Query<(&GlobalTransform, &crate::plugins::pedestrian_ai::faction::Health, &CharacterScale)>,
+    chat_state: Res<ChatState>,
+    bubbles: Res<ChatBubbles>,
+    time: Res<Time>,
+) {
+    let Some(controller) = controlled.controller else {
+        return;
+    };
+    let Ok((gt, health, scale)) = q_controlled_data.get(controller) else {
+        return;
+    };
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    let Some((camera, camera_transform)) = q_camera.iter().next() else {
+        return;
+    };
+
+    let world_pos = gt.translation() + Vec3::Y * 1.8 * scale.0;
+    if let Ok(screen_pos) = camera.world_to_viewport(camera_transform, world_pos) {
+        let egui_pos = egui::pos2(screen_pos.x, screen_pos.y);
+
+        let now = time.elapsed_secs_f64();
+        let show_bubble = bubbles.own.as_ref().and_then(|(text, expiry)| {
+            if *expiry > now {
+                Some(text.clone())
+            } else {
+                None
+            }
+        });
+
+        egui::Area::new(egui::Id::new("billboard_self"))
+            .fixed_pos(egui_pos)
+            .pivot(egui::Align2::CENTER_BOTTOM)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    if let Some(text) = show_bubble {
+                        egui::Frame::default()
+                            .fill(egui::Color32::from_black_alpha(180))
+                            .corner_radius(4)
+                            .inner_margin(egui::Margin::symmetric(8, 4))
+                            .show(ui, |ui| {
+                                ui.label(text);
+                            });
+                    }
+
+                    let color = egui::Color32::from_rgb(
+                        chat_state.own_color.0,
+                        chat_state.own_color.1,
+                        chat_state.own_color.2,
+                    );
+                    ui.colored_label(color, &chat_state.own_nickname);
+
+                    let pct = (health.current / health.max).clamp(0.0, 1.0);
+                    let bar_color = if pct > 0.5 {
+                        egui::Color32::GREEN
+                    } else if pct > 0.25 {
+                        egui::Color32::YELLOW
+                    } else {
+                        egui::Color32::RED
+                    };
+                    let width = 50.0;
+                    let height_bar = 4.0;
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(width, height_bar),
+                        egui::Sense::hover(),
+                    );
+                    ui.painter()
+                        .rect_filled(rect, 1.0, egui::Color32::DARK_GRAY);
+                    let mut filled_rect = rect;
+                    filled_rect.set_width(width * pct);
+                    ui.painter().rect_filled(filled_rect, 1.0, bar_color);
+                });
+            });
     }
 }
 
