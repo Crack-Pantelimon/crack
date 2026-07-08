@@ -19,7 +19,8 @@ use crate::plugins::cars_driving::driving_plugin::{
 };
 use avian3d::prelude::{
     AngularInertia, AngularVelocity, CenterOfMass, ComputeMassProperties3d, LinearVelocity, Mass,
-    MassPropertiesExt, PhysicsLayer, SpatialQuery, SpatialQueryFilter,
+    MassPropertiesExt, PhysicsLayer, SleepBody, SleepingDisabled, SpatialQuery, SpatialQueryFilter,
+    WakeBody,
 };
 use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
@@ -40,6 +41,28 @@ const HEIGHT_DEADBAND: f32 = 0.03;
 const TILT_DEADBAND: f32 = 0.03;
 /// Input averaging window (also used for expiring stale inputs on uncontrolled cars).
 const INPUT_WINDOW: f32 = 0.060;
+/// Planar speed below which a car with no input may enter park mode.
+const PARK_SPEED_THRESHOLD: f32 = 0.5;
+/// Angular speed below which a car with no input may enter park mode.
+const PARK_ANG_THRESHOLD: f32 = 0.2;
+/// Time at rest before a car enters park mode.
+const PARK_SETTLE_TIME: f32 = 0.4;
+
+fn car_has_drive_input(drive_state: &CarDriveState) -> bool {
+    drive_state.avg_accelerate > 0.05
+        || drive_state.avg_brake > 0.05
+        || drive_state.avg_steer.abs() > 0.01
+}
+
+fn unpark_car(entity: Entity, drive_state: &mut CarDriveState, commands: &mut Commands) {
+    if !drive_state.parked {
+        return;
+    }
+    drive_state.parked = false;
+    drive_state.park_timer = 0.0;
+    commands.entity(entity).insert(SleepingDisabled);
+    commands.queue(WakeBody(entity));
+}
 
 pub struct DrivingPlugin<S: States> {
     pub state: S,
@@ -159,6 +182,10 @@ pub struct CarDriveState {
     pub avg_brake: f32,
     pub avg_steer: f32,
     pub is_reverse: bool,
+    /// True when the car is settled and sleeping; the hover controller skips velocity writes.
+    pub parked: bool,
+    /// Time spent below park speed thresholds with no input.
+    pub park_timer: f32,
 
     // Spawn position for reset functionality
     pub spawn_position: Option<Vec3>,
@@ -211,6 +238,8 @@ impl Default for CarDriveState {
             avg_brake: 0.0,
             avg_steer: 0.0,
             is_reverse: false,
+            parked: false,
+            park_timer: 0.0,
             spawn_position: None,
 
             max_ray_length: 1.35,
@@ -268,6 +297,7 @@ pub fn cap_car_velocities(
 pub fn car_drive_observer(
     trigger: On<Drive>,
     mut query: Query<&mut CarDriveState>,
+    mut commands: Commands,
     time: Res<Time>,
 ) {
     let car_entity = trigger.event_target();
@@ -276,6 +306,13 @@ pub fn car_drive_observer(
     let Ok(mut drive_state) = query.get_mut(car_entity) else {
         return;
     };
+
+    let has_input = drive_input.accelerate > 0.05
+        || drive_input.brake > 0.05
+        || drive_input.steer.abs() > 0.01;
+    if has_input {
+        unpark_car(car_entity, &mut drive_state, &mut commands);
+    }
 
     let dt = time.delta_secs().min(0.1);
     if dt <= 0.0 {
@@ -382,6 +419,7 @@ fn get_gear_ratio(gear: usize, is_reverse: bool, wheel_radius: f32, car_max_spee
 pub fn apply_car_steering_and_drive(
     mut q_car: Query<
         (
+            Entity,
             &Transform,
             &mut CarDriveState,
             &CarWheelsContactData,
@@ -391,6 +429,7 @@ pub fn apply_car_steering_and_drive(
         ),
         With<Car>,
     >,
+    mut commands: Commands,
     time: Res<Time>,
     sim_state: Option<Res<SimState>>,
 ) {
@@ -401,6 +440,7 @@ pub fn apply_car_steering_and_drive(
     let is_sim = sim_state.map(|s| s.is_sim).unwrap_or(false);
 
     for (
+        entity,
         car_transform,
         mut drive_state,
         contact_data,
@@ -433,6 +473,21 @@ pub fn apply_car_steering_and_drive(
                     drive_state.current_steer_integrated =
                         (drive_state.current_steer_integrated + shrink).min(0.0);
                 }
+            }
+        }
+
+        let has_input = car_has_drive_input(&drive_state);
+        let speed_xz = Vec2::new(lin_vel.0.x, lin_vel.0.z).length();
+        let ang_speed = ang_vel.0.length();
+
+        if drive_state.parked {
+            if has_input
+                || speed_xz > PARK_SPEED_THRESHOLD
+                || ang_speed > PARK_ANG_THRESHOLD
+            {
+                unpark_car(entity, &mut drive_state, &mut commands);
+            } else {
+                continue;
             }
         }
 
@@ -514,7 +569,26 @@ pub fn apply_car_steering_and_drive(
         // velocity control at all: the car coasts/flies under plain physics rules.
         if grounded_wheels < 2 {
             drive_state.avg_suspension_height = 0.0;
+            drive_state.park_timer = 0.0;
             continue;
+        }
+
+        if !has_input
+            && speed_xz < PARK_SPEED_THRESHOLD
+            && ang_speed < PARK_ANG_THRESHOLD
+        {
+            drive_state.park_timer += dt;
+            if drive_state.park_timer >= PARK_SETTLE_TIME {
+                drive_state.parked = true;
+                drive_state.park_timer = 0.0;
+                lin_vel.0 = Vec3::ZERO;
+                ang_vel.0 = Vec3::ZERO;
+                commands.entity(entity).remove::<SleepingDisabled>();
+                commands.queue(SleepBody(entity));
+                continue;
+            }
+        } else {
+            drive_state.park_timer = 0.0;
         }
 
         let mut height_sum = 0.0f32;
