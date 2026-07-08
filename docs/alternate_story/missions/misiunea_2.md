@@ -7,7 +7,7 @@
 ---
 
 ## Rezumat și Obiective
-**Obiectiv Principal**: Ionel este atacat pe stradă de un random și se îndreaptă spre casă, unde mamaie apare întâmplător și îl avertizează că acei tipi sunt periculoși. Pe drum, primește un telefon de la Alex/Andrei, care îl invită la aparatele lui Mario. Misiunea pornește cu **25 lei** și poate duce la două trasee principale la păcănele: obține **100 lei** sau rămâi cu **0 lei**. Apoi trebuie să-și cumpere un pachet de țigări și un energizant pentru munca de a doua zi. În drum spre chioșc, are oportunitatea de a-i da o țigară unui boschetar pentru respect ascuns.
+**Obiectiv Principal**: Romario este atacat pe stradă de un random și se îndreaptă spre casă, unde mamaie apare întâmplător și îl avertizează că acei tipi sunt periculoși. Pe drum, primește un telefon de la Alex/Andrei, care îl invită la aparatele lui Mario. Misiunea pornește cu **25 lei** și poate duce la două trasee principale la păcănele: obține **100 lei** sau rămâi cu **0 lei**. Apoi trebuie să-și cumpere un pachet de țigări și un energizant pentru munca de a doua zi. În drum spre chioșc, are oportunitatea de a-i da o țigară unui boschetar pentru respect ascuns.
 
 ### Obiective de Gameplay:
 - [ ] Ajungi la aparate și Mario face cinste cu 25 lei.
@@ -24,10 +24,10 @@
 - Alex/Andrei (la telefon): „Ce faci, bă, hai la aparate, că face Mario cinste. Bine, ajung în 10.”
 - Mario (dacă pierzi): „Coaie, da-mi aia 25 de lei de ți i-am dat mai devreme, ce plm faci?”
 - Mario (dacă obții 100 lei): „Oooo, fratelemeu, da și mie 50 de lei că de la mine ai jucat.”
-- Ionel (dă bani): „Bine, frate, ia banii.”
-- Ionel (nu dă): „Nu dau, stai cu banii tăi.”
+- Romario (dă bani): „Bine, frate, ia banii.”
+- Romario (nu dă): „Nu dau, stai cu banii tăi.”
 - Boschetar (la ieșire): „Imi da o țigară, frate?”
-- Ionel: „Ți-o dau, du-te și trage aer curat.”
+- Romario: „Ți-o dau, du-te și trage aer curat.”
 ```
 
 ---
