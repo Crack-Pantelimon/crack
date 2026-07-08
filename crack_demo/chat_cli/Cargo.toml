@@ -6,6 +6,7 @@ authors.workspace = true
 
 [dependencies]
 net_crackpipe = { path = "../../packages/net_crackpipe" }
+game_logic = { path = "../game_logic" }
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "sync", "io-std", "io-util", "time"] }
 anyhow = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

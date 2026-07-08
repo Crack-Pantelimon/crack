@@ -16,16 +16,20 @@ use crate::{
     _bootstrap_keys::BOOTSTRAP_SECRET_KEYS,
     chat::{
         chat_const::{CONNECT_TIMEOUT, GLOBAL_CHAT_TOPIC_ID, GLOBAL_PERIODIC_TASK_INTERVAL},
-        chat_controller::{ChatController, IChatController, IChatReceiver, IChatSender},
+        chat_controller::{
+            ChatController, IChatController, IChatReceiver, IChatRoomRaw, IChatSender,
+        },
         chat_ticket::ChatTicket,
         global_chat::{
             GlobalChatBootstrapQuery, GlobalChatMessageContent, GlobalChatPresence,
             GlobalChatRoomType,
         },
+        room_raw::GossipChatRoom,
     },
     datetime_now,
     echo::Echo,
     main_node::MainNode,
+    network_manager::{spawn_topic_drain_task, NetworkManagerConfig},
     sleep::SleepManager,
     user_identity::{NodeIdentity, UserIdentity, UserIdentitySecrets},
     // ReceivedMessage,
@@ -38,6 +42,9 @@ pub struct GlobalMatchmaker {
     // own_private_key: Arc<SecretKey>,
     inner: Arc<RwLock<GlobalMatchmakerInner>>,
     sleep_manager: SleepManager,
+    /// Extra gossip topics our bootstrap node (if we own one) subscribes to,
+    /// raw, dropping all traffic. See [`NetworkManagerConfig`].
+    bootstrap_topics: Arc<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -49,6 +56,10 @@ struct GlobalMatchmakerInner {
     global_chat_controller: Option<ChatController<GlobalChatRoomType>>,
     bs_global_chat_controller: Option<ChatController<GlobalChatRoomType>>,
     bs_global_chat_task: Option<AbortOnDropHandle<()>>,
+    /// Raw rooms our bootstrap node subscribed to for the extra topics
+    /// (gameplay etc.), plus their traffic-drop tasks.
+    bs_extra_topic_rooms: Vec<(String, Arc<GossipChatRoom>)>,
+    bs_extra_topic_drains: Vec<AbortOnDropHandle<()>>,
 }
 
 impl GlobalMatchmakerInner {
@@ -61,6 +72,10 @@ impl GlobalMatchmakerInner {
         }
         if let Some(cc) = self.bs_global_chat_controller.take() {
             let _ = cc.shutdown().await;
+        }
+        self.bs_extra_topic_drains.clear();
+        for (_topic, room) in self.bs_extra_topic_rooms.drain(..) {
+            let _ = room.shutdown().await;
         }
 
         if let Some(bootstrap_endpoint) = self.bootstrap_main_node.take() {
@@ -164,6 +179,7 @@ impl GlobalMatchmaker {
     async fn fresh(
         own_private_key: Arc<SecretKey>,
         user: Arc<UserIdentitySecrets>,
+        bootstrap_topics: Arc<Vec<String>>,
     ) -> Result<Self> {
         let mm = Self {
             user_secrets: user.clone(),
@@ -177,8 +193,11 @@ impl GlobalMatchmaker {
                 global_chat_controller: None,
                 bs_global_chat_controller: None,
                 bs_global_chat_task: None,
+                bs_extra_topic_rooms: Vec::new(),
+                bs_extra_topic_drains: Vec::new(),
             })),
             sleep_manager: SleepManager::new(),
+            bootstrap_topics,
         };
 
         let node_identity =
@@ -243,10 +262,23 @@ impl GlobalMatchmaker {
     // }
 
     pub async fn new(user_identity_secrets: Arc<UserIdentitySecrets>) -> Result<Self> {
+        Self::new_with_config(user_identity_secrets, NetworkManagerConfig::default()).await
+    }
+    pub async fn new_with_config(
+        user_identity_secrets: Arc<UserIdentitySecrets>,
+        config: NetworkManagerConfig,
+    ) -> Result<Self> {
+        let bootstrap_topics = Arc::new(config.bootstrap_topics);
         let num = 3;
         for i in 0..num {
             let own_private_key = Arc::new(SecretKey::generate(&mut rand::thread_rng()));
-            match Self::new_try_once(own_private_key.clone(), user_identity_secrets.clone()).await {
+            match Self::new_try_once(
+                own_private_key.clone(),
+                user_identity_secrets.clone(),
+                bootstrap_topics.clone(),
+            )
+            .await
+            {
                 Ok(mm) => {
                     return Ok(mm);
                 }
@@ -261,12 +293,13 @@ impl GlobalMatchmaker {
     async fn new_try_once(
         own_private_key: Arc<SecretKey>,
         user: Arc<UserIdentitySecrets>,
+        bootstrap_topics: Arc<Vec<String>>,
     ) -> Result<Self> {
         info!(
             "Creating new global matchmaker, we are {}",
             own_private_key.public()
         );
-        let mm = Self::fresh(own_private_key, user).await?;
+        let mm = Self::fresh(own_private_key, user, bootstrap_topics).await?;
         let mm = if mm.connect_to_bootstrap(true).await.is_ok() {
             info!("Successfully connected to foreign bootstrap node");
             mm
@@ -323,20 +356,56 @@ impl GlobalMatchmaker {
                         is_server: None,
                     })
                     .await;
-                let mut i = mm.inner.write().await;
-                i.bs_global_chat_controller = Some(c1.clone());
-                let c1 = c1.clone();
-                i.bs_global_chat_task =
-                    Some(AbortOnDropHandle::new(n0_future::task::spawn(async move {
-                        match run_bs_global_chat_task(c1).await {
-                            Ok(_) => {
-                                tracing::warn!("run_bs_global_chat_task exited!");
-                            }
-                            Err(e) => {
-                                tracing::error!("run_bs_global_chat_task ERROR: {e:?}");
-                            }
-                        };
-                    })));
+
+                // Subscribe the bootstrap node to every extra topic (e.g. the
+                // gameplay room), raw. It never reads this traffic — it
+                // subscribes only so clients always find a live, subscribed
+                // peer to bootstrap the topic's gossip swarm from (iroh-gossip
+                // can only join a topic through peers subscribed to it).
+                let mut extra_rooms = Vec::new();
+                let mut extra_drains = Vec::new();
+                for topic in self.bootstrap_topics.iter() {
+                    let extra_ticket =
+                        ChatTicket::new_str_bs(topic, self.bootstrap_nodes_set().await);
+                    match GossipChatRoom::new(&bs, &extra_ticket).await {
+                        Ok(room) => {
+                            info!("bootstrap node joined extra gossip topic '{topic}'");
+                            let room = Arc::new(room);
+                            extra_drains.push(spawn_topic_drain_task(
+                                room.clone(),
+                                format!("bootstrap node, topic '{topic}'"),
+                            ));
+                            extra_rooms.push((topic.clone(), room));
+                        }
+                        Err(e) => {
+                            warn!("bootstrap node failed to join extra topic '{topic}': {e:?}");
+                        }
+                    }
+                }
+
+                let old_rooms = {
+                    let mut i = mm.inner.write().await;
+                    i.bs_global_chat_controller = Some(c1.clone());
+                    let c1 = c1.clone();
+                    i.bs_global_chat_task =
+                        Some(AbortOnDropHandle::new(n0_future::task::spawn(async move {
+                            match run_bs_global_chat_task(c1).await {
+                                Ok(_) => {
+                                    tracing::warn!("run_bs_global_chat_task exited!");
+                                }
+                                Err(e) => {
+                                    tracing::error!("run_bs_global_chat_task ERROR: {e:?}");
+                                }
+                            };
+                        })));
+                    i.bs_extra_topic_drains = extra_drains;
+                    std::mem::replace(&mut i.bs_extra_topic_rooms, extra_rooms)
+                };
+                // Shut down rooms from a previous bootstrap endpoint, if any
+                // (periodic task respawn path).
+                for (_topic, room) in old_rooms {
+                    let _ = room.shutdown().await;
+                }
 
                 Ok(())
             }
@@ -572,6 +641,15 @@ impl GlobalMatchmaker {
                 .context("failed to join new peers on bs node!")?;
         }
 
+        // Keep the bootstrap node's extra-topic swarms (gameplay etc.) meshed
+        // with newly appeared bootstrap nodes as well.
+        let extra_rooms = { self.inner.read().await.bs_extra_topic_rooms.clone() };
+        for (topic, room) in extra_rooms {
+            if let Err(e) = room.join_peers(new_bs.clone()).await {
+                warn!("failed to join new peers on bs extra topic '{topic}': {e:?}");
+            }
+        }
+
         Ok(())
     }
 }
@@ -628,7 +706,9 @@ async fn global_periodic_task_iteration_2(mm: GlobalMatchmaker) -> Result<()> {
     Ok(())
 }
 
-async fn run_bs_global_chat_task(bs_cc: ChatController<GlobalChatRoomType>) -> anyhow::Result<()> {
+pub(crate) async fn run_bs_global_chat_task(
+    bs_cc: ChatController<GlobalChatRoomType>,
+) -> anyhow::Result<()> {
     tracing::info!("run_bs_global_chat_task");
     let answer_ratelimit_ms = 130000;
     let rx = bs_cc.receiver().await;

@@ -3,11 +3,11 @@ use bevy::winit::{EventLoopProxy, EventLoopProxyWrapper, WinitUserEvent};
 use std::sync::Arc;
 
 use crate::plugins::states::NetworkConnectionState;
+use game_logic::network::GLOBAL_GAMEPLAY_TOPIC_ID;
 use net_crackpipe::{
     chat::chat_controller::{IChatController, IChatReceiver, IChatSender},
-    chat::chat_ticket::ChatTicket,
     chat::global_chat::{GlobalChatMessageContent, GlobalChatPresence},
-    global_matchmaker::GlobalMatchmaker,
+    network_manager::NetworkManager,
     user_identity::UserIdentitySecrets,
 };
 
@@ -171,16 +171,25 @@ async fn chat_main_task(
     };
 
     send_status("Connecting to server...".to_string());
-    let global_mm = match GlobalMatchmaker::new(Arc::new(secrets)).await {
-        Ok(mm) => mm,
+    // Global network init: own node + bootstrap endpoint if a slot is free
+    // (that bootstrap then also carries the gameplay topic) + global chat +
+    // periodic maintenance. One object owns all running network code.
+    let network = match NetworkManager::init(
+        Arc::new(secrets),
+        game_logic::network::network_manager_config(),
+    )
+    .await
+    {
+        Ok(n) => n,
         Err(e) => {
             send_status(format!("Error: {:?}", e));
             return;
         }
     };
+    let global_mm = network.matchmaker();
 
     send_status("Connecting to chat...".to_string());
-    let controller = match global_mm.global_chat_controller().await {
+    let controller = match network.global_chat_controller().await {
         Some(c) => c,
         None => {
             send_status("Failed to get chat controller".to_string());
@@ -200,16 +209,15 @@ async fn chat_main_task(
         .await;
 
     send_status("Waiting to join chat room...".to_string());
-    let _ = controller.wait_joined().await;
+    // 2 nodes = us + our bootstrap node.
+    let _ = controller.wait_joined(2).await;
 
-    // Join gameplay room
-    let gameplay_ticket =
-        ChatTicket::new_str_bs("global_gameplay", global_mm.bootstrap_nodes_set().await);
-    let gameplay_controller = match global_mm
-        .own_node()
-        .await
-        .unwrap()
-        .join_chat::<GameplaySyncRoomType>(&gameplay_ticket)
+    // Join gameplay room. The NetworkManager builds the ticket from every
+    // known bootstrap node (which all subscribe to the gameplay topic and
+    // drop its traffic), so two players joining at the same time still meet;
+    // it also runs the presence-driven join_peers refresher for the room.
+    let gameplay_controller = match network
+        .join_room::<GameplaySyncRoomType>(GLOBAL_GAMEPLAY_TOPIC_ID)
         .await
     {
         Ok(c) => {
@@ -217,7 +225,10 @@ async fn chat_main_task(
             let incoming_tx_gp = incoming_tx.clone();
             let proxy_gp = proxy.clone();
             _crack_utils::n0_future::task::spawn(async move {
-                let _ = gameplay_c.wait_joined().await;
+                // Bootstrap nodes subscribe to the gameplay topic raw (no
+                // typed presence), so presence-wise we can only ever count
+                // ourselves until another player joins — wait for 1 node.
+                let _ = gameplay_c.wait_joined(1).await;
                 let _ = incoming_tx_gp.try_send(ChatEvent::GameplayConnected);
                 let _ = proxy_gp.send_event(WinitUserEvent::WakeUp);
             });
@@ -307,10 +318,32 @@ async fn chat_main_task(
         }
     });
 
-    // Spawn tasks for gameplay sync if joined successfully
-    if let Some(gameplay_c) = gameplay_controller {
+    // Spawn tasks for gameplay sync if joined successfully.
+    //
+    // IMPORTANT: borrow, don't move. `gameplay_controller` must stay alive for
+    // the whole lifetime of this task: the ChatController owns the room's
+    // message-dispatch and presence-heartbeat tasks via AbortOnDropHandle, and
+    // the ChatSender/ChatReceiver clones used below do NOT keep them alive.
+    // (Previously the last clone lived in the wait_joined task above, so ~30s
+    // after startup the controller dropped, dispatch/heartbeat aborted, and
+    // every peer silently "disconnected".)
+    if let Some(gameplay_c) = gameplay_controller.as_ref() {
         let gameplay_sender = gameplay_c.sender();
         let game_outgoing_rx_clone = game_outgoing_rx.clone();
+
+        // Populate the gameplay room's presence roster. The controller's
+        // presence task then heartbeats this every PRESENCE_INTERVAL, which is
+        // what keeps peers visible to each other independently of the high-rate
+        // GameSync stream.
+        gameplay_c
+            .sender()
+            .set_presence(&multiplayer_plugin::GameplayPresence::default())
+            .await;
+
+        // The presence-driven direct-mesh join_peers refresher for this room
+        // is spawned by NetworkManager::join_room — without it the 20 Hz
+        // GameSync broadcast would be relayed through bootstrap nodes, whose
+        // mesh drops the peer under load ("de-sync" bug).
 
         // Forward outgoing gameplay messages
         _crack_utils::n0_future::task::spawn(async move {
@@ -328,14 +361,31 @@ async fn chat_main_task(
         let game_incoming_tx_clone = game_incoming_tx.clone();
         let proxy_gameplay_in = proxy.clone();
         let own_node_id = *global_mm.own_node_identity().node_id();
+        let msg_join_sender = gameplay_c.sender();
 
         _crack_utils::n0_future::task::spawn(async move {
+            let mut joined_peers: std::collections::HashSet<net_crackpipe::PublicKey> =
+                std::collections::HashSet::new();
             while let Some(msg) = gameplay_recv.next_message().await {
                 if *msg.from.node_id() == own_node_id {
                     continue; // Skip own loopback
                 }
 
                 let from_node_id = *msg.from.node_id();
+
+                // First time we hear from a peer, force a direct gossip
+                // connection immediately (don't wait for the ~7s presence
+                // heartbeat). Idempotent and cheap; the presence loop refreshes
+                // it afterwards.
+                if joined_peers.insert(from_node_id) {
+                    let js = msg_join_sender.clone();
+                    _crack_utils::n0_future::task::spawn(async move {
+                        if let Err(e) = js.join_peers(vec![from_node_id]).await {
+                            tracing::warn!("gameplay msg join_peers failed: {:?}", e);
+                        }
+                    });
+                }
+
                 let nickname = msg.from.nickname().to_string();
                 let color = msg.from.rgb_color();
 
@@ -391,7 +441,9 @@ async fn chat_main_task(
         }
     }
 
-    let _ = global_mm.shutdown().await;
+    // Keeps the gameplay room's dispatch/presence tasks alive until here.
+    drop(gameplay_controller);
+    let _ = network.shutdown().await;
 }
 
 fn drain_chat_events(

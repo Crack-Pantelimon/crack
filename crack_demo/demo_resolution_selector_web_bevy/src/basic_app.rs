@@ -1,6 +1,7 @@
 //! Shows how to iterate over combinations of query results.
 
 use bevy::{
+    log::{Level, LogPlugin},
     prelude::*,
     render::{
         RenderPlugin,
@@ -8,6 +9,18 @@ use bevy::{
     },
     window::WindowResolution,
 };
+
+/// Keep our own logs at INFO but silence the extremely chatty P2P/iroh
+/// networking stack (and the usual wgpu/naga render spam). Without this the
+/// gossip/relay/discovery crates flood the console once networking is up.
+/// EnvFilter matches by target prefix, so `iroh=error` also covers
+/// `iroh_gossip`, `iroh_relay`, etc.
+const LOG_FILTER: &str = "info,wgpu=error,naga=warn,\
+iroh=error,iroh_gossip=error,iroh_relay=error,iroh_quinn=error,\
+iroh_net_report=error,iroh_base=error,\
+netwatch=error,portmapper=error,net_report=error,swarm_discovery=error,\
+quinn=error,quinn_proto=error,quinn_udp=error,\
+hickory_proto=error,hickory_resolver=error,pkarr=error,mainline=error";
 
 #[derive(Resource, Clone, Default)]
 pub struct MemoryDir {
@@ -65,6 +78,11 @@ pub fn make_basic_app(title: &str) -> App {
             })
             .set(AssetPlugin {
                 meta_check: bevy::asset::AssetMetaCheck::Never,
+                ..default()
+            })
+            .set(LogPlugin {
+                level: Level::INFO,
+                filter: LOG_FILTER.to_string(),
                 ..default()
             }),
     )
