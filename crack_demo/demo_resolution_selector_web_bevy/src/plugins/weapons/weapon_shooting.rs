@@ -20,6 +20,8 @@ pub struct GunState {
     pub gunshot_sound_idx: usize,
     /// Seconds remaining in an active reload (0 = idle).
     pub reload_timer: f32,
+    /// Dry-fire clicks while empty; auto-reload after 3.
+    pub empty_click_count: u32,
 }
 
 /// Seconds until the next attack is allowed (gun, melee, or punch).
@@ -319,6 +321,7 @@ pub fn reload_gun_observer(
         return;
     };
     gun.reload_timer = info.reload_secs;
+    gun.empty_click_count = 0;
     commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
         fx: crate::plugins::audio::audio_fx::AudioFxEventType::GunReload,
         position: gt.translation(),

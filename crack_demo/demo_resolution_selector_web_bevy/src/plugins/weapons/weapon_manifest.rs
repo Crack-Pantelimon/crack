@@ -82,10 +82,10 @@ impl WeaponId {
             WeaponId::Gun(g) => g.rpm,
         }
     }
-    /// Whether holding LMB continues firing (guns only).
+    /// Whether holding LMB continues firing.
     pub fn automatic(&self) -> bool {
         match self {
-            WeaponId::Unarmed | WeaponId::Melee(_) => false,
+            WeaponId::Unarmed | WeaponId::Melee(_) => true,
             WeaponId::Gun(g) => g.automatic,
         }
     }

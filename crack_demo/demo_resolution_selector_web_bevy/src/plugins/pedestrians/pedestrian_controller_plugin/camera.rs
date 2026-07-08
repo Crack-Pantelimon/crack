@@ -1,10 +1,12 @@
 //! Third-person follow camera that trails behind the controlled character.
 //!
-//! The camera position follows the character, but its orientation is controlled manually by
-//! **left-mouse drag** (yaw + pitch). Combat fires on the mouse-*down* edge, so a click jabs/shoots
-//! and the following drag rotates the camera.
+//! The camera sits over the right shoulder. Its orientation is controlled manually by **left-mouse
+//! drag** (yaw + pitch). Holding **right mouse** zooms in for aim (guns play the aim animation in
+//! `drive_character_animation`; unarmed/melee get the zoom only). Combat fires on the mouse-*down*
+//! edge, so a click jabs/shoots and the following drag rotates the camera.
 
 use bevy::{input::mouse::AccumulatedMouseMotion, prelude::*};
+use bevy_egui::EguiContexts;
 
 use super::*;
 use spawn::ControlledCharacter;
@@ -14,6 +16,10 @@ use spawn::ControlledCharacter;
 pub struct CameraRig {
     pub yaw: f32,
     pub pitch: f32,
+    /// True while RMB is held (and not over egui); drives aim zoom and narrower shoulder offset.
+    pub aiming: bool,
+    /// Smoothed orbit distance; lerps between [`CAM_DISTANCE`] and [`CAM_AIM_DISTANCE`].
+    pub current_distance: f32,
     /// Low-pass-filtered character position the camera *position* follows (attenuates map shake).
     pub follow_target: Option<Vec3>,
     /// Low-pass-filtered character position the camera *looks at*. Smoothed 2x faster than
@@ -26,6 +32,8 @@ impl Default for CameraRig {
         Self {
             yaw: 0.0,
             pitch: CAM_PITCH,
+            aiming: false,
+            current_distance: CAM_DISTANCE,
             follow_target: None,
             look_target: None,
         }
@@ -53,6 +61,8 @@ pub fn orbit_camera_input(
 
 pub fn follow_camera(
     time: Res<Time>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut contexts: EguiContexts,
     controlled: Res<ControlledCharacter>,
     mut rig: ResMut<CameraRig>,
     controller: Query<&GlobalTransform, With<CharacterController>>,
@@ -96,15 +106,41 @@ pub fn follow_camera(
     };
     rig.look_target = Some(look_pos);
 
+    let over_ui = contexts
+        .ctx_mut()
+        .map(|c| c.is_pointer_over_egui() || c.egui_wants_pointer_input())
+        .unwrap_or(false);
+    rig.aiming = !over_ui && mouse.pressed(MouseButton::Right);
+
+    let target_distance = if rig.aiming {
+        CAM_AIM_DISTANCE
+    } else {
+        CAM_DISTANCE
+    };
+    if dt > 0.0 {
+        let alpha = 1.0 - (-dt * CAM_ZOOM_SPEED).exp();
+        rig.current_distance = rig.current_distance.lerp(target_distance, alpha);
+    } else {
+        rig.current_distance = target_distance;
+    }
+
+    let shoulder_x = if rig.aiming {
+        CAM_AIM_SHOULDER_X
+    } else {
+        CAM_SHOULDER_X
+    };
+    let shoulder_offset = Quat::from_rotation_y(rig.yaw) * Vec3::new(shoulder_x, 0.0, 0.0);
+
     // Camera position from the (slow) follow target + manual orbit; look at the (fast) look target.
-    let anchor = pos_target + Vec3::Y * CAM_LOOK_HEIGHT;
+    let anchor = pos_target + Vec3::Y * CAM_LOOK_HEIGHT + shoulder_offset;
+    let distance = rig.current_distance;
     let offset = Quat::from_euler(EulerRot::YXZ, rig.yaw, rig.pitch, 0.0)
-        * Vec3::new(0.0, 0.0, CAM_DISTANCE);
+        * Vec3::new(0.0, 0.0, distance);
     if let Some(dir) = Dir3::new(offset).ok() {
         let filter = avian3d::prelude::SpatialQueryFilter::from_mask([crate::plugins::cars_driving::driving_plugin::GamePhysicsLayer::Map])
             .with_excluded_entities([controller_ent]);
-        if let Some(hit) = spatial_query.cast_ray(anchor, dir, CAM_DISTANCE, true, &filter) {
-            let dist = (hit.distance * 0.9).min(CAM_DISTANCE);
+        if let Some(hit) = spatial_query.cast_ray(anchor, dir, distance, true, &filter) {
+            let dist = (hit.distance * 0.9).min(distance);
             cam.translation = anchor + offset.normalize() * dist;
         } else {
             cam.translation = anchor + offset;

@@ -8,6 +8,9 @@ use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 
 use super::weapon_manifest::WeaponId;
 use crate::basic_app::MemoryDir;
+use crate::plugins::pedestrians::pedestrian_controller_plugin::{
+    CameraRig, CombatKind, CombatState, ControlledCharacter,
+};
 use crate::plugins::pedestrians::skeleton::PedestrianSkeleton;
 
 /// The local axis (in wrist-bone space) along which the grip offset is applied.
@@ -89,6 +92,7 @@ pub fn equip_weapon_observer(
                 clip_size: info.clip_size,
                 gunshot_sound_idx: sound_idx,
                 reload_timer: 0.0,
+                empty_click_count: 0,
             });
             commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
                 fx: crate::plugins::audio::audio_fx::AudioFxEventType::DrawGun,
@@ -400,10 +404,13 @@ use crate::plugins::network::multiplayer_plugin::RemoteAvatarMarker;
 /// so they look at the global aim point target with y = up.
 pub fn update_weapon_transforms(
     grip: Res<WeaponGripOffset>,
+    rig: Res<CameraRig>,
+    controlled: Res<ControlledCharacter>,
     camera: Query<&GlobalTransform, With<Camera3d>>,
     spatial: SpatialQuery,
     parents: Query<&ChildOf>,
     global_transforms: Query<&GlobalTransform>,
+    combat_states: Query<&CombatState>,
     mut weapons: Query<(Entity, &mut Transform, &WeaponKind), With<WeaponModel>>,
     remote_markers: Query<&RemoteAvatarMarker>,
 ) {
@@ -448,16 +455,28 @@ pub fn update_weapon_transforms(
                         aim_dir = Some(root_rot * Vec3::Z);
                     }
                 } else {
-                    // Local player: aim towards camera target.
-                    if let Some(target) = aim_target {
-                        if let Ok(child_of) = parents.get(weapon_entity) {
-                            let wrist_entity = child_of.0;
-                            if let Ok(wrist_gt) = global_transforms.get(wrist_entity) {
-                                let weapon_world_pos =
-                                    wrist_gt.transform_point(transform.translation);
-                                aim_dir = Some((target - weapon_world_pos).normalize_or_zero());
+                    // Local player: aim at crosshair only while RMB-aiming or in combat.
+                    let in_combat = controlled
+                        .controller
+                        .and_then(|ent| combat_states.get(ent).ok())
+                        .is_some_and(|c| c.kind != CombatKind::None);
+                    let should_aim = rig.aiming || in_combat;
+
+                    if should_aim {
+                        if let Some(target) = aim_target {
+                            if let Ok(child_of) = parents.get(weapon_entity) {
+                                let wrist_entity = child_of.0;
+                                if let Ok(wrist_gt) = global_transforms.get(wrist_entity) {
+                                    let weapon_world_pos =
+                                        wrist_gt.transform_point(transform.translation);
+                                    aim_dir =
+                                        Some((target - weapon_world_pos).normalize_or_zero());
+                                }
                             }
                         }
+                    } else {
+                        // Idle: inherit wrist bone orientation (barrel follows forearm).
+                        transform.rotation = Quat::IDENTITY;
                     }
                 }
 

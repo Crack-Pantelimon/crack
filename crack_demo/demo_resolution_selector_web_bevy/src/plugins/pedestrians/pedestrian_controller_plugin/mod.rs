@@ -31,6 +31,7 @@ use bevy_egui::EguiPrimaryContextPass;
 
 use crate::plugins::states::GameControlState;
 
+pub use camera::CameraRig;
 pub use interaction_ui::{
     CarSeatOffset, DriverMesh, EjectedDriver, EjectedStage, eject_driver_as_ai,
     tick_ejected_driver_system,
@@ -79,7 +80,7 @@ const GRAVITY_Y: f32 = -9.81 * 2.0;
 const CROUCH_SPEED: f32 = 1.8;
 const JOG_SPEED: f32 = 4.0;
 /// Sprint ramps from `1 * JOG_SPEED` up to `SPRINT_MAX_MULT * JOG_SPEED` while Shift is held.
-const SPRINT_MAX_MULT: f32 = 1.5;
+const SPRINT_MAX_MULT: f32 = 2.25;
 const SPRINT_RAMP_TIME: f32 = 2.5;
 
 // Animation selection by current horizontal speed (shared by player, AI, and network drivers).
@@ -115,6 +116,10 @@ const MODEL_FORWARD_OFFSET: f32 = 0.0;
 
 // Follow camera. Position trails the character; orientation is manual (left-mouse drag).
 const CAM_DISTANCE: f32 = 5.5;
+const CAM_AIM_DISTANCE: f32 = 2.5;
+const CAM_SHOULDER_X: f32 = 0.6;
+const CAM_AIM_SHOULDER_X: f32 = 0.3;
+const CAM_ZOOM_SPEED: f32 = 8.0;
 const CAM_LOOK_HEIGHT: f32 = 1.1;
 /// Time constant for smoothing the *character-driven* follow position. This attenuates the wild
 /// up/down/left/right shake the kinematic controller picks up from the rough map, while leaving

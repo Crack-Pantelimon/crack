@@ -326,12 +326,51 @@ pub fn drive_character_animation(
             .unwrap_or_else(|| char_gt.translation());
 
         if is_gun {
-            // Only fire (and animate) when there are rounds left in the clip.
             if can_shoot {
                 pressed_node = node_for(&anims, &["Pistol_Shoot"]);
                 commands.trigger(FireGunEvent {
                     shooter: controller,
                 });
+            } else if let Some(gun) = gun_state.as_mut() {
+                gun.empty_click_count += 1;
+                let trigger_reload = gun.empty_click_count >= 3;
+                if trigger_reload {
+                    gun.empty_click_count = 0;
+                }
+                let click_pos = weapon_model_state
+                    .and_then(|wms| wms.entity)
+                    .and_then(|e| weapon_models.get(e).ok())
+                    .map(|gt| gt.translation())
+                    .unwrap_or_else(|| char_gt.translation());
+                commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+                    fx: crate::plugins::audio::audio_fx::AudioFxEventType::EmptyClick,
+                    position: click_pos,
+                    follow: None,
+                });
+                let cooldown_secs = 60.0 / weapon_id.rpm();
+                if let Some(cd) = weapon_cooldown.as_mut() {
+                    cd.0 = cooldown_secs;
+                } else {
+                    commands
+                        .entity(controller)
+                        .insert(WeaponCooldown(cooldown_secs));
+                }
+                if trigger_reload {
+                    pressed_node = node_for(&anims, &["Pistol_Reload"]);
+                    let reload_secs = weapon_id
+                        .gun_info()
+                        .map(|g| g.reload_secs)
+                        .unwrap_or(NATURAL_RELOAD_SECS);
+                    let natural_reload = anims
+                        .catalog
+                        .get("Pistol_Reload")
+                        .map(|info| info.duration)
+                        .unwrap_or(NATURAL_RELOAD_SECS);
+                    one_shot_speed = (natural_reload / reload_secs).clamp(0.5, 4.0);
+                    commands.trigger(ReloadGunEvent {
+                        shooter: controller,
+                    });
+                }
             }
         } else if is_melee {
             pressed_node = node_for(&anims, &["Sword_Attack"]);

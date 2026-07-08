@@ -42,6 +42,7 @@ pub const FOOTSTEP_SOUND: &str = "pedestrian-sounds/barefoot_footsteps_on_gravel
 pub enum AudioFxEventType {
     GunShot { sound_idx: usize }, // index into GUNSHOT_SOUNDS, chosen at equip
     GunReload,
+    EmptyClick,
     BulletImpact, // random from BULLET_IMPACT_SOUNDS
     DrawGun,      // get_weapon_from_holster
     DrawMelee,    // sword-getout
@@ -85,6 +86,10 @@ pub fn audio_fx_observer(
         AudioFxEventType::GunReload => {
             let jitter = ((_crack_utils::random_u32() % 1000) as f32 / 1000.0) * 0.2 - 0.1;
             ("weapons/guns/gun_reload_clip.mp3", 1.0, 1.0 + jitter, false)
+        }
+        AudioFxEventType::EmptyClick => {
+            let jitter = ((_crack_utils::random_u32() % 1000) as f32 / 1000.0) * 0.2 - 0.1;
+            ("weapons/guns/gun_dry_fire.mp3", 0.9, 1.0 + jitter, false)
         }
         AudioFxEventType::BulletImpact => {
             let idx = (_crack_utils::random_u32() as usize) % BULLET_IMPACT_SOUNDS.len();
@@ -304,10 +309,10 @@ pub fn manage_footsteps_system(
                     sink.play();
                     let playback_speed = if speed < 2.2 {
                         0.9
-                    } else if speed < 6.0 {
+                    } else if speed < 5.0 {
                         1.3
                     } else {
-                        1.7
+                        1.02
                     };
                     sink.set_speed(playback_speed);
                 } else {
