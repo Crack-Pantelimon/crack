@@ -10,6 +10,7 @@ pub struct WeaponEntry {
     pub range: f32,
     pub rpm: f32,
     pub automatic: bool,
+    pub reload_secs: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

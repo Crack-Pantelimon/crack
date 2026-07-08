@@ -7,7 +7,34 @@
 use bevy::ecs::relationship::Relationship;
 use bevy::prelude::*;
 
+use crate::plugins::pedestrians::pedestrian_controller_plugin::{
+    JOG_MAX_SPEED, MOVE_ANIM_THRESHOLD, WALK_MAX_SPEED,
+};
 use crate::plugins::pedestrians::spawn_pedestrian::{ModelRoot, PedestrianGltf};
+
+/// Marker: avatar pose is driven by network replay (transform lerp), not locomotion physics.
+#[derive(Component)]
+pub struct NetworkDriven;
+
+/// Canonical speed→locomotion clip candidates shared by player, AI, and network drivers.
+pub fn locomotion_clip(speed: f32, crouch: bool, _sprint: bool) -> &'static [&'static str] {
+    let moving = speed > MOVE_ANIM_THRESHOLD;
+    if crouch {
+        if moving {
+            &["Crouch_Fwd_Loop"]
+        } else {
+            &["Crouch_Idle_Loop", "Idle_Loop"]
+        }
+    } else if !moving {
+        &["Idle_Loop", "A_TPose"]
+    } else if speed < WALK_MAX_SPEED {
+        &["Walk_Loop"]
+    } else if speed < JOG_MAX_SPEED {
+        &["Jog_Fwd_Loop"]
+    } else {
+        &["Sprint_Loop", "Sprint_Fwd_Loop"]
+    }
+}
 
 /// Metadata about a single animation clip, exposed for UI listing.
 #[derive(Clone, Debug)]

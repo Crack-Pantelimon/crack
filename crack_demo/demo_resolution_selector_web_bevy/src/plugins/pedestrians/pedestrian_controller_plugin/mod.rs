@@ -82,10 +82,10 @@ const JOG_SPEED: f32 = 4.0;
 const SPRINT_MAX_MULT: f32 = 1.5;
 const SPRINT_RAMP_TIME: f32 = 2.5;
 
-// Animation selection by current horizontal speed.
-const MOVE_ANIM_THRESHOLD: f32 = 0.25;
-const WALK_MAX_SPEED: f32 = 2.0;
-const JOG_MAX_SPEED: f32 = 4.5;
+// Animation selection by current horizontal speed (shared by player, AI, and network drivers).
+pub const MOVE_ANIM_THRESHOLD: f32 = 0.25;
+pub const WALK_MAX_SPEED: f32 = 2.0;
+pub const JOG_MAX_SPEED: f32 = 4.5;
 
 // Jump animation phase timings (seconds).
 const JUMP_START_TIME: f32 = 0.22;

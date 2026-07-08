@@ -1,4 +1,5 @@
-use crate::plugins::audio::{PlaySoundEvent, SoundManifest};
+use crate::plugins::audio::{master_volume_linear, PlaySoundEvent, SoundManifest};
+use bevy::audio::GlobalVolume;
 use crate::plugins::cars_driving::driving_plugin::CarDriveState;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{CharacterController, Grounded};
 use avian3d::prelude::LinearVelocity;
@@ -34,6 +35,8 @@ pub const CAR_BUMP_SOUNDS: &[&str] = &[
 
 pub const CAR_CRASH_SOUNDS: &[&str] =
     &["car-sounds/car-crash-1.mp3", "car-sounds/car-crash-v2.mp3"];
+
+pub const FOOTSTEP_SOUND: &str = "pedestrian-sounds/barefoot_footsteps_on_gravel.mp3";
 
 #[derive(Clone, Copy, Debug)]
 pub enum AudioFxEventType {
@@ -128,12 +131,7 @@ pub fn audio_fx_observer(
         AudioFxEventType::GearShiftWhoosh => {
             ("car-sounds/engine-turbocharger-whoosh.mp3", 0.8, 1.0, false)
         }
-        AudioFxEventType::FootstepLoop => (
-            "pedestrian-sounds/barefoot_footsteps_on_gravel.mp3",
-            0.6,
-            1.0,
-            true,
-        ),
+        AudioFxEventType::FootstepLoop => (FOOTSTEP_SOUND, 0.6, 1.0, true),
         AudioFxEventType::EngineLoop { sound_idx } => {
             let idx = sound_idx % ENGINE_IDLE_SOUNDS.len();
             (ENGINE_IDLE_SOUNDS[idx], 1.0, 1.0, true)
@@ -204,7 +202,9 @@ pub fn manage_car_engine_sound_pitch_volume(
     mut sinks: Query<&mut SpatialAudioSink>,
     children_query: Query<&Children>,
     manifest: Res<SoundManifest>,
+    global_volume: Res<GlobalVolume>,
 ) {
+    let master = master_volume_linear(&global_volume);
     for (drive_state, emitter) in &query {
         let mut target_child = None;
         if let Ok(children) = children_query.get(emitter.emitter) {
@@ -227,7 +227,7 @@ pub fn manage_car_engine_sound_pitch_volume(
                     .map(|e| e.volume)
                     .unwrap_or(0.6);
                 let throttle_vol = (1.0 + drive_state.avg_accelerate * 0.5) * base_vol;
-                sink.set_volume(bevy::audio::Volume::Linear(throttle_vol));
+                sink.set_volume(bevy::audio::Volume::Linear(throttle_vol * master));
             }
         }
     }
@@ -251,7 +251,14 @@ pub fn manage_footsteps_system(
     >,
     mut sinks: Query<&mut SpatialAudioSink>,
     children_query: Query<&Children>,
+    manifest: Res<SoundManifest>,
+    global_volume: Res<GlobalVolume>,
 ) {
+    let master = master_volume_linear(&global_volume);
+    let footstep_base_vol = manifest
+        .get(FOOTSTEP_SOUND)
+        .map(|e| 0.6 * e.volume)
+        .unwrap_or(0.6);
     for (char_entity, velocity, grounded, emitter_opt) in &query {
         let emitter_entity = if let Some(emitter) = emitter_opt {
             emitter.emitter
@@ -289,9 +296,10 @@ pub fn manage_footsteps_system(
         }
 
         if let Some(child) = target_child {
-            if let Ok(sink) = sinks.get_mut(child) {
+            if let Ok(mut sink) = sinks.get_mut(child) {
                 let speed = Vec2::new(velocity.x as f32, velocity.z as f32).length();
                 let should_play = grounded && speed > 0.25;
+                sink.set_volume(bevy::audio::Volume::Linear(footstep_base_vol * master));
                 if should_play {
                     sink.play();
                     let playback_speed = if speed < 2.2 {

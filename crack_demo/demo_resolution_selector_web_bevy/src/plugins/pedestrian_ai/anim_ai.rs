@@ -4,18 +4,14 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
-use crate::plugins::pedestrians::PedestrianAnimationControlEvent;
+use crate::plugins::pedestrians::locomotion_clip;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{
-    CharacterScale, MovementModifiers,
+    CharacterScale, MOVE_ANIM_THRESHOLD, MovementModifiers,
 };
+use crate::plugins::pedestrians::PedestrianAnimationControlEvent;
 use crate::plugins::weapons::EquippedWeapon;
 
 use super::{AiAnim, AiModel, AiPedestrian, AiState};
-
-// Speed thresholds matching the player animation driver.
-const MOVE_ANIM_THRESHOLD: f32 = 0.25;
-const WALK_MAX_SPEED: f32 = 2.0;
-const JOG_MAX_SPEED: f32 = 4.5;
 
 /// Picks a base locomotion clip for each AI ped and triggers the animation event when it changes.
 pub fn ai_animation(
@@ -53,26 +49,21 @@ pub fn ai_animation(
         let speed = Vec2::new(velocity.x as f32, velocity.z as f32).length();
         let is_melee = equipped.is_some_and(|e| e.0.is_melee());
 
-        let clip = if let Some(ejected) = ejected_driver {
+        let clips: &[&str] = if let Some(ejected) = ejected_driver {
             match ejected.stage {
-                crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedStage::OnGround => "Fixing_Kneeling",
-                crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedStage::StandingUp => "Sitting_Exit",
+                crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedStage::OnGround => {
+                    &["Fixing_Kneeling"]
+                }
+                crate::plugins::pedestrians::pedestrian_controller_plugin::EjectedStage::StandingUp => {
+                    &["Sitting_Exit"]
+                }
             }
-        } else if modifiers.crouch {
-            if speed > MOVE_ANIM_THRESHOLD {
-                "Crouch_Fwd_Loop"
-            } else {
-                "Crouch_Idle_Loop"
-            }
-        } else if speed < MOVE_ANIM_THRESHOLD {
-            if is_melee { "Sword_Idle" } else { "Idle_Loop" }
-        } else if speed < WALK_MAX_SPEED {
-            "Walk_Loop"
-        } else if speed < JOG_MAX_SPEED {
-            "Jog_Fwd_Loop"
+        } else if is_melee && !modifiers.crouch && speed <= MOVE_ANIM_THRESHOLD {
+            &["Sword_Idle"]
         } else {
-            "Sprint_Loop"
+            locomotion_clip(speed, modifiers.crouch, modifiers.sprint)
         };
+        let clip = clips[0];
 
         // Only trigger when the clip changes.
         let clip_str = clip.to_string();

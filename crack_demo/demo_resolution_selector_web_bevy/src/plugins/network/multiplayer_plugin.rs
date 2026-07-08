@@ -12,14 +12,14 @@ use crate::plugins::cars_driving::driving_plugin::{
     CarDriveState, CarWheelsContactData, CosmeticWheel, GamePhysicsLayer,
 };
 use crate::plugins::pedestrians::animation::{
-    ActiveOneShot, CurrentPlayingAnimation, TargetAnimation,
+    ActiveOneShot, CurrentPlayingAnimation, NetworkDriven, TargetAnimation,
 };
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{
     CharacterController, CharacterScale, Climbing, ControlledCharacter, Grounded, LocomotionInput,
     Rolling,
 };
 use crate::plugins::pedestrians::{
-    ModelRoot, PedestrianAnimations, PedestrianUrl, SpawnPedestrianEvent,
+    ModelRoot, PedestrianAnimations, PedestrianUrl, SpawnPedestrianEvent, locomotion_clip,
 };
 use crate::plugins::states::{GameControlState, InitialMapLoadFinished, NetworkConnectionState};
 use crate::plugins::weapons::weapon_shooting::{ShotTracer, MeleeDebugBoxes, MeleeDebugBox};
@@ -648,11 +648,10 @@ fn reconcile_remote_avatars(
                         Visibility::default(),
                         InheritedVisibility::default(),
                         RemoteAvatarMarker { node_id: *node_id },
+                        NetworkDriven,
                         LinearVelocity::ZERO,
                         crate::plugins::pedestrians::pedestrian_controller_plugin::AnimState::default(),
                         crate::plugins::pedestrians::pedestrian_controller_plugin::CombatState::default(),
-                        crate::plugins::pedestrians::pedestrian_controller_plugin::LocomotionInput::default(),
-                        crate::plugins::pedestrians::pedestrian_controller_plugin::MovementModifiers::default(),
                         crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterScale(scale),
                         crate::plugins::pedestrian_ai::faction::Health { current: health, max: 100.0 },
                         EquippedWeapon(WeaponId::from_label(&weapon, &weapon_manifest)),
@@ -1066,11 +1065,10 @@ fn update_remote_animations(
     anims: Res<PedestrianAnimations>,
     q_remote_roots: Query<(
         Entity,
-        &RemoteAvatarMarker,
         &LinearVelocity,
         &crate::plugins::pedestrian_ai::faction::Health,
         &crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterScale,
-    )>,
+    ), With<NetworkDriven>>,
     q_models: Query<(Entity, &ChildOf), With<ModelRoot>>,
     q_parents: Query<&ChildOf>,
 ) {
@@ -1078,31 +1076,16 @@ fn update_remote_animations(
         return;
     }
 
-    for (root_entity, _, velocity, health, char_scale) in q_remote_roots.iter() {
+    for (root_entity, velocity, health, char_scale) in q_remote_roots.iter() {
         if let Some(model_ent) = find_model_entity(root_entity, &q_models, &q_parents) {
-            let speed = velocity.0.length();
+            let horizontal_speed = Vec2::new(velocity.0.x, velocity.0.z).length();
             let anim_name = if health.current <= 0.0 {
                 select_animation(&anims, &["Death01", "Death"])
-            } else if speed > 4.5 {
-                select_animation(
-                    &anims,
-                    &[
-                        "Sprint_Loop",
-                        "Sprint_Fwd_Loop",
-                        "Jog_Fwd_Loop",
-                        "Walk_Loop",
-                    ],
-                )
-            } else if speed > 1.5 {
-                select_animation(&anims, &["Jog_Fwd_Loop", "Walk_Loop"])
-            } else if speed > 0.1 {
-                select_animation(&anims, &["Walk_Loop", "Jog_Fwd_Loop"])
             } else {
-                select_animation(&anims, &["Idle_Loop", "A_TPose"])
+                select_animation(&anims, locomotion_clip(horizontal_speed, false, false))
             };
 
             let mut anim_speed = 1.0 / char_scale.0;
-            let horizontal_speed = Vec2::new(velocity.0.x, velocity.0.z).length();
             if anim_name == "Walk_Loop" && horizontal_speed > 0.0 {
                 anim_speed *= (horizontal_speed / 1.5).clamp(0.5, 1.5);
             } else if anim_name == "Jog_Fwd_Loop" && horizontal_speed > 0.0 {

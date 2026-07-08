@@ -28,7 +28,7 @@ use weapon_manifest::{
 };
 use weapon_shooting::{
     draw_bullet_sparks, draw_shot_tracers, fire_gun_observer, reload_gun_observer,
-    tick_pending_melee_hits, tick_weapon_cooldown,
+    tick_pending_melee_hits, tick_reload, tick_weapon_cooldown,
 };
 
 pub struct WeaponsPlugin;
@@ -56,6 +56,7 @@ impl Plugin for WeaponsPlugin {
                     finalize_weapon_extents,
                     update_weapon_transforms,
                     tick_weapon_cooldown,
+                    tick_reload,
                     tick_pending_melee_hits,
                 )
                     .chain(),

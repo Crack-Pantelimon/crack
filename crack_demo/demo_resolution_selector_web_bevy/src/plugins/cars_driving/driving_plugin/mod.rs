@@ -19,8 +19,7 @@ use crate::plugins::cars_driving::driving_plugin::{
 };
 use avian3d::prelude::{
     AngularInertia, AngularVelocity, CenterOfMass, ComputeMassProperties3d, LinearVelocity, Mass,
-    MassPropertiesExt, PhysicsLayer, SleepBody, SleepingDisabled, SpatialQuery, SpatialQueryFilter,
-    WakeBody,
+    MassPropertiesExt, PhysicsLayer, SpatialQuery, SpatialQueryFilter,
 };
 use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
@@ -54,14 +53,12 @@ fn car_has_drive_input(drive_state: &CarDriveState) -> bool {
         || drive_state.avg_steer.abs() > 0.01
 }
 
-fn unpark_car(entity: Entity, drive_state: &mut CarDriveState, commands: &mut Commands) {
+fn unpark_car(drive_state: &mut CarDriveState) {
     if !drive_state.parked {
         return;
     }
     drive_state.parked = false;
     drive_state.park_timer = 0.0;
-    commands.entity(entity).insert(SleepingDisabled);
-    commands.queue(WakeBody(entity));
 }
 
 pub struct DrivingPlugin<S: States> {
@@ -182,7 +179,7 @@ pub struct CarDriveState {
     pub avg_brake: f32,
     pub avg_steer: f32,
     pub is_reverse: bool,
-    /// True when the car is settled and sleeping; the hover controller skips velocity writes.
+    /// True when the car is settled at rest; hover holds ride height but drive forces are off.
     pub parked: bool,
     /// Time spent below park speed thresholds with no input.
     pub park_timer: f32,
@@ -297,7 +294,6 @@ pub fn cap_car_velocities(
 pub fn car_drive_observer(
     trigger: On<Drive>,
     mut query: Query<&mut CarDriveState>,
-    mut commands: Commands,
     time: Res<Time>,
 ) {
     let car_entity = trigger.event_target();
@@ -311,7 +307,7 @@ pub fn car_drive_observer(
         || drive_input.brake > 0.05
         || drive_input.steer.abs() > 0.01;
     if has_input {
-        unpark_car(car_entity, &mut drive_state, &mut commands);
+        unpark_car(&mut drive_state);
     }
 
     let dt = time.delta_secs().min(0.1);
@@ -419,7 +415,6 @@ fn get_gear_ratio(gear: usize, is_reverse: bool, wheel_radius: f32, car_max_spee
 pub fn apply_car_steering_and_drive(
     mut q_car: Query<
         (
-            Entity,
             &Transform,
             &mut CarDriveState,
             &CarWheelsContactData,
@@ -429,7 +424,6 @@ pub fn apply_car_steering_and_drive(
         ),
         With<Car>,
     >,
-    mut commands: Commands,
     time: Res<Time>,
     sim_state: Option<Res<SimState>>,
 ) {
@@ -440,7 +434,6 @@ pub fn apply_car_steering_and_drive(
     let is_sim = sim_state.map(|s| s.is_sim).unwrap_or(false);
 
     for (
-        entity,
         car_transform,
         mut drive_state,
         contact_data,
@@ -480,15 +473,12 @@ pub fn apply_car_steering_and_drive(
         let speed_xz = Vec2::new(lin_vel.0.x, lin_vel.0.z).length();
         let ang_speed = ang_vel.0.length();
 
-        if drive_state.parked {
-            if has_input
+        if drive_state.parked
+            && (has_input
                 || speed_xz > PARK_SPEED_THRESHOLD
-                || ang_speed > PARK_ANG_THRESHOLD
-            {
-                unpark_car(entity, &mut drive_state, &mut commands);
-            } else {
-                continue;
-            }
+                || ang_speed > PARK_ANG_THRESHOLD)
+        {
+            unpark_car(&mut drive_state);
         }
 
         // --- Per-wheel ground heights from the smoothed, median-filtered rays ---
@@ -573,22 +563,21 @@ pub fn apply_car_steering_and_drive(
             continue;
         }
 
-        if !has_input
-            && speed_xz < PARK_SPEED_THRESHOLD
-            && ang_speed < PARK_ANG_THRESHOLD
-        {
-            drive_state.park_timer += dt;
-            if drive_state.park_timer >= PARK_SETTLE_TIME {
-                drive_state.parked = true;
+        if !drive_state.parked {
+            if !has_input
+                && speed_xz < PARK_SPEED_THRESHOLD
+                && ang_speed < PARK_ANG_THRESHOLD
+            {
+                drive_state.park_timer += dt;
+                if drive_state.park_timer >= PARK_SETTLE_TIME {
+                    drive_state.parked = true;
+                    drive_state.park_timer = 0.0;
+                    lin_vel.0 = Vec3::ZERO;
+                    ang_vel.0 = Vec3::ZERO;
+                }
+            } else {
                 drive_state.park_timer = 0.0;
-                lin_vel.0 = Vec3::ZERO;
-                ang_vel.0 = Vec3::ZERO;
-                commands.entity(entity).remove::<SleepingDisabled>();
-                commands.queue(SleepBody(entity));
-                continue;
             }
-        } else {
-            drive_state.park_timer = 0.0;
         }
 
         let mut height_sum = 0.0f32;
@@ -638,6 +627,13 @@ pub fn apply_car_steering_and_drive(
         let target_vy = (effective_error / response).clamp(-MAX_LIFT_SPEED, MAX_LIFT_SPEED);
         let max_dv = MAX_VERTICAL_ACCEL * dt;
         lin_vel.0.y += (target_vy - lin_vel.0.y).clamp(-max_dv, max_dv);
+
+        if drive_state.parked {
+            lin_vel.0.x = 0.0;
+            lin_vel.0.z = 0.0;
+            ang_vel.0 = Vec3::ZERO;
+            continue;
+        }
 
         // --- Attitude: tilt toward the wheel-height ground plane, yaw from steering ---
         let track = (drive_state.car_half_width * 2.0).max(0.5);

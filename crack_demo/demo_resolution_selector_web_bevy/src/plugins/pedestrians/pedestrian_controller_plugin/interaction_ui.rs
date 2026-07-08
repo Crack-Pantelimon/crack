@@ -792,6 +792,8 @@ pub fn equip_on_new_character(
 
 /// Mouse wheel cycles to the next/previous weapon.
 pub fn weapon_wheel(
+    time: Res<Time>,
+    mut next_switch: Local<f32>,
     mut commands: Commands,
     mut wheel: MessageReader<MouseWheel>,
     mut contexts: EguiContexts,
@@ -820,12 +822,17 @@ pub fn weapon_wheel(
     if step == 0 || over_ui {
         return;
     }
+    let now = time.elapsed_secs();
+    if now < *next_switch {
+        return;
+    }
     let Some(controller) = controlled.controller else {
         return;
     };
 
     let n = manifest.all.len() as i32;
     selection.index = (((selection.index as i32 + step) % n + n) % n) as usize;
+    *next_switch = now + 0.15;
     commands.trigger(EquipWeaponEvent {
         character: controller,
         weapon: manifest.all[selection.index].clone(),

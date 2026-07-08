@@ -13,6 +13,7 @@ pub struct GunInfo {
     pub range: f32,
     pub rpm: f32,
     pub automatic: bool,
+    pub reload_secs: f32,
 }
 
 /// Melee stats parsed from the manifest.
@@ -31,6 +32,29 @@ pub enum WeaponId {
 }
 
 const UNARMED_RPM: f32 = 110.0;
+
+fn weapon_basename(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+/// Hand-picked reload durations keyed on weapon file name (overrides CSV/default).
+fn hand_picked_reload_secs(path: &str) -> Option<f32> {
+    match weapon_basename(path) {
+        "revolver1.glb" | "revolver2.glb" | "revolver3.glb" => Some(3.0),
+        "pistol1-cv.glb" | "pistol2-glock.glb" | "pistol3-fallout.glb"
+        | "pistol4-cz.glb" | "pistol5-1911.glb" | "pistol6-breta.glb"
+        | "pistol7-tt.glb" | "pistol8-luger.glb" => Some(1.6),
+        "uzi1.glb" | "uzi2.glb" => Some(2.0),
+        "mp5-mini.glb" | "mp5-mini-2.glb" | "skorpion1.glb" => Some(2.2),
+        "ak47.glb" => Some(2.8),
+        "draco1.glb" | "draco2.glb" => Some(2.5),
+        _ => None,
+    }
+}
+
+fn resolve_gun_reload_secs(path: &str, csv_secs: f32) -> f32 {
+    hand_picked_reload_secs(path).unwrap_or(csv_secs)
+}
 
 impl WeaponId {
     pub fn is_unarmed(&self) -> bool {
@@ -146,13 +170,17 @@ pub fn poll_weapon_manifest_task(
                     for entry in result.weapons {
                         if entry.is_gun {
                             guns.push(WeaponId::Gun(GunInfo {
-                                path: entry.path,
+                                path: entry.path.clone(),
                                 clip_size: entry.clip_size,
                                 bullet_type: entry.bullet_type,
                                 damage: entry.damage,
                                 range: entry.range,
                                 rpm: entry.rpm,
                                 automatic: entry.automatic,
+                                reload_secs: resolve_gun_reload_secs(
+                                    &entry.path,
+                                    entry.reload_secs,
+                                ),
                             }));
                         } else {
                             melee.push(WeaponId::Melee(MeleeInfo {

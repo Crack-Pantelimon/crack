@@ -18,6 +18,8 @@ pub struct GunState {
     pub rounds: u32,
     pub clip_size: u32,
     pub gunshot_sound_idx: usize,
+    /// Seconds remaining in an active reload (0 = idle).
+    pub reload_timer: f32,
 }
 
 /// Seconds until the next attack is allowed (gun, melee, or punch).
@@ -29,6 +31,20 @@ pub fn tick_weapon_cooldown(time: Res<Time>, mut q: Query<&mut WeaponCooldown>) 
     for mut cd in &mut q {
         if cd.0 > 0.0 {
             cd.0 = (cd.0 - dt).max(0.0);
+        }
+    }
+}
+
+pub fn tick_reload(time: Res<Time>, mut q: Query<&mut GunState>) {
+    let dt = time.delta_secs();
+    for mut gun in &mut q {
+        if gun.reload_timer <= 0.0 {
+            continue;
+        }
+        gun.reload_timer -= dt;
+        if gun.reload_timer <= 0.0 {
+            gun.reload_timer = 0.0;
+            gun.rounds = gun.clip_size;
         }
     }
 }
@@ -147,6 +163,9 @@ pub fn fire_gun_observer(
         return;
     };
     if gun.rounds == 0 {
+        return;
+    }
+    if gun.reload_timer > 0.0 {
         return;
     }
     gun.rounds -= 1;
@@ -287,19 +306,24 @@ pub fn fire_gun_observer(
 
 pub fn reload_gun_observer(
     trigger: On<ReloadGunEvent>,
-    mut shooters: Query<(&mut GunState, &GlobalTransform)>,
+    mut shooters: Query<(&mut GunState, &EquippedWeapon, &GlobalTransform)>,
     mut commands: Commands,
 ) {
-    if let Ok((mut gun, gt)) = shooters.get_mut(trigger.event().shooter) {
-        if gun.rounds < gun.clip_size {
-            gun.rounds = gun.clip_size;
-            commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
-                fx: crate::plugins::audio::audio_fx::AudioFxEventType::GunReload,
-                position: gt.translation(),
-                follow: None,
-            });
-        }
+    let Ok((mut gun, equipped, gt)) = shooters.get_mut(trigger.event().shooter) else {
+        return;
+    };
+    if gun.reload_timer > 0.0 || gun.rounds >= gun.clip_size {
+        return;
     }
+    let WeaponId::Gun(info) = &equipped.0 else {
+        return;
+    };
+    gun.reload_timer = info.reload_secs;
+    commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
+        fx: crate::plugins::audio::audio_fx::AudioFxEventType::GunReload,
+        position: gt.translation(),
+        follow: None,
+    });
 }
 
 /// Draws the live tracers and expires them after [`TRACER_TTL`].

@@ -51,6 +51,11 @@ impl SoundManifest {
     }
 }
 
+/// Linear master multiplier synced from the options volume slider.
+pub(crate) fn master_volume_linear(global_volume: &GlobalVolume) -> f32 {
+    global_volume.volume.to_linear()
+}
+
 /// Internal bootstrap: handle to the manifest text + the folder used to resolve relative paths.
 #[derive(Resource)]
 struct SoundManifestBootstrap {

@@ -13,6 +13,7 @@ use bevy_egui::EguiContexts;
 
 use super::*;
 use crate::plugins::pedestrian_ai::Dying;
+use crate::plugins::pedestrians::locomotion_clip;
 use crate::plugins::pedestrians::PedestrianAnimations;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::EnteringCarTimer;
 use crate::plugins::weapons::weapon_attach::{WeaponModel, WeaponModelState};
@@ -24,6 +25,8 @@ const BASE_WEIGHT_WITH_COMBAT: f32 = 0.6;
 
 /// Natural duration of the Sword_Attack clip at 1× speed (matches AI `SWING_INTERVAL`).
 const NATURAL_SWING_SECS: f32 = 0.8;
+/// Fallback natural duration of Pistol_Reload when the catalog is unavailable.
+const NATURAL_RELOAD_SECS: f32 = 2.0;
 
 /// Logs the animation catalog once it is ready, so the exact clip names are visible.
 pub fn print_animation_catalog(anims: Res<PedestrianAnimations>, mut done: Local<bool>) {
@@ -76,7 +79,7 @@ pub fn drive_character_animation(
             Has<Climbing>,
             Has<Rolling>,
             Option<&EquippedWeapon>,
-            Option<&GunState>,
+            Option<&mut GunState>,
             &mut AnimState,
             &mut CombatState,
             Option<&EnteringCarTimer>,
@@ -109,7 +112,7 @@ pub fn drive_character_animation(
         climbing,
         rolling,
         equipped,
-        gun_state,
+        mut gun_state,
         mut anim,
         mut combat,
         entering,
@@ -263,25 +266,11 @@ pub fn drive_character_animation(
             JumpPhase::Loop => &["Jump_Loop"],
             JumpPhase::Land => &["Jump_Land"],
             JumpPhase::Grounded => {
-                if modifiers.crouch {
-                    if moving {
-                        &["Crouch_Fwd_Loop"]
-                    } else {
-                        &["Crouch_Idle_Loop", "Idle_Loop"]
-                    }
-                } else if moving {
-                    if speed < WALK_MAX_SPEED {
-                        &["Walk_Loop"]
-                    } else if speed < JOG_MAX_SPEED {
-                        &["Jog_Fwd_Loop"]
-                    } else {
-                        &["Sprint_Loop", "Sprint_Fwd_Loop"]
-                    }
-                } else if is_melee {
+                if is_melee && !modifiers.crouch && !moving {
                     // A melee weapon replaces the neutral idle with the sword idle.
                     &["Sword_Idle", "Idle_Loop"]
                 } else {
-                    &["Idle_Loop", "A_TPose"]
+                    locomotion_clip(speed, modifiers.crouch, modifiers.sprint)
                 }
             }
         }
@@ -307,15 +296,28 @@ pub fn drive_character_animation(
             player.animation(n).map_or(true, |a| a.is_finished())
         });
 
-    let can_shoot = gun_state.map_or(false, |g| g.rounds > 0);
+    // Cancel an in-progress reload when locomotion interrupts it (weapon switch cancels via equip).
+    if let Some(gun) = gun_state.as_mut() {
+        if gun.reload_timer > 0.0 && (climbing || rolling || modifiers.sprint) {
+            gun.reload_timer = 0.0;
+            if let Some(old) = combat.node {
+                player.stop(old);
+            }
+            combat.kind = CombatKind::None;
+            combat.node = None;
+        }
+    }
+
+    let is_reloading = gun_state.as_ref().is_some_and(|g| g.reload_timer > 0.0);
+    let can_shoot = gun_state.as_ref().map_or(false, |g| g.rounds > 0) && !is_reloading;
     let reload_pressed = !over_ui && keys.just_pressed(KeyCode::KeyR);
     let mut weapon_cooldown = cooldowns.get_mut(controller).ok();
     let cooldown_ready = weapon_cooldown.as_ref().map_or(true, |cd| cd.0 <= 0.0);
 
     // A press (or held LMB on automatic weapons) starts a one-shot clip when off cooldown.
     let mut pressed_node = None;
-    let mut melee_swing_speed = 1.0_f32;
-    if fire_pressed && cooldown_ready {
+    let mut one_shot_speed = 1.0_f32;
+    if fire_pressed && cooldown_ready && !is_reloading {
         let swing_secs = 60.0 / weapon_id.rpm();
         let whoosh_pos = weapon_model_state
             .and_then(|wms| wms.entity)
@@ -333,7 +335,7 @@ pub fn drive_character_animation(
             }
         } else if is_melee {
             pressed_node = node_for(&anims, &["Sword_Attack"]);
-            melee_swing_speed =
+            one_shot_speed =
                 (NATURAL_SWING_SECS / swing_secs).clamp(0.5, 4.0);
             commands.entity(controller).insert(
                 crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
@@ -375,8 +377,23 @@ pub fn drive_character_animation(
                     .insert(WeaponCooldown(cooldown_secs));
             }
         }
-    } else if reload_pressed && is_gun && gun_state.is_some_and(|g| g.rounds < g.clip_size) {
+    } else if reload_pressed
+        && is_gun
+        && gun_state
+            .as_ref()
+            .is_some_and(|g| g.rounds < g.clip_size && g.reload_timer <= 0.0)
+    {
         pressed_node = node_for(&anims, &["Pistol_Reload"]);
+        let reload_secs = weapon_id
+            .gun_info()
+            .map(|g| g.reload_secs)
+            .unwrap_or(NATURAL_RELOAD_SECS);
+        let natural_reload = anims
+            .catalog
+            .get("Pistol_Reload")
+            .map(|info| info.duration)
+            .unwrap_or(NATURAL_RELOAD_SECS);
+        one_shot_speed = (natural_reload / reload_secs).clamp(0.5, 4.0);
         commands.trigger(ReloadGunEvent {
             shooter: controller,
         });
@@ -416,8 +433,8 @@ pub fn drive_character_animation(
                 CombatKind::OneShot => {
                     // One-shot: (re)start from the beginning, no repeat.
                     active.seek_to(0.0);
-                    if is_melee {
-                        active.set_speed(melee_swing_speed);
+                    if one_shot_speed != 1.0 {
+                        active.set_speed(one_shot_speed);
                     }
                 }
                 CombatKind::None => {}

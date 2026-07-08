@@ -33,7 +33,7 @@ pub async fn fetch_weapon_manifest(args: FetchArgs) -> anyhow::Result<WeaponMani
         if line.is_empty() {
             continue;
         }
-        // CSV columns: path,is_gun,clip_size,bullet_type,damage,range,rpm,automatic
+        // CSV columns: path,is_gun,clip_size,bullet_type,damage,range,rpm,automatic[,reload_secs]
         let cols: Vec<&str> = line.split(',').map(str::trim).collect();
         let rel_path = cols[0];
         if rel_path == "path" {
@@ -56,6 +56,11 @@ pub async fn fetch_weapon_manifest(args: FetchArgs) -> anyhow::Result<WeaponMani
             range: cols.get(5).and_then(|c| c.parse().ok()).unwrap_or(50.0),
             rpm: cols.get(6).and_then(|c| c.parse().ok()).unwrap_or(300.0),
             automatic: cols.get(7).and_then(|c| c.parse::<u32>().ok()) == Some(1),
+            reload_secs: if is_gun {
+                cols.get(8).and_then(|c| c.parse().ok()).unwrap_or(2.0)
+            } else {
+                1.0
+            },
         };
         weapons.push(entry);
     }

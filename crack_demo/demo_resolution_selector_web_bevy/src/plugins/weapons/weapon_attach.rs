@@ -88,6 +88,7 @@ pub fn equip_weapon_observer(
                 rounds: info.clip_size,
                 clip_size: info.clip_size,
                 gunshot_sound_idx: sound_idx,
+                reload_timer: 0.0,
             });
             commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
                 fx: crate::plugins::audio::audio_fx::AudioFxEventType::DrawGun,
