@@ -177,3 +177,74 @@ def enu_to_blender(
         (blender_x, blender_y, blender_z) tuple
     """
     return (east, north, up)
+
+
+def pixel_to_latlon(
+    px: float,
+    py: float,
+    width: int,
+    height: int,
+    lat_lon_bbox: dict[str, float],
+) -> tuple[float, float]:
+    """
+    Map a pixel coordinate to WGS84 lat/lon using the tile geographic bbox.
+
+    Image origin is top-left; north is up and west is left.
+    """
+    u = px / width
+    v = py / height
+    lon = lat_lon_bbox["lon_west"] + u * (lat_lon_bbox["lon_east"] - lat_lon_bbox["lon_west"])
+    lat = lat_lon_bbox["lat_north"] - v * (lat_lon_bbox["lat_north"] - lat_lon_bbox["lat_south"])
+    return lat, lon
+
+
+def pixel_to_blender_xyz(
+    px: float,
+    py: float,
+    width: int,
+    height: int,
+    bbox_xyz: dict[str, list[float]],
+    *,
+    z: float | None = None,
+) -> tuple[float, float, float]:
+    """
+    Map a pixel coordinate to Blender XYZ using the mesh bounding box.
+
+    Uses a simple rule-of-three linear interpolation across the top face.
+    """
+    u = px / width
+    v = py / height
+    x_min, y_min, z_min = bbox_xyz["min"]
+    x_max, y_max, z_max = bbox_xyz["max"]
+    x = x_min + u * (x_max - x_min)
+    y = y_max - v * (y_max - y_min)
+    z_val = z_max if z is None else z
+    return x, y, z_val
+
+
+def bbox_center_latlon(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    width: int,
+    height: int,
+    lat_lon_bbox: dict[str, float],
+) -> tuple[float, float]:
+    cx = (x1 + x2) / 2.0
+    cy = (y1 + y2) / 2.0
+    return pixel_to_latlon(cx, cy, width, height, lat_lon_bbox)
+
+
+def bbox_center_blender_xyz(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    width: int,
+    height: int,
+    bbox_xyz: dict[str, list[float]],
+) -> tuple[float, float, float]:
+    cx = (x1 + x2) / 2.0
+    cy = (y1 + y2) / 2.0
+    return pixel_to_blender_xyz(cx, cy, width, height, bbox_xyz)

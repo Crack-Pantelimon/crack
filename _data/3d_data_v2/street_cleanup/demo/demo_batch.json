@@ -1,0 +1,20 @@
+{
+  "tiles": [
+    {
+      "octant_path": "30436272704361707403",
+      "glb_path": "data_out/20/403/30436272704361707403.glb",
+      "jpg_path": "street_cleanup/demo/demo1.jpg",
+      "meta_path": "street_cleanup/demo/demo1.json",
+      "lat_lon_bbox": {
+        "lat_south": 44.442787170410156,
+        "lat_north": 44.44313049316406,
+        "lon_west": 26.139564514160156,
+        "lon_east": 26.139907836914062
+      },
+      "resolution": [
+        1024,
+        1024
+      ]
+    }
+  ]
+}
