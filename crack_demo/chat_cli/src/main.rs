@@ -2,7 +2,7 @@ use anyhow::Context;
 use net_crackpipe::{
     chat::chat_controller::{IChatController, IChatReceiver, IChatSender},
     chat::global_chat::{GlobalChatMessageContent, GlobalChatPresence},
-    global_matchmaker::GlobalMatchmaker,
+    network_manager::NetworkManager,
     user_identity::UserIdentitySecrets,
 };
 use std::sync::Arc;
@@ -22,11 +22,16 @@ async fn main() -> anyhow::Result<()> {
     let own_nickname = secrets.user_identity().nickname();
     println!("SELF {}", own_nickname);
 
-    let mm = GlobalMatchmaker::new(Arc::new(secrets))
-        .await
-        .context("Failed to initialize GlobalMatchmaker")?;
+    // If this process wins a bootstrap slot, its bootstrap node should also
+    // carry the game's extra topics, so use the game network config.
+    let network = NetworkManager::init(
+        Arc::new(secrets),
+        game_logic::network::network_manager_config(),
+    )
+    .await
+    .context("Failed to initialize NetworkManager")?;
 
-    let controller = mm
+    let controller = network
         .global_chat_controller()
         .await
         .context("Failed to get global chat controller")?;
@@ -41,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
         .await;
 
     controller
-        .wait_joined()
+        .wait_joined(2)
         .await
         .context("Failed wait_joined")?;
 
@@ -82,6 +87,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    mm.shutdown().await?;
+    network.shutdown().await?;
     Ok(())
 }

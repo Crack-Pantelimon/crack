@@ -9,7 +9,7 @@ use crate::plugins::cars_driving::driving_plugin::spawn_car::{
     ActivePlayerVehicle, Car, CarHealth, WheelAssets, select_car_wheel,
 };
 use crate::plugins::cars_driving::driving_plugin::{
-    CarDriveState, CarWheelsContactData, CosmeticWheel,
+    CarDriveState, CarWheelsContactData, CosmeticWheel, GamePhysicsLayer,
 };
 use crate::plugins::pedestrians::animation::{
     ActiveOneShot, CurrentPlayingAnimation, TargetAnimation,
@@ -34,26 +34,11 @@ use net_crackpipe::PublicKey;
 // Gameplay Room / Protocol Definition
 // ---------------------------------------------------------------------------------------------
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct GameplaySyncRoomType;
-
-impl net_crackpipe::IChatRoomType for GameplaySyncRoomType {
-    type M = GameplayChatMessageContent;
-    type P = GameplayPresence;
-    fn default_presence() -> Self::P {
-        GameplayPresence::default()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum GameplayChatMessageContent {
-    GameSync { id: i64, payload: Vec<u8> },
-}
-
-#[derive(Clone, Debug, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
-pub struct GameplayPresence {
-    pub url: String,
-}
+// The room type + message/presence types live in game_logic::network (the
+// abstract chat machinery is in net_crackpipe; all game-specific message
+// types belong to the game crates). Re-exported here so game code keeps its
+// existing import paths.
+pub use game_logic::network::{GameplayChatMessageContent, GameplayPresence, GameplaySyncRoomType};
 
 // ---------------------------------------------------------------------------------------------
 // Game-side Update Payloads
@@ -573,8 +558,10 @@ fn reconcile_remote_avatars(
     let mut to_remove = Vec::new();
 
     for (node_id, player) in remote_players.0.iter_mut() {
-        // Despawn peers silent for more than 5 seconds
-        if now - player.latest_local_t > 5.0 {
+        // Despawn peers silent for more than 10 seconds. Kept generous so a
+        // brief GameSync gap (gossip mesh reshuffle, GC hitch) doesn't churn a
+        // leave/rejoin; the direct-mesh join_peers fix keeps the stream flowing.
+        if now - player.latest_local_t > 10.0 {
             to_remove.push(*node_id);
             continue;
         }
@@ -659,6 +646,17 @@ fn reconcile_remote_avatars(
                         crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterScale(scale),
                         crate::plugins::pedestrian_ai::faction::Health { current: health, max: 100.0 },
                         EquippedWeapon(WeaponId::from_label(&weapon, &weapon_manifest)),
+                        // Kinematic capsule matching the local character's physics
+                        // footprint (root = capsule center), so the local car and
+                        // player collide with remote pedestrians.
+                        (
+                            RigidBody::Kinematic,
+                            Collider::capsule(
+                                crate::plugins::pedestrians::pedestrian_controller_plugin::CAPSULE_RADIUS,
+                                crate::plugins::pedestrians::pedestrian_controller_plugin::CAPSULE_LENGTH,
+                            ),
+                            CollisionLayers::new([GamePhysicsLayer::Car], [GamePhysicsLayer::Car]),
+                        ),
                     )).id();
 
                     // Intermediate scale node
@@ -794,6 +792,18 @@ fn spawn_cosmetic_car(
             },
             WorldAssetRoot(car_asset_handle),
             RemoteAvatarMarker { node_id },
+            // Kinematic obstacle driven by the interpolated network pose: the
+            // local (dynamic) car collides with it, while this car's pose stays
+            // authoritative on its owner's simulation. Filter is [Car] only —
+            // a kinematic body has no response to the static map anyway.
+            (
+                RigidBody::Kinematic,
+                ColliderConstructorHierarchy::new(ColliderConstructor::ConvexDecompositionFromMesh)
+                    .with_default_layers(CollisionLayers::new(
+                        [GamePhysicsLayer::Car],
+                        [GamePhysicsLayer::Car],
+                    )),
+            ),
         ))
         .id();
 
@@ -1133,9 +1143,10 @@ fn apply_remote_events(
         Query<(), With<CharacterController>>,
         Query<&RemoteAvatarMarker>,
         Query<&crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterScale>,
+        Query<&Children>,
     ),
 ) {
-    let (q_controller, q_remote_marker, q_scales) = queries;
+    let (q_controller, q_remote_marker, q_scales, q_children) = queries;
     let local_controller = controlled.controller;
     let local_vehicle = active_vehicle.iter().next();
 
@@ -1206,9 +1217,15 @@ fn apply_remote_events(
                         follow: None,
                     });
 
-                    // VFX
+                    // VFX. Exclude the shooter's whole avatar subtree: its
+                    // colliders live on GLB child entities (car body meshes),
+                    // so excluding only the root would let the replayed shot
+                    // impact the shooter's own avatar at the muzzle.
                     let filter = if let Some(ent) = avatar_entity {
-                        SpatialQueryFilter::from_excluded_entities([ent])
+                        SpatialQueryFilter::from_excluded_entities(collect_subtree(
+                            ent,
+                            &q_children,
+                        ))
                     } else {
                         SpatialQueryFilter::default()
                     };
@@ -1423,6 +1440,18 @@ fn apply_remote_events(
 // ---------------------------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------------------------
+
+fn collect_subtree(root: Entity, children: &Query<&Children>) -> Vec<Entity> {
+    let mut out = vec![root];
+    let mut i = 0;
+    while i < out.len() {
+        if let Ok(kids) = children.get(out[i]) {
+            out.extend(kids.iter());
+        }
+        i += 1;
+    }
+    out
+}
 
 fn get_root_entity(mut entity: Entity, parents: &Query<&ChildOf>) -> Entity {
     while let Ok(child_of) = parents.get(entity) {

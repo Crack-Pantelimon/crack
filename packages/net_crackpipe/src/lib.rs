@@ -7,6 +7,7 @@ pub mod chat;
 pub mod echo;
 pub mod global_matchmaker;
 pub mod main_node;
+pub mod network_manager;
 pub(crate) mod signed_message;
 pub mod sleep;
 pub mod user_identity;

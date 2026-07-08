@@ -211,37 +211,34 @@ impl<T: IChatRoomType> IChatController<T> for ChatController<T> {
     fn chat_presence(&self) -> ChatPresence<T> {
         self.presence.clone()
     }
-    async fn wait_joined(&self) -> anyhow::Result<()> {
-        let mut bootstrap = self.ticket.bootstrap.clone();
+    async fn wait_joined(&self, min_nodes: usize) -> anyhow::Result<()> {
+        let bootstrap = self.ticket.bootstrap.clone();
         if bootstrap.is_empty() {
             return Ok(());
         }
-        let mut found_count = 0;
+        let own_node_id = *self.node_identity.node_id();
         let mut attempts = 0;
         let p = self.chat_presence();
-        while !bootstrap.is_empty() && found_count < 3 && attempts < 100 {
-            let presence_list = p
+        loop {
+            // Count distinct nodes present in the room. We always count
+            // ourselves: we are trivially "in" the room, but our own presence
+            // entry only appears after the first presence broadcast.
+            let mut nodes = p
                 .get_presence_list()
                 .await
                 .0
                 .into_iter()
                 .map(|p| *p.identity.node_id())
-                .collect::<Vec<_>>();
+                .collect::<std::collections::BTreeSet<_>>();
+            nodes.insert(own_node_id);
             info!(
-                "wait_until_joined: found {:?}/{:?}, attempts: {}",
-                presence_list.len(),
+                "wait_until_joined: found {}/{} nodes (room bootstrap: {}), attempts: {}",
+                nodes.len(),
+                min_nodes,
                 bootstrap.len(),
                 attempts
             );
-            if presence_list.len() >= 3 {
-                break;
-            }
-            for k in presence_list {
-                if bootstrap.remove(&k) {
-                    found_count += 1;
-                }
-            }
-            if bootstrap.is_empty() || found_count >= 3 {
+            if nodes.len() >= min_nodes || attempts >= 100 {
                 break;
             }
             let _ = n0_future::time::timeout(CONNECT_TIMEOUT / 10, p.notified()).await;
@@ -265,7 +262,13 @@ pub trait IChatController<T: IChatRoomType>: Send + Sync + 'static + std::fmt::D
     async fn receiver(&self) -> ChatReceiver<T>;
     async fn shutdown(&self) -> anyhow::Result<()>;
     fn chat_presence(&self) -> ChatPresence<T>;
-    async fn wait_joined(&self) -> anyhow::Result<()>;
+    /// Wait until the room's presence list (self always included) holds at
+    /// least `min_nodes` distinct nodes. Use 2 for rooms where another node's
+    /// *typed presence* is guaranteed (global chat: us + a bootstrap node;
+    /// server chat: us + the server). Use 1 for rooms bootstrap nodes only
+    /// subscribe to raw, without typed presence (the gameplay room), where
+    /// waiting for anyone else would just spin ~30s.
+    async fn wait_joined(&self, min_nodes: usize) -> anyhow::Result<()>;
 }
 
 #[derive(Clone, Debug)]

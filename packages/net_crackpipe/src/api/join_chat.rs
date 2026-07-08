@@ -175,7 +175,8 @@ pub(crate) async fn client_join_server_chat(
 
         let chat = client_join_server_chat_with_server_ids(mm.clone(), server_nodes.clone()).await;
         if let Ok(chat) = chat {
-            if let Err(e) = chat.wait_joined().await {
+            // 2 nodes = us + the server node we bootstrapped from.
+            if let Err(e) = chat.wait_joined(2).await {
                 tracing::warn!("retry error {i}/{RETRY_COUNT}: on wait_joined: {e}");
             }
 

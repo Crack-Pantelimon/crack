@@ -2669,6 +2669,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "futures",
+ "game_logic",
  "net_crackpipe",
  "tokio",
  "tracing-subscriber",
@@ -5069,6 +5070,7 @@ dependencies = [
  "bytes",
  "glam 0.32.1",
  "gltf",
+ "net_crackpipe",
  "parquet",
  "reqwest",
  "serde",

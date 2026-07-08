@@ -17,6 +17,7 @@ worker = [
 [dependencies]
 api_asscrack = { path = "../../packages/api_asscrack" }
 _crack_utils = { path = "../../packages/_crack_utils" }
+net_crackpipe = { path = "../../packages/net_crackpipe" }
 # must track bevy_math's glam
 glam = { version = "0.32", features = ["serde"] }
 tokio = { version = "1", default-features = false, features = ["sync"] }
