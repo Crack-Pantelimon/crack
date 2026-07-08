@@ -89,6 +89,7 @@ fn ui_example_system(
     loading_status: Option<Res<crate::plugins::geojson::GameLoadingStatus>>,
     tooltip_state: Option<Res<crate::plugins::geojson::TooltipNotificationState>>,
     mut osm_overlay: Option<ResMut<crate::plugins::geojson::OsmOverlayState>>,
+    mut global_chat: Option<ResMut<crate::plugins::network::global_chat_ui::GlobalChatUiState>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         tracing::error!("no ctx in ui_example_system");
@@ -227,6 +228,14 @@ fn ui_example_system(
                 if ui.button("Graphics").clicked() {
                     ui_state.show_settings = !ui_state.show_settings;
                     ui.close();
+                }
+            });
+            egui::menu::menu_button(ui, "Online", |ui| {
+                if let Some(ref mut chat) = global_chat {
+                    if ui.button("Global Chat").clicked() {
+                        chat.show_window = !chat.show_window;
+                        ui.close();
+                    }
                 }
             });
             egui::menu::menu_button(ui, "Debug", |ui| {

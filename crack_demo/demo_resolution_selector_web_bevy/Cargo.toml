@@ -39,6 +39,8 @@ serde_json = { workspace = true }
 game_logic = { path = "../../crack_demo/game_logic" }
 api_asscrack = { path = "../../packages/api_asscrack" }
 
+async-channel = "2"
+
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 thread_worker = { path = "../../crack_demo/thread_worker" }
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "sync"] }
@@ -46,6 +48,7 @@ tokio = { version = "1", default-features = false, features = ["rt-multi-thread"
 [target.'cfg(target_family = "wasm")'.dependencies]
 web_serviceworker_crackloader = { path = "../../packages/web_serviceworker_crackloader" }
 wasm-bindgen-futures = { workspace = true }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 [dependencies.web-sys]
 optional = true
 version = "0.3.77"

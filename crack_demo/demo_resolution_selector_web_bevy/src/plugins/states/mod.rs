@@ -36,6 +36,14 @@ pub enum GameControlState {
     // todo: spectating, cutscene, etc.
 }
 
+/// Whether the p2p network (global matchmaker / chat) has connected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, States)]
+pub enum NetworkConnectionState {
+    #[default]
+    Connecting,
+    Connected,
+}
+
 pub struct GameStatesPlugin;
 
 impl Plugin for GameStatesPlugin {
