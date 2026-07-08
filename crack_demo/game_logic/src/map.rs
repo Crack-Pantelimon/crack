@@ -55,6 +55,16 @@ pub struct MapTreeData {
     pub parents: BTreeMap<MapTreeNodePath, MapTreeNodePath>,
     pub bbox: BBox,
     pub roots: BTreeSet<MapTreeNodePath>,
+    /// Coarse horizon tiles (octree depth < 14) kept worker-side for fake-map rings.
+    pub coarse_assets: Vec<MapTreeAssetInfo>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FakeMapTile {
+    pub octant_path: String,
+    pub glb_path: String,
+    pub bbox: BBox,
+    pub depth: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

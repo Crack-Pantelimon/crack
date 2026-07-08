@@ -8,6 +8,7 @@ pub struct FetchArgs {
 
 declare_api_group2! { GameLogicApiGroup, [
     (FetchMapManifest, FetchArgs, crate::map::MapManifestResult),
+    (FetchFakeMapTiles, FetchArgs, Vec<crate::map::FakeMapTile>),
     (FetchOsmData, FetchArgs, crate::osm::OsmDataResult),
     (ComputeLodChanges, crate::lod::LodComputeRequest, crate::lod::LodComputeResponse),
     (RunGameMigrations, (), ()),

@@ -12,6 +12,7 @@ pub mod weapon_impl;
 
 implement_api_group2! { GameLogicApiGroup, [
     (FetchMapManifest, manifest_impl::fetch_map_manifest),
+    (FetchFakeMapTiles, manifest_impl::fetch_fake_map_tiles),
     (FetchOsmData, osm_impl::fetch_osm_data),
     (ComputeLodChanges, compute_lod_changes_api),
     (RunGameMigrations, models::run_game_migrations),

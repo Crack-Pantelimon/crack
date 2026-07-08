@@ -1,3 +1,4 @@
+pub mod fake_map;
 pub mod map_lod;
 pub mod map_material_edit;
 mod map_plugin_ui;
@@ -27,6 +28,7 @@ impl Plugin for MapPlugin {
             .init_resource::<TileSwapRequests>()
             .init_gizmo_group::<map_plugin_ui::MapExtentGizmoGroup>()
             .add_plugins(map_material_edit::MapMaterialEditPlugin)
+            .add_plugins(fake_map::FakeMapPlugin)
             .add_systems(Startup, configure_map_extent_gizmo)
             .add_systems(EguiPrimaryContextPass, tree_navigator_ui)
             .add_systems(

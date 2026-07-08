@@ -1,7 +1,7 @@
 use crate::api::FetchArgs;
 use crate::map::{
-    BBox, MapManifestResult, MapTileAssetId, MapTreeAssetInfo, MapTreeData, MapTreeNodeInfo,
-    MapTreeNodePath,
+    BBox, FakeMapTile, MapManifestResult, MapTileAssetId, MapTreeAssetInfo, MapTreeData,
+    MapTreeNodeInfo, MapTreeNodePath,
 };
 use bytes::Bytes;
 use glam::Vec3;
@@ -113,6 +113,24 @@ pub async fn fetch_map_manifest(args: FetchArgs) -> anyhow::Result<MapManifestRe
     Ok(res)
 }
 
+pub async fn fetch_fake_map_tiles(_args: FetchArgs) -> anyhow::Result<Vec<FakeMapTile>> {
+    let tree = get_manifest_cache().await?;
+    let tiles = tree
+        .coarse_assets
+        .iter()
+        .filter_map(|asset| {
+            let glb_path = asset.glb_path.as_ref()?;
+            Some(FakeMapTile {
+                octant_path: asset._octant_path.0.clone(),
+                glb_path: glb_path.clone(),
+                bbox: asset.bbox,
+                depth: asset._octant_path.0.len() as i32,
+            })
+        })
+        .collect();
+    Ok(tiles)
+}
+
 fn get_string(field: Field) -> Option<String> {
     match field {
         Field::Str(s) => Some(s),
@@ -214,11 +232,15 @@ fn build_map_tree(bytes: &[u8]) -> anyhow::Result<MapTreeData> {
     );
 
     let mut assets = BTreeMap::new();
+    let mut coarse_assets = Vec::new();
     for asset in parsed_nodes {
         if asset.level.unwrap_or(0) >= 14 {
             assets.insert(asset.name.clone(), asset);
+        } else if asset.glb_path.is_some() {
+            coarse_assets.push(asset);
         }
     }
+    coarse_assets.sort_by_key(|a| a._octant_path.0.len());
 
     let mut nodes: BTreeMap<MapTreeNodePath, MapTreeNodeInfo> = BTreeMap::new();
     for asset in assets.values() {
@@ -289,5 +311,6 @@ fn build_map_tree(bytes: &[u8]) -> anyhow::Result<MapTreeData> {
         parents,
         roots,
         bbox: BBox::default(),
+        coarse_assets,
     })
 }
