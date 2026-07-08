@@ -85,9 +85,20 @@ pub async fn fetch_map_manifest(args: FetchArgs) -> anyhow::Result<MapManifestRe
     let t_fetch = _crack_utils::get_timestamp_now_ms();
     tracing::info!("Worker fetched parquet bytes in {} ms", t_fetch - t0);
 
-    let tree = build_map_tree(&bytes)?;
+    let mut tree = build_map_tree(&bytes)?;
     let t_build = _crack_utils::get_timestamp_now_ms();
     tracing::info!("Worker built map tree in {} ms", t_build - t_fetch);
+
+    let bbox_url = format!("{}/3d_data_v2/data_in/zone-bbox.txt", args.base_url);
+    let bbox_text = super::http::http_get_text(&bbox_url).await?;
+    let geo_bbox = crate::geo::parse_geo_bbox_from_txt(&bbox_text)
+        .ok_or_else(|| anyhow::anyhow!("Failed to parse zone-bbox.txt"))?;
+    crate::geo::apply_geo_extent_bbox(&mut tree, &geo_bbox);
+    tracing::info!(
+        "Worker geo-extent bbox: min={:?} max={:?}",
+        tree.bbox.min,
+        tree.bbox.max
+    );
 
     let arc = Arc::new(tree);
     *guard = Some(arc.clone());
@@ -271,36 +282,12 @@ fn build_map_tree(bytes: &[u8]) -> anyhow::Result<MapTreeData> {
         }
     }
 
-    let mut bbox = BBox::default();
-    if !nodes.is_empty() {
-        let mut min_x = f32::INFINITY;
-        let mut max_x = -f32::INFINITY;
-        let mut min_y = f32::INFINITY;
-        let mut max_y = -f32::INFINITY;
-        let mut min_z = f32::INFINITY;
-        let mut max_z = -f32::INFINITY;
-
-        for node in nodes.values() {
-            min_x = min_x.min(node.bbox.min.x).min(node.bbox.max.x);
-            max_x = max_x.max(node.bbox.min.x).max(node.bbox.max.x);
-            min_y = min_y.min(node.bbox.min.y).min(node.bbox.max.y);
-            max_y = max_y.max(node.bbox.min.y).max(node.bbox.max.y);
-            min_z = min_z.min(node.bbox.min.z).min(node.bbox.max.z);
-            max_z = max_z.max(node.bbox.min.z).max(node.bbox.max.z);
-        }
-
-        bbox = BBox {
-            min: Vec3::new(min_x, min_y, min_z),
-            max: Vec3::new(max_x, max_y, max_z),
-        };
-    }
-
     Ok(MapTreeData {
         assets,
         all_nodes: nodes,
         children,
         parents,
         roots,
-        bbox,
+        bbox: BBox::default(),
     })
 }

@@ -1,4 +1,5 @@
 #![allow(deprecated)]
+use bevy::audio::{GlobalVolume, Volume};
 use bevy::{diagnostic::FrameCount, prelude::*};
 
 use bevy_egui::*;
@@ -35,6 +36,8 @@ pub struct UiState {
     pub show_pedestrian_ai: bool,
     pub show_vehicle_tuning: bool,
     pub show_multiplayer_debug: bool,
+    pub show_sound_settings: bool,
+    pub master_volume: f32,
 }
 impl Default for UiState {
     fn default() -> Self {
@@ -54,6 +57,8 @@ impl Default for UiState {
             show_pedestrian_ai: false,
             show_vehicle_tuning: false,
             show_multiplayer_debug: false,
+            show_sound_settings: false,
+            master_volume: 0.6,
         }
     }
 }
@@ -75,6 +80,8 @@ impl UiState {
             show_pedestrian_ai: false,
             show_vehicle_tuning: false,
             show_multiplayer_debug: false,
+            show_sound_settings: false,
+            master_volume: 0.6,
         }
     }
 }
@@ -87,6 +94,7 @@ impl UiState {
 
 fn ui_example_system(
     mut ui_state: ResMut<UiState>,
+    mut global_volume: ResMut<GlobalVolume>,
     mut contexts: EguiContexts,
     mut window: Single<&mut Window>,
     mut fit_again: Local<i32>,
@@ -218,6 +226,36 @@ fn ui_example_system(
             });
     }
 
+    if ui_state.show_sound_settings {
+        egui::SidePanel::left("sound_panel")
+            .default_width(200.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("Sound Settings");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.small_button("×").clicked() {
+                            ui_state.show_sound_settings = false;
+                        }
+                    });
+                });
+                ui.allocate_space(egui::Vec2::new(1.0, 10.0));
+
+                let mut volume_pct = (ui_state.master_volume * 100.0).round() as i32;
+                if ui
+                    .add(
+                        egui::Slider::new(&mut volume_pct, 0..=100)
+                            .text("Volume")
+                            .suffix("%")
+                            .step_by(1.0)
+                            .clamping(egui::SliderClamping::Always),
+                    )
+                    .changed()
+                {
+                    ui_state.master_volume = volume_pct as f32 / 100.0;
+                }
+            });
+    }
+
     if ui_state.resolution != old_ui_state.resolution
         || ui_state.ui_scale != old_ui_state.ui_scale
         || ui_state.smooth != old_ui_state.smooth
@@ -231,12 +269,20 @@ fn ui_example_system(
         *fit_again = 3;
     }
 
+    if ui_state.master_volume != old_ui_state.master_volume {
+        global_volume.volume = Volume::Linear(ui_state.master_volume);
+    }
+
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         // The top panel is often a good place for a menu bar:
         egui::menu::bar(ui, |ui| {
             egui::menu::menu_button(ui, "Options", |ui| {
                 if ui.button("Graphics").clicked() {
                     ui_state.show_settings = !ui_state.show_settings;
+                    ui.close();
+                }
+                if ui.button("Sound").clicked() {
+                    ui_state.show_sound_settings = !ui_state.show_sound_settings;
                     ui.close();
                 }
             });

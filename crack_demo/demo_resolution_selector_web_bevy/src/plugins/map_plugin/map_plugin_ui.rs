@@ -1,7 +1,18 @@
+use bevy::gizmos::config::GizmoConfigStore;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
 use crate::plugins::map_plugin::{MapLODState, MapTree, MapTreeNodePath, map_lod::TreeMapTile};
+
+/// Gizmo group with default depth testing (no `depth_bias = -1` always-on-top hack).
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub(crate) struct MapExtentGizmoGroup;
+
+pub fn configure_map_extent_gizmo(mut store: ResMut<GizmoConfigStore>) {
+    let (config, _) = store.config_mut::<MapExtentGizmoGroup>();
+    config.depth_bias = 0.0;
+    config.line.width = 1.0;
+}
 
 pub fn draw_tree_bboxes(
     _gizmos: Gizmos,
@@ -10,7 +21,54 @@ pub fn draw_tree_bboxes(
     _tiles_query: Query<&TreeMapTile>,
     _ui_state: Option<Res<crate::ui_egui::UiState>>,
 ) {
-    // BBox drawing disabled on client
+    // Per-tile bbox drawing disabled on client; see `draw_map_extent_gizmo`.
+}
+
+fn draw_bbox_wireframe(gizmos: &mut Gizmos<MapExtentGizmoGroup>, min: Vec3, max: Vec3, color: Color) {
+    let c = [
+        Vec3::new(min.x, min.y, min.z),
+        Vec3::new(max.x, min.y, min.z),
+        Vec3::new(max.x, min.y, max.z),
+        Vec3::new(min.x, min.y, max.z),
+        Vec3::new(min.x, max.y, min.z),
+        Vec3::new(max.x, max.y, min.z),
+        Vec3::new(max.x, max.y, max.z),
+        Vec3::new(min.x, max.y, max.z),
+    ];
+    let edges = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+        (4, 5),
+        (5, 6),
+        (6, 7),
+        (7, 4),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),
+    ];
+    for (a, b) in edges {
+        gizmos.line(c[a], c[b], color);
+    }
+}
+
+pub fn draw_map_extent_gizmo(
+    mut gizmos: Gizmos<MapExtentGizmoGroup>,
+    data_res: Res<MapTree>,
+    ui_state: Option<Res<crate::ui_egui::UiState>>,
+) {
+    let Some(state) = ui_state else {
+        return;
+    };
+    if !state.draw_map_bboxes || !data_res.parsed {
+        return;
+    }
+
+    let min = data_res.bbox.min;
+    let max = data_res.bbox.max;
+    draw_bbox_wireframe(&mut gizmos, min, max, Color::BLACK);
 }
 
 pub fn tree_navigator_ui(

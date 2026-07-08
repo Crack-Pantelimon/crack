@@ -140,6 +140,8 @@ clamp system that runs after them.
   `app.add_systems(Last, clamp_camera_to_map_bbox);` (`Last` is currently unused in the crate; this
   is the intended single choke-point after all `Update` camera writes and transform propagation).
 
+**Camera clamp (4)**
+- `.../plugins/map_plugin/mod.rs` — `clamp_camera_to_map_bbox` in `Last`
 ---
 
 ## Feature 5: Endless-horizon fake map
@@ -192,6 +194,11 @@ set by `check_map_loaded_status` at
    tiles' bboxes, then repeat steps 1–3 for **up to 3 more coarser levels** (or until coarse levels
    are exhausted), so each ring's overlap with the previous (now-larger) bbox is sunk underground and
    only the outer fringe shows — producing the endless-horizon silhouette.
+**Fake map (5)**
+- `crack_demo/game_logic/src/map.rs` — `MapTreeData.coarse_assets`, `FakeMapTile`
+- `crack_demo/game_logic/src/worker/manifest_impl.rs` — collect coarse assets
+- `crack_demo/game_logic/src/api.rs` + `worker/mod.rs` — `FetchFakeMapTiles` API
+- `.../plugins/map_plugin/fake_map.rs` (new) + register in `MapPlugin`
 
 ---
 
@@ -209,14 +216,7 @@ set by `check_map_loaded_status` at
 **Escape→ped (3)**
 - `.../pedestrians/pedestrian_controller_plugin/spawn.rs` — rewrite `escape_to_freecam`
 
-**Camera clamp (4)**
-- `.../plugins/map_plugin/mod.rs` — `clamp_camera_to_map_bbox` in `Last`
 
-**Fake map (5)**
-- `crack_demo/game_logic/src/map.rs` — `MapTreeData.coarse_assets`, `FakeMapTile`
-- `crack_demo/game_logic/src/worker/manifest_impl.rs` — collect coarse assets
-- `crack_demo/game_logic/src/api.rs` + `worker/mod.rs` — `FetchFakeMapTiles` API
-- `.../plugins/map_plugin/fake_map.rs` (new) + register in `MapPlugin`
 
 ---
 

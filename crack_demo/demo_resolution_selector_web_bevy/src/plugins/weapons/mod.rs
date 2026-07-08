@@ -13,10 +13,10 @@ use bevy::prelude::*;
 pub use weapon_attach::{
     EquipWeaponEvent, EquippedWeapon, WeaponExtents, WeaponGripOffset, WeaponKind, WeaponModel,
 };
-pub use weapon_manifest::{GunInfo, WeaponId, WeaponManifest};
+pub use weapon_manifest::{GunInfo, MeleeInfo, WeaponId, WeaponManifest};
 pub use weapon_shooting::{
     BulletSpark, BulletSparks, FireGunEvent, GunState, ReloadGunEvent, ShotTracers,
-    MeleeDebugBox, MeleeDebugBoxes, draw_melee_debug_boxes,
+    MeleeDebugBox, MeleeDebugBoxes, WeaponCooldown, draw_melee_debug_boxes,
 };
 
 use weapon_attach::{
@@ -28,7 +28,7 @@ use weapon_manifest::{
 };
 use weapon_shooting::{
     draw_bullet_sparks, draw_shot_tracers, fire_gun_observer, reload_gun_observer,
-    tick_pending_melee_hits,
+    tick_pending_melee_hits, tick_weapon_cooldown,
 };
 
 pub struct WeaponsPlugin;
@@ -55,6 +55,7 @@ impl Plugin for WeaponsPlugin {
                     poll_weapon_model_fetches,
                     finalize_weapon_extents,
                     update_weapon_transforms,
+                    tick_weapon_cooldown,
                     tick_pending_melee_hits,
                 )
                     .chain(),

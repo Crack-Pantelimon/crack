@@ -1,4 +1,4 @@
-use crate::map::{MapTreeData, MapTreeNodeInfo};
+use crate::map::{BBox, MapTreeData, MapTreeNodeInfo};
 use glam::Vec3;
 
 #[derive(Clone, Copy, Debug)]
@@ -228,7 +228,8 @@ pub fn lat_lon_to_bevy(
     Vec3::new(east, up, -north)
 }
 
-pub fn parse_bbox_from_txt(text: &str) -> Option<(f32, f32)> {
+/// Parse `zone-bbox.txt`: two `lat,lon` corner lines defining the map extent.
+pub fn parse_geo_bbox_from_txt(text: &str) -> Option<GeoBBox> {
     let lines: Vec<&str> = text
         .lines()
         .map(|l| l.trim())
@@ -237,20 +238,89 @@ pub fn parse_bbox_from_txt(text: &str) -> Option<(f32, f32)> {
     if lines.len() != 2 {
         return None;
     }
-    let p1: Vec<f32> = lines[0]
-        .split(',')
-        .filter_map(|s| s.trim().parse::<f32>().ok())
-        .collect();
-    let p2: Vec<f32> = lines[1]
-        .split(',')
-        .filter_map(|s| s.trim().parse::<f32>().ok())
-        .collect();
-    if p1.len() != 2 || p2.len() != 2 {
-        return None;
+    let mut lats = [0.0f64; 2];
+    let mut lons = [0.0f64; 2];
+    for (i, line) in lines.iter().enumerate() {
+        let parts: Vec<f64> = line
+            .split(',')
+            .filter_map(|s| s.trim().parse::<f64>().ok())
+            .collect();
+        if parts.len() != 2 {
+            return None;
+        }
+        lats[i] = parts[0];
+        lons[i] = parts[1];
     }
-    let lat_deg = (p1[0] + p2[0]) / 2.0;
-    let lon_deg = (p1[1] + p2[1]) / 2.0;
-    Some((lat_deg, lon_deg))
+    Some(GeoBBox {
+        north: lats[0].max(lats[1]),
+        south: lats[0].min(lats[1]),
+        west: lons[0].min(lons[1]),
+        east: lons[0].max(lons[1]),
+    })
+}
+
+pub fn parse_bbox_from_txt(text: &str) -> Option<(f32, f32)> {
+    let geo = parse_geo_bbox_from_txt(text)?;
+    Some((
+        ((geo.north + geo.south) / 2.0) as f32,
+        ((geo.west + geo.east) / 2.0) as f32,
+    ))
+}
+
+/// Y extent from the union of root-tile xyz bboxes in the manifest.
+fn root_tile_y_extent(tree: &MapTreeData) -> (f32, f32) {
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    for root_path in &tree.roots {
+        let Some(node) = tree.all_nodes.get(root_path) else {
+            continue;
+        };
+        min_y = min_y.min(node.bbox.min.y).min(node.bbox.max.y);
+        max_y = max_y.max(node.bbox.min.y).max(node.bbox.max.y);
+    }
+    if min_y.is_finite() && max_y.is_finite() {
+        (min_y, max_y)
+    } else {
+        (0.0, 0.0)
+    }
+}
+
+/// Map playable extent: X/Z from the four cardinal corners of the lat/lon bbox, Y from root tiles.
+pub fn apply_geo_extent_bbox(tree: &mut MapTreeData, geo_bbox: &GeoBBox) {
+    let (min_y, max_y) = root_tile_y_extent(tree);
+
+    let lat = ((geo_bbox.north + geo_bbox.south) / 2.0) as f32;
+    let lon = ((geo_bbox.west + geo_bbox.east) / 2.0) as f32;
+    let ref_point = lat_lon_to_ecef(lat, lon);
+    let projection = ProjectionRef {
+        ref_point,
+        rot_matrix: get_enu_rotation_matrix(ref_point),
+    };
+
+    let corners = [
+        (geo_bbox.north, geo_bbox.west),
+        (geo_bbox.north, geo_bbox.east),
+        (geo_bbox.south, geo_bbox.west),
+        (geo_bbox.south, geo_bbox.east),
+    ];
+
+    let mut min_x = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut min_z = f32::INFINITY;
+    let mut max_z = f32::NEG_INFINITY;
+
+    for (lat, lon) in corners {
+        let p = project_point(lat, lon, tree, &projection);
+        min_x = min_x.min(p.x);
+        max_x = max_x.max(p.x);
+        min_z = min_z.min(p.z);
+        max_z = max_z.max(p.z);
+    }
+
+    tree.bbox = BBox {
+        min: Vec3::new(min_x, min_y, min_z),
+        max: Vec3::new(max_x, max_y, max_z),
+    };
 }
 
 pub fn project_point(

@@ -8,7 +8,9 @@
 
 pub mod audio_fx;
 
-use bevy::audio::{PlaybackMode, PlaybackSettings, SpatialListener, SpatialScale, Volume};
+use bevy::audio::{
+    GlobalVolume, PlaybackMode, PlaybackSettings, SpatialListener, SpatialScale, Volume,
+};
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
@@ -86,6 +88,7 @@ impl Plugin for GameAudioPlugin {
                 .init_asset_loader::<TextAssetLoader>();
         }
         app.init_state::<SoundManifestLoadFinished>()
+            .insert_resource(GlobalVolume::new(Volume::Linear(0.6)))
             .init_resource::<SoundManifest>()
             .add_observer(play_sound_observer)
             .add_observer(audio_fx::audio_fx_observer)

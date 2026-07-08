@@ -7,8 +7,17 @@ use crate::plugins::pedestrians::{ModelRoot, spawn_pedestrian::ModelController};
 
 use super::*;
 use crate::plugins::{
-    pedestrians::{PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent},
+    pedestrian_ai::{
+        AiAnim, AiCombatTimers, AiModel, AiPedestrian, AiPerception, AiState, AiSteer, AiThink,
+        faction::Enemies,
+    },
+    pedestrians::{ManualAnimation, PedestrianManifest, PedestrianUrl, SpawnPedestrianEvent},
     states::GameControlState,
+    traffic::{
+        TrafficPedestrian,
+        common::{TrafficAgentState, build_path_from},
+        road_graph::TrafficRoadGraph,
+    },
 };
 
 /// Tracks the currently controlled character and its (child) pedestrian model.
@@ -94,6 +103,7 @@ pub fn spawn_controlled_pedestrian_observer(
             ),
             AnimState::default(),
             CombatState::default(),
+            crate::plugins::weapons::WeaponCooldown::default(),
             health,
             crate::plugins::pedestrian_ai::faction::Faction::Neutral,
             url.clone(),
@@ -207,13 +217,16 @@ pub fn player_death_to_freecam(
     next_state.set(GameControlState::MapFreecam);
 }
 
-/// Escape leaves pedestrian control: despawn the character and return to freecam.
+/// Escape leaves pedestrian control: convert the character into an AI/traffic pedestrian and
+/// return to freecam.
 pub fn escape_to_freecam(
     keys: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
     mut controlled: ResMut<ControlledCharacter>,
     mut next_state: ResMut<NextState<GameControlState>>,
     capture_state: Res<crate::plugins::states::MouseCaptureState>,
+    graph: Res<TrafficRoadGraph>,
+    transforms: Query<&GlobalTransform>,
     mut contexts: bevy_egui::EguiContexts,
 ) {
     let egui_wants_keyboard = if let Ok(ctx) = contexts.ctx_mut() {
@@ -231,11 +244,46 @@ pub fn escape_to_freecam(
     if capture_state.is_captured {
         return;
     }
-    if let Some(controller) = controlled.controller.take() {
-        commands.entity(controller).despawn();
-    }
-    controlled.ped = None;
+
+    let controller = controlled.controller.take();
+    let ped = controlled.ped.take();
     controlled.scale_node = None;
     controlled.awaiting = false;
+
+    if let Some(controller) = controller {
+        if let Some(ped) = ped {
+            commands.entity(ped).remove::<ManualAnimation>();
+        }
+
+        let pos = transforms
+            .get(controller)
+            .map(|gt| gt.translation())
+            .unwrap_or(Vec3::ZERO);
+
+        commands.entity(controller).insert((
+            AiPedestrian,
+            AiState::Idle,
+            AiPerception::default(),
+            AiCombatTimers::default(),
+            AiSteer::default(),
+            AiAnim::default(),
+            AiThink::default(),
+            Enemies::default(),
+        ));
+
+        if let Some(ped) = ped {
+            commands.entity(controller).insert(AiModel(ped));
+        }
+
+        if let Some((seg, path)) = build_path_from(&graph, pos) {
+            let offset_sign = if rand::random::<bool>() { 1.0 } else { -1.0 };
+            commands.entity(controller).insert(TrafficPedestrian {
+                state: TrafficAgentState::new(path, seg),
+                offset_sign,
+                last_pos: pos,
+            });
+        }
+    }
+
     next_state.set(GameControlState::MapFreecam);
 }

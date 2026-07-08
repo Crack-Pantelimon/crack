@@ -16,11 +16,14 @@ use crate::plugins::pedestrian_ai::Dying;
 use crate::plugins::pedestrians::PedestrianAnimations;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::interaction_ui::EnteringCarTimer;
 use crate::plugins::weapons::weapon_attach::{WeaponModel, WeaponModelState};
-use crate::plugins::weapons::{EquippedWeapon, FireGunEvent, GunState, ReloadGunEvent};
+use crate::plugins::weapons::{EquippedWeapon, FireGunEvent, GunState, ReloadGunEvent, WeaponCooldown, WeaponId};
 use spawn::ControlledCharacter;
 
 /// Base weight while a combat overlay is active, so the overlay reads on top of locomotion.
 const BASE_WEIGHT_WITH_COMBAT: f32 = 0.6;
+
+/// Natural duration of the Sword_Attack clip at 1× speed (matches AI `SWING_INTERVAL`).
+const NATURAL_SWING_SECS: f32 = 0.8;
 
 /// Logs the animation catalog once it is ready, so the exact clip names are visible.
 pub fn print_animation_catalog(anims: Res<PedestrianAnimations>, mut done: Local<bool>) {
@@ -87,6 +90,7 @@ pub fn drive_character_animation(
     mut players: Query<(Entity, &mut AnimationPlayer)>,
     parents: Query<&ChildOf>,
     weapon_models: Query<&GlobalTransform, With<WeaponModel>>,
+    mut cooldowns: Query<&mut WeaponCooldown>,
 ) {
     if !anims.ready {
         return;
@@ -127,16 +131,20 @@ pub fn drive_character_animation(
     };
 
     // Which weapon class is equipped (None component == Unarmed).
-    let weapon = equipped.map(|e| &e.0);
-    let is_gun = weapon.is_some_and(|w| w.is_gun());
-    let is_melee = weapon.is_some_and(|w| w.is_melee());
+    let weapon_id = equipped
+        .map(|e| e.0.clone())
+        .unwrap_or(WeaponId::Unarmed);
+    let is_gun = weapon_id.is_gun();
+    let is_melee = weapon_id.is_melee();
 
     // Do not fire combat when interacting with egui.
     let over_ui = contexts
         .ctx_mut()
         .map(|c| c.is_pointer_over_egui() || c.egui_wants_pointer_input())
         .unwrap_or(false);
-    let lmb = !over_ui && mouse.just_pressed(MouseButton::Left);
+    let fire_pressed = !over_ui
+        && (mouse.just_pressed(MouseButton::Left)
+            || (mouse.pressed(MouseButton::Left) && weapon_id.automatic()));
     let rmb = !over_ui && mouse.pressed(MouseButton::Right);
 
     // Find the AnimationPlayer that descends from the controlled pedestrian.
@@ -301,10 +309,14 @@ pub fn drive_character_animation(
 
     let can_shoot = gun_state.map_or(false, |g| g.rounds > 0);
     let reload_pressed = !over_ui && keys.just_pressed(KeyCode::KeyR);
+    let mut weapon_cooldown = cooldowns.get_mut(controller).ok();
+    let cooldown_ready = weapon_cooldown.as_ref().map_or(true, |cd| cd.0 <= 0.0);
 
-    // A press starts (or restarts) a one-shot clip depending on the equipped weapon.
+    // A press (or held LMB on automatic weapons) starts a one-shot clip when off cooldown.
     let mut pressed_node = None;
-    if lmb {
+    let mut melee_swing_speed = 1.0_f32;
+    if fire_pressed && cooldown_ready {
+        let swing_secs = 60.0 / weapon_id.rpm();
         let whoosh_pos = weapon_model_state
             .and_then(|wms| wms.entity)
             .and_then(|e| weapon_models.get(e).ok())
@@ -321,9 +333,11 @@ pub fn drive_character_animation(
             }
         } else if is_melee {
             pressed_node = node_for(&anims, &["Sword_Attack"]);
+            melee_swing_speed =
+                (NATURAL_SWING_SECS / swing_secs).clamp(0.5, 4.0);
             commands.entity(controller).insert(
                 crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
-                    timer: 0.25,
+                    timer: swing_secs * 0.4,
                     is_melee: true,
                 },
             );
@@ -340,7 +354,7 @@ pub fn drive_character_animation(
             }
             commands.entity(controller).insert(
                 crate::plugins::weapons::weapon_shooting::PendingMeleeHit {
-                    timer: 0.25,
+                    timer: swing_secs * 0.4,
                     is_melee: false,
                 },
             );
@@ -349,6 +363,17 @@ pub fn drive_character_animation(
                 position: whoosh_pos,
                 follow: None,
             });
+        }
+
+        if pressed_node.is_some() {
+            let cooldown_secs = 60.0 / weapon_id.rpm();
+            if let Some(cd) = weapon_cooldown.as_mut() {
+                cd.0 = cooldown_secs;
+            } else {
+                commands
+                    .entity(controller)
+                    .insert(WeaponCooldown(cooldown_secs));
+            }
         }
     } else if reload_pressed && is_gun && gun_state.is_some_and(|g| g.rounds < g.clip_size) {
         pressed_node = node_for(&anims, &["Pistol_Reload"]);
@@ -391,6 +416,9 @@ pub fn drive_character_animation(
                 CombatKind::OneShot => {
                     // One-shot: (re)start from the beginning, no repeat.
                     active.seek_to(0.0);
+                    if is_melee {
+                        active.set_speed(melee_swing_speed);
+                    }
                 }
                 CombatKind::None => {}
             }

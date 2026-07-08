@@ -8,6 +8,8 @@ pub struct WeaponEntry {
     pub bullet_type: String,
     pub damage: f32,
     pub range: f32,
+    pub rpm: f32,
+    pub automatic: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -11,15 +11,26 @@ pub struct GunInfo {
     pub bullet_type: String,
     pub damage: f32,
     pub range: f32,
+    pub rpm: f32,
+    pub automatic: bool,
+}
+
+/// Melee stats parsed from the manifest.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MeleeInfo {
+    pub path: String,
+    pub rpm: f32,
 }
 
 /// A selectable weapon.
 #[derive(Clone, Debug, PartialEq)]
 pub enum WeaponId {
     Unarmed,
-    Melee(String),
+    Melee(MeleeInfo),
     Gun(GunInfo),
 }
+
+const UNARMED_RPM: f32 = 110.0;
 
 impl WeaponId {
     pub fn is_unarmed(&self) -> bool {
@@ -35,8 +46,23 @@ impl WeaponId {
     pub fn path(&self) -> Option<&str> {
         match self {
             WeaponId::Unarmed => None,
-            WeaponId::Melee(p) => Some(p),
+            WeaponId::Melee(m) => Some(&m.path),
             WeaponId::Gun(g) => Some(&g.path),
+        }
+    }
+    /// Attacks per minute (gun fire rate or melee swing rate).
+    pub fn rpm(&self) -> f32 {
+        match self {
+            WeaponId::Unarmed => UNARMED_RPM,
+            WeaponId::Melee(m) => m.rpm,
+            WeaponId::Gun(g) => g.rpm,
+        }
+    }
+    /// Whether holding LMB continues firing (guns only).
+    pub fn automatic(&self) -> bool {
+        match self {
+            WeaponId::Unarmed | WeaponId::Melee(_) => false,
+            WeaponId::Gun(g) => g.automatic,
         }
     }
     /// Gun stats, if this is a gun.
@@ -125,9 +151,14 @@ pub fn poll_weapon_manifest_task(
                                 bullet_type: entry.bullet_type,
                                 damage: entry.damage,
                                 range: entry.range,
+                                rpm: entry.rpm,
+                                automatic: entry.automatic,
                             }));
                         } else {
-                            melee.push(WeaponId::Melee(entry.path));
+                            melee.push(WeaponId::Melee(MeleeInfo {
+                                path: entry.path,
+                                rpm: entry.rpm,
+                            }));
                         }
                     }
 

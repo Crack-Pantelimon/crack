@@ -20,6 +20,19 @@ pub struct GunState {
     pub gunshot_sound_idx: usize,
 }
 
+/// Seconds until the next attack is allowed (gun, melee, or punch).
+#[derive(Component, Default)]
+pub struct WeaponCooldown(pub f32);
+
+pub fn tick_weapon_cooldown(time: Res<Time>, mut q: Query<&mut WeaponCooldown>) {
+    let dt = time.delta_secs();
+    for mut cd in &mut q {
+        if cd.0 > 0.0 {
+            cd.0 = (cd.0 - dt).max(0.0);
+        }
+    }
+}
+
 /// Fire the shooter's gun once (ammo permitting).
 #[derive(Event)]
 pub struct FireGunEvent {

@@ -12,7 +12,8 @@ use crate::plugins::map_plugin::map_lod::{
     poll_tile_group_fetches, reveal_pending_tiles, spawn_root_map_tiles, start_tile_swap_requests,
 };
 use crate::plugins::map_plugin::map_plugin_ui::{
-    draw_reference_points_gizmos, draw_tree_bboxes, tree_navigator_ui,
+    configure_map_extent_gizmo, draw_map_extent_gizmo, draw_reference_points_gizmos,
+    draw_tree_bboxes, tree_navigator_ui,
 };
 
 pub struct MapPlugin;
@@ -24,12 +25,15 @@ impl Plugin for MapPlugin {
         app.init_resource::<MapTree>()
             .init_resource::<MapLODState>()
             .init_resource::<TileSwapRequests>()
+            .init_gizmo_group::<map_plugin_ui::MapExtentGizmoGroup>()
             .add_plugins(map_material_edit::MapMaterialEditPlugin)
+            .add_systems(Startup, configure_map_extent_gizmo)
             .add_systems(EguiPrimaryContextPass, tree_navigator_ui)
             .add_systems(
                 Update,
                 (
                     draw_tree_bboxes,
+                    draw_map_extent_gizmo,
                     draw_reference_points_gizmos,
                     spawn_root_map_tiles,
                     poll_tile_group_fetches,
@@ -39,8 +43,38 @@ impl Plugin for MapPlugin {
             )
             .add_systems(PostUpdate, (start_tile_swap_requests,))
             .add_systems(PreUpdate, (do_split_requests,))
-            .add_systems(First, (do_merge_requests,));
+            .add_systems(First, (do_merge_requests,))
+            .add_systems(Last, clamp_camera_to_map_bbox);
         info!("done loading: MapPlugin");
+    }
+}
+
+/// Vertical headroom above the map bbox top — keeps freecam / orbit cameras from drifting
+/// arbitrarily high while still leaving Y mostly self-managed.
+const CAMERA_BBOX_Y_HEADROOM: f32 = 10.0;
+
+fn clamp_camera_to_map_bbox(
+    map_tree: Option<Res<MapTree>>,
+    mut cam: Query<&mut Transform, With<Camera3d>>,
+) {
+    let Some(map_tree) = map_tree else {
+        return;
+    };
+    if !map_tree.parsed {
+        return;
+    }
+
+    let bbox = &map_tree.bbox;
+    let min_x = bbox.min.x.min(bbox.max.x);
+    let max_x = bbox.min.x.max(bbox.max.x);
+    let min_z = bbox.min.z.min(bbox.max.z);
+    let max_z = bbox.min.z.max(bbox.max.z);
+    let max_y = bbox.min.y.max(bbox.max.y) + CAMERA_BBOX_Y_HEADROOM;
+
+    for mut t in &mut cam {
+        t.translation.x = t.translation.x.clamp(min_x, max_x);
+        t.translation.z = t.translation.z.clamp(min_z, max_z);
+        t.translation.y = t.translation.y.min(max_y);
     }
 }
 
