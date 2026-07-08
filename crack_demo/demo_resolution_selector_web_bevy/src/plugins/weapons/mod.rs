@@ -16,6 +16,7 @@ pub use weapon_attach::{
 pub use weapon_manifest::{GunInfo, WeaponId, WeaponManifest};
 pub use weapon_shooting::{
     BulletSpark, BulletSparks, FireGunEvent, GunState, ReloadGunEvent, ShotTracers,
+    MeleeDebugBox, MeleeDebugBoxes, draw_melee_debug_boxes,
 };
 
 use weapon_attach::{
@@ -38,6 +39,7 @@ impl Plugin for WeaponsPlugin {
             .init_resource::<WeaponGripOffset>()
             .init_resource::<ShotTracers>()
             .init_resource::<BulletSparks>()
+            .init_resource::<MeleeDebugBoxes>()
             .add_observer(equip_weapon_observer)
             .add_observer(fire_gun_observer)
             .add_observer(reload_gun_observer)
@@ -57,6 +59,6 @@ impl Plugin for WeaponsPlugin {
                 )
                     .chain(),
             )
-            .add_systems(Update, (draw_shot_tracers, draw_bullet_sparks));
+            .add_systems(Update, (draw_shot_tracers, draw_bullet_sparks, draw_melee_debug_boxes));
     }
 }

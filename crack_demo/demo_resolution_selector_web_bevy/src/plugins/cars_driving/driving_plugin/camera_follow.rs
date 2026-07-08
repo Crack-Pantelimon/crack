@@ -11,6 +11,7 @@ pub fn camera_follows_car(
     mut mouse_motion: MessageReader<bevy::input::mouse::MouseMotion>,
     mut contexts: EguiContexts,
     mut local_orbit: Local<Option<(f32, f32)>>, // (yaw, pitch)
+    capture_state: Res<crate::plugins::states::MouseCaptureState>,
 ) {
     let Ok((car_transform, linear_velocity)) = car_query.single() else {
         return;
@@ -42,8 +43,8 @@ pub fn camera_follows_car(
 
     let (mut yaw, mut pitch) = local_orbit.unwrap_or((default_yaw, default_pitch));
 
-    // Mouse drag updates yaw and pitch
-    let drag_active = !egui_focused && mouse_button.pressed(MouseButton::Left);
+    // Mouse drag or captured mouse updates yaw and pitch
+    let drag_active = capture_state.is_captured || (!egui_focused && mouse_button.pressed(MouseButton::Left));
     if drag_active {
         let sensitivity = 0.003;
         for event in mouse_motion.read() {

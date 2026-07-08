@@ -128,13 +128,19 @@ fn camera_movement_system(
     );
     let height = (transform.translation.y - ground_y).max(0.1);
 
+    let egui_wants_keyboard = if let Ok(ctx) = contexts.ctx_mut() {
+        ctx.egui_wants_keyboard_input()
+    } else {
+        false
+    };
+
     // 3. Speed proportional to height
-    let is_shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
+    let is_shift = !egui_wants_keyboard && (keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight));
     let speed_multiplier = if is_shift { 5.0 } else { 1.0 };
     let speed = (height * 1.0).clamp(5.0, 500.0) * speed_multiplier;
 
     // 4. Movement input (only if egui is not focused)
-    if !egui_focused {
+    if !egui_focused && !egui_wants_keyboard {
         // Forward/Backward (no vertical component)
         let mut forward = *transform.forward();
         forward.y = 0.0;

@@ -39,6 +39,7 @@ serde_json = { workspace = true }
 postcard = "1.1.1"
 game_logic = { path = "../../crack_demo/game_logic" }
 api_asscrack = { path = "../../packages/api_asscrack" }
+storage_crackhouse = { path = "../../packages/storage_crackhouse" }
 
 async-channel = "2"
 

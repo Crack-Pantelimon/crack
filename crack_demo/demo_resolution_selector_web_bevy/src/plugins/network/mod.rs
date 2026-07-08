@@ -50,6 +50,14 @@ pub enum ChatEvent {
     StatusUpdate(String),
 }
 
+use crate::plugins::crack_plugin::CrackClient;
+
+#[derive(Resource, Default)]
+pub struct NetworkSetupState {
+    pub started: bool,
+    pub slot: Arc<std::sync::Mutex<Option<anyhow::Result<(UserIdentitySecrets, CrackClient)>>>>,
+}
+
 pub struct NetworkPlugin;
 
 impl Plugin for NetworkPlugin {
@@ -65,96 +73,143 @@ impl Plugin for NetworkPlugin {
             app.insert_resource(NetworkRuntime(Arc::new(rt)));
         }
 
-        app.add_systems(Startup, start_network);
-        app.add_systems(Update, drain_chat_events);
+        app.init_resource::<NetworkSetupState>();
+        app.add_systems(
+            Update,
+            (
+                trigger_network_setup,
+                install_network_setup,
+                drain_chat_events,
+            ),
+        );
         app.add_plugins(multiplayer_plugin::MultiplayerPlugin);
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
-fn start_network(
-    mut commands: Commands,
-    rt: Res<NetworkRuntime>,
-    proxy_wrapper: Res<EventLoopProxyWrapper>,
+fn trigger_network_setup(
+    mut setup_state: ResMut<NetworkSetupState>,
+    client: Option<Res<CrackClient>>,
+    #[cfg(not(target_family = "wasm"))] rt: Option<Res<NetworkRuntime>>,
 ) {
-    let secrets = UserIdentitySecrets::generate();
-    let user_id = secrets.user_identity();
-    let own_nickname = user_id.nickname().to_string();
-    let own_color = user_id.rgb_color();
+    if setup_state.started {
+        return;
+    }
+    let Some(client) = client else {
+        return;
+    };
+    setup_state.started = true;
 
-    let (incoming_tx, incoming_rx) = async_channel::unbounded::<ChatEvent>();
-    let (outgoing_tx, outgoing_rx) = async_channel::bounded::<String>(100);
+    let slot = setup_state.slot.clone();
+    let client_clone = client.clone();
 
-    let (game_outgoing_tx, game_outgoing_rx) = async_channel::bounded::<Vec<u8>>(256);
-    let (game_incoming_tx, game_incoming_rx) = async_channel::bounded::<GameSyncInbound>(256);
+    let future = async move {
+        let secrets_res = init_network_secrets(&client_clone).await;
+        *slot.lock().unwrap() = Some(secrets_res.map(|secrets| (secrets, client_clone)));
+    };
 
-    commands.insert_resource(GameSyncChannels {
-        outgoing_tx: game_outgoing_tx,
-        incoming_rx: game_incoming_rx,
-    });
-
-    commands.insert_resource(ChatState {
-        own_nickname,
-        own_color,
-        presence_list: Vec::new(),
-        msg_history: Vec::new(),
-        status_message: "Initializing...".to_string(),
-        input_buffer: String::new(),
-        outgoing_tx,
-        incoming_rx,
-        unread_count: 0,
-    });
-
-    let future = chat_main_task(
-        secrets,
-        incoming_tx,
-        outgoing_rx,
-        game_incoming_tx,
-        game_outgoing_rx,
-        proxy_wrapper.clone(),
-    );
-    rt.0.spawn(future);
+    #[cfg(target_family = "wasm")]
+    {
+        wasm_bindgen_futures::spawn_local(future);
+    }
+    #[cfg(not(target_family = "wasm"))]
+    {
+        if let Some(rt) = rt {
+            rt.0.spawn(future);
+        }
+    }
 }
 
-#[cfg(target_family = "wasm")]
-fn start_network(mut commands: Commands, proxy_wrapper: Res<EventLoopProxyWrapper>) {
-    let secrets = UserIdentitySecrets::generate();
-    let user_id = secrets.user_identity();
-    let own_nickname = user_id.nickname().to_string();
-    let own_color = user_id.rgb_color();
+async fn init_network_secrets(client: &CrackClient) -> anyhow::Result<UserIdentitySecrets> {
+    let sql = "SELECT secret_key FROM user_secrets WHERE id = 1 LIMIT 1".to_string();
+    let res = client.0.call::<storage_crackhouse::api::ExecuteSQL2>(sql).await;
 
-    let (incoming_tx, incoming_rx) = async_channel::unbounded::<ChatEvent>();
-    let (outgoing_tx, outgoing_rx) = async_channel::bounded::<String>(100);
+    match res {
+        Ok(set) if !set.rows.is_empty() => {
+            let row = &set.rows[0];
+            let val = &row.cols[0];
+            let json_str = match val {
+                storage_crackhouse::types::DbValue::Text(s) => s.clone(),
+                _ => anyhow::bail!("Invalid secret_key type in DB"),
+            };
+            let secrets: UserIdentitySecrets = serde_json::from_str(&json_str)?;
+            Ok(secrets)
+        }
+        _ => {
+            let secrets = UserIdentitySecrets::generate();
+            let json_str = serde_json::to_string(&secrets)?;
+            let escaped_json = json_str.replace('\'', "''");
+            let sql = format!(
+                "INSERT OR REPLACE INTO user_secrets (id, secret_key) VALUES (1, '{}')",
+                escaped_json
+            );
+            client.0.call::<storage_crackhouse::api::ExecuteSQL2>(sql).await?;
+            Ok(secrets)
+        }
+    }
+}
 
-    let (game_outgoing_tx, game_outgoing_rx) = async_channel::bounded::<Vec<u8>>(256);
-    let (game_incoming_tx, game_incoming_rx) = async_channel::bounded::<GameSyncInbound>(256);
+fn install_network_setup(
+    mut commands: Commands,
+    setup_state: Res<NetworkSetupState>,
+    #[cfg(not(target_family = "wasm"))] rt: Option<Res<NetworkRuntime>>,
+    proxy_wrapper: Res<EventLoopProxyWrapper>,
+) {
+    let mut guard = setup_state.slot.lock().unwrap();
+    if let Some(res) = guard.take() {
+        match res {
+            Ok((secrets, _client)) => {
+                let user_id = secrets.user_identity();
+                let own_nickname = user_id.nickname().to_string();
+                let own_color = user_id.rgb_color();
 
-    commands.insert_resource(GameSyncChannels {
-        outgoing_tx: game_outgoing_tx,
-        incoming_rx: game_incoming_rx,
-    });
+                let (incoming_tx, incoming_rx) = async_channel::unbounded::<ChatEvent>();
+                let (outgoing_tx, outgoing_rx) = async_channel::bounded::<String>(100);
 
-    commands.insert_resource(ChatState {
-        own_nickname,
-        own_color,
-        presence_list: Vec::new(),
-        msg_history: Vec::new(),
-        status_message: "Initializing...".to_string(),
-        input_buffer: String::new(),
-        outgoing_tx,
-        incoming_rx,
-        unread_count: 0,
-    });
+                let (game_outgoing_tx, game_outgoing_rx) = async_channel::bounded::<Vec<u8>>(256);
+                let (game_incoming_tx, game_incoming_rx) = async_channel::bounded::<GameSyncInbound>(256);
 
-    let future = chat_main_task(
-        secrets,
-        incoming_tx,
-        outgoing_rx,
-        game_incoming_tx,
-        game_outgoing_rx,
-        proxy_wrapper.clone(),
-    );
-    _crack_utils::n0_future::task::spawn(future);
+                commands.insert_resource(GameSyncChannels {
+                    outgoing_tx: game_outgoing_tx,
+                    incoming_rx: game_incoming_rx,
+                });
+
+                commands.insert_resource(ChatState {
+                    own_nickname,
+                    own_color,
+                    presence_list: Vec::new(),
+                    msg_history: Vec::new(),
+                    status_message: "Initializing...".to_string(),
+                    input_buffer: String::new(),
+                    outgoing_tx,
+                    incoming_rx,
+                    unread_count: 0,
+                });
+
+                let future = chat_main_task(
+                    secrets,
+                    incoming_tx,
+                    outgoing_rx,
+                    game_incoming_tx,
+                    game_outgoing_rx,
+                    proxy_wrapper.clone(),
+                );
+
+                #[cfg(target_family = "wasm")]
+                {
+                    _crack_utils::n0_future::task::spawn(future);
+                }
+                #[cfg(not(target_family = "wasm"))]
+                {
+                    if let Some(rt) = rt {
+                        rt.0.spawn(future);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to initialize network setup: {:?}", e);
+            }
+        }
+    }
 }
 
 async fn chat_main_task(

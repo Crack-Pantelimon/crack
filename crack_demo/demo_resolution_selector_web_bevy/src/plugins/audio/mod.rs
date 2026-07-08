@@ -106,7 +106,10 @@ impl Plugin for GameAudioPlugin {
 /// Attach a [`SpatialListener`] to the scene camera so 3D sounds have a set of ears.
 fn setup_spatial_listener(mut commands: Commands, cameras: Query<Entity, With<Camera3d>>) {
     for cam in cameras.iter() {
-        commands.entity(cam).insert(SpatialListener::new(0.25));
+        let mut listener = SpatialListener::new(0.25);
+        listener.left_ear_offset = Vec3::new(0.125, 0.0, 0.0);
+        listener.right_ear_offset = Vec3::new(-0.125, 0.0, 0.0);
+        commands.entity(cam).insert(listener);
     }
 }
 
@@ -116,7 +119,10 @@ fn add_spatial_listener_to_new_cameras(
     cameras: Query<Entity, (Added<Camera3d>, Without<SpatialListener>)>,
 ) {
     for cam in cameras.iter() {
-        commands.entity(cam).insert(SpatialListener::new(0.25));
+        let mut listener = SpatialListener::new(0.25);
+        listener.left_ear_offset = Vec3::new(0.125, 0.0, 0.0);
+        listener.right_ear_offset = Vec3::new(-0.125, 0.0, 0.0);
+        commands.entity(cam).insert(listener);
     }
 }
 
@@ -275,8 +281,8 @@ fn update_listener_ears(state: Res<AudioDemoState>, mut listeners: Query<&mut Sp
         return;
     }
     for mut listener in listeners.iter_mut() {
-        listener.left_ear_offset = Vec3::X * state.ear_gap / -2.0;
-        listener.right_ear_offset = Vec3::X * state.ear_gap / 2.0;
+        listener.left_ear_offset = Vec3::X * state.ear_gap / 2.0;
+        listener.right_ear_offset = Vec3::X * state.ear_gap / -2.0;
     }
 }
 

@@ -189,7 +189,17 @@ pub fn detect_car_interaction(
     q_children: Query<&Children>,
     q_driver: Query<(Entity, &DriverMesh, &Faction, &Health, &Transform)>,
     q_car_gt: Query<&GlobalTransform>,
+    mut contexts: EguiContexts,
 ) {
+    let egui_wants_keyboard = if let Ok(ctx) = contexts.ctx_mut() {
+        ctx.egui_wants_keyboard_input()
+    } else {
+        false
+    };
+    if egui_wants_keyboard {
+        return;
+    }
+
     if !keys.just_pressed(KeyCode::KeyF) {
         return;
     }
@@ -561,7 +571,17 @@ pub fn handle_exit_car(
     keys: Res<ButtonInput<KeyCode>>,
     q_active_car: Query<(Entity, &GlobalTransform), With<ActivePlayerVehicle>>,
     q_driver: Query<(Entity, &GlobalTransform, &DriverMesh)>,
+    mut contexts: EguiContexts,
 ) {
+    let egui_wants_keyboard = if let Ok(ctx) = contexts.ctx_mut() {
+        ctx.egui_wants_keyboard_input()
+    } else {
+        false
+    };
+    if egui_wants_keyboard {
+        return;
+    }
+
     if !keys.just_pressed(KeyCode::KeyF) {
         return;
     }

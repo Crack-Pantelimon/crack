@@ -1,4 +1,4 @@
-use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
+use avian3d::prelude::{SpatialQuery, SpatialQueryFilter, Collider};
 use bevy::prelude::*;
 
 use super::weapon_attach::{EquippedWeapon, WeaponModel, WeaponModelState};
@@ -54,6 +54,34 @@ pub struct BulletSpark {
 /// Live bullet impact sparks.
 #[derive(Resource, Default)]
 pub struct BulletSparks(pub Vec<BulletSpark>);
+
+pub struct MeleeDebugBox {
+    pub position: Vec3,
+    pub rotation: Quat,
+    pub ttl: f32,
+}
+
+#[derive(Resource, Default)]
+pub struct MeleeDebugBoxes(pub Vec<MeleeDebugBox>);
+
+pub fn draw_melee_debug_boxes(
+    time: Res<Time>,
+    mut gizmos: Gizmos,
+    mut boxes: ResMut<MeleeDebugBoxes>,
+) {
+    let dt = time.delta_secs();
+    boxes.0.retain_mut(|b| {
+        b.ttl -= dt;
+        b.ttl > 0.0
+    });
+    for b in &boxes.0 {
+        gizmos.primitive_3d(
+            &Cuboid::new(1.0, 1.0, 2.0),
+            Isometry3d::new(b.position, b.rotation),
+            Color::srgb(1.0, 1.0, 0.0),
+        );
+    }
+}
 
 pub(crate) fn is_person_entity(
     hit_entity: Entity,
@@ -334,6 +362,8 @@ pub fn tick_pending_melee_hits(
     healths: Query<&crate::plugins::pedestrian_ai::faction::Health>,
     mut car_healths: Query<&mut crate::plugins::cars_driving::driving_plugin::spawn_car::CarHealth>,
     mut sparks: ResMut<BulletSparks>,
+    q_global_transform: Query<&GlobalTransform>,
+    mut debug_boxes: ResMut<MeleeDebugBoxes>,
 ) {
     let dt = time.delta_secs();
     for (entity, gt, mut pending) in &mut query {
@@ -342,10 +372,60 @@ pub fn tick_pending_melee_hits(
             let origin = gt.translation() + Vec3::Y * 0.5;
             let forward = Dir3::new(gt.rotation() * Vec3::Z).unwrap_or(Dir3::Z);
             let filter = SpatialQueryFilter::from_excluded_entities([entity]);
-            if let Some(hit) = spatial.cast_ray(origin, forward, 1.8, true, &filter) {
-                let hit_pos = origin + *forward * hit.distance;
+
+            let box_shape = Collider::cuboid(1.0, 1.0, 2.0);
+            let box_pos = origin + *forward * 1.0;
+            let rotation = gt.rotation();
+
+            // Add the yellow wireframe debug box
+            debug_boxes.0.push(MeleeDebugBox {
+                position: box_pos,
+                rotation,
+                ttl: 0.1,
+            });
+
+            let intersecting = spatial.shape_intersections(
+                &box_shape,
+                box_pos,
+                rotation,
+                &filter,
+            );
+
+            let mut hit_roots = std::collections::HashSet::new();
+
+            for hit_entity in intersecting {
+                // Resolve the hit entity up to CharacterController or CarHealth
+                let mut root_target = hit_entity;
+                let mut found_root = false;
+                let mut is_car = false;
+                loop {
+                    if q_controller.contains(root_target) {
+                        found_root = true;
+                        break;
+                    }
+                    if car_healths.get(root_target).is_ok() {
+                        found_root = true;
+                        is_car = true;
+                        break;
+                    }
+                    match parents.get(root_target) {
+                        Ok(child_of) => root_target = child_of.parent(),
+                        Err(_) => break,
+                    }
+                }
+
+                if !found_root {
+                    continue;
+                }
+
+                // Skip if we already hit this root target in this swing
+                if !hit_roots.insert(root_target) {
+                    continue;
+                }
+
+                let hit_pos = q_global_transform.get(hit_entity).map(|g| g.translation()).unwrap_or(box_pos);
                 let is_person = is_person_entity(
-                    hit.entity,
+                    hit_entity,
                     &parents,
                     &q_controller,
                     &q_model,
@@ -398,52 +478,26 @@ pub fn tick_pending_melee_hits(
                         });
                     }
 
-                    // Resolve the hit entity up to CharacterController with Health
-                    let mut cur = hit.entity;
-                    loop {
-                        if q_controller.contains(cur) {
-                            break;
-                        }
-                        match parents.get(cur) {
-                            Ok(child_of) => cur = child_of.parent(),
-                            Err(_) => break,
-                        }
-                    }
-                    if healths.get(cur).is_ok() {
+                    if healths.get(root_target).is_ok() {
                         let amount = if pending.is_melee {
                             crate::plugins::pedestrian_ai::combat::SWORD_DAMAGE
                         } else {
                             crate::plugins::pedestrian_ai::combat::PUNCH_DAMAGE
                         };
                         commands.trigger(crate::plugins::pedestrian_ai::combat::DamageEvent {
-                            target: cur,
+                            target: root_target,
                             amount,
                             source: entity,
                         });
                     }
-                } else {
-                    // Check if it hit a car
-                    let mut target_car = None;
-                    let mut cur = hit.entity;
-                    loop {
-                        if car_healths.get(cur).is_ok() {
-                            target_car = Some(cur);
-                            break;
-                        }
-                        match parents.get(cur) {
-                            Ok(child_of) => cur = child_of.parent(),
-                            Err(_) => break,
-                        }
-                    }
-                    if let Some(car_ent) = target_car {
-                        let amount = if pending.is_melee {
-                            crate::plugins::pedestrian_ai::combat::SWORD_DAMAGE
-                        } else {
-                            crate::plugins::pedestrian_ai::combat::PUNCH_DAMAGE
-                        };
-                        if let Ok(mut car_health) = car_healths.get_mut(car_ent) {
-                            car_health.current = (car_health.current - amount).max(0.0);
-                        }
+                } else if is_car {
+                    let amount = if pending.is_melee {
+                        crate::plugins::pedestrian_ai::combat::SWORD_DAMAGE
+                    } else {
+                        crate::plugins::pedestrian_ai::combat::PUNCH_DAMAGE
+                    };
+                    if let Ok(mut car_health) = car_healths.get_mut(root_target) {
+                        car_health.current = (car_health.current - amount).max(0.0);
                     }
 
                     if pending.is_melee {

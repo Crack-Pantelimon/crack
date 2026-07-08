@@ -22,7 +22,7 @@ use crate::plugins::pedestrians::{
     ModelRoot, PedestrianAnimations, PedestrianUrl, SpawnPedestrianEvent,
 };
 use crate::plugins::states::{GameControlState, InitialMapLoadFinished, NetworkConnectionState};
-use crate::plugins::weapons::weapon_shooting::ShotTracer;
+use crate::plugins::weapons::weapon_shooting::{ShotTracer, MeleeDebugBoxes, MeleeDebugBox};
 use crate::plugins::weapons::{
     BulletSpark, BulletSparks, EquippedWeapon, FireGunEvent, GunState, ShotTracers, WeaponId,
     WeaponManifest, WeaponModel,
@@ -94,7 +94,11 @@ pub enum PlayerEventMsg {
     Jump,
     ClimbStart,
     Roll,
-    Melee,
+    Melee {
+        origin: [f32; 3],
+        rotation: [f32; 4],
+        is_melee: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -281,7 +285,7 @@ fn collect_outbound_events(
     q_climbing: Query<&Climbing, Added<Climbing>>,
     q_rolling: Query<&Rolling, Added<Rolling>>,
     q_melee: Query<
-        &crate::plugins::weapons::weapon_shooting::PendingMeleeHit,
+        (&crate::plugins::weapons::weapon_shooting::PendingMeleeHit, &Transform),
         Added<crate::plugins::weapons::weapon_shooting::PendingMeleeHit>,
     >,
     mut outbound: ResMut<OutboundEvents>,
@@ -314,8 +318,12 @@ fn collect_outbound_events(
     }
 
     // Melee
-    if q_melee.contains(controller) {
-        outbound.0.push(PlayerEventMsg::Melee);
+    for (hit, transform) in q_melee.iter() {
+        outbound.0.push(PlayerEventMsg::Melee {
+            origin: transform.translation.to_array(),
+            rotation: transform.rotation.to_array(),
+            is_melee: hit.is_melee,
+        });
     }
 }
 
@@ -1133,6 +1141,7 @@ fn apply_remote_events(
     mut q_car_health: Query<&mut CarHealth>,
     mut tracers: ResMut<ShotTracers>,
     mut sparks: ResMut<BulletSparks>,
+    mut debug_boxes: ResMut<MeleeDebugBoxes>,
     q_models: Query<(Entity, &ChildOf), With<ModelRoot>>,
     mut q_players: Query<(
         Entity,
@@ -1423,14 +1432,114 @@ fn apply_remote_events(
                         }
                     }
                 }
-                PlayerEventMsg::Melee => {
+                PlayerEventMsg::Melee {
+                    origin,
+                    rotation,
+                    is_melee,
+                } => {
+                    let origin = Vec3::from_array(origin);
+                    let rotation = Quat::from_array(rotation);
+
+                    // 1. Play Whoosh Sound
                     commands.trigger(crate::plugins::audio::audio_fx::AudioFxEvent {
                         fx: crate::plugins::audio::audio_fx::AudioFxEventType::MeleeWhoosh {
-                            volume: 0.8,
+                            volume: if is_melee { 1.0 } else { 0.4 },
                         },
-                        position: muzzle,
+                        position: origin,
                         follow: None,
                     });
+
+                    // 2. Play animation on remote player's avatar
+                    if anims.ready {
+                        if let Some(root) = avatar_entity {
+                            if let Some(model_ent) = find_model_entity(root, &q_models, &parents) {
+                                if let Some(player_ent) =
+                                    find_animation_player(model_ent, &player_entities, &parents)
+                                {
+                                    if let Ok((_, mut player, mut current_playing)) =
+                                        q_players.get_mut(player_ent)
+                                    {
+                                        let anim_candidates = if is_melee {
+                                            &["Sword_Attack"][..]
+                                        } else {
+                                            &["Punch_Jab", "Punch_Cross"][..]
+                                        };
+                                        if let Some((node_index, name)) =
+                                            select_node(&anims, anim_candidates)
+                                        {
+                                            player.stop_all();
+                                            let scale = q_scales.get(root).map_or(1.0, |s| s.0);
+                                            let speed = 1.0 / scale;
+                                            player.play(node_index).set_speed(speed);
+                                            commands.entity(player_ent).insert(ActiveOneShot {
+                                                node: node_index,
+                                                name: name.clone(),
+                                            });
+                                            if let Some(ref mut curr) = current_playing {
+                                                curr.name = name;
+                                                curr.speed = speed;
+                                            } else {
+                                                commands.entity(player_ent).insert(
+                                                    CurrentPlayingAnimation { name, speed },
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Add debug box for visual wireframe
+                    debug_boxes.0.push(MeleeDebugBox {
+                        position: origin + rotation * Vec3::Z * 1.0,
+                        rotation,
+                        ttl: 0.1,
+                    });
+
+                    // 4. Victim-authoritative damage to local player
+                    if let Some(local_ent) = local_controller {
+                        // Check if the local controller is within the 1x1x2m box in front of the remote hips
+                        let box_shape = Collider::cuboid(1.0, 1.0, 2.0);
+                        let filter = SpatialQueryFilter::default();
+                        let intersections = spatial.shape_intersections(
+                            &box_shape,
+                            origin + rotation * Vec3::Z * 1.0,
+                            rotation,
+                            &filter,
+                        );
+                        // If local controller (or any of its child entities) is in the intersections list, the local player is hit!
+                        let mut hit = false;
+                        for ent in intersections {
+                            let mut cur = ent;
+                            loop {
+                                if cur == local_ent {
+                                    hit = true;
+                                    break;
+                                }
+                                match parents.get(cur) {
+                                    Ok(child_of) => cur = child_of.parent(),
+                                    Err(_) => break,
+                                }
+                            }
+                            if hit {
+                                break;
+                            }
+                        }
+
+                        if hit {
+                            let amount = if is_melee {
+                                crate::plugins::pedestrian_ai::combat::SWORD_DAMAGE
+                            } else {
+                                crate::plugins::pedestrian_ai::combat::PUNCH_DAMAGE
+                            };
+                            commands.trigger(crate::plugins::pedestrian_ai::combat::DamageEvent {
+                                target: local_ent,
+                                amount,
+                                source: avatar_entity.unwrap_or(Entity::PLACEHOLDER),
+                            });
+                        }
+                    }
                 }
                 _ => {}
             }

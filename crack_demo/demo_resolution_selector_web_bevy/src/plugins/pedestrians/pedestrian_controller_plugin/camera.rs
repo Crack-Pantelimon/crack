@@ -32,13 +32,15 @@ impl Default for CameraRig {
     }
 }
 
-/// Left-mouse drag rotates the follow camera around the character.
+/// Left-mouse drag or captured mouse motion rotates the follow camera around the character.
 pub fn orbit_camera_input(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mouse_motion: Res<AccumulatedMouseMotion>,
     mut rig: ResMut<CameraRig>,
+    capture_state: Res<crate::plugins::states::MouseCaptureState>,
 ) {
-    if !mouse_buttons.pressed(MouseButton::Left) {
+    let active = capture_state.is_captured || mouse_buttons.pressed(MouseButton::Left);
+    if !active {
         return;
     }
     let delta = mouse_motion.delta;

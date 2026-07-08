@@ -22,7 +22,7 @@ use bevy::prelude::*;
 
 pub use animation::{
     ActiveOneShot, AnimationInfo, ManualAnimation, PedestrianAnimationControlEvent,
-    PedestrianAnimations,
+    PedestrianAnimations, TargetAnimation, PlayOnceAnimation,
 };
 pub use draw_skel_debug::SkeletonDebug;
 pub use manifest::{PedestrianManifest, PedestrianUrl};

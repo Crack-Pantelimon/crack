@@ -49,7 +49,8 @@ use interaction_ui::{
 use locomotion::CharacterLocomotionPlugin;
 pub use spawn::{
     SpawnChoicePopup, escape_to_freecam, player_death_to_freecam,
-    spawn_controlled_pedestrian_observer,
+    spawn_controlled_pedestrian_observer, DeathProp, tick_death_props,
+    setup_death_prop_animations,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -310,8 +311,16 @@ impl Plugin for PedestrianControllerPlugin {
             .init_resource::<CarSeatOffset>()
             .init_resource::<WeaponSelection>()
             .add_observer(spawn_controlled_pedestrian_observer)
-            // Runs in every state: log the catalog once, and manage the freecam right-click popup.
-            .add_systems(Update, (print_animation_catalog, equip_on_new_character))
+            // Runs in every state: log the catalog once, manage death peds, and manage the freecam right-click popup.
+            .add_systems(
+                Update,
+                (
+                    print_animation_catalog,
+                    equip_on_new_character,
+                    tick_death_props,
+                    setup_death_prop_animations,
+                ),
+            )
             .add_systems(
                 Update,
                 handle_freecam_right_click.run_if(in_state(GameControlState::MapFreecam)),

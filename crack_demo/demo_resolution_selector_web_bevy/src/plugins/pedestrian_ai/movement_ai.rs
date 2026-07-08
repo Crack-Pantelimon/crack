@@ -31,10 +31,11 @@ const FLEE_REPATH: f32 = 0.75;
 pub fn ai_movement(
     spatial_query: SpatialQuery,
     ai_debug: Res<AiDebug>,
+    time: Res<Time>,
     mut query: Query<
         (
             Entity,
-            &GlobalTransform,
+            &mut Transform,
             &AiState,
             &AiPerception,
             &mut AiCombatTimers,
@@ -49,7 +50,7 @@ pub fn ai_movement(
 ) {
     for (
         entity,
-        gt,
+        mut transform,
         state,
         perception,
         mut timers,
@@ -64,7 +65,7 @@ pub fn ai_movement(
             input.move_dir = Vec2::ZERO;
             continue;
         }
-        let my_pos = gt.translation();
+        let my_pos = transform.translation;
         let is_gun = equipped.is_some_and(|e| e.0.is_gun());
         let record_probes = ai_debug.show_rays;
 
@@ -148,24 +149,38 @@ pub fn ai_movement(
                         steer.desired
                     }
                 } else {
-                    // Melee/unarmed: sprint straight at target.
-                    modifiers.sprint = true;
                     let to_target = (perception.target_pos - my_pos).with_y(0.0);
+                    let dist = to_target.length();
                     let dir = to_target.normalize_or_zero();
 
-                    // Check for obstacle at knee height: if blocked, try to jump.
-                    let knee = my_pos + Vec3::Y * 0.3;
-                    let filter = SpatialQueryFilter::from_excluded_entities([entity]);
-                    if let Ok(fwd) = Dir3::new(dir) {
-                        if spatial_query
-                            .cast_ray(knee, fwd, 1.0, true, &filter)
-                            .is_some()
-                        {
-                            input.jump = true;
+                    if dist <= 1.2 {
+                        // Rotate directly towards target
+                        if dir != Vec3::ZERO {
+                            let target_rot = Quat::from_rotation_y(f32::atan2(dir.x, dir.z));
+                            let s = (12.0 * time.delta_secs()).clamp(0.0, 1.0);
+                            transform.rotation = transform.rotation.slerp(target_rot, s);
                         }
-                    }
+                        steer.desired = Vec3::ZERO;
+                        Vec3::ZERO
+                    } else {
+                        // Melee/unarmed: sprint straight at target.
+                        modifiers.sprint = true;
 
-                    dir
+                        // Check for obstacle at knee height: if blocked, try to jump.
+                        let knee = my_pos + Vec3::Y * 0.3;
+                        let filter = SpatialQueryFilter::from_excluded_entities([entity]);
+                        if let Ok(fwd) = Dir3::new(dir) {
+                            if spatial_query
+                                .cast_ray(knee, fwd, 1.0, true, &filter)
+                                .is_some()
+                            {
+                                input.jump = true;
+                            }
+                        }
+
+                        steer.desired = dir;
+                        dir
+                    }
                 }
             }
 

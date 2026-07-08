@@ -53,6 +53,9 @@ pub struct PedestrianAnimationControlEvent {
 #[derive(Component)]
 pub struct ManualAnimation;
 
+#[derive(Component)]
+pub struct PlayOnceAnimation;
+
 /// Tracks a transient one-shot animation playing on this player.
 #[derive(Component)]
 pub struct ActiveOneShot {
@@ -118,7 +121,7 @@ pub fn play_animations_system(
     anims: Res<PedestrianAnimations>,
     gltf_assets: Res<Assets<bevy::gltf::Gltf>>,
     model_roots: Query<
-        (&PedestrianGltf, Option<&TargetAnimation>),
+        (&PedestrianGltf, Option<&TargetAnimation>, Has<PlayOnceAnimation>),
         (With<ModelRoot>, Without<ManualAnimation>),
     >,
     mut players: Query<(
@@ -159,7 +162,7 @@ pub fn play_animations_system(
             }
         }
 
-        let Some((gltf_comp, target)) = root_data else {
+        let Some((gltf_comp, target, play_once)) = root_data else {
             continue;
         };
 
@@ -201,7 +204,10 @@ pub fn play_animations_system(
 
             if name_changed {
                 player.stop_all();
-                player.play(node_index).repeat().set_speed(target_speed);
+                let active = player.play(node_index).set_speed(target_speed);
+                if !play_once {
+                    active.repeat();
+                }
             } else if let Some(active) = player.animation_mut(node_index) {
                 active.set_speed(target_speed);
             }

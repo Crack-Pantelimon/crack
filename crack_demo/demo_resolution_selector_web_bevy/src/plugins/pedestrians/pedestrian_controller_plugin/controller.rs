@@ -18,14 +18,30 @@ pub fn character_input(
     >,
     mut query: Query<(&mut LocomotionInput, &mut MovementModifiers), With<CharacterController>>,
     q_ejected: Query<&super::EjectedDriver>,
+    mut contexts: bevy_egui::EguiContexts,
 ) {
-    let Ok(cam) = camera.single() else {
-        return;
+    let egui_wants_keyboard = if let Ok(ctx) = contexts.ctx_mut() {
+        ctx.egui_wants_keyboard_input()
+    } else {
+        false
     };
+
     let Some(controller_entity) = controlled.controller else {
         return;
     };
     let Ok((mut input, mut modifiers)) = query.get_mut(controller_entity) else {
+        return;
+    };
+
+    if egui_wants_keyboard {
+        input.move_dir = Vec2::ZERO;
+        input.jump = false;
+        modifiers.sprint = false;
+        modifiers.crouch = false;
+        return;
+    }
+
+    let Ok(cam) = camera.single() else {
         return;
     };
 
@@ -422,7 +438,17 @@ pub fn jump_or_climb(
             Without<Rolling>,
         ),
     >,
+    mut contexts: bevy_egui::EguiContexts,
 ) {
+    let egui_wants_keyboard = if let Ok(ctx) = contexts.ctx_mut() {
+        ctx.egui_wants_keyboard_input()
+    } else {
+        false
+    };
+    if egui_wants_keyboard {
+        return;
+    }
+
     if !keys.just_pressed(KeyCode::Space) {
         return;
     }

@@ -300,7 +300,7 @@ pub fn drive_character_animation(
         });
 
     let can_shoot = gun_state.map_or(false, |g| g.rounds > 0);
-    let reload_pressed = keys.just_pressed(KeyCode::KeyR);
+    let reload_pressed = !over_ui && keys.just_pressed(KeyCode::KeyR);
 
     // A press starts (or restarts) a one-shot clip depending on the equipped weapon.
     let mut pressed_node = None;

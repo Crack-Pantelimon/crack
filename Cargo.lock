@@ -3571,6 +3571,7 @@ dependencies = [
  "rand_chacha 0.10.0",
  "serde",
  "serde_json",
+ "storage_crackhouse",
  "thread_worker",
  "tokio",
  "tracing",
