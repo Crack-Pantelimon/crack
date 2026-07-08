@@ -392,6 +392,8 @@ pub fn finalize_weapon_extents(
     }
 }
 
+use crate::plugins::network::multiplayer_plugin::RemoteAvatarMarker;
+
 /// Keeps every weapon's grip offset from the wrist in sync with the live slider value,
 /// rotates swords 90 degrees along the X axis, and rotates guns around their grip point
 /// so they look at the global aim point target with y = up.
@@ -402,6 +404,7 @@ pub fn update_weapon_transforms(
     parents: Query<&ChildOf>,
     global_transforms: Query<&GlobalTransform>,
     mut weapons: Query<(Entity, &mut Transform, &WeaponKind), With<WeaponModel>>,
+    remote_markers: Query<&RemoteAvatarMarker>,
 ) {
     let cam_gt = camera.iter().next();
     let aim_target = cam_gt.map(|cam| {
@@ -423,14 +426,46 @@ pub fn update_weapon_transforms(
                 transform.rotation = Quat::from_rotation_x(90.0_f32.to_radians());
             }
             WeaponKind::Gun => {
-                if let Some(aim_target) = aim_target {
-                    if let Ok(child_of) = parents.get(weapon_entity) {
-                        let wrist_entity = child_of.0;
-                        if let Ok(wrist_gt) = global_transforms.get(wrist_entity) {
-                            let weapon_world_pos = wrist_gt.transform_point(transform.translation);
-                            let aim_dir = (aim_target - weapon_world_pos).normalize_or_zero();
-                            if aim_dir != Vec3::ZERO {
-                                let x_axis = aim_dir;
+                let mut aim_dir = None;
+
+                // Check if this is a remote weapon by walking up the hierarchy
+                let mut remote_root = None;
+                let mut cur = weapon_entity;
+                while let Ok(child_of) = parents.get(cur) {
+                    let parent = child_of.parent();
+                    if remote_markers.contains(parent) {
+                        remote_root = Some(parent);
+                        break;
+                    }
+                    cur = parent;
+                }
+
+                if let Some(root_ent) = remote_root {
+                    // Remote player: aim in the character's facing direction.
+                    if let Ok(root_gt) = global_transforms.get(root_ent) {
+                        let (_, root_rot, _) = root_gt.to_scale_rotation_translation();
+                        aim_dir = Some(root_rot * Vec3::Z);
+                    }
+                } else {
+                    // Local player: aim towards camera target.
+                    if let Some(target) = aim_target {
+                        if let Ok(child_of) = parents.get(weapon_entity) {
+                            let wrist_entity = child_of.0;
+                            if let Ok(wrist_gt) = global_transforms.get(wrist_entity) {
+                                let weapon_world_pos =
+                                    wrist_gt.transform_point(transform.translation);
+                                aim_dir = Some((target - weapon_world_pos).normalize_or_zero());
+                            }
+                        }
+                    }
+                }
+
+                if let Some(dir) = aim_dir {
+                    if dir != Vec3::ZERO {
+                        if let Ok(child_of) = parents.get(weapon_entity) {
+                            let wrist_entity = child_of.0;
+                            if let Ok(wrist_gt) = global_transforms.get(wrist_entity) {
+                                let x_axis = dir;
                                 let mut z_axis = x_axis.cross(Vec3::Y).normalize_or_zero();
                                 if z_axis.length_squared() < 0.001 {
                                     z_axis = x_axis.cross(Vec3::Z).normalize_or_zero();

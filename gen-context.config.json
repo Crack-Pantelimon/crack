@@ -17,12 +17,12 @@
     ".context"
   ],
 
-  "maxDepth": 7,
+  "maxDepth": 8,
 
   "maxSigsPerFile": 25,
 
   "_maxTokens_comment": "Used only when autoMaxTokens is false. Override to pin a fixed budget.",
-  "maxTokens": 6000,
+  "maxTokens": 16000,
 
   "_autoMaxTokens_comment": "Auto-scale budget based on repo size. Default: true.",
   "_autoMaxTokens_formula": "effective = clamp(totalSigTokens × coverageTarget, 4000, modelContextLimit × maxTokensHeadroom)",

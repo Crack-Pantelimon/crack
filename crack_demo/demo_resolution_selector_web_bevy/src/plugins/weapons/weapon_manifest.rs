@@ -53,6 +53,14 @@ impl WeaponId {
             Some(p) => p.rsplit('/').next().unwrap_or(p).replace(".glb", ""),
         }
     }
+    pub fn from_label(label: &str, manifest: &WeaponManifest) -> Self {
+        for w in &manifest.all {
+            if w.label() == label {
+                return w.clone();
+            }
+        }
+        WeaponId::Unarmed
+    }
 }
 
 /// Public manifest resource: the parsed weapon lists plus a combined `all` list (Unarmed first).

@@ -36,6 +36,7 @@ _crack_utils = { path = "../../packages/_crack_utils" }
 net_crackpipe = { path = "../../packages/net_crackpipe" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+postcard = "1.1.1"
 game_logic = { path = "../../crack_demo/game_logic" }
 api_asscrack = { path = "../../packages/api_asscrack" }
 

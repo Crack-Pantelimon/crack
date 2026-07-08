@@ -13,7 +13,7 @@ use avian3d::{
     },
 };
 use bevy::prelude::*;
-use bevy::world_serialization::WorldAssetRoot;
+use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 
 #[derive(Event)]
 pub struct SpawnCarRequestEvent {
@@ -54,6 +54,22 @@ pub struct DisabledCar;
 
 /// HP at/below which a car becomes a [`DisabledCar`].
 pub const CAR_DISABLE_HP: f32 = 100.0;
+
+pub fn select_car_wheel(
+    car_type: &str,
+    wheel_assets: &WheelAssets,
+    asset_server: &AssetServer,
+) -> Handle<WorldAsset> {
+    if wheel_assets.wheels.is_empty() {
+        get_wheel_asset("car-wheel_00003_", asset_server)
+    } else if wheel_assets.wheels.len() == 1 {
+        wheel_assets.wheels[0].clone()
+    } else {
+        let sum: usize = car_type.bytes().map(|b| b as usize).sum();
+        let index = sum % wheel_assets.wheels.len();
+        wheel_assets.wheels[index].clone()
+    }
+}
 
 pub fn spawn_physics_car(
     commands: &mut Commands,
@@ -124,13 +140,7 @@ pub fn spawn_physics_car(
         ))
         .id();
 
-    let wheel_handle = if rand::random::<bool>() && wheel_assets.wheels.len() > 1 {
-        wheel_assets.wheels[0].clone()
-    } else if !wheel_assets.wheels.is_empty() {
-        wheel_assets.wheels[wheel_assets.wheels.len() - 1].clone()
-    } else {
-        get_wheel_asset("car-wheel_00003_", asset_server)
-    };
+    let wheel_handle = select_car_wheel(car_type, wheel_assets, asset_server);
 
     for i in 0..4 {
         commands.spawn((

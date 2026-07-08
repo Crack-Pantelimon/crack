@@ -34,6 +34,7 @@ pub struct UiState {
     pub show_traffic_debug: bool,
     pub show_pedestrian_ai: bool,
     pub show_vehicle_tuning: bool,
+    pub show_multiplayer_debug: bool,
 }
 impl Default for UiState {
     fn default() -> Self {
@@ -52,6 +53,7 @@ impl Default for UiState {
             show_traffic_debug: false,
             show_pedestrian_ai: false,
             show_vehicle_tuning: false,
+            show_multiplayer_debug: false,
         }
     }
 }
@@ -72,6 +74,7 @@ impl UiState {
             show_traffic_debug: false,
             show_pedestrian_ai: false,
             show_vehicle_tuning: false,
+            show_multiplayer_debug: false,
         }
     }
 }
@@ -94,7 +97,6 @@ fn ui_example_system(
         ResMut<crate::plugins::map_plugin::map_material_edit::MapMaterialEditState>,
     >,
     loading_status: Option<Res<crate::plugins::geojson::GameLoadingStatus>>,
-    tooltip_state: Option<Res<crate::plugins::geojson::TooltipNotificationState>>,
     mut osm_overlay: Option<ResMut<crate::plugins::geojson::OsmOverlayState>>,
     mut global_chat: Option<ResMut<crate::plugins::network::global_chat_ui::GlobalChatUiState>>,
     chat_state: Option<Res<crate::plugins::network::ChatState>>,
@@ -249,6 +251,10 @@ fn ui_example_system(
                         ui.close();
                     }
                 }
+                if ui.button("Multiplayer Debug").clicked() {
+                    ui_state.show_multiplayer_debug = !ui_state.show_multiplayer_debug;
+                    ui.close();
+                }
             });
             // Badge on the top-level "Online" menu button.
             crate::egui_theme::draw_notification_badge(ui, online_resp.response.rect, unread);
@@ -303,52 +309,6 @@ fn ui_example_system(
     });
 
     let screen_rect = ctx.screen_rect();
-
-    // --- Tooltip overlays (bottom-left corner) ---
-    if let Some(ref tooltips) = tooltip_state {
-        let show_map_tip = tooltips.map_loaded_timer > 0.0;
-        let show_geo_tip = tooltips.geojson_loaded_timer > 0.0;
-
-        if show_map_tip || show_geo_tip {
-            egui::Area::new(egui::Id::new("loading_tooltips"))
-                .fixed_pos(egui::pos2(16.0, screen_rect.max.y - 80.0))
-                .order(egui::Order::Tooltip)
-                .show(ctx, |ui| {
-                    ui.vertical(|ui| {
-                        if show_map_tip {
-                            egui::Frame::window(ui.style())
-                                .fill(egui::Color32::from_black_alpha(200))
-                                .stroke(egui::Stroke::new(
-                                    1.0,
-                                    egui::Color32::from_rgb(0, 180, 240),
-                                ))
-                                .show(ui, |ui| {
-                                    ui.label(
-                                        egui::RichText::new("map loaded.")
-                                            .color(egui::Color32::WHITE)
-                                            .size(16.0)
-                                            .strong(),
-                                    );
-                                });
-                        }
-                        ui.allocate_space(egui::Vec2::new(1.0, 4.0));
-                        if show_geo_tip {
-                            egui::Frame::window(ui.style())
-                                .fill(egui::Color32::from_black_alpha(200))
-                                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 220, 80)))
-                                .show(ui, |ui| {
-                                    ui.label(
-                                        egui::RichText::new("geojson loaded.")
-                                            .color(egui::Color32::WHITE)
-                                            .size(16.0)
-                                            .strong(),
-                                    );
-                                });
-                        }
-                    });
-                });
-        }
-    }
 
     // --- FPS overlay (top-right corner) ---
     egui::Area::new(egui::Id::new("fps_overlay"))

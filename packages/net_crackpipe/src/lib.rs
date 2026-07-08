@@ -23,6 +23,7 @@ pub fn datetime_now() -> DateTime<Utc> {
     DateTime::<Utc>::from_timestamp_micros(timestamp).unwrap()
 }
 
+pub use iroh::PublicKey;
 pub use paste;
 pub use postcard;
 pub use signed_message::*;

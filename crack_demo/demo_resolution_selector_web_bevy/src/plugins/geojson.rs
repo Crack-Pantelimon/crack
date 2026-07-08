@@ -15,7 +15,6 @@ impl Plugin for GeoJsonPlugin {
             .init_resource::<GeoJsonSearchState>()
             .init_resource::<GeoJsonSelection>()
             .init_resource::<GameLoadingStatus>()
-            .init_resource::<TooltipNotificationState>()
             .init_resource::<OsmOverlayState>()
             .add_systems(
                 EguiPrimaryContextPass,
@@ -29,7 +28,6 @@ impl Plugin for GeoJsonPlugin {
                 Update,
                 (
                     update_geojson_loading_finished,
-                    update_tooltip_timers,
                     geojson_gizmos_system,
                     osm_overlay_gizmos_system,
                     init_bus_route,
@@ -65,33 +63,17 @@ pub struct GameLoadingStatus {
     pub geojson_loading_started: bool,
 }
 
-#[derive(Resource, Debug, Default)]
-pub struct TooltipNotificationState {
-    pub map_loaded_timer: f32,
-    pub geojson_loaded_timer: f32,
-}
-
 fn update_geojson_loading_finished(
     database: Res<GeoJsonDatabase>,
     mut loading_status: ResMut<GameLoadingStatus>,
-    mut tooltip_state: ResMut<TooltipNotificationState>,
+    mut commands: Commands,
     mut next_state: ResMut<NextState<OsmDatabaseLoadFinished>>,
 ) {
     if database.parsed && !loading_status.geojson_loaded {
         loading_status.geojson_loaded = true;
-        tooltip_state.geojson_loaded_timer = 3.0;
+        commands.trigger(crate::plugins::notifications::NotificationEvent::GeoJsonLoaded);
         next_state.set(OsmDatabaseLoadFinished::OsmFinished);
         info!("GeoJSON loading is fully completed!");
-    }
-}
-
-fn update_tooltip_timers(time: Res<Time>, mut tooltip_state: ResMut<TooltipNotificationState>) {
-    let dt = time.delta_secs();
-    if tooltip_state.map_loaded_timer > 0.0 {
-        tooltip_state.map_loaded_timer = (tooltip_state.map_loaded_timer - dt).max(0.0);
-    }
-    if tooltip_state.geojson_loaded_timer > 0.0 {
-        tooltip_state.geojson_loaded_timer = (tooltip_state.geojson_loaded_timer - dt).max(0.0);
     }
 }
 

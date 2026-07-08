@@ -21,24 +21,24 @@ pub enum TrafficDriveMode {
 
 #[derive(Resource)]
 pub struct TrafficConfig {
-    pub enabled: bool,          // default true
+    pub enabled: bool,          // default false
     pub spawn_radius: f32,      // slider 50.0..=500.0, default 150.0
     pub max_cars: usize,        // slider 10..=100, default 30
     pub speed_kmh: f32,         // cruise speed target, default 30.0
     pub draw_road_gizmos: bool, // debug polyline rendering
-    pub ped_enabled: bool,      // default true
+    pub ped_enabled: bool,      // default false
     pub max_peds: usize,        // slider 0..=100, default 20
 }
 
 impl Default for TrafficConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             spawn_radius: 150.0,
             max_cars: 30,
             speed_kmh: 30.0,
             draw_road_gizmos: false,
-            ped_enabled: true,
+            ped_enabled: false,
             max_peds: 20,
         }
     }

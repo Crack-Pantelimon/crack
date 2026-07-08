@@ -1,14 +1,9 @@
-use std::sync::Arc;
-
 use crack::api_asscrack::anyhow;
+use crack::api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing};
 use crack::native_thread_worker::dioxus_logger;
 use crack::native_thread_worker::tokio;
 use crack::native_thread_worker::tracing;
 use crack::storage_crackhouse::api::ExecuteSQL2;
-use crack::api_asscrack::api::{
-            api_client::ApiClient,
-            api_worker_declarations::WorkerPing,
-        };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

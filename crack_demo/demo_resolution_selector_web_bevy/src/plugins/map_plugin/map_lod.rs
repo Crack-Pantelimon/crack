@@ -598,7 +598,7 @@ pub fn check_map_loaded_status(
     tiles_query: Query<&TreeMapTile>,
     lod_state: Res<MapLODState>,
     loading_status: Option<ResMut<crate::plugins::geojson::GameLoadingStatus>>,
-    tooltip_state: Option<ResMut<crate::plugins::geojson::TooltipNotificationState>>,
+    mut commands: Commands,
     mut next_state: ResMut<NextState<InitialMapLoadFinished>>,
     mut osm_state: ResMut<NextState<OsmDatabaseLoadFinished>>,
 ) {
@@ -614,9 +614,7 @@ pub fn check_map_loaded_status(
 
     if loaded_count >= target && target > 0 {
         loading_status.map_loaded = true;
-        if let Some(mut tooltip_state) = tooltip_state {
-            tooltip_state.map_loaded_timer = 3.0;
-        }
+        commands.trigger(crate::plugins::notifications::NotificationEvent::MapLoaded);
         info!(
             "Initial map load complete: {} / {} tiles loaded.",
             loaded_count, target

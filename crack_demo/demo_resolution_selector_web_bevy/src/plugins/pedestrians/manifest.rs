@@ -5,7 +5,7 @@ use crate::plugins::pedestrians::animation::{AnimationInfo, PedestrianAnimations
 use bevy::prelude::*;
 
 /// A fully-recombined pedestrian asset URL (manifest folder + inner manifest line).
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Component, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PedestrianUrl(pub String);
 
 /// Public manifest resource: the list of available pedestrian URLs and whether loading finished.

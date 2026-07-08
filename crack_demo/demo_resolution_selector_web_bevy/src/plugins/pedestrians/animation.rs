@@ -53,6 +53,13 @@ pub struct PedestrianAnimationControlEvent {
 #[derive(Component)]
 pub struct ManualAnimation;
 
+/// Tracks a transient one-shot animation playing on this player.
+#[derive(Component)]
+pub struct ActiveOneShot {
+    pub node: AnimationNodeIndex,
+    pub name: String,
+}
+
 /// Desired animation for a pedestrian, written by the control observer, read by
 /// [`play_animations_system`].
 #[derive(Component, Clone)]
@@ -118,6 +125,7 @@ pub fn play_animations_system(
         Entity,
         &mut AnimationPlayer,
         Option<&mut CurrentPlayingAnimation>,
+        Option<&ActiveOneShot>,
     )>,
     parent_query: Query<&ChildOf>,
 ) {
@@ -125,7 +133,17 @@ pub fn play_animations_system(
         return;
     }
 
-    for (player_ent, mut player, current_playing) in players.iter_mut() {
+    for (player_ent, mut player, current_playing, active_oneshot) in players.iter_mut() {
+        if let Some(oneshot) = active_oneshot {
+            if let Some(active) = player.animation(oneshot.node) {
+                if !active.is_finished() {
+                    // One-shot still playing, skip target locomotion update.
+                    continue;
+                }
+            }
+            // One-shot is finished or missing from player, clean it up.
+            commands.entity(player_ent).remove::<ActiveOneShot>();
+        }
         // Walk up the hierarchy to the model root that owns this animation player.
         let mut current = player_ent;
         let mut root_data = None;

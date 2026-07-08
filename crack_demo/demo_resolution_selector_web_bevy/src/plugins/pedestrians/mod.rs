@@ -21,7 +21,8 @@ pub mod spawn_pedestrian;
 use bevy::prelude::*;
 
 pub use animation::{
-    AnimationInfo, ManualAnimation, PedestrianAnimationControlEvent, PedestrianAnimations,
+    ActiveOneShot, AnimationInfo, ManualAnimation, PedestrianAnimationControlEvent,
+    PedestrianAnimations,
 };
 pub use draw_skel_debug::SkeletonDebug;
 pub use manifest::{PedestrianManifest, PedestrianUrl};

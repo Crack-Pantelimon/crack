@@ -3565,6 +3565,7 @@ dependencies = [
  "getrandom 0.4.3",
  "log",
  "net_crackpipe",
+ "postcard",
  "rand 0.10.1",
  "rand_chacha 0.10.0",
  "serde",

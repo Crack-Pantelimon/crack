@@ -315,4 +315,4 @@ any other place that force-enables peds — none known.)
 - **Animation reuse for remote avatars**: locomotion/anim systems may query
   `ControlledCharacter`-adjacent state; budget time to add `RemoteAvatarMarker` exclusions.
 - **Same user, two tabs**: `user_id` keys the peer map; two nodes with one identity would fight
-  over one avatar. Acceptable v1; could key by `(user_id, node_id)` if it bites.
+  over one avatar. Acceptable v1; could key by `(user_id, node_id)` if it bites. -- yes, key by node id so each tab has its own player. in the original code this was a struct called NodeIdentity, run a grep for that.

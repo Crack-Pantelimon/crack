@@ -197,13 +197,20 @@ pub fn link_pedestrian_model(
             commands
                 .entity(controller)
                 .insert(crate::plugins::pedestrian_ai::AiModel(model_ent));
-        } else if let Some(ref mut controlled) = controlled {
-            // It's the player!
-            commands
-                .entity(model_ent)
-                .insert(crate::plugins::pedestrians::ManualAnimation);
-            controlled.ped = Some(model_ent);
-            controlled.awaiting = false;
+        } else {
+            // Player or remote player!
+            let is_local_player = controlled
+                .as_ref()
+                .map_or(false, |ctrl| ctrl.controller == Some(controller));
+            if is_local_player {
+                commands
+                    .entity(model_ent)
+                    .insert(crate::plugins::pedestrians::ManualAnimation);
+                if let Some(ref mut ctrl) = controlled {
+                    ctrl.ped = Some(model_ent);
+                    ctrl.awaiting = false;
+                }
+            }
         }
     }
 }

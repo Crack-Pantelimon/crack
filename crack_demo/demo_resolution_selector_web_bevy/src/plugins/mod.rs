@@ -6,6 +6,7 @@ pub mod geojson;
 pub mod main_scene_plugin;
 pub mod map_plugin;
 pub mod network;
+pub mod notifications;
 pub mod pedestrian_ai;
 pub mod pedestrians;
 pub mod physics_plugin;

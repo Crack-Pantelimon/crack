@@ -5,12 +5,19 @@ use std::sync::Arc;
 use crate::plugins::states::NetworkConnectionState;
 use net_crackpipe::{
     chat::chat_controller::{IChatController, IChatReceiver, IChatSender},
+    chat::chat_ticket::ChatTicket,
     chat::global_chat::{GlobalChatMessageContent, GlobalChatPresence},
     global_matchmaker::GlobalMatchmaker,
     user_identity::UserIdentitySecrets,
 };
 
 pub mod global_chat_ui;
+pub mod multiplayer_plugin;
+
+use multiplayer_plugin::{
+    GameSyncChannels, GameSyncInbound, GameplayChatMessageContent, GameplaySyncRoomType,
+    MultiplayerStats,
+};
 
 #[cfg(not(target_family = "wasm"))]
 #[derive(Resource)]
@@ -33,6 +40,7 @@ pub struct ChatState {
 
 pub enum ChatEvent {
     Connected,
+    GameplayConnected,
     Message {
         nickname: String,
         text: String,
@@ -59,6 +67,7 @@ impl Plugin for NetworkPlugin {
 
         app.add_systems(Startup, start_network);
         app.add_systems(Update, drain_chat_events);
+        app.add_plugins(multiplayer_plugin::MultiplayerPlugin);
     }
 }
 
@@ -76,6 +85,14 @@ fn start_network(
     let (incoming_tx, incoming_rx) = async_channel::unbounded::<ChatEvent>();
     let (outgoing_tx, outgoing_rx) = async_channel::bounded::<String>(100);
 
+    let (game_outgoing_tx, game_outgoing_rx) = async_channel::bounded::<Vec<u8>>(256);
+    let (game_incoming_tx, game_incoming_rx) = async_channel::bounded::<GameSyncInbound>(256);
+
+    commands.insert_resource(GameSyncChannels {
+        outgoing_tx: game_outgoing_tx,
+        incoming_rx: game_incoming_rx,
+    });
+
     commands.insert_resource(ChatState {
         own_nickname,
         own_color,
@@ -88,7 +105,14 @@ fn start_network(
         unread_count: 0,
     });
 
-    let future = chat_main_task(secrets, incoming_tx, outgoing_rx, proxy_wrapper.clone());
+    let future = chat_main_task(
+        secrets,
+        incoming_tx,
+        outgoing_rx,
+        game_incoming_tx,
+        game_outgoing_rx,
+        proxy_wrapper.clone(),
+    );
     rt.0.spawn(future);
 }
 
@@ -102,6 +126,14 @@ fn start_network(mut commands: Commands, proxy_wrapper: Res<EventLoopProxyWrappe
     let (incoming_tx, incoming_rx) = async_channel::unbounded::<ChatEvent>();
     let (outgoing_tx, outgoing_rx) = async_channel::bounded::<String>(100);
 
+    let (game_outgoing_tx, game_outgoing_rx) = async_channel::bounded::<Vec<u8>>(256);
+    let (game_incoming_tx, game_incoming_rx) = async_channel::bounded::<GameSyncInbound>(256);
+
+    commands.insert_resource(GameSyncChannels {
+        outgoing_tx: game_outgoing_tx,
+        incoming_rx: game_incoming_rx,
+    });
+
     commands.insert_resource(ChatState {
         own_nickname,
         own_color,
@@ -114,7 +146,14 @@ fn start_network(mut commands: Commands, proxy_wrapper: Res<EventLoopProxyWrappe
         unread_count: 0,
     });
 
-    let future = chat_main_task(secrets, incoming_tx, outgoing_rx, proxy_wrapper.clone());
+    let future = chat_main_task(
+        secrets,
+        incoming_tx,
+        outgoing_rx,
+        game_incoming_tx,
+        game_outgoing_rx,
+        proxy_wrapper.clone(),
+    );
     _crack_utils::n0_future::task::spawn(future);
 }
 
@@ -122,6 +161,8 @@ async fn chat_main_task(
     secrets: UserIdentitySecrets,
     incoming_tx: async_channel::Sender<ChatEvent>,
     outgoing_rx: async_channel::Receiver<String>,
+    game_incoming_tx: async_channel::Sender<GameSyncInbound>,
+    game_outgoing_rx: async_channel::Receiver<Vec<u8>>,
     proxy: EventLoopProxy<WinitUserEvent>,
 ) {
     let send_status = |status: String| {
@@ -161,6 +202,34 @@ async fn chat_main_task(
     send_status("Waiting to join chat room...".to_string());
     let _ = controller.wait_joined().await;
 
+    // Join gameplay room
+    let gameplay_ticket =
+        ChatTicket::new_str_bs("global_gameplay", global_mm.bootstrap_nodes_set().await);
+    let gameplay_controller = match global_mm
+        .own_node()
+        .await
+        .unwrap()
+        .join_chat::<GameplaySyncRoomType>(&gameplay_ticket)
+        .await
+    {
+        Ok(c) => {
+            let gameplay_c = c.clone();
+            let incoming_tx_gp = incoming_tx.clone();
+            let proxy_gp = proxy.clone();
+            _crack_utils::n0_future::task::spawn(async move {
+                let _ = gameplay_c.wait_joined().await;
+                let _ = incoming_tx_gp.try_send(ChatEvent::GameplayConnected);
+                let _ = proxy_gp.send_event(WinitUserEvent::WakeUp);
+            });
+            Some(c)
+        }
+        Err(e) => {
+            tracing::error!("Failed to join gameplay chat: {:?}", e);
+            None
+        }
+    };
+
+    send_status("Connected to rooms!".to_string());
     let _ = incoming_tx.try_send(ChatEvent::Connected);
     let _ = proxy.send_event(WinitUserEvent::WakeUp);
 
@@ -238,7 +307,56 @@ async fn chat_main_task(
         }
     });
 
-    // Loop to handle incoming messages
+    // Spawn tasks for gameplay sync if joined successfully
+    if let Some(gameplay_c) = gameplay_controller {
+        let gameplay_sender = gameplay_c.sender();
+        let game_outgoing_rx_clone = game_outgoing_rx.clone();
+
+        // Forward outgoing gameplay messages
+        _crack_utils::n0_future::task::spawn(async move {
+            while let Ok(payload) = game_outgoing_rx_clone.recv().await {
+                let id = rand::random::<i64>();
+                let msg = GameplayChatMessageContent::GameSync { id, payload };
+                if let Err(e) = gameplay_sender.broadcast_message(msg).await {
+                    tracing::error!("Error sending game sync message: {:?}", e);
+                }
+            }
+        });
+
+        // Loop to handle incoming gameplay messages
+        let gameplay_recv = gameplay_c.receiver().await;
+        let game_incoming_tx_clone = game_incoming_tx.clone();
+        let proxy_gameplay_in = proxy.clone();
+        let own_node_id = *global_mm.own_node_identity().node_id();
+
+        _crack_utils::n0_future::task::spawn(async move {
+            while let Some(msg) = gameplay_recv.next_message().await {
+                if *msg.from.node_id() == own_node_id {
+                    continue; // Skip own loopback
+                }
+
+                let from_node_id = *msg.from.node_id();
+                let nickname = msg.from.nickname().to_string();
+                let color = msg.from.rgb_color();
+
+                match msg.message {
+                    GameplayChatMessageContent::GameSync { id, payload } => {
+                        let inbound = GameSyncInbound {
+                            from_node_id,
+                            nickname,
+                            color,
+                            id,
+                            payload,
+                        };
+                        let _ = game_incoming_tx_clone.try_send(inbound);
+                        let _ = proxy_gameplay_in.send_event(WinitUserEvent::WakeUp);
+                    }
+                }
+            }
+        });
+    }
+
+    // Loop to handle incoming global chat messages
     tracing::info!("Starting bevy chat incoming loop...");
     loop {
         match recv.next_message().await {
@@ -279,6 +397,8 @@ async fn chat_main_task(
 fn drain_chat_events(
     state: Option<ResMut<ChatState>>,
     mut next_state: ResMut<NextState<NetworkConnectionState>>,
+    mut commands: Commands,
+    mut stats: Option<ResMut<MultiplayerStats>>,
 ) {
     let Some(mut state) = state else {
         return;
@@ -289,6 +409,15 @@ fn drain_chat_events(
                 info!("P2P network connected.");
                 state.status_message = "Connected!".to_string();
                 next_state.set(NetworkConnectionState::Connected);
+                commands
+                    .trigger(crate::plugins::notifications::NotificationEvent::NetworkConnected);
+            }
+            ChatEvent::GameplayConnected => {
+                info!("Gameplay chat network connected.");
+                commands.trigger(crate::plugins::notifications::NotificationEvent::GameNetworkOk);
+                if let Some(ref mut stats) = stats {
+                    stats.connected = true;
+                }
             }
             ChatEvent::Message {
                 nickname,

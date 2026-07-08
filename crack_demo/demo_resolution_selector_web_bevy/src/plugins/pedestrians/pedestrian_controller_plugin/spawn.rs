@@ -94,6 +94,7 @@ pub fn spawn_controlled_pedestrian_observer(
             CombatState::default(),
             health,
             crate::plugins::pedestrian_ai::faction::Faction::Neutral,
+            url.clone(),
         ))
         .id();
 
