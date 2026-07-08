@@ -34,7 +34,7 @@ struct ChatState {
     msg_history: Vec<(String, String, (u8, u8, u8))>, // (nickname, text, rgb_color)
     status_message: String,
     input_buffer: String,
-    outgoing_tx: Sender<String>,
+    outgoing_tx: tokio::sync::mpsc::Sender<String>,
     incoming_rx: Mutex<Receiver<ChatEvent>>,
 }
 
@@ -50,7 +50,7 @@ enum ChatEvent {
 
 fn startup_chat_system(mut commands: Commands) {
     let (incoming_tx, incoming_rx) = channel();
-    let (outgoing_tx, outgoing_rx) = channel();
+    let (outgoing_tx, outgoing_rx) = tokio::sync::mpsc::channel(100);
 
     // Spawn the background chat thread and get the generated username and color info
     let (own_nickname, own_color) = spawn_chat_thread(incoming_tx, outgoing_rx);
@@ -69,7 +69,7 @@ fn startup_chat_system(mut commands: Commands) {
 
 fn spawn_chat_thread(
     incoming_tx: Sender<ChatEvent>,
-    outgoing_rx: Receiver<String>,
+    mut outgoing_rx: tokio::sync::mpsc::Receiver<String>,
 ) -> (String, (u8, u8, u8)) {
     // Generate identity secrets locally using the German words nickname gimmick
     let secrets = UserIdentitySecrets::generate();
@@ -151,7 +151,7 @@ fn spawn_chat_thread(
             // Spawn task to handle outgoing messages from Bevy
             let sender_clone = sender.clone();
             tokio::spawn(async move {
-                while let Ok(text) = outgoing_rx.recv() {
+                while let Some(text) = outgoing_rx.recv().await {
                     let msg = GlobalChatMessageContent::TextMessage { text: text.clone() };
                     match sender_clone.broadcast_message(msg).await {
                         Ok(sent_preview) => {
@@ -167,20 +167,29 @@ fn spawn_chat_thread(
             });
 
             // Loop to handle incoming messages
+            tracing::info!("Starting bevy chat incoming loop...");
             loop {
-                if let Some(msg) = recv.next_message().await {
-                    let nickname = msg.from.nickname().to_string();
-                    let color = msg.from.rgb_color();
-                    match msg.message {
-                        GlobalChatMessageContent::TextMessage { text } => {
-                            if incoming_tx.send(ChatEvent::Message { nickname, text, color }).is_err() {
-                                break;
+                match recv.next_message().await {
+                    Some(msg) => {
+                        let nickname = msg.from.nickname().to_string();
+                        let color = msg.from.rgb_color();
+                        tracing::info!("Bevy received message from {}: {:?}", nickname, msg.message);
+                        match msg.message {
+                            GlobalChatMessageContent::TextMessage { text } => {
+                                if incoming_tx.send(ChatEvent::Message { nickname, text, color }).is_err() {
+                                    tracing::warn!("incoming_tx send error, exiting loop");
+                                    break;
+                                }
+                            }
+                            _ => {
+                                tracing::info!("Received non-text message: {:?}", msg.message);
                             }
                         }
-                        _ => {}
                     }
-                } else {
-                    break;
+                    None => {
+                        tracing::warn!("recv.next_message() returned None, exiting loop");
+                        break;
+                    }
                 }
             }
 
@@ -198,7 +207,19 @@ fn update_chat_system(mut state: ResMut<ChatState>) {
             events.push(event);
         }
     }
+
     for event in events {
+        match &event {
+            ChatEvent::Message { nickname, text, .. } => {
+                info!("Bevy UI system received ChatEvent::Message from {}: {}", nickname, text);
+            }
+            ChatEvent::PresenceUpdate(list) => {
+                info!("Bevy UI system received ChatEvent::PresenceUpdate with {} users", list.len());
+            }
+            ChatEvent::StatusUpdate(status) => {
+                info!("Bevy UI system received ChatEvent::StatusUpdate: {}", status);
+            }
+        }
         match event {
             ChatEvent::Message { nickname, text, color } => {
                 state.msg_history.push((nickname, text, color));
@@ -268,7 +289,7 @@ fn draw_chat_ui_system(
                     |ui| {
                         ui.heading("Global Chat Room");
                         ui.separator();
-
+                        
                         egui::ScrollArea::vertical()
                             .id_salt("chat_scroll")
                             .stick_to_bottom(true)
@@ -331,7 +352,7 @@ fn draw_chat_ui_system(
                         if do_send {
                             let text = state.input_buffer.trim().to_string();
                             if !text.is_empty() {
-                                let _ = state.outgoing_tx.send(text);
+                                let _ = state.outgoing_tx.try_send(text);
                                 state.input_buffer.clear();
                             }
                         }

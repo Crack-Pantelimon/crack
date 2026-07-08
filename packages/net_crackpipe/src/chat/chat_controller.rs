@@ -227,9 +227,10 @@ impl<T: IChatRoomType> IChatController<T> for ChatController<T> {
         if bootstrap.is_empty() {
             return Ok(());
         }
-        let mut x = 0;
+        let mut found_count = 0;
+        let mut attempts = 0;
         let p = self.chat_presence();
-        while !bootstrap.is_empty() && x <= 3 {
+        while !bootstrap.is_empty() && found_count < 3 && attempts < 100 {
             let presence_list = p
                 .get_presence_list()
                 .await
@@ -238,25 +239,26 @@ impl<T: IChatRoomType> IChatController<T> for ChatController<T> {
                 .map(|p| *p.identity.node_id())
                 .collect::<Vec<_>>();
             info!(
-                "wait_until_joined: found {:?}/{:?}",
+                "wait_until_joined: found {:?}/{:?}, attempts: {}",
                 presence_list.len(),
-                bootstrap.len()
+                bootstrap.len(),
+                attempts
             );
             if presence_list.len() >= 3 {
                 break;
             }
             for k in presence_list {
                 if bootstrap.remove(&k) {
-                    x += 1;
+                    found_count += 1;
                 }
             }
-            if bootstrap.is_empty() || x >= 3 {
+            if bootstrap.is_empty() || found_count >= 3 {
                 break;
             }
             let _ =
                 n0_future::time::timeout(CONNECT_TIMEOUT / 10, p.notified())
                     .await;
-            x += 1;
+            attempts += 1;
         }
         Ok(())
     }
