@@ -29,3 +29,11 @@ uuid = { version = "1", features = ["v4", "serde"] }
 serde_json = "1"
 async-trait = "0.1.88"
 paste = "1.0"
+
+# On wasm, uuid v4 and the transitive getrandom 0.3 need an explicit randomness
+# source. These features must be enabled for any wasm consumer (the bevy demo and
+# the service `web_worker`). getrandom additionally needs the
+# `getrandom_backend="wasm_js"` cfg, set in the workspace `.cargo/config.toml`.
+[target.'cfg(target_family = "wasm")'.dependencies]
+uuid = { version = "1", features = ["js"] }
+getrandom = { package = "getrandom", version = "0.3", features = ["wasm_js"] }

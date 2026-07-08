@@ -1,0 +1,9 @@
+# Workspace-level cargo config.
+#
+# getrandom 0.3 (pulled in transitively via net_crackpipe -> random_word and
+# game_logic -> parquet -> ahash) refuses to compile for wasm32-unknown-unknown
+# unless a backend is selected via this cfg. The demo crate already sets this in
+# its own `.cargo/config.toml`, but `build_worker.sh` builds `web_worker` from
+# the repo root, so the setting must also live here for the worker's wasm build.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
