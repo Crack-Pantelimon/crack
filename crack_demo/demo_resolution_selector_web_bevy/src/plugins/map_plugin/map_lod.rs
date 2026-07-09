@@ -150,10 +150,10 @@ const TILE_REVEAL_DELAY_FRAMES: u8 = 3;
 
 #[derive(Component)]
 pub struct PendingTileReveal {
-    new_tiles: Vec<Entity>,
-    drop_parent: Option<MapTreeNodePath>,
-    drop_descendants_of: Vec<MapTreeNodePath>,
-    countdown: u8,
+    pub new_tiles: Vec<Entity>,
+    pub drop_parent: Option<MapTreeNodePath>,
+    pub drop_descendants_of: Vec<MapTreeNodePath>,
+    pub countdown: u8,
 }
 
 #[derive(Debug, Clone)]

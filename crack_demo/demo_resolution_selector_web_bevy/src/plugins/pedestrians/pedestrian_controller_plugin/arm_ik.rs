@@ -381,7 +381,10 @@ pub fn apply_arm_ik(
                 return;
             };
 
-            let char_forward = char_gt.rotation() * Vec3::NEG_Z;
+            // Model forward is +Z (same convention as `face_movement` / `face_aim`). This was
+            // NEG_Z, which made the spine "compensation" see the target ~180° behind and twist
+            // the torso sideways while aiming.
+            let char_forward = char_gt.rotation() * Vec3::Z;
             let char_up = char_gt.rotation() * Vec3::Y;
             let char_pos = char_gt.translation();
             let pole = char_pos - char_forward * 0.5 + Vec3::NEG_Y * 0.3;
@@ -434,7 +437,8 @@ pub fn apply_arm_ik(
                 ArmSide::Left
             };
 
-            let char_forward = driver_gt.rotation() * Vec3::NEG_Z;
+            // Model forward is +Z, same as the on-foot branch above.
+            let char_forward = driver_gt.rotation() * Vec3::Z;
             let char_up = driver_gt.rotation() * Vec3::Y;
             let char_pos = driver_gt.translation();
             let pole = char_pos - char_forward * 0.5 + Vec3::NEG_Y * 0.3;

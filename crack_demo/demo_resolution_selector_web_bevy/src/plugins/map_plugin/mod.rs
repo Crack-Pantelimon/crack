@@ -1,3 +1,4 @@
+pub mod bvh_minimap;
 pub mod fake_map;
 pub mod map_lod;
 pub mod map_material_edit;
@@ -30,7 +31,10 @@ impl Plugin for MapPlugin {
             .add_plugins(map_material_edit::MapMaterialEditPlugin)
             .add_plugins(fake_map::FakeMapPlugin)
             .add_systems(Startup, configure_map_extent_gizmo)
-            .add_systems(EguiPrimaryContextPass, tree_navigator_ui)
+            .add_systems(
+                EguiPrimaryContextPass,
+                (tree_navigator_ui, bvh_minimap::bvh_minimap_window),
+            )
             .add_systems(
                 Update,
                 (

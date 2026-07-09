@@ -31,6 +31,7 @@ pub struct UiState {
     pub draw_rk4_gizmos: bool,
     pub draw_spark_origin_gizmos: bool,
     pub show_lod_configurator: bool,
+    pub show_bvh_minimap: bool,
     pub show_geojson_database: bool,
     pub show_traffic_debug: bool,
     pub show_pedestrian_ai: bool,
@@ -53,6 +54,7 @@ impl Default for UiState {
             draw_rk4_gizmos: false,
             draw_spark_origin_gizmos: false,
             show_lod_configurator: false,
+            show_bvh_minimap: false,
             show_geojson_database: false,
             show_traffic_debug: false,
             show_pedestrian_ai: false,
@@ -77,6 +79,7 @@ impl UiState {
             draw_rk4_gizmos: false,
             draw_spark_origin_gizmos: false,
             show_lod_configurator: false,
+            show_bvh_minimap: false,
             show_geojson_database: false,
             show_traffic_debug: false,
             show_pedestrian_ai: false,
@@ -318,6 +321,15 @@ fn ui_example_system(
                 }
                 if ui.button("Lod Configurator & Tree Navigator").clicked() {
                     ui_state.show_lod_configurator = !ui_state.show_lod_configurator;
+                    ui.close();
+                }
+                if ui.button("3D BVH Minimap").clicked() {
+                    ui_state.show_bvh_minimap = !ui_state.show_bvh_minimap;
+                    // Bring up the LOD configurator alongside so split/merge churn seen in the
+                    // minimap can be correlated with (and tuned via) the LOD parameters.
+                    if ui_state.show_bvh_minimap {
+                        ui_state.show_lod_configurator = true;
+                    }
                     ui.close();
                 }
                 if ui.button("Traffic").clicked() {

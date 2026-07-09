@@ -1219,8 +1219,32 @@ pub fn driving_weapon_wheel(
         return;
     };
 
-    let n = manifest.all.len() as i32;
-    selection.index = (((selection.index as i32 + step) % n + n) % n) as usize;
+    // Only guns make sense from the driver's seat: cycle through gun entries exclusively,
+    // skipping unarmed/melee entirely.
+    let gun_indices: Vec<usize> = manifest
+        .all
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| w.is_gun())
+        .map(|(i, _)| i)
+        .collect();
+    if gun_indices.is_empty() {
+        return;
+    }
+    let n = gun_indices.len() as i32;
+    let next_pos = match gun_indices.iter().position(|&i| i == selection.index) {
+        // Already on a gun: step within the gun list.
+        Some(pos) => (((pos as i32 + step) % n + n) % n) as usize,
+        // Currently on unarmed/melee: snap to the first/last gun depending on scroll direction.
+        None => {
+            if step > 0 {
+                0
+            } else {
+                gun_indices.len() - 1
+            }
+        }
+    };
+    selection.index = gun_indices[next_pos];
     *next_switch = now + 0.15;
     commands.trigger(EquipWeaponEvent {
         character: driver_ent,

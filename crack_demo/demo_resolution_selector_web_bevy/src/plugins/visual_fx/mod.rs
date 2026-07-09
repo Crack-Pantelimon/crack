@@ -16,7 +16,7 @@ pub use gun_fx::GunFxEvent;
 pub use smoke_emitter::SmokeEmitter;
 
 use car_explosion::{ExplosionFlashes, car_explosion_observer, draw_explosion_flashes};
-use clouds::{setup_clouds, sync_cloud_uniforms};
+use clouds::{position_clouds_over_map, setup_clouds, sync_cloud_uniforms};
 use gun_fx::{GunFxCounter, gun_fx_observer, tick_gun_smoke_emitters};
 use materials::{AdditiveFxMaterial, BlendFxMaterial, CloudMaterial};
 use settings::VfxSettings;
@@ -51,6 +51,7 @@ impl Plugin for VisualFXPlugin {
                     tick_gun_smoke_emitters,
                     draw_explosion_flashes,
                     sync_cloud_uniforms,
+                    position_clouds_over_map,
                 ),
             );
 

@@ -10,6 +10,6 @@ pub mod tile;
 pub mod weapon;
 
 #[cfg(feature = "worker")]
-pub mod worker;
-#[cfg(feature = "worker")]
 pub mod visibility;
+#[cfg(feature = "worker")]
+pub mod worker;

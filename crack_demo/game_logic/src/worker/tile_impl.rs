@@ -128,5 +128,7 @@ pub async fn fetch_map_tile(req: FetchTileRequest) -> anyhow::Result<FetchTileRe
 pub async fn get_tile_collider(tile_id: &str) -> Option<crate::tile::MeshColliderData> {
     let mut guard = TILE_CACHE.write().await;
     let cache = guard.get_or_insert_with(|| LruCache::new(512));
-    cache.get(tile_id).and_then(|resp| resp.collider_mesh.clone())
+    cache
+        .get(tile_id)
+        .and_then(|resp| resp.collider_mesh.clone())
 }

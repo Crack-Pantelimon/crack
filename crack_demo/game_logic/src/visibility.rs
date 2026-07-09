@@ -1,16 +1,17 @@
-use parry3d::partitioning::{Bvh, BvhBuildStrategy, TraversalAction};
-use parry3d::bounding_volume::Aabb;
-use parry3d::shape::HeightField;
-use parry3d::math::{Pose, Vector};
-use parry3d::utils::Array2;
-use parry3d::query::{Ray, RayCast};
-use std::collections::{HashMap, BTreeSet};
-use tokio::sync::RwLock;
-use crate::map::{BBox, MapTreeNodePath, MapTreeAssetInfo};
 use crate::lod::CameraReference;
+use crate::map::{BBox, MapTreeAssetInfo, MapTreeNodePath};
+use parry3d::bounding_volume::Aabb;
+use parry3d::math::{Pose, Vector};
+use parry3d::partitioning::{Bvh, BvhBuildStrategy, TraversalAction};
+use parry3d::query::{Ray, RayCast};
+use parry3d::shape::HeightField;
+use parry3d::utils::Array2;
+use std::collections::{BTreeSet, HashMap};
+use tokio::sync::RwLock;
 
 /// A worker-global cache storing computed height maps to avoid redundant rasterization.
-pub static HEIGHTMAP_CACHE: RwLock<Option<HashMap<MapTreeNodePath, HeightField>>> = RwLock::const_new(None);
+pub static HEIGHTMAP_CACHE: RwLock<Option<HashMap<MapTreeNodePath, HeightField>>> =
+    RwLock::const_new(None);
 
 /// Helper function to invert a `Pose` (Isometry) without relying on trait methods.
 #[inline]
@@ -147,7 +148,9 @@ impl OccluderWorld {
         let mut id_to_path = HashMap::new();
         let mut aabbs = HashMap::new();
         let mut next_id = 0;
-        let manifest = crate::worker::manifest_impl::get_manifest_cache().await.ok();
+        let manifest = crate::worker::manifest_impl::get_manifest_cache()
+            .await
+            .ok();
 
         let mut hm_cache_guard = HEIGHTMAP_CACHE.write().await;
         let hm_cache = hm_cache_guard.get_or_insert_with(HashMap::new);
@@ -170,7 +173,10 @@ impl OccluderWorld {
             } else {
                 if let Some(ref manifest) = manifest {
                     if let Some(node) = manifest.all_nodes.get(&path) {
-                        (node.bbox, node.assets.iter().map(|a| a.0.clone()).collect::<Vec<_>>())
+                        (
+                            node.bbox,
+                            node.assets.iter().map(|a| a.0.clone()).collect::<Vec<_>>(),
+                        )
                     } else {
                         continue;
                     }
@@ -187,7 +193,8 @@ impl OccluderWorld {
                 let mut combined_indices = Vec::new();
 
                 for asset_id in &assets_to_fetch {
-                    if let Some(mesh) = crate::worker::tile_impl::get_tile_collider(asset_id).await {
+                    if let Some(mesh) = crate::worker::tile_impl::get_tile_collider(asset_id).await
+                    {
                         let vertex_offset = combined_vertices.len() as u32;
                         combined_vertices.extend(mesh.vertices);
                         for tri in mesh.indices {
@@ -201,7 +208,8 @@ impl OccluderWorld {
                 }
 
                 if !combined_vertices.is_empty() {
-                    let hf = build_heightfield_from_mesh(&bbox, &combined_vertices, &combined_indices);
+                    let hf =
+                        build_heightfield_from_mesh(&bbox, &combined_vertices, &combined_indices);
                     hm_cache.insert(path.clone(), hf.clone());
                     Some(hf)
                 } else {
@@ -218,7 +226,8 @@ impl OccluderWorld {
 
                 let center_x = (bbox.min.x + bbox.max.x) / 2.0;
                 let center_z = (bbox.min.z + bbox.max.z) / 2.0;
-                let pose = Pose::from_parts(Vector::new(center_x, 0.0, center_z), glam::Quat::IDENTITY);
+                let pose =
+                    Pose::from_parts(Vector::new(center_x, 0.0, center_z), glam::Quat::IDENTITY);
 
                 heightfields.insert(leaf_id, hf);
                 transforms.insert(leaf_id, pose);
@@ -268,7 +277,7 @@ impl OccluderWorld {
             if let Some(leaf_id) = node.leaf_data() {
                 if let Some(path) = self.id_to_path.get(&leaf_id) {
                     let same_lineage = path.0.starts_with(&exclude_path.0)   // target or its descendant
-                        || exclude_path.0.starts_with(&path.0);              // an ancestor of the target
+                        || exclude_path.0.starts_with(&path.0); // an ancestor of the target
                     if same_lineage {
                         return TraversalAction::Continue;
                     }
@@ -283,7 +292,9 @@ impl OccluderWorld {
                         if let Some(pose) = self.transforms.get(&leaf_id) {
                             let inv_pose = invert_pose(pose);
                             let local_ray = ray.transform_by(&inv_pose);
-                            if let Some(intersection) = hf.cast_local_ray_and_get_normal(&local_ray, dist, true) {
+                            if let Some(intersection) =
+                                hf.cast_local_ray_and_get_normal(&local_ray, dist, true)
+                            {
                                 if intersection.time_of_impact < dist {
                                     let hit_point = local_ray.point_at(intersection.time_of_impact);
                                     if hit_point.y >= cand_bbox.min.y + 1e-3 {
@@ -393,10 +404,7 @@ mod tests {
             [10.0, 5.0, 10.0],
             [0.0, 5.0, 10.0],
         ];
-        let indices = vec![
-            [0, 1, 2],
-            [0, 2, 3],
-        ];
+        let indices = vec![[0, 1, 2], [0, 2, 3]];
 
         let hf = build_heightfield_from_mesh(&bbox, &vertices, &indices);
 
@@ -410,8 +418,12 @@ mod tests {
         assert!(intersection.is_some(), "Ray should hit the heightfield");
         let hit = intersection.unwrap();
         assert!(hit.time_of_impact < dist);
-        
+
         let hit_point = ray.point_at(hit.time_of_impact);
-        assert!((hit_point.y - 5.0).abs() < 1e-4, "Hit height should be 5.0, got {}", hit_point.y);
+        assert!(
+            (hit_point.y - 5.0).abs() < 1e-4,
+            "Hit height should be 5.0, got {}",
+            hit_point.y
+        );
     }
 }

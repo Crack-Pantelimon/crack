@@ -16,7 +16,7 @@ pub fn spawn_lod_task(
     q_split: Query<&TileShouldSplit>,
     q_pending: Query<&PendingTileReveal>,
     q_nodes: Query<&TreeMapTile>,
-    mut last: Local<Option<(BTreeSet<MapTreeNodePath>, Vec<Vec3>, u32)>>,
+    mut last: Local<Option<(BTreeSet<MapTreeNodePath>, Vec<Vec3>, u32, bool)>>,
     q_camera: Query<&Transform, With<Camera3d>>,
     res_tiles: Res<TileSwapRequests>,
     mut tasks: ResMut<CrackTasks>,
@@ -73,12 +73,19 @@ pub fn spawn_lod_task(
     };
     let quantized_refs = refs.iter().map(|&v| quantize(v)).collect::<Vec<_>>();
 
+    // The visibility-cull (BVH occluder) flag is part of the change key so toggling the debug
+    // checkbox forces a fresh LOD recompute even when nothing else moved.
+    let cull = lod_state.enable_visibility_cull;
     if let Some(last_val) = &*last {
-        if nodes == last_val.0 && quantized_refs == last_val.1 && budget == last_val.2 {
+        if nodes == last_val.0
+            && quantized_refs == last_val.1
+            && budget == last_val.2
+            && cull == last_val.3
+        {
             return;
         }
     }
-    *last = Some((nodes.clone(), quantized_refs, budget));
+    *last = Some((nodes.clone(), quantized_refs, budget, cull));
 
     // Calculate camera range/reachable radius based on active camera controller
     let mut camera_range = 32.0;

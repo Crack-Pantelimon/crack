@@ -77,7 +77,8 @@ pub fn compute_distance_to_aabb(bbox: &BBox, p: Vec3) -> f32 {
 }
 
 #[cfg(feature = "worker")]
-static OCCLUDER_WORLD: RwLock<Option<(u64, Arc<crate::visibility::OccluderWorld>)>> = RwLock::const_new(None);
+static OCCLUDER_WORLD: RwLock<Option<(u64, Arc<crate::visibility::OccluderWorld>)>> =
+    RwLock::const_new(None);
 
 #[cfg(feature = "worker")]
 fn hash_spawned_nodes(nodes: &BTreeSet<MapTreeNodePath>) -> u64 {
@@ -87,7 +88,10 @@ fn hash_spawned_nodes(nodes: &BTreeSet<MapTreeNodePath>) -> u64 {
     hasher.finish()
 }
 
-pub async fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) -> LodComputeResponse {
+pub async fn compute_lod_changes(
+    data_res: &MapTreeData,
+    req: &LodComputeRequest,
+) -> LodComputeResponse {
     let t0 = _crack_utils::get_timestamp_now_ms();
 
     #[cfg(feature = "worker")]
@@ -110,9 +114,19 @@ pub async fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest
             Some(world)
         } else {
             let t_start_bvh = _crack_utils::get_timestamp_now_ms();
-            let world = Arc::new(crate::visibility::OccluderWorld::rebuild_bvh(&req.spawned_nodes, &data_res.coarse_assets).await);
+            let world = Arc::new(
+                crate::visibility::OccluderWorld::rebuild_bvh(
+                    &req.spawned_nodes,
+                    &data_res.coarse_assets,
+                )
+                .await,
+            );
             let elapsed = _crack_utils::get_timestamp_now_ms() - t_start_bvh;
-            tracing::info!("Occluder BVH rebuilt in {} ms (leaves: {})", elapsed, world.heightfields.len());
+            tracing::info!(
+                "Occluder BVH rebuilt in {} ms (leaves: {})",
+                elapsed,
+                world.heightfields.len()
+            );
             let mut guard = OCCLUDER_WORLD.write().await;
             *guard = Some((hash_key, world.clone()));
             Some(world)
