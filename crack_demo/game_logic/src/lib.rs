@@ -11,3 +11,5 @@ pub mod weapon;
 
 #[cfg(feature = "worker")]
 pub mod worker;
+#[cfg(feature = "worker")]
+pub mod visibility;

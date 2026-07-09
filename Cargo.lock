@@ -5073,6 +5073,7 @@ dependencies = [
  "gltf",
  "net_crackpipe",
  "parquet",
+ "parry3d",
  "reqwest",
  "serde",
  "serde_json",

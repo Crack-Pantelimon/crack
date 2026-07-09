@@ -3,6 +3,10 @@ use glam::Vec3;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
+#[cfg(feature = "worker")]
+use std::sync::Arc;
+#[cfg(feature = "worker")]
+use tokio::sync::RwLock;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Score(pub f32);
@@ -19,13 +23,21 @@ impl PartialOrd for Score {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CameraReference {
+    pub center: Vec3,
+    pub max_range: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LodComputeRequest {
     pub spawned_nodes: BTreeSet<MapTreeNodePath>,
     pub reference_points: Vec<Vec3>,
+    pub cameras: Vec<CameraReference>,
     pub lod_budget: u32,
     pub max_lod: i32,
     pub tiles_per_diagonal: f32,
+    pub enable_visibility_cull: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -64,8 +76,53 @@ pub fn compute_distance_to_aabb(bbox: &BBox, p: Vec3) -> f32 {
     (d1 + p.distance(middle)) / 2.0
 }
 
-pub fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) -> LodComputeResponse {
+#[cfg(feature = "worker")]
+static OCCLUDER_WORLD: RwLock<Option<(u64, Arc<crate::visibility::OccluderWorld>)>> = RwLock::const_new(None);
+
+#[cfg(feature = "worker")]
+fn hash_spawned_nodes(nodes: &BTreeSet<MapTreeNodePath>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    nodes.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub async fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) -> LodComputeResponse {
     let t0 = _crack_utils::get_timestamp_now_ms();
+
+    #[cfg(feature = "worker")]
+    let occluder_world = if req.enable_visibility_cull {
+        let hash_key = hash_spawned_nodes(&req.spawned_nodes);
+        let cached = {
+            let guard = OCCLUDER_WORLD.read().await;
+            if let Some((key, ref world)) = *guard {
+                if key == hash_key {
+                    Some(world.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        if let Some(world) = cached {
+            Some(world)
+        } else {
+            let t_start_bvh = _crack_utils::get_timestamp_now_ms();
+            let world = Arc::new(crate::visibility::OccluderWorld::rebuild_bvh(&req.spawned_nodes, &data_res.coarse_assets).await);
+            let elapsed = _crack_utils::get_timestamp_now_ms() - t_start_bvh;
+            tracing::info!("Occluder BVH rebuilt in {} ms (leaves: {})", elapsed, world.heightfields.len());
+            let mut guard = OCCLUDER_WORLD.write().await;
+            *guard = Some((hash_key, world.clone()));
+            Some(world)
+        }
+    } else {
+        None
+    };
+
+    #[cfg(not(feature = "worker"))]
+    let _occluder_world: Option<()> = None;
 
     let nodes = &req.spawned_nodes;
     let budget = req.lod_budget;
@@ -81,6 +138,7 @@ pub fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) -> L
     };
 
     let mut score_cache = BTreeMap::new();
+    let mut visibility_cache = BTreeMap::new();
     let mut tile_score = |node_path: &MapTreeNodePath| {
         if let Some(cached) = score_cache.get(node_path) {
             return *cached;
@@ -154,7 +212,30 @@ pub fn compute_lod_changes(data_res: &MapTreeData, req: &LodComputeRequest) -> L
                     .unwrap_or(0);
             }
             let new_budget = current_budget - parent_cost + children_cost;
-            if new_budget <= budget as usize && is_valid_split(&node_path) {
+
+            let is_visible = if new_budget <= budget as usize && is_valid_split(&node_path) {
+                if let Some(&vis) = visibility_cache.get(&node_path) {
+                    vis
+                } else {
+                    #[cfg(feature = "worker")]
+                    let vis = if let Some(ref world) = occluder_world {
+                        let bbox = tile_bbox(&node_path);
+                        world.is_node_visible(&bbox, &node_path, &req.cameras)
+                    } else {
+                        true
+                    };
+
+                    #[cfg(not(feature = "worker"))]
+                    let vis = true;
+
+                    visibility_cache.insert(node_path.clone(), vis);
+                    vis
+                }
+            } else {
+                false
+            };
+
+            if new_budget <= budget as usize && is_valid_split(&node_path) && is_visible {
                 proposed_nodes.remove(&node_path);
                 proposed_splits.insert(node_path.clone());
                 current_budget = new_budget;

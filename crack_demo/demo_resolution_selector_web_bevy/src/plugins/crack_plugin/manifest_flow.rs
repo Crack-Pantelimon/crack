@@ -59,6 +59,7 @@ pub fn poll_manifest_task(
                     lod_state.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
                     lod_state.max_lod = 24;
                     lod_state.tiles_per_diagonal = 1.30;
+                    lod_state.enable_visibility_cull = true;
                 }
                 Err(e) => {
                     tracing::error!("Manifest RPC error: {e:?}");

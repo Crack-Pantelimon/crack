@@ -101,4 +101,5 @@ pub struct MapLODState {
     pub lod_timer: Option<Timer>,
     pub max_lod: i32,
     pub tiles_per_diagonal: f32,
+    pub enable_visibility_cull: bool,
 }

@@ -27,5 +27,5 @@ async fn compute_lod_changes_api(
     req: crate::lod::LodComputeRequest,
 ) -> anyhow::Result<crate::lod::LodComputeResponse> {
     let manifest = manifest_impl::get_manifest_cache().await?;
-    Ok(crate::lod::compute_lod_changes(&manifest, &req))
+    Ok(crate::lod::compute_lod_changes(&manifest, &req).await)
 }
