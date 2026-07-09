@@ -1526,7 +1526,7 @@ fn apply_remote_events(
                         }
                     }
                 }
-                _ => {}
+                // _ => {}
             }
         }
     }

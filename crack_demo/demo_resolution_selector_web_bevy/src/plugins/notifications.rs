@@ -94,7 +94,7 @@ fn render_notifications(mut contexts: EguiContexts, active: Res<ActiveNotificati
         return;
     }
 
-    let screen_rect = ctx.screen_rect();
+    let screen_rect = ctx.content_rect();
 
     // Stack active entries vertically inside a bottom-left container.
     // Shift the Area's Y coordinate upwards based on number of active notifications

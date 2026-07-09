@@ -38,6 +38,7 @@ pub struct UiState {
     pub show_multiplayer_debug: bool,
     pub show_sound_settings: bool,
     pub master_volume: f32,
+    pub show_vfx_shaders: bool,
 }
 impl Default for UiState {
     fn default() -> Self {
@@ -59,6 +60,7 @@ impl Default for UiState {
             show_multiplayer_debug: false,
             show_sound_settings: false,
             master_volume: 0.6,
+            show_vfx_shaders: false,
         }
     }
 }
@@ -82,6 +84,7 @@ impl UiState {
             show_multiplayer_debug: false,
             show_sound_settings: false,
             master_volume: 0.6,
+            show_vfx_shaders: false,
         }
     }
 }
@@ -344,6 +347,10 @@ fn ui_example_system(
                         state.show_window = !state.show_window;
                         ui.close();
                     }
+                }
+                if ui.button("VFX Shaders").clicked() {
+                    ui_state.show_vfx_shaders = !ui_state.show_vfx_shaders;
+                    ui.close();
                 }
             });
             egui::menu::menu_button(ui, "Help", |ui| {

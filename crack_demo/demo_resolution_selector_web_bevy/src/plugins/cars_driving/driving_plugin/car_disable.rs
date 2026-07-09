@@ -16,6 +16,7 @@ use crate::plugins::weapons::{EquippedWeapon, GunState};
 /// as a fresh AI ped; the player is handed back a controllable pedestrian with their carried HP.
 pub fn disable_low_health_cars(
     mut commands: Commands,
+    time: Res<Time>,
     q_cars: Query<
         (
             Entity,
@@ -47,6 +48,15 @@ pub fn disable_low_health_cars(
             .entity(car_ent)
             .insert(DisabledCar)
             .remove::<ActivePlayerVehicle>();
+
+        commands.trigger(crate::plugins::visual_fx::CarExplosionEvent {
+            position: car_gt.translation(),
+        });
+
+        commands.entity(car_ent).insert(crate::plugins::visual_fx::SmokeEmitter {
+            next_spawn_time: time.elapsed_secs(),
+            active_until: time.elapsed_secs() + 15.0,
+        });
 
         // Locate the seated driver mesh, if any.
         let mut driver = None;
@@ -96,7 +106,14 @@ pub fn disable_low_health_cars(
 }
 
 /// Draws a green warning sphere around every disabled car.
-pub fn draw_disabled_car_gizmos(mut gizmos: Gizmos, q: Query<&GlobalTransform, With<DisabledCar>>) {
+pub fn draw_disabled_car_gizmos(
+    mut gizmos: Gizmos,
+    q: Query<&GlobalTransform, With<DisabledCar>>,
+    settings: Res<crate::plugins::visual_fx::settings::VfxSettings>,
+) {
+    if !settings.disabled_car_gizmos {
+        return;
+    }
     for gt in q.iter() {
         gizmos.sphere(gt.translation(), 2.5, Color::srgb(0.1, 1.0, 0.2));
     }

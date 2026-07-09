@@ -1,7 +1,7 @@
 use avian3d::prelude::{Collider, SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 
-use super::weapon_attach::{EquippedWeapon, WeaponModel, WeaponModelState};
+use super::weapon_attach::{EquippedWeapon, WeaponModel, WeaponModelState, WeaponExtents};
 use super::weapon_manifest::WeaponId;
 use crate::plugins::pedestrians::ModelRoot;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{CharacterController, DriverMesh};
@@ -144,7 +144,7 @@ pub fn fire_gun_observer(
     mut shooters: Query<(&mut GunState, &EquippedWeapon, Option<&WeaponModelState>)>,
     camera: Query<&GlobalTransform, With<Camera3d>>,
     transforms: Query<&GlobalTransform>,
-    weapon_models: Query<&GlobalTransform, With<WeaponModel>>,
+    weapon_models: Query<(&GlobalTransform, Option<&WeaponExtents>), With<WeaponModel>>,
     spatial: SpatialQuery,
     parents: Query<&ChildOf>,
     q_controller: Query<(), With<CharacterController>>,
@@ -183,7 +183,13 @@ pub fn fire_gun_observer(
     let muzzle = model_state
         .and_then(|s| s.entity)
         .and_then(|e| weapon_models.get(e).ok())
-        .map(|gt| gt.translation())
+        .map(|(gt, extents_opt)| {
+            if let Some(extents) = extents_opt {
+                gt.transform_point(Vec3::new(extents.max_x, 0.0, 0.0))
+            } else {
+                gt.translation()
+            }
+        })
         .or_else(|| {
             transforms
                 .get(shooter)
@@ -226,6 +232,14 @@ pub fn fire_gun_observer(
             &q_skel,
             &q_driver,
         );
+
+        commands.trigger(crate::plugins::visual_fx::GunFxEvent {
+            muzzle,
+            impact,
+            is_person,
+            is_miss: false,
+            shooter,
+        });
 
         // Spawn 3 sparks jumping at random speeds around contact point +/- 0.1m
         for _ in 0..3 {
@@ -297,11 +311,20 @@ pub fn fire_gun_observer(
         }
     } else {
         // Missed everything: tracer flies out to max range.
+        let target = origin + *dir * info.range;
         tracers.0.push(ShotTracer {
             from: muzzle,
-            to: origin + *dir * info.range,
+            to: target,
             reflect_to: None,
             ttl: TRACER_TTL,
+        });
+
+        commands.trigger(crate::plugins::visual_fx::GunFxEvent {
+            muzzle,
+            impact: target,
+            is_person: false,
+            is_miss: true,
+            shooter,
         });
     }
 }
@@ -330,7 +353,16 @@ pub fn reload_gun_observer(
 }
 
 /// Draws the live tracers and expires them after [`TRACER_TTL`].
-pub fn draw_shot_tracers(time: Res<Time>, mut gizmos: Gizmos, mut tracers: ResMut<ShotTracers>) {
+pub fn draw_shot_tracers(
+    time: Res<Time>,
+    mut gizmos: Gizmos,
+    mut tracers: ResMut<ShotTracers>,
+    settings: Res<crate::plugins::visual_fx::settings::VfxSettings>,
+) {
+    if !settings.gun_gizmos {
+        tracers.0.clear();
+        return;
+    }
     let dt = time.delta_secs();
     tracers.0.retain_mut(|t| {
         t.ttl -= dt;
@@ -338,19 +370,28 @@ pub fn draw_shot_tracers(time: Res<Time>, mut gizmos: Gizmos, mut tracers: ResMu
     });
     for t in &tracers.0 {
         // Bullet track.
-        gizmos.line(t.from, t.to, Color::srgb(1.0, 0.9, 0.3));
+        gizmos.line(t.from, t.to, Color::srgba(1.0, 0.9, 0.3, 0.3));
         // Shooting point and impact point as small circles.
-        gizmos.sphere(t.from, 0.03, Color::WHITE);
-        gizmos.sphere(t.to, 0.05, Color::srgb(1.0, 0.3, 0.2));
+        gizmos.sphere(t.from, 0.03, Color::srgba(1.0, 1.0, 1.0, 0.3));
+        gizmos.sphere(t.to, 0.05, Color::srgba(1.0, 0.3, 0.2, 0.3));
         // Short ricochet path.
         if let Some(reflect_to) = t.reflect_to {
-            gizmos.line(t.to, reflect_to, Color::srgb(1.0, 0.5, 0.1));
+            gizmos.line(t.to, reflect_to, Color::srgba(1.0, 0.5, 0.1, 0.3));
         }
     }
 }
 
 /// Updates position and draws bullet impact sparks (0.04m diameter, air friction, red/slower for persons).
-pub fn draw_bullet_sparks(time: Res<Time>, mut gizmos: Gizmos, mut sparks: ResMut<BulletSparks>) {
+pub fn draw_bullet_sparks(
+    time: Res<Time>,
+    mut gizmos: Gizmos,
+    mut sparks: ResMut<BulletSparks>,
+    settings: Res<crate::plugins::visual_fx::settings::VfxSettings>,
+) {
+    if !settings.gun_gizmos {
+        sparks.0.clear();
+        return;
+    }
     let dt = time.delta_secs();
     if dt <= 0.0 {
         return;
@@ -369,7 +410,7 @@ pub fn draw_bullet_sparks(time: Res<Time>, mut gizmos: Gizmos, mut sparks: ResMu
         s.velocity *= (1.0 - air_friction * dt).max(0.0);
         s.position += s.velocity * dt;
 
-        let alpha = (s.lifetime / 1.0).clamp(0.0, 1.0);
+        let alpha = (s.lifetime / 1.0).clamp(0.0, 1.0) * 0.3;
         let color = if s.is_person {
             Color::srgba(0.95, 0.15, 0.15, alpha)
         } else {

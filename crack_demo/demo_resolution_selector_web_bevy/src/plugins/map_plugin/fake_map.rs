@@ -5,7 +5,7 @@ use crate::plugins::states::InitialMapLoadFinished;
 use bevy::light::{NotShadowCaster, NotShadowReceiver};
 use bevy::prelude::*;
 use bevy::tasks::futures_lite::future;
-use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
+use bevy::world_serialization::WorldAssetRoot;
 use game_logic::api::{FetchArgs, FetchFakeMapTiles};
 use game_logic::map::{BBox, FakeMapTile};
 use std::collections::BTreeMap;

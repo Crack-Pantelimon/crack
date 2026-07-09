@@ -13,3 +13,5 @@ pub mod physics_plugin;
 pub mod states;
 pub mod traffic;
 pub mod weapons;
+pub mod visual_fx;
+
