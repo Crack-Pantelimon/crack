@@ -1,7 +1,7 @@
-use bevy::prelude::*;
-use super::materials::{AdditiveFxMaterial, BlendFxMaterial, BillboardParams, FxKind};
-use super::spawn::{spawn_additive_billboard_fx, spawn_blend_billboard_fx, VfxMeshes, VfxDrift};
+use super::materials::{AdditiveFxMaterial, BillboardParams, BlendFxMaterial, FxKind};
 use super::settings::VfxSettings;
+use super::spawn::{VfxDrift, VfxMeshes, spawn_additive_billboard_fx, spawn_blend_billboard_fx};
+use bevy::prelude::*;
 
 #[derive(Event, Debug, Clone)]
 pub struct CarExplosionEvent {
@@ -122,7 +122,9 @@ pub fn car_explosion_observer(
                 pos + offset,
                 params,
             );
-            commands.entity(smoke_entity).insert(VfxDrift { velocity: drift_vel });
+            commands.entity(smoke_entity).insert(VfxDrift {
+                velocity: drift_vel,
+            });
         }
     }
 }

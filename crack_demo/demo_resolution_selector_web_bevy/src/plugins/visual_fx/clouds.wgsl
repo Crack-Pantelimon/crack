@@ -1,6 +1,5 @@
 #import bevy_pbr::mesh_functions::get_world_from_local
-#import bevy_pbr::mesh_view_bindings::view
-#import bevy_render::globals::globals
+#import bevy_pbr::mesh_view_bindings::{view, globals}
 
 struct CloudParams {
     color: vec4<f32>,
@@ -8,10 +7,11 @@ struct CloudParams {
     opacity: f32,
     wind: vec2<f32>,
     scale: f32,
+    debug_solid: f32,
     _pad1: f32,
     _pad2: f32,
 };
-@group(2) @binding(0) var<uniform> u: CloudParams;
+@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> u: CloudParams;
 
 struct VertexOutput {
     @builtin(position) clip: vec4<f32>,
@@ -46,8 +46,13 @@ fn fbm(p: vec2<f32>) -> f32 {
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+    if (u.debug_solid > 0.5) {
+        return vec4<f32>(1.0, 1.0, 1.0, 0.3 * u.opacity * u.color.a);
+    }
     let uv = in.world_pos.xz * u.scale + globals.time * u.wind;
-    var d = fbm(uv);
-    d = smoothstep(u.coverage, 1.0, d);
+    // fbm ∈ [0,0.875]; remap to ~[0,1] so `coverage` behaves intuitively.
+    let n = clamp(fbm(uv) / 0.875, 0.0, 1.0);
+    let d = smoothstep(u.coverage, u.coverage + 0.35, n); // wider ramp than (coverage,1)
+    if (d <= 0.001) { discard; }
     return vec4<f32>(u.color.rgb, d * u.opacity * u.color.a);
 }

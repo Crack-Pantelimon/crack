@@ -1,5 +1,6 @@
+use super::materials::{AdditiveFxMaterial, BillboardParams, BlendFxMaterial};
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::prelude::*;
-use super::materials::{AdditiveFxMaterial, BlendFxMaterial, BillboardParams};
 
 #[derive(Component, Debug)]
 pub struct VfxLifetime {
@@ -26,12 +27,18 @@ pub fn spawn_additive_billboard_fx(
 ) -> Entity {
     let despawn_at = time.elapsed_secs_f64() + params.lifetime as f64 + 0.05;
     let mat = mats.add(AdditiveFxMaterial { params });
-    commands.spawn((
-        Mesh3d(meshes.quad.clone()),
-        MeshMaterial3d(mat),
-        Transform::from_translation(pos),
-        VfxLifetime { despawn_at },
-    )).id()
+    commands
+        .spawn((
+            Mesh3d(meshes.quad.clone()),
+            MeshMaterial3d(mat),
+            Transform::from_translation(pos),
+            // The vertex shader expands the 1x1 quad up to `radius` around the center,
+            // well beyond the mesh AABB, so disable frustum culling to keep it from
+            // popping out of view near the screen edges.
+            NoFrustumCulling,
+            VfxLifetime { despawn_at },
+        ))
+        .id()
 }
 
 pub fn spawn_blend_billboard_fx(
@@ -44,12 +51,16 @@ pub fn spawn_blend_billboard_fx(
 ) -> Entity {
     let despawn_at = time.elapsed_secs_f64() + params.lifetime as f64 + 0.05;
     let mat = mats.add(BlendFxMaterial { params });
-    commands.spawn((
-        Mesh3d(meshes.quad.clone()),
-        MeshMaterial3d(mat),
-        Transform::from_translation(pos),
-        VfxLifetime { despawn_at },
-    )).id()
+    commands
+        .spawn((
+            Mesh3d(meshes.quad.clone()),
+            MeshMaterial3d(mat),
+            Transform::from_translation(pos),
+            // See note in spawn_additive_billboard_fx: the shader expands past the mesh AABB.
+            NoFrustumCulling,
+            VfxLifetime { despawn_at },
+        ))
+        .id()
 }
 
 pub fn despawn_expired_fx(
@@ -67,20 +78,14 @@ pub fn despawn_expired_fx(
     }
 }
 
-pub fn tick_vfx_drift(
-    time: Res<Time>,
-    mut q: Query<(&mut Transform, &VfxDrift)>,
-) {
+pub fn tick_vfx_drift(time: Res<Time>, mut q: Query<(&mut Transform, &VfxDrift)>) {
     let dt = time.delta_secs();
     for (mut tf, drift) in &mut q {
         tf.translation += drift.velocity * dt;
     }
 }
 
-pub fn setup_vfx_meshes(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
+pub fn setup_vfx_meshes(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     // Create a 1x1 quad in XY plane, centered at 0,0
     let quad = Rectangle::new(1.0, 1.0);
     let handle = meshes.add(quad);

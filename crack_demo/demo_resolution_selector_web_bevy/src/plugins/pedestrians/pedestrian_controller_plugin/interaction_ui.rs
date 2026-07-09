@@ -146,7 +146,9 @@ use std::f32::consts::PI;
 use super::animation::node_for;
 use super::spawn::ControlledCharacter;
 use super::{CharacterController, CharacterScale, SCALE_MAX, SCALE_MIN};
-use crate::plugins::cars_driving::driving_plugin::spawn_car::{ActivePlayerVehicle, Car};
+use crate::plugins::cars_driving::driving_plugin::spawn_car::{
+    ActivePlayerVehicle, Car, DisabledCar,
+};
 use crate::plugins::pedestrians::spawn_pedestrian::{ModelController, ModelRoot};
 use crate::plugins::pedestrians::{PedestrianAnimations, PedestrianManifest, SpawnPedestrianEvent};
 use crate::plugins::states::GameControlState;
@@ -193,22 +195,29 @@ pub struct DriverMeshExit {
     pub exit_rot: Quat,
 }
 
-/// F while looking at a car through the crosshair (hit point within ~1.2m of the
-/// character) starts the enter-car sequence.
+#[derive(Component, Debug, Clone)]
+pub struct PendingEnterCar {
+    pub car: Entity,
+    pub until: f32,
+}
+
 /// F while looking at a car through the crosshair (hit point within ~1.2m of the
 /// character) starts the enter-car sequence.
 pub fn detect_car_interaction(
     keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
     q_player: Query<
         (Entity, &GlobalTransform),
         (With<CharacterController>, Without<EnteringCarTimer>),
     >,
+    q_pending: Query<&PendingEnterCar>,
     camera_query: Query<&GlobalTransform, With<Camera3d>>,
     q_cars: Query<(), With<Car>>,
     parents: Query<&ChildOf>,
     spatial_query: SpatialQuery,
     mut commands: Commands,
-    q_car_health: Query<&crate::plugins::cars_driving::driving_plugin::spawn_car::CarHealth>,
+    q_people: Query<Entity, With<CharacterController>>,
+    q_disabled: Query<(), With<DisabledCar>>,
     q_children: Query<&Children>,
     q_driver: Query<(Entity, &DriverMesh, &Faction, &Health, &Transform)>,
     q_car_gt: Query<&GlobalTransform>,
@@ -229,6 +238,50 @@ pub fn detect_car_interaction(
     let Some((ped_entity, ped_tf)) = q_player.iter().next() else {
         return;
     };
+
+    // Clean up expired PendingEnterCar
+    if let Ok(pending) = q_pending.get(ped_entity) {
+        if time.elapsed_secs() > pending.until {
+            commands.entity(ped_entity).remove::<PendingEnterCar>();
+        }
+    }
+
+    // F2c: Check if we have a pending car and it's valid/empty
+    let mut resolved_car = None;
+    if let Ok(pending) = q_pending.get(ped_entity) {
+        let car = pending.car;
+        if time.elapsed_secs() <= pending.until {
+            if let Ok(car_gt) = q_car_gt.get(car) {
+                // F2d: check proximity to body instead of raycast hit
+                if ped_tf.translation().distance(car_gt.translation()) <= 3.0 {
+                    if q_disabled.get(car).is_err() {
+                        let mut has_driver = false;
+                        if let Ok(children) = q_children.get(car) {
+                            for child in children.iter() {
+                                if q_driver.get(child).is_ok() {
+                                    has_driver = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !has_driver {
+                            resolved_car = Some(car);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(car) = resolved_car {
+        commands.entity(ped_entity).remove::<PendingEnterCar>();
+        commands.entity(ped_entity).insert(EnteringCarTimer {
+            car_entity: car,
+            timer: Timer::from_seconds(1.2, TimerMode::Once),
+        });
+        return;
+    }
+
     let Some(cam) = camera_query.iter().next() else {
         return;
     };
@@ -236,7 +289,13 @@ pub fn detect_car_interaction(
     // Shot from the camera through the screen-center crosshair (same convention as guns).
     let origin = cam.translation();
     let dir = cam.forward();
-    let filter = SpatialQueryFilter::default().with_excluded_entities([ped_entity]);
+
+    // F2a: Widen excluded set to exclude all active pedestrians (players and AI)
+    let mut excluded = vec![ped_entity];
+    for entity in q_people.iter() {
+        excluded.push(entity);
+    }
+    let filter = SpatialQueryFilter::default().with_excluded_entities(excluded);
     let Some(hit) = spatial_query.cast_ray(origin, dir, 30.0, true, &filter) else {
         return;
     };
@@ -258,17 +317,17 @@ pub fn detect_car_interaction(
         return;
     };
 
-    // ...and the character must be standing next to it.
-    let hit_point = origin + *dir * hit.distance;
-    if ped_tf.translation().distance(hit_point) > 1.2 {
+    // F2d: character must be standing next to the car itself (proximity to root, 3.0m threshold)
+    let Ok(car_gt) = q_car_gt.get(car) else {
+        return;
+    };
+    if ped_tf.translation().distance(car_gt.translation()) > 3.0 {
         return;
     }
 
-    // Check if the car is disabled
-    if let Ok(car_health) = q_car_health.get(car) {
-        if car_health.current < 100.0 {
-            return; // Block entering / interacting
-        }
+    // F2b: replace magic-number health gate with DisabledCar check
+    if q_disabled.get(car).is_ok() {
+        return; // wrecked cars are not enterable
     }
 
     // Check if the car has a driver
@@ -287,6 +346,11 @@ pub fn detect_car_interaction(
         // now-empty car to actually get in.
         let car_gt = q_car_gt.get(car).cloned().unwrap_or(*ped_tf);
         eject_driver_as_ai(&mut commands, &car_gt, d_ent, faction, health, tf.scale.x);
+        // F2c: Set pending enter car on player so they can press F to enter next time reliably
+        commands.entity(ped_entity).insert(PendingEnterCar {
+            car,
+            until: time.elapsed_secs() + 5.0,
+        });
     } else {
         commands.entity(ped_entity).insert(EnteringCarTimer {
             car_entity: car,

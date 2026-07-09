@@ -332,39 +332,48 @@ impl OccluderWorld {
             center,
         ];
 
+        // The camera sphere samples model *uncertainty* in the camera position
+        // between LOD recomputes (the camera can drift a few metres before the next
+        // request). `camera.max_range` is a LOD *reach* distance (hundreds–thousands
+        // of metres in `lod_flow.rs`); using it as the sample-sphere radius scatters
+        // test cameras so far out that some sample always has a clear line of sight,
+        // which makes the visibility gate return `true` for everything and disables
+        // culling entirely. Bound it to a small drift radius so the samples stay in
+        // the camera's actual neighbourhood and share its occlusion.
+        const MAX_CAMERA_DRIFT: f32 = 6.0;
+
         for camera in cameras {
-            // Check direct line of sight from the center of the camera sphere
+            // Check direct line of sight from the actual camera position.
             for &q in &corners {
                 if !self.is_ray_occluded(camera.center, q, node_path, node_bbox) {
-                    return true; // Visible from look target center!
+                    return true; // Visible from the camera itself.
                 }
             }
 
-            // Fibonacci sphere camera sampling
-            let num_samples = 16;
-            let dir_to_node = (center - camera.center).normalize_or_zero();
+            let drift = camera.max_range.min(MAX_CAMERA_DRIFT);
+            if drift <= 1e-3 {
+                continue; // no drift budget => camera-center test above is definitive
+            }
 
+            // Fibonacci-sphere samples around the camera position (uniform, small radius).
+            let num_samples = 16;
             for s in 0..num_samples {
-                // Generate sphere points
                 let y = 1.0 - (s as f32 / (num_samples - 1) as f32) * 2.0;
                 let radius = (1.0 - y * y).sqrt();
                 let golden_ratio = (1.0 + 5.0f32.sqrt()) / 2.0;
                 let theta = 2.0 * std::f32::consts::PI * (s as f32) / golden_ratio;
                 let offset = Vector::new(radius * theta.cos(), y, radius * theta.sin());
-                
-                // Keep only the hemisphere facing the target node
-                if offset.dot(dir_to_node) >= 0.0 {
-                    let cam_pos = camera.center + offset * camera.max_range;
-                    for &q in &corners {
-                        if !self.is_ray_occluded(cam_pos, q, node_path, node_bbox) {
-                            return true; // Visible from this sphere sample!
-                        }
+
+                let cam_pos = camera.center + offset * drift;
+                for &q in &corners {
+                    if !self.is_ray_occluded(cam_pos, q, node_path, node_bbox) {
+                        return true; // Visible from a plausible near-camera position.
                     }
                 }
             }
         }
 
-        false // Fully occluded from all camera regions!
+        false // Occluded from the camera and its whole drift neighbourhood.
     }
 }
 

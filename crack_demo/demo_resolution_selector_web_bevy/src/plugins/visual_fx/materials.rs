@@ -15,13 +15,13 @@ pub enum FxKind {
 
 #[derive(Clone, Copy, ShaderType, Debug)]
 pub struct BillboardParams {
-    pub color: Vec4,      // base tint incl. alpha multiplier
-    pub spawn_time: f32,  // globals.time at spawn
-    pub lifetime: f32,    // seconds
+    pub color: Vec4,     // base tint incl. alpha multiplier
+    pub spawn_time: f32, // globals.time at spawn
+    pub lifetime: f32,   // seconds
     pub start_radius: f32,
-    pub end_radius: f32,  // for expanding fireball/smoke
-    pub seed: f32,        // per-instance noise offset
-    pub kind: u32,        // FxKind
+    pub end_radius: f32, // for expanding fireball/smoke
+    pub seed: f32,       // per-instance noise offset
+    pub kind: u32,       // FxKind
     pub _pad: f32,
 }
 
@@ -101,6 +101,7 @@ pub struct CloudParamsUniform {
     pub opacity: f32,
     pub wind: Vec2,
     pub scale: f32,
+    pub debug_solid: f32,
     pub _pad1: f32,
     pub _pad2: f32,
 }

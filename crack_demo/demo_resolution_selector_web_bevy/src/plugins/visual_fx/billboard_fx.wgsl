@@ -1,6 +1,5 @@
 #import bevy_pbr::mesh_functions::get_world_from_local
-#import bevy_pbr::mesh_view_bindings::view
-#import bevy_render::globals::globals
+#import bevy_pbr::mesh_view_bindings::{view, globals}
 
 struct Params {
     color: vec4<f32>,
@@ -12,7 +11,7 @@ struct Params {
     kind: u32,
     _pad: f32,
 };
-@group(2) @binding(0) var<uniform> P: Params;
+@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> P: Params;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -31,15 +30,22 @@ fn vertex(@location(0) pos: vec3<f32>,
 
     if (P.kind == 5u) {
         // Tracer: stretched screen-facing ribbon from muzzle to impact.
-        // model[0].xyz is local X axis scaled by the segment length.
-        let shot_vector = model[0].xyz;
-        let camera_dir = normalize(center - view.world_position);
-        let shot_dir = normalize(shot_vector);
-        let lateral = normalize(cross(shot_dir, camera_dir));
+        // model[3].xyz is world muzzle, model[0].xyz is impact vector.
+        let a = model[3].xyz;
+        let beam = model[0].xyz;
+        let t = pos.x + 0.5; // pos.x ∈ [-0.5, 0.5] -> t ∈ [0, 1]
+        let point = a + beam * t;
+
+        let cam = view.world_position - point;
+        let beam_dir = normalize(beam);
+        var lateral = normalize(cross(beam_dir, cam));
+        if (!(dot(lateral, lateral) > 0.0)) { lateral = view.world_from_view[1].xyz; } // parallel guard
+
+        // Constant screen-ish width: scale by distance so the ribbon stays visible at range
+        let dist = length(cam);
         let radius = mix(P.start_radius, P.end_radius, age);
-        
-        // pos.x is in [-0.5, 0.5], pos.y is in [-0.5, 0.5]
-        world = center + shot_vector * pos.x + lateral * (pos.y * radius);
+        let half_w = max(radius, 0.0025 * dist);
+        world = point + lateral * (pos.y * 2.0 * half_w);
     } else {
         // Standard camera-facing billboard
         let radius = mix(P.start_radius, P.end_radius, age);
@@ -50,7 +56,11 @@ fn vertex(@location(0) pos: vec3<f32>,
 
     var out: VOut;
     out.clip = view.clip_from_world * vec4<f32>(world, 1.0);
-    out.uv = pos.xy * 2.0; // quad is 1x1 -> uv in [-1,1]
+    if (P.kind == 5u) {
+        out.uv = vec2<f32>(pos.x + 0.5, pos.y * 2.0);
+    } else {
+        out.uv = pos.xy * 2.0; // quad is 1x1 -> uv in [-1,1]
+    }
     return out;
 }
 
@@ -88,8 +98,8 @@ fn fragment(in: VOut) -> @location(0) vec4<f32> {
             alpha = heat * (1.0 - age) * P.color.a;
         }
         case 1u, 2u: { // Smoke (light or black): billowy, fade in then out
-            let puff = disk * (0.5 + 0.5 * n);
-            let fade = smoothstep(0.0, 0.15, age) * (1.0 - age);
+            let puff = disk * (0.6 + 0.4 * n);
+            let fade = smoothstep(0.0, 0.08, age) * (1.0 - age); // faster fade-in
             alpha = puff * fade * P.color.a;
         }
         case 3u: { // Muzzle flash: sharp star, very short
@@ -101,10 +111,11 @@ fn fragment(in: VOut) -> @location(0) vec4<f32> {
             let streak = pow(abs(sin(ang * 9.0 + P.seed * 6.28)), 8.0);
             alpha = streak * (1.0 - r) * (1.0 - age) * P.color.a;
         }
-        case 5u: { // Tracer: lateral falloff
-            let lateral = abs(in.uv.y);
-            let intensity = smoothstep(1.0, 0.0, lateral);
-            alpha = intensity * (1.0 - age) * P.color.a;
+        case 5u: { // Tracer: hot core, soft lateral falloff, fade along life
+            let edge = smoothstep(1.0, 0.0, abs(in.uv.y));  // 1 at core → 0 at edge
+            let core = pow(edge, 4.0);                       // tight bright center
+            rgb = mix(P.color.rgb, vec3(1.0), core);         // whiten the core
+            alpha = (0.5 * edge + 0.6 * core) * (1.0 - age) * P.color.a;
         }
         default: {}
     }

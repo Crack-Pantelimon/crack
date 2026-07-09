@@ -21,6 +21,7 @@ pub fn setup_clouds(
             opacity: settings.cloud_opacity,
             wind: Vec2::new(settings.cloud_wind_x, settings.cloud_wind_y),
             scale: settings.cloud_scale,
+            debug_solid: if settings.debug_solid { 1.0 } else { 0.0 },
             _pad1: 0.0,
             _pad2: 0.0,
         },
@@ -44,6 +45,9 @@ pub fn sync_cloud_uniforms(
     mut cloud_mats: ResMut<Assets<CloudMaterial>>,
     q_planes: Query<&MeshMaterial3d<CloudMaterial>, With<CloudPlane>>,
 ) {
+    if !settings.is_changed() {
+        return;
+    }
     for mat_handle in &q_planes {
         if let Some(mut mat) = cloud_mats.get_mut(mat_handle) {
             mat.params.coverage = settings.cloud_coverage;
@@ -54,6 +58,7 @@ pub fn sync_cloud_uniforms(
             };
             mat.params.wind = Vec2::new(settings.cloud_wind_x, settings.cloud_wind_y);
             mat.params.scale = settings.cloud_scale;
+            mat.params.debug_solid = if settings.debug_solid { 1.0 } else { 0.0 };
         }
     }
 }

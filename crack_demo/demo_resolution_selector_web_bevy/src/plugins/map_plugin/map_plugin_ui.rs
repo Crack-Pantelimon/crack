@@ -141,7 +141,10 @@ pub fn tree_navigator_ui(
                 lod_state.tiles_per_diagonal = tiles_per_diagonal;
             }
 
-            ui.checkbox(&mut lod_state.enable_visibility_cull, "Enable Visibility Culling");
+            ui.checkbox(
+                &mut lod_state.enable_visibility_cull,
+                "Enable Visibility Culling",
+            );
 
             ui.separator();
 

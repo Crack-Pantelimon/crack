@@ -1,7 +1,7 @@
 use avian3d::prelude::{Collider, SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 
-use super::weapon_attach::{EquippedWeapon, WeaponModel, WeaponModelState, WeaponExtents};
+use super::weapon_attach::{EquippedWeapon, WeaponExtents, WeaponModel, WeaponModelState};
 use super::weapon_manifest::WeaponId;
 use crate::plugins::pedestrians::ModelRoot;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{CharacterController, DriverMesh};

@@ -1,7 +1,7 @@
-use bevy::prelude::*;
-use super::materials::{BlendFxMaterial, BillboardParams, FxKind};
-use super::spawn::{spawn_blend_billboard_fx, VfxMeshes, VfxDrift};
+use super::materials::{BillboardParams, BlendFxMaterial, FxKind};
 use super::settings::VfxSettings;
+use super::spawn::{VfxDrift, VfxMeshes, spawn_blend_billboard_fx};
+use bevy::prelude::*;
 
 #[derive(Component, Debug, Clone)]
 pub struct SmokeEmitter {
@@ -35,7 +35,7 @@ pub fn tick_smoke_emitters(
         if now >= emitter.next_spawn_time {
             // Spawn black smoke puff at the wreck top (approx 1.0m above wreck center)
             let pos = gt.translation() + Vec3::new(0.0, 1.0, 0.0);
-            
+
             // Random offset & drift velocity
             let offset = Vec3::new(
                 (rand::random::<f32>() - 0.5) * 0.4,
@@ -67,7 +67,9 @@ pub fn tick_smoke_emitters(
                 pos + offset,
                 params,
             );
-            commands.entity(smoke_entity).insert(VfxDrift { velocity: drift_vel });
+            commands.entity(smoke_entity).insert(VfxDrift {
+                velocity: drift_vel,
+            });
 
             emitter.next_spawn_time = now + 0.4;
         }

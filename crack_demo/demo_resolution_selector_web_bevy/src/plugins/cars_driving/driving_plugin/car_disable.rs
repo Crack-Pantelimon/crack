@@ -53,10 +53,12 @@ pub fn disable_low_health_cars(
             position: car_gt.translation(),
         });
 
-        commands.entity(car_ent).insert(crate::plugins::visual_fx::SmokeEmitter {
-            next_spawn_time: time.elapsed_secs(),
-            active_until: time.elapsed_secs() + 15.0,
-        });
+        commands
+            .entity(car_ent)
+            .insert(crate::plugins::visual_fx::SmokeEmitter {
+                next_spawn_time: time.elapsed_secs(),
+                active_until: time.elapsed_secs() + 15.0,
+            });
 
         // Locate the seated driver mesh, if any.
         let mut driver = None;

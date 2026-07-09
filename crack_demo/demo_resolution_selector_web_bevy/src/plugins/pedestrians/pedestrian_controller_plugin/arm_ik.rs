@@ -15,7 +15,6 @@ use crate::plugins::weapons::{EquippedWeapon, GunState};
 use bevy_egui::EguiContexts;
 
 /// Beyond this yaw offset from character forward, the spine is pre-rotated so the arm can reach.
-const ARM_DEAD_ZONE_ANGLE: f32 = 120.0 * (std::f32::consts::PI / 180.0);
 
 /// Screen-center crosshair aim point (same convention as guns).
 fn crosshair_target(cam: &GlobalTransform, spatial: &SpatialQuery) -> Vec3 {
@@ -29,18 +28,19 @@ fn crosshair_target(cam: &GlobalTransform, spatial: &SpatialQuery) -> Vec3 {
     }
 }
 
-fn compute_spine_compensation(char_forward: Vec3, to_target: Vec3) -> Option<f32> {
+/// Horizontal yaw (radians, signed) the torso should add so the target sits in front.
+/// Continuous: 0 when already facing the target, growing monotonically, clamped to a max.
+fn torso_yaw_toward(char_forward: Vec3, to_target: Vec3, max_yaw: f32) -> f32 {
     let fwd = Vec3::new(char_forward.x, 0.0, char_forward.z).normalize_or_zero();
     let to = Vec3::new(to_target.x, 0.0, to_target.z).normalize_or_zero();
     if fwd.length_squared() < 1e-6 || to.length_squared() < 1e-6 {
-        return None;
+        return 0.0;
     }
-    let angle = Vec2::new(fwd.x, fwd.z).angle_to(Vec2::new(to.x, to.z));
-    if angle.abs() > ARM_DEAD_ZONE_ANGLE {
-        Some(angle - ARM_DEAD_ZONE_ANGLE.copysign(angle))
-    } else {
-        None
-    }
+    let ang = Vec2::new(fwd.x, fwd.z).angle_to(Vec2::new(to.x, to.z)); // (-π, π]
+    // Only compensate the part beyond the shoulder's comfortable ~70° cone.
+    const COMFORT: f32 = 70.0 * std::f32::consts::PI / 180.0;
+    let excess = (ang.abs() - COMFORT).max(0.0);
+    excess.copysign(ang).clamp(-max_yaw, max_yaw)
 }
 
 /// Walk up to the root and compose world-space transform from local `Transform`s.
@@ -60,6 +60,32 @@ fn world_transform(
     let mut world = Transform::IDENTITY;
     for ent in chain {
         world = world.mul_transform(*transforms.get(ent).ok()?);
+    }
+    Some(world)
+}
+
+/// Walk up to the root and compose world-space transform from local `Transform`s,
+/// consulting the overrides map.
+fn world_transform_with_overrides(
+    entity: Entity,
+    transforms: &Query<&Transform>,
+    parents: &Query<&ChildOf>,
+    overrides: &std::collections::HashMap<Entity, Quat>,
+) -> Option<Transform> {
+    let mut chain = vec![entity];
+    let mut cur = entity;
+    while let Ok(child_of) = parents.get(cur) {
+        cur = child_of.parent();
+        chain.push(cur);
+    }
+    chain.reverse();
+    let mut world = Transform::IDENTITY;
+    for ent in chain {
+        let mut local = *transforms.get(ent).ok()?;
+        if let Some(&new_rot) = overrides.get(&ent) {
+            local.rotation = new_rot;
+        }
+        world = world.mul_transform(local);
     }
     Some(world)
 }
@@ -102,12 +128,35 @@ fn two_bone_ik_positions(
     (new_elbow, new_wrist)
 }
 
+/// `from_rotation_arc` that stays continuous through the antiparallel case by falling back to a
+/// stable reference axis instead of glam's arbitrary pick.
+fn safe_rotation_arc(from: Vec3, to: Vec3, fallback_axis: Vec3) -> Quat {
+    let a = from.normalize_or_zero();
+    let b = to.normalize_or_zero();
+    if a.length_squared() < 1e-6 || b.length_squared() < 1e-6 {
+        return Quat::IDENTITY;
+    }
+    let d = a.dot(b).clamp(-1.0, 1.0);
+    if d < -0.9995 {
+        let mut axis = a.cross(fallback_axis).normalize_or_zero();
+        if axis.length_squared() < 1e-6 {
+            axis = a.cross(Vec3::Y).normalize_or_zero();
+        }
+        if axis.length_squared() < 1e-6 {
+            axis = a.cross(Vec3::X).normalize_or_zero();
+        }
+        return Quat::from_axis_angle(axis, std::f32::consts::PI);
+    }
+    Quat::from_rotation_arc(a, b)
+}
+
 /// Rotate a joint so its child moves toward `desired_child_pos`.
 fn aim_joint_local_rotation(
     joint_world: &Transform,
     parent_world: &Transform,
     child_pos: Vec3,
     desired_child_pos: Vec3,
+    fallback_axis: Vec3,
 ) -> Quat {
     let joint_pos = joint_world.translation;
     let current_dir = (child_pos - joint_pos).normalize_or_zero();
@@ -115,7 +164,7 @@ fn aim_joint_local_rotation(
     if current_dir.length_squared() < 1e-6 || desired_dir.length_squared() < 1e-6 {
         return joint_world.rotation;
     }
-    let delta_world = Quat::from_rotation_arc(current_dir, desired_dir);
+    let delta_world = safe_rotation_arc(current_dir, desired_dir, fallback_axis);
     let new_world_rot = delta_world * joint_world.rotation;
     parent_world.rotation.inverse() * new_world_rot
 }
@@ -126,85 +175,109 @@ fn apply_arm_chain_ik(
     target: Vec3,
     pole: Vec3,
     char_forward: Vec3,
+    char_up: Vec3,
     char_pos: Vec3,
     transforms: &Query<&Transform>,
     parents: &Query<&ChildOf>,
+    gizmos: &mut Gizmos,
 ) -> Vec<(Entity, Quat)> {
     let Some((shoulder_ent, elbow_ent, wrist_ent)) = skeleton.arm_chain(arm) else {
         return Vec::new();
     };
 
-    let Some(shoulder_world) = world_transform(shoulder_ent, transforms, parents) else {
-        return Vec::new();
-    };
-    let Some(elbow_world) = world_transform(elbow_ent, transforms, parents) else {
-        return Vec::new();
-    };
-    let Some(wrist_world) = world_transform(wrist_ent, transforms, parents) else {
-        return Vec::new();
-    };
-
     let mut rotations = Vec::new();
+    let mut overrides = std::collections::HashMap::new();
+
+    // 1. Spine compensation
+    if let Some(spine_ent) = skeleton.spine {
+        let to_target = target - char_pos;
+        let yaw = torso_yaw_toward(char_forward, to_target, 60f32.to_radians());
+        let spine_world = world_transform(spine_ent, transforms, parents);
+        let parent_world = parents
+            .get(spine_ent)
+            .ok()
+            .and_then(|c| world_transform(c.parent(), transforms, parents));
+        if let (Some(spine_world), Some(parent_world)) = (spine_world, parent_world) {
+            let new_world_rot = Quat::from_axis_angle(char_up, yaw) * spine_world.rotation;
+            let local_rot = parent_world.rotation.inverse() * new_world_rot;
+            rotations.push((spine_ent, local_rot));
+            overrides.insert(spine_ent, local_rot);
+        }
+    }
+
+    // 2. Solve two-bone IK positions
+    let Some(shoulder_world) =
+        world_transform_with_overrides(shoulder_ent, transforms, parents, &overrides)
+    else {
+        return rotations;
+    };
+    let Some(elbow_world) =
+        world_transform_with_overrides(elbow_ent, transforms, parents, &overrides)
+    else {
+        return rotations;
+    };
+    let Some(wrist_world) =
+        world_transform_with_overrides(wrist_ent, transforms, parents, &overrides)
+    else {
+        return rotations;
+    };
 
     let shoulder_pos = shoulder_world.translation;
     let elbow_pos = elbow_world.translation;
     let wrist_pos = wrist_world.translation;
 
-    if let Some(spine_ent) = skeleton.spine {
-        let to_target = target - char_pos;
-        if let Some(excess_yaw) = compute_spine_compensation(char_forward, to_target) {
-            let spine_world = world_transform(spine_ent, transforms, parents);
-            let parent_world = parents
-                .get(spine_ent)
-                .ok()
-                .and_then(|c| world_transform(c.parent(), transforms, parents));
-            if let (Some(spine_world), Some(parent_world)) = (spine_world, parent_world) {
-                let new_world_rot = Quat::from_rotation_y(excess_yaw) * spine_world.rotation;
-                rotations.push((spine_ent, parent_world.rotation.inverse() * new_world_rot));
-            }
-        }
-    }
-
-    let transforms_for_ik = |ent: Entity| world_transform(ent, transforms, parents);
-
-    let shoulder_pos = transforms_for_ik(shoulder_ent)
-        .map(|t| t.translation)
-        .unwrap_or(shoulder_pos);
-    let elbow_pos = transforms_for_ik(elbow_ent)
-        .map(|t| t.translation)
-        .unwrap_or(elbow_pos);
-    let wrist_pos = transforms_for_ik(wrist_ent)
-        .map(|t| t.translation)
-        .unwrap_or(wrist_pos);
-
     let (new_elbow, new_wrist) =
         two_bone_ik_positions(shoulder_pos, elbow_pos, wrist_pos, target, pole);
 
-    let parent_world = |ent: Entity| -> Transform {
-        parents
-            .get(ent)
-            .ok()
-            .and_then(|c| world_transform(c.parent(), transforms, parents))
-            .unwrap_or(Transform::IDENTITY)
+    // 3. Solve shoulder rotation
+    let parent_world_shoulder = parents
+        .get(shoulder_ent)
+        .ok()
+        .and_then(|c| world_transform_with_overrides(c.parent(), transforms, parents, &overrides))
+        .unwrap_or(Transform::IDENTITY);
+
+    let shoulder_local_rot = aim_joint_local_rotation(
+        &shoulder_world,
+        &parent_world_shoulder,
+        elbow_pos,
+        new_elbow,
+        char_up,
+    );
+    rotations.push((shoulder_ent, shoulder_local_rot));
+    overrides.insert(shoulder_ent, shoulder_local_rot);
+
+    // 4. Solve elbow rotation
+    let Some(elbow_world_updated) =
+        world_transform_with_overrides(elbow_ent, transforms, parents, &overrides)
+    else {
+        return rotations;
     };
+    let parent_world_elbow = parents
+        .get(elbow_ent)
+        .ok()
+        .and_then(|c| world_transform_with_overrides(c.parent(), transforms, parents, &overrides))
+        .unwrap_or(Transform::IDENTITY);
 
-    if let Some(shoulder_world) = transforms_for_ik(shoulder_ent) {
-        rotations.push((
-            shoulder_ent,
-            aim_joint_local_rotation(
-                &shoulder_world,
-                &parent_world(shoulder_ent),
-                elbow_pos,
-                new_elbow,
-            ),
-        ));
-    }
+    let wrist_pos_updated =
+        world_transform_with_overrides(wrist_ent, transforms, parents, &overrides)
+            .map(|t| t.translation)
+            .unwrap_or(wrist_pos);
 
-    if let Some(elbow_world) = transforms_for_ik(elbow_ent) {
-        rotations.push((
-            elbow_ent,
-            aim_joint_local_rotation(&elbow_world, &parent_world(elbow_ent), wrist_pos, new_wrist),
-        ));
+    let elbow_local_rot = aim_joint_local_rotation(
+        &elbow_world_updated,
+        &parent_world_elbow,
+        wrist_pos_updated,
+        new_wrist,
+        char_up,
+    );
+    rotations.push((elbow_ent, elbow_local_rot));
+
+    #[cfg(debug_assertions)]
+    {
+        // Forearm: new_elbow -> new_wrist
+        gizmos.line(new_elbow, new_wrist, Color::srgb(0.0, 1.0, 0.0));
+        // Aim line: new_wrist -> target
+        gizmos.line(new_wrist, target, Color::srgb(1.0, 0.0, 0.0));
     }
 
     rotations
@@ -218,7 +291,9 @@ fn write_arm_ik_rotations(
     aim_point: Vec3,
     pole: Vec3,
     char_forward: Vec3,
+    char_up: Vec3,
     char_pos: Vec3,
+    gizmos: &mut Gizmos,
 ) {
     let rotations = {
         let transforms = transform_sets.p0();
@@ -228,9 +303,11 @@ fn write_arm_ik_rotations(
             aim_point,
             pole,
             char_forward,
+            char_up,
             char_pos,
             &transforms,
             parents,
+            gizmos,
         )
     };
     let mut transforms_mut = transform_sets.p1();
@@ -258,6 +335,7 @@ pub fn apply_arm_ik(
     spatial: SpatialQuery,
     parents: Query<&ChildOf>,
     mut transform_sets: ParamSet<(Query<&Transform>, Query<&mut Transform>)>,
+    mut gizmos: Gizmos,
 ) {
     let Some(cam) = camera.iter().next() else {
         return;
@@ -304,6 +382,7 @@ pub fn apply_arm_ik(
             };
 
             let char_forward = char_gt.rotation() * Vec3::NEG_Z;
+            let char_up = char_gt.rotation() * Vec3::Y;
             let char_pos = char_gt.translation();
             let pole = char_pos - char_forward * 0.5 + Vec3::NEG_Y * 0.3;
 
@@ -315,7 +394,9 @@ pub fn apply_arm_ik(
                 aim_point,
                 pole,
                 char_forward,
+                char_up,
                 char_pos,
+                &mut gizmos,
             );
         }
         GameControlState::DrivingCar => {
@@ -354,6 +435,7 @@ pub fn apply_arm_ik(
             };
 
             let char_forward = driver_gt.rotation() * Vec3::NEG_Z;
+            let char_up = driver_gt.rotation() * Vec3::Y;
             let char_pos = driver_gt.translation();
             let pole = char_pos - char_forward * 0.5 + Vec3::NEG_Y * 0.3;
 
@@ -365,7 +447,9 @@ pub fn apply_arm_ik(
                 aim_point,
                 pole,
                 char_forward,
+                char_up,
                 char_pos,
+                &mut gizmos,
             );
         }
         _ => {}

@@ -22,9 +22,17 @@ pub fn spawn_lod_task(
     mut tasks: ResMut<CrackTasks>,
     client: Res<CrackClient>,
     camera_rig: Option<Res<crate::plugins::pedestrians::pedestrian_controller_plugin::CameraRig>>,
-    q_vehicle: Query<&Transform, With<crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle>>,
-    controlled_char: Option<Res<crate::plugins::pedestrians::pedestrian_controller_plugin::ControlledCharacter>>,
-    q_character: Query<&Transform, With<crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterController>>,
+    q_vehicle: Query<
+        &Transform,
+        With<crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle>,
+    >,
+    controlled_char: Option<
+        Res<crate::plugins::pedestrians::pedestrian_controller_plugin::ControlledCharacter>,
+    >,
+    q_character: Query<
+        &Transform,
+        With<crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterController>,
+    >,
 ) {
     if tasks.lod.is_some() {
         return;
