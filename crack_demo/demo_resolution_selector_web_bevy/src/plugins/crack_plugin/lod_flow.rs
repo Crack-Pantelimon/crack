@@ -16,7 +16,7 @@ pub fn spawn_lod_task(
     q_split: Query<&TileShouldSplit>,
     q_pending: Query<&PendingTileReveal>,
     q_nodes: Query<&TreeMapTile>,
-    mut last: Local<Option<(BTreeSet<MapTreeNodePath>, Vec<Vec3>, u32, bool)>>,
+    mut last: Local<Option<(BTreeSet<MapTreeNodePath>, Vec<Vec3>, u32, bool, i32, u32)>>,
     q_camera: Query<&Transform, With<Camera3d>>,
     res_tiles: Res<TileSwapRequests>,
     mut tasks: ResMut<CrackTasks>,
@@ -76,16 +76,27 @@ pub fn spawn_lod_task(
     // The visibility-cull (BVH occluder) flag is part of the change key so toggling the debug
     // checkbox forces a fresh LOD recompute even when nothing else moved.
     let cull = lod_state.enable_visibility_cull;
+    let max_lod = lod_state.max_lod;
+    let tiles_per_diagonal_bits = lod_state.tiles_per_diagonal.to_bits();
     if let Some(last_val) = &*last {
         if nodes == last_val.0
             && quantized_refs == last_val.1
             && budget == last_val.2
             && cull == last_val.3
+            && max_lod == last_val.4
+            && tiles_per_diagonal_bits == last_val.5
         {
             return;
         }
     }
-    *last = Some((nodes.clone(), quantized_refs, budget, cull));
+    *last = Some((
+        nodes.clone(),
+        quantized_refs,
+        budget,
+        cull,
+        max_lod,
+        tiles_per_diagonal_bits,
+    ));
 
     // Calculate camera range/reachable radius based on active camera controller
     let mut camera_range = 32.0;
@@ -158,6 +169,7 @@ pub fn poll_lod_task(mut tasks: ResMut<CrackTasks>, mut res_tiles: ResMut<TileSw
                 Ok(response) => {
                     res_tiles.split_requests = response.split_requests;
                     res_tiles.merge_requests = response.merge_requests;
+                    res_tiles.culled_nodes = response.culled_nodes;
                 }
                 Err(e) => {
                     tracing::error!("LOD RPC error: {e:?}");

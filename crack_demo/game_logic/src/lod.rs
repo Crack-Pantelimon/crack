@@ -54,9 +54,16 @@ pub struct MergeRequestSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CulledNodeSummary {
+    pub path: MapTreeNodePath,
+    pub bbox: BBox,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LodComputeResponse {
     pub split_requests: Vec<SplitRequestSummary>,
     pub merge_requests: Vec<MergeRequestSummary>,
+    pub culled_nodes: Vec<CulledNodeSummary>,
 }
 
 #[inline]
@@ -93,6 +100,7 @@ pub async fn compute_lod_changes(
     req: &LodComputeRequest,
 ) -> LodComputeResponse {
     let t0 = _crack_utils::get_timestamp_now_ms();
+    let mut culled_nodes = Vec::new();
 
     #[cfg(feature = "worker")]
     let occluder_world = if req.enable_visibility_cull {
@@ -249,13 +257,20 @@ pub async fn compute_lod_changes(
                 false
             };
 
-            if new_budget <= budget as usize && is_valid_split(&node_path) && is_visible {
-                proposed_nodes.remove(&node_path);
-                proposed_splits.insert(node_path.clone());
-                current_budget = new_budget;
-                for c in children {
-                    heap.push((Score(tile_score(&c)), c.clone()));
-                    proposed_nodes.insert(c.clone());
+            if new_budget <= budget as usize && is_valid_split(&node_path) {
+                if is_visible {
+                    proposed_nodes.remove(&node_path);
+                    proposed_splits.insert(node_path.clone());
+                    current_budget = new_budget;
+                    for c in children {
+                        heap.push((Score(tile_score(&c)), c.clone()));
+                        proposed_nodes.insert(c.clone());
+                    }
+                } else {
+                    culled_nodes.push(CulledNodeSummary {
+                        path: node_path.clone(),
+                        bbox: tile_bbox(&node_path),
+                    });
                 }
             }
         }
@@ -356,5 +371,6 @@ pub async fn compute_lod_changes(
     LodComputeResponse {
         split_requests: resolved_splits,
         merge_requests: resolved_merges,
+        culled_nodes,
     }
 }

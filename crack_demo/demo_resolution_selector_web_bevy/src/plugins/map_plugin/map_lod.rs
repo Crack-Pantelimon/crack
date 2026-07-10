@@ -144,6 +144,7 @@ pub struct TileShouldSplit {
 pub struct TileSwapRequests {
     pub split_requests: Vec<game_logic::lod::SplitRequestSummary>,
     pub merge_requests: Vec<game_logic::lod::MergeRequestSummary>,
+    pub culled_nodes: Vec<game_logic::lod::CulledNodeSummary>,
 }
 
 const TILE_REVEAL_DELAY_FRAMES: u8 = 3;

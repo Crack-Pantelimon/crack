@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use super::map_lod::{
     PendingTileGroupFetch, PendingTileReveal, TileGroupFetchPurpose, TileShouldMerge,
-    TileShouldSplit, TreeMapTile,
+    TileShouldSplit, TileSwapRequests, TreeMapTile,
 };
 use super::{MapLODState, MapTree, MapTreeNodePath};
 
@@ -33,6 +33,7 @@ const COLOR_MERGING: egui::Color32 = egui::Color32::from_rgb(220, 80, 255);
 const COLOR_DROPPING: egui::Color32 = egui::Color32::from_rgb(255, 60, 60);
 const COLOR_MAP_EXTENT: egui::Color32 = egui::Color32::from_gray(110);
 const COLOR_CAMERA: egui::Color32 = egui::Color32::WHITE;
+const COLOR_CULLED: egui::Color32 = egui::Color32::from_rgb(0, 80, 220); // Dark Blue
 
 #[derive(Clone, Copy, PartialEq)]
 enum TileState {
@@ -244,6 +245,7 @@ pub fn bvh_minimap_window(
     ui_state: Option<ResMut<crate::ui_egui::UiState>>,
     mut lod_state: ResMut<MapLODState>,
     map_tree: Res<MapTree>,
+    res_tiles: Res<TileSwapRequests>,
     q_tiles: Query<(Entity, &TreeMapTile, &Visibility)>,
     q_children: Query<&Children>,
     q_aabbs: Query<(&GlobalTransform, &Aabb)>,
@@ -324,6 +326,7 @@ pub fn bvh_minimap_window(
                     ),
                     ("merge", COLOR_MERGING, counts[TileState::Merging as usize]),
                     ("drop", COLOR_DROPPING, counts[TileState::Dropping as usize]),
+                    ("culled", COLOR_CULLED, res_tiles.culled_nodes.len()),
                 ] {
                     ui.colored_label(color, format!("■ {label} {count}"));
                 }
@@ -347,6 +350,10 @@ pub fn bvh_minimap_window(
 
             for ((min, max), tile_state) in &boxes {
                 view.wire_box(&painter, *min, *max, tile_state.color());
+            }
+
+            for culled in &res_tiles.culled_nodes {
+                view.wire_box(&painter, culled.bbox.min, culled.bbox.max, COLOR_CULLED);
             }
 
             // Main camera marker: position dot + flattened view direction tick.
