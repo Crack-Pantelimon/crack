@@ -3,6 +3,8 @@
 __pycache__
 *.pyc
 post3.db
+post2.db
+post.db
 
 .context
 gain.ndjson

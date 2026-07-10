@@ -465,7 +465,27 @@ pub fn face_aim(
 
     // Model forward is +Z; face the aim direction, then blade slightly by the offset.
     let aim_yaw = f32::atan2(forward.x, forward.z);
-    transform.rotation = Quat::from_rotation_y(aim_yaw + AIM_BODY_YAW_OFFSET);
+
+    let current_yaw = transform.rotation.to_euler(EulerRot::YXZ).0;
+    let target_yaw = aim_yaw + AIM_BODY_YAW_OFFSET;
+    let mut delta_yaw = target_yaw - current_yaw;
+
+    // Normalize delta_yaw to [-PI, PI]
+    while delta_yaw > std::f32::consts::PI {
+        delta_yaw -= 2.0 * std::f32::consts::PI;
+    }
+    while delta_yaw < -std::f32::consts::PI {
+        delta_yaw += 2.0 * std::f32::consts::PI;
+    }
+
+    // If the aiming angle exceeds the comfortable spine limit (60°),
+    // rotate the controller capsule just enough to keep it at the limit.
+    let limit = 60.0f32.to_radians();
+    if delta_yaw.abs() > limit {
+        let correction = delta_yaw.signum() * (delta_yaw.abs() - limit);
+        transform.rotation = Quat::from_rotation_y(current_yaw + correction);
+    }
+    // If delta_yaw is within 60°, we leave the capsule alone. Hips remain aligned to movement.
 }
 
 /// Safety net: if the controller ends up below the ground plane (y < 0), teleport it back up.
