@@ -2,7 +2,7 @@ use crate::api::*;
 use api_asscrack::implement_api_group2;
 
 pub mod http;
-pub mod lru;
+pub(crate) mod lru;
 pub mod manifest_impl;
 pub mod models;
 pub mod osm_impl;

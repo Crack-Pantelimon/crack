@@ -146,6 +146,7 @@ use std::f32::consts::PI;
 use super::animation::node_for;
 use super::spawn::ControlledCharacter;
 use super::{CharacterController, CharacterScale, SCALE_MAX, SCALE_MIN};
+use crate::plugins::cars_driving::driving_plugin::camera_follow::DrivingAim;
 use crate::plugins::cars_driving::driving_plugin::spawn_car::{
     ActivePlayerVehicle, Car, DisabledCar,
 };
@@ -163,7 +164,7 @@ pub struct CarSeatOffset {
 impl Default for CarSeatOffset {
     fn default() -> Self {
         Self {
-            offset: Vec3::new(-0.4, 0.2, 0.0),
+            offset: Vec3::new(-0.4, 0.2, 0.5),
             y_rot: PI,
         }
     }
@@ -1128,6 +1129,7 @@ pub fn finalize_car_drivers(
 pub fn driveby_fire(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
+    aim: Res<DrivingAim>,
     mut contexts: EguiContexts,
     mut commands: Commands,
     q_active_car: Query<Entity, With<ActivePlayerVehicle>>,
@@ -1169,8 +1171,9 @@ pub fn driveby_fire(
     }
 
     let automatic = equipped.0.automatic();
-    let fire_pressed =
-        mouse.just_pressed(MouseButton::Left) || (automatic && mouse.pressed(MouseButton::Left));
+    let fire_pressed = aim.aiming
+        && (mouse.just_pressed(MouseButton::Left)
+            || (automatic && mouse.pressed(MouseButton::Left)));
     let cooldown_ready = cooldown.as_ref().map_or(true, |cd| cd.0 <= 0.0);
     if !fire_pressed || !cooldown_ready || gun.reload_timer > 0.0 {
         return;
@@ -1208,10 +1211,14 @@ pub fn driveby_fire(
 
 /// Crosshair while driving an armed car (the on-foot `crosshair_ui` is gone with the controller).
 pub fn driving_crosshair_ui(
+    aim: Res<DrivingAim>,
     mut contexts: EguiContexts,
     q_active_car: Query<Entity, With<ActivePlayerVehicle>>,
     q_driver: Query<(&DriverMesh, &EquippedWeapon)>,
 ) {
+    if !aim.aiming {
+        return;
+    }
     let Some(car) = q_active_car.iter().next() else {
         return;
     };

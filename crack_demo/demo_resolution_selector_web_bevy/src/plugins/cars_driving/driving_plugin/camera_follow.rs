@@ -1,24 +1,38 @@
 use crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera;
-use avian3d::prelude::LinearVelocity;
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
+
+#[derive(Resource, Default)]
+pub struct DrivingAim {
+    pub aiming: bool,
+}
+
+/// Shared drive-by aim signal: RMB held while the mouse is captured (mirrors on-foot `CameraRig.aiming`).
+pub fn update_driving_aim(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut contexts: EguiContexts,
+    capture_state: Res<crate::plugins::states::MouseCaptureState>,
+    mut aim: ResMut<DrivingAim>,
+) {
+    let egui_focused = if let Ok(ctx) = contexts.ctx_mut() {
+        ctx.egui_wants_pointer_input() || ctx.is_pointer_over_egui()
+    } else {
+        false
+    };
+    aim.aiming = capture_state.is_captured && !egui_focused && mouse.pressed(MouseButton::Right);
+}
 
 pub fn camera_follows_car(
     time: Res<Time>,
     mut camera_query: Query<&mut Transform, (With<MainCamera>, Without<ActivePlayerVehicle>)>,
-    car_query: Query<
-        (Entity, &Transform, &LinearVelocity),
-        (With<ActivePlayerVehicle>, Without<MainCamera>),
-    >,
-    mouse_button: Res<ButtonInput<MouseButton>>,
+    car_query: Query<(Entity, &Transform), (With<ActivePlayerVehicle>, Without<MainCamera>)>,
     mut mouse_motion: MessageReader<bevy::input::mouse::MouseMotion>,
-    mut contexts: EguiContexts,
     mut local_orbit: Local<Option<(f32, f32)>>, // (yaw, pitch)
-    capture_state: Res<crate::plugins::states::MouseCaptureState>,
+    aim: Res<DrivingAim>,
     spatial_query: avian3d::prelude::SpatialQuery,
 ) {
-    let Ok((car_entity, car_transform, linear_velocity)) = car_query.single() else {
+    let Ok((car_entity, car_transform)) = car_query.single() else {
         return;
     };
     let Ok(mut camera_transform) = camera_query.single_mut() else {
@@ -29,12 +43,6 @@ pub fn camera_follows_car(
     if dt <= 0.0 {
         return;
     }
-
-    let egui_focused = if let Ok(ctx) = contexts.ctx_mut() {
-        ctx.egui_wants_pointer_input() || ctx.is_pointer_over_egui()
-    } else {
-        false
-    };
 
     // Center point sits well above the car (GTA-style raised chase cam).
     let center = car_transform.translation + Vec3::Y * 2.6;
@@ -48,10 +56,8 @@ pub fn camera_follows_car(
 
     let (mut yaw, mut pitch) = local_orbit.unwrap_or((default_yaw, default_pitch));
 
-    // Mouse drag or captured mouse updates yaw and pitch
-    let drag_active =
-        capture_state.is_captured || (!egui_focused && mouse_button.pressed(MouseButton::Left));
-    if drag_active {
+    // Free-look only while aiming (RMB held); drain deltas otherwise so release doesn't jerk.
+    if aim.aiming {
         let sensitivity = 0.003;
         for event in mouse_motion.read() {
             yaw -= event.delta.x * sensitivity;
@@ -60,11 +66,7 @@ pub fn camera_follows_car(
         pitch = pitch.clamp(-80.0f32.to_radians(), 80.0f32.to_radians());
     } else {
         for _ in mouse_motion.read() {}
-    }
 
-    // Auto-centering when speed > 1.0 m/s
-    let speed = linear_velocity.0.length();
-    if speed > 1.0 {
         let yaw_diff = (default_yaw - yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
             - std::f32::consts::PI;
         let pitch_diff = default_pitch - pitch;

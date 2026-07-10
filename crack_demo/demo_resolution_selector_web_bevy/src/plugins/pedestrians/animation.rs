@@ -8,7 +8,7 @@ use bevy::ecs::relationship::Relationship;
 use bevy::prelude::*;
 
 use crate::plugins::pedestrians::pedestrian_controller_plugin::{
-    JOG_MAX_SPEED, MOVE_ANIM_THRESHOLD, WALK_MAX_SPEED,
+    MOVE_ANIM_THRESHOLD, SPRINT_ANIM_START, WALK_ANIM_TOP,
 };
 use crate::plugins::pedestrians::spawn_pedestrian::{ModelRoot, PedestrianGltf};
 
@@ -27,9 +27,9 @@ pub fn locomotion_clip(speed: f32, crouch: bool, _sprint: bool) -> &'static [&'s
         }
     } else if !moving {
         &["Idle_Loop", "A_TPose"]
-    } else if speed < WALK_MAX_SPEED {
+    } else if speed <= WALK_ANIM_TOP {
         &["Walk_Loop"]
-    } else if speed < JOG_MAX_SPEED {
+    } else if speed <= SPRINT_ANIM_START {
         &["Jog_Fwd_Loop"]
     } else {
         &["Sprint_Loop", "Sprint_Fwd_Loop"]
@@ -146,7 +146,6 @@ pub fn setup_animation_players_system(
 pub fn play_animations_system(
     mut commands: Commands,
     anims: Res<PedestrianAnimations>,
-    gltf_assets: Res<Assets<bevy::gltf::Gltf>>,
     model_roots: Query<
         (
             &PedestrianGltf,
@@ -193,11 +192,7 @@ pub fn play_animations_system(
             }
         }
 
-        let Some((gltf_comp, target, play_once)) = root_data else {
-            continue;
-        };
-
-        let Some(gltf) = gltf_assets.get(&gltf_comp.handle) else {
+        let Some((_, target, play_once)) = root_data else {
             continue;
         };
 
@@ -208,7 +203,7 @@ pub fn play_animations_system(
         let Some(desired) = desired else {
             continue;
         };
-        let anim_name = if gltf.named_animations.contains_key(desired.as_str()) {
+        let anim_name = if anims.nodes.contains_key(&desired) {
             desired
         } else if let Some(def) = anims.default_animation() {
             def

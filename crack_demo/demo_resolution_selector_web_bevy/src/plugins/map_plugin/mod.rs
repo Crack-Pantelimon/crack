@@ -105,6 +105,12 @@ pub struct MapLODState {
     pub lod_budget: u32,
     pub lod_timer: Option<Timer>,
     pub max_lod: i32,
-    pub tiles_per_diagonal: f32,
+    /// Detail floor: below this level tiles always split (no visibility rays).
+    pub min_tiles_per_diagonal: f32,
+    /// Detail ceiling: between min and max, splits require BVH visibility.
+    pub max_tiles_per_diagonal: f32,
     pub enable_visibility_cull: bool,
+    pub sample_radius_freecam: f32,
+    pub sample_radius_car: f32,
+    pub sample_radius_pedestrian: f32,
 }

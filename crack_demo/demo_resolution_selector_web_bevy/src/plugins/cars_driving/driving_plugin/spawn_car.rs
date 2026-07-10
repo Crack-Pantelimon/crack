@@ -20,10 +20,10 @@ use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 
 /// Seat offsets in car-local space [driver, front-pass, rear-left, rear-right].
 pub const CAR_SEAT_OFFSETS: [Vec3; 4] = [
-    Vec3::new(-0.4, 0.3, 0.15), // driver (current CarSeatOffset default)
-    Vec3::new(0.4, 0.3, 0.15),  // front passenger
-    Vec3::new(-0.4, 0.3, -0.7), // rear left
-    Vec3::new(0.4, 0.3, -0.7),  // rear right
+    Vec3::new(-0.4, 0.3, 0.65), // driver (current CarSeatOffset default)
+    Vec3::new(0.4, 0.3, 0.65),  // front passenger
+    Vec3::new(-0.4, 0.3, -0.2), // rear left
+    Vec3::new(0.4, 0.3, -0.2),  // rear right
 ];
 
 #[derive(Component)]

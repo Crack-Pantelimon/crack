@@ -1,6 +1,8 @@
 use crate::plugins::audio::{PlaySoundEvent, SoundManifest, master_volume_linear};
 use crate::plugins::cars_driving::driving_plugin::CarDriveState;
-use crate::plugins::pedestrians::pedestrian_controller_plugin::{CharacterController, Grounded};
+use crate::plugins::pedestrians::pedestrian_controller_plugin::{
+    CharacterController, Grounded, MOVE_ANIM_THRESHOLD, footstep_playback_speed,
+};
 use avian3d::prelude::LinearVelocity;
 use bevy::audio::GlobalVolume;
 use bevy::audio::SpatialAudioSink;
@@ -303,18 +305,11 @@ pub fn manage_footsteps_system(
         if let Some(child) = target_child {
             if let Ok(mut sink) = sinks.get_mut(child) {
                 let speed = Vec2::new(velocity.x as f32, velocity.z as f32).length();
-                let should_play = grounded && speed > 0.25;
+                let should_play = grounded && speed > MOVE_ANIM_THRESHOLD;
                 sink.set_volume(bevy::audio::Volume::Linear(footstep_base_vol * master));
                 if should_play {
                     sink.play();
-                    let playback_speed = if speed < 2.2 {
-                        0.9
-                    } else if speed < 5.0 {
-                        1.3
-                    } else {
-                        1.02
-                    };
-                    sink.set_speed(playback_speed);
+                    sink.set_speed(footstep_playback_speed(speed));
                 } else {
                     sink.pause();
                 }

@@ -11,7 +11,7 @@ pub use rk4_prediction::{
 };
 
 use crate::plugins::cars_driving::driving_plugin::{
-    camera_follow::camera_follows_car,
+    camera_follow::{DrivingAim, camera_follows_car, update_driving_aim},
     collision_sparks::{
         car_pedestrian_damage, handle_car_collisions, update_and_draw_collision_effects,
     },
@@ -99,9 +99,10 @@ impl<S: States> Plugin for DrivingPlugin<S> {
                 .before(bevy::transform::TransformSystems::Propagate),
         );
         // Player control & camera & UI systems only run when driving a car
+        app.init_resource::<DrivingAim>();
         app.add_systems(
             Update,
-            (camera_follows_car, keybinds_control_car)
+            (update_driving_aim, camera_follows_car, keybinds_control_car)
                 .chain()
                 .run_if(in_state(self.state.clone())),
         );

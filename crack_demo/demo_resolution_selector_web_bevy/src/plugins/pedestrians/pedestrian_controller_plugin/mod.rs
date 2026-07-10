@@ -46,6 +46,7 @@ mod camera;
 mod controller;
 mod interaction_ui;
 pub mod locomotion;
+mod locomotion_consts;
 mod spawn;
 
 use avian3d::{math::*, prelude::*};
@@ -72,6 +73,11 @@ use interaction_ui::{
     tick_driver_mesh_exit, tick_entering_car, weapon_hud_ui, weapon_wheel,
 };
 use locomotion::CharacterLocomotionPlugin;
+pub use locomotion_consts::{
+    JOG_SPEED, MOVE_ANIM_THRESHOLD, SPRINT_ANIM_START, SPRINT_MAX_MULT, SPRINT_RAMP_TIME,
+    WALK_ANIM_TOP, WALK_RAMP_TIME, WALK_START_SPEED, footstep_playback_speed, sprint_speed_cap,
+    walk_secs_from_speed, walk_speed_cap,
+};
 pub use spawn::{
     DeathProp, SpawnChoicePopup, escape_to_freecam, player_death_to_freecam,
     setup_death_prop_animations, spawn_controlled_pedestrian_observer, tick_death_props,
@@ -101,15 +107,6 @@ const JUMP_IMPULSE: f32 = 7.5;
 const GRAVITY_Y: f32 = -9.81 * 2.0;
 /// Per-mode horizontal speed caps.
 const CROUCH_SPEED: f32 = 1.8;
-const JOG_SPEED: f32 = 4.0;
-/// Sprint ramps from `1 * JOG_SPEED` up to `SPRINT_MAX_MULT * JOG_SPEED` while Shift is held.
-const SPRINT_MAX_MULT: f32 = 2.25;
-const SPRINT_RAMP_TIME: f32 = 2.5;
-
-// Animation selection by current horizontal speed (shared by player, AI, and network drivers).
-pub const MOVE_ANIM_THRESHOLD: f32 = 0.25;
-pub const WALK_MAX_SPEED: f32 = 2.0;
-pub const JOG_MAX_SPEED: f32 = 4.5;
 
 // Jump animation phase timings (seconds).
 const JUMP_START_TIME: f32 = 0.22;
@@ -211,6 +208,8 @@ pub struct MovementModifiers {
     pub sprint: bool,
     /// Seconds the sprint has been held continuously (drives the sprint speed ramp).
     pub sprint_secs: f32,
+    /// Seconds walking (no sprint/crouch) has been held continuously (drives the walk speed ramp).
+    pub walk_secs: f32,
 }
 
 /// Movement settings for a character controller.

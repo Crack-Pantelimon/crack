@@ -245,6 +245,21 @@ pub fn bvh_minimap_window(
                 &mut lod_state.enable_visibility_cull,
                 "BVH occluder (visibility cull)",
             );
+            ui.add(
+                egui::Slider::new(&mut lod_state.sample_radius_freecam, 0.1..=100.0)
+                    .logarithmic(true)
+                    .text("freecam sample radius"),
+            );
+            ui.add(
+                egui::Slider::new(&mut lod_state.sample_radius_car, 0.1..=100.0)
+                    .logarithmic(true)
+                    .text("car sample radius"),
+            );
+            ui.add(
+                egui::Slider::new(&mut lod_state.sample_radius_pedestrian, 0.1..=100.0)
+                    .logarithmic(true)
+                    .text("pedestrian sample radius"),
+            );
 
             // Gather tiles + states first so the legend can show live counts.
             let mut boxes: Vec<((Vec3, Vec3), TileState)> = Vec::new();

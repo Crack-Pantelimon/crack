@@ -132,13 +132,22 @@ pub fn tree_navigator_ui(
                 lod_state.max_lod = max_lod;
             }
 
-            let mut tiles_per_diagonal = lod_state.tiles_per_diagonal;
+            let mut min_tiles_per_diagonal = lod_state.min_tiles_per_diagonal;
             ui.horizontal(|ui| {
-                ui.label("Tiles per diagonal:");
-                ui.add(egui::Slider::new(&mut tiles_per_diagonal, 0.3..=2.5).text(""));
+                ui.label("Min tiles per diagonal:");
+                ui.add(egui::Slider::new(&mut min_tiles_per_diagonal, 0.3..=1.2).text(""));
             });
-            if tiles_per_diagonal != lod_state.tiles_per_diagonal {
-                lod_state.tiles_per_diagonal = tiles_per_diagonal;
+            if min_tiles_per_diagonal != lod_state.min_tiles_per_diagonal {
+                lod_state.min_tiles_per_diagonal = min_tiles_per_diagonal;
+            }
+
+            let mut max_tiles_per_diagonal = lod_state.max_tiles_per_diagonal;
+            ui.horizontal(|ui| {
+                ui.label("Max tiles per diagonal:");
+                ui.add(egui::Slider::new(&mut max_tiles_per_diagonal, 0.3..=2.5).text(""));
+            });
+            if max_tiles_per_diagonal != lod_state.max_tiles_per_diagonal {
+                lod_state.max_tiles_per_diagonal = max_tiles_per_diagonal;
             }
 
             ui.checkbox(

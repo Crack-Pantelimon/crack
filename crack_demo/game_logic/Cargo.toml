@@ -12,7 +12,8 @@ worker = [
     "dep:serde_json",
     "dep:reqwest",
     "dep:gltf",
-    "dep:parry3d"
+    "dep:parry3d",
+    "dep:futures"
 ]
 
 [dependencies]
@@ -34,6 +35,7 @@ serde_json = { workspace = true, optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
 gltf = { version = "1.4.1", default-features = false, features = ["utils", "names"], optional = true }
 parry3d = { version = "0.27.0", optional = true }
+futures = { version = "0.3", default-features = false, features = ["alloc"], optional = true }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen-futures = { workspace = true }

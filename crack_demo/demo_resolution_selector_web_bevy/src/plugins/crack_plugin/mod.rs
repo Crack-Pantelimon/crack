@@ -29,6 +29,7 @@ pub struct CrackPlugin;
 impl Plugin for CrackPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CrackTasks>()
+            .init_resource::<lod_flow::CameraKinematics>()
             .insert_resource(CrackClientSlot(Arc::new(Mutex::new(None))))
             .add_systems(Startup, start_crack_client_init)
             .add_systems(
@@ -40,6 +41,7 @@ impl Plugin for CrackPlugin {
                         manifest_flow::spawn_manifest_task,
                         osm_flow::poll_osm_task,
                         osm_flow::spawn_osm_task,
+                        lod_flow::track_camera_kinematics,
                         lod_flow::poll_lod_task,
                         lod_flow::spawn_lod_task,
                     )

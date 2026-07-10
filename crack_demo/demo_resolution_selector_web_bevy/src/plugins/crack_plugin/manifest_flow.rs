@@ -58,8 +58,18 @@ pub fn poll_manifest_task(
                     let timeout = 0.1 + rand::random::<f32>() * 0.1;
                     lod_state.lod_timer = Some(Timer::from_seconds(timeout, TimerMode::Once));
                     lod_state.max_lod = 24;
-                    lod_state.tiles_per_diagonal = 1.30;
+                    lod_state.min_tiles_per_diagonal = 0.6;
+                    lod_state.max_tiles_per_diagonal = 1.30;
                     lod_state.enable_visibility_cull = true;
+                    if lod_state.sample_radius_freecam <= 0.0 {
+                        lod_state.sample_radius_freecam = 0.1;
+                    }
+                    if lod_state.sample_radius_car <= 0.0 {
+                        lod_state.sample_radius_car = 0.1;
+                    }
+                    if lod_state.sample_radius_pedestrian <= 0.0 {
+                        lod_state.sample_radius_pedestrian = 0.1;
+                    }
                 }
                 Err(e) => {
                     tracing::error!("Manifest RPC error: {e:?}");

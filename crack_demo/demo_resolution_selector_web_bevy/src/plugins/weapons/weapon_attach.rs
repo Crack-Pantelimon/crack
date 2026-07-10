@@ -399,6 +399,15 @@ pub fn finalize_weapon_extents(
 
 use crate::plugins::network::multiplayer_plugin::RemoteAvatarMarker;
 
+/// World-space barrel direction when not aiming: 45° above the character's facing axis.
+fn idle_weapon_aim_dir(forward: Vec3) -> Vec3 {
+    if forward.length_squared() < 1e-6 {
+        Vec3::Y
+    } else {
+        (forward + Vec3::Y).normalize_or_zero()
+    }
+}
+
 /// Keeps every weapon's grip offset from the wrist in sync with the live slider value,
 /// rotates swords 90 degrees along the X axis, and rotates guns around their grip point
 /// so they look at the global aim point target with y = up.
@@ -449,10 +458,11 @@ pub fn update_weapon_transforms(
                 }
 
                 if let Some(root_ent) = remote_root {
-                    // Remote player: aim in the character's facing direction.
+                    // Remote player: forward-and-up idle pose (no crosshair aim).
                     if let Ok(root_gt) = global_transforms.get(root_ent) {
                         let (_, root_rot, _) = root_gt.to_scale_rotation_translation();
-                        aim_dir = Some(root_rot * Vec3::Z);
+                        let forward = (root_rot * Vec3::Z).normalize_or_zero();
+                        aim_dir = Some(idle_weapon_aim_dir(forward));
                     }
                 } else {
                     // Local player: aim at crosshair only while RMB-aiming or in combat.
@@ -473,9 +483,13 @@ pub fn update_weapon_transforms(
                                 }
                             }
                         }
-                    } else {
-                        // Idle: inherit wrist bone orientation (barrel follows forearm).
-                        transform.rotation = Quat::IDENTITY;
+                    } else if let Some(controller) = controlled.controller {
+                        // Idle: forward-and-up (~45° above horizon along facing).
+                        if let Ok(char_gt) = global_transforms.get(controller) {
+                            let (_, char_rot, _) = char_gt.to_scale_rotation_translation();
+                            let forward = (char_rot * Vec3::Z).normalize_or_zero();
+                            aim_dir = Some(idle_weapon_aim_dir(forward));
+                        }
                     }
                 }
 

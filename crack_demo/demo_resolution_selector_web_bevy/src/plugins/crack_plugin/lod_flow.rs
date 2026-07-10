@@ -9,6 +9,46 @@ use bevy::tasks::futures_lite::future;
 use game_logic::api::ComputeLodChanges;
 use std::collections::BTreeSet;
 
+/// Smoothed world-space kinematics of the MainCamera, sampled every frame.
+/// Feeds the velocity-predictive occlusion sampling in the worker.
+#[derive(Resource, Default)]
+pub struct CameraKinematics {
+    pub position: Vec3,
+    pub velocity: Vec3,
+    pub initialized: bool,
+}
+
+pub fn track_camera_kinematics(
+    time: Res<Time>,
+    q_camera: Query<
+        &GlobalTransform,
+        With<crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera>,
+    >,
+    mut kin: ResMut<CameraKinematics>,
+) {
+    let Some(cam) = q_camera.iter().next() else {
+        return;
+    };
+    let pos = cam.translation();
+    let dt = time.delta_secs();
+    if !kin.initialized || dt <= 1e-6 {
+        kin.position = pos;
+        kin.velocity = Vec3::ZERO;
+        kin.initialized = true;
+        return;
+    }
+    let raw = (pos - kin.position) / dt;
+    // Teleport guard: mode switches / respawns jump the camera; a bogus huge
+    // velocity would poke sample origins through the whole map.
+    if raw.length() > 500.0 {
+        kin.velocity = Vec3::ZERO;
+    } else {
+        // EMA smoothing so a single jittery frame doesn't swing the lookahead.
+        kin.velocity = kin.velocity.lerp(raw, 0.2);
+    }
+    kin.position = pos;
+}
+
 pub fn spawn_lod_task(
     map_tree: Res<MapTree>,
     lod_state: Res<MapLODState>,
@@ -16,26 +56,26 @@ pub fn spawn_lod_task(
     q_split: Query<&TileShouldSplit>,
     q_pending: Query<&PendingTileReveal>,
     q_nodes: Query<&TreeMapTile>,
-    mut last: Local<Option<(BTreeSet<MapTreeNodePath>, Vec<Vec3>, u32, bool, i32, u32)>>,
+    mut last: Local<
+        Option<(
+            BTreeSet<MapTreeNodePath>,
+            Vec<Vec3>,
+            u32,
+            bool,
+            i32,
+            (u32, u32),
+            (u32, u32, u32),
+        )>,
+    >,
     q_camera: Query<
-        &Transform,
+        &GlobalTransform,
         With<crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera>,
     >,
     res_tiles: Res<TileSwapRequests>,
     mut tasks: ResMut<CrackTasks>,
     client: Res<CrackClient>,
-    camera_rig: Option<Res<crate::plugins::pedestrians::pedestrian_controller_plugin::CameraRig>>,
-    q_vehicle: Query<
-        &Transform,
-        With<crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle>,
-    >,
-    controlled_char: Option<
-        Res<crate::plugins::pedestrians::pedestrian_controller_plugin::ControlledCharacter>,
-    >,
-    q_character: Query<
-        &Transform,
-        With<crate::plugins::pedestrians::pedestrian_controller_plugin::CharacterController>,
-    >,
+    control_state: Res<State<crate::plugins::states::GameControlState>>,
+    kin: Res<CameraKinematics>,
 ) {
     if tasks.lod.is_some() {
         return;
@@ -64,7 +104,7 @@ pub fn spawn_lod_task(
         .cloned()
         .collect::<Vec<_>>();
     if let Some(camera) = q_camera.iter().next() {
-        refs.push(camera.translation);
+        refs.push(camera.translation());
     }
 
     let quantize = |v: Vec3| {
@@ -80,7 +120,15 @@ pub fn spawn_lod_task(
     // checkbox forces a fresh LOD recompute even when nothing else moved.
     let cull = lod_state.enable_visibility_cull;
     let max_lod = lod_state.max_lod;
-    let tiles_per_diagonal_bits = lod_state.tiles_per_diagonal.to_bits();
+    let tiles_per_diagonal_bits = (
+        lod_state.min_tiles_per_diagonal.to_bits(),
+        lod_state.max_tiles_per_diagonal.to_bits(),
+    );
+    let radius_bits = (
+        lod_state.sample_radius_freecam.to_bits(),
+        lod_state.sample_radius_car.to_bits(),
+        lod_state.sample_radius_pedestrian.to_bits(),
+    );
     if let Some(last_val) = &*last {
         if nodes == last_val.0
             && quantized_refs == last_val.1
@@ -88,6 +136,7 @@ pub fn spawn_lod_task(
             && cull == last_val.3
             && max_lod == last_val.4
             && tiles_per_diagonal_bits == last_val.5
+            && radius_bits == last_val.6
         {
             return;
         }
@@ -99,55 +148,25 @@ pub fn spawn_lod_task(
         cull,
         max_lod,
         tiles_per_diagonal_bits,
+        radius_bits,
     ));
 
-    // Calculate camera range/reachable radius based on active camera controller
-    let mut camera_range = 32.0;
-    let mut is_vehicle = false;
-    if !q_vehicle.is_empty() {
-        camera_range = 32.0;
-        is_vehicle = true;
-    } else if let Some(ref rig) = camera_rig {
-        camera_range = rig.current_distance * 2.0;
-    } else if let Some(camera_transform) = q_camera.iter().next() {
-        let height = camera_transform.translation.y;
-        let sprint_speed = height.clamp(5.0, 500.0) * 5.0;
-        camera_range = sprint_speed * 2.0;
-    }
+    let sample_radius = match control_state.get() {
+        crate::plugins::states::GameControlState::MapFreecam => lod_state.sample_radius_freecam,
+        crate::plugins::states::GameControlState::DrivingCar => lod_state.sample_radius_car,
+        crate::plugins::states::GameControlState::ControllingPedestrian => {
+            lod_state.sample_radius_pedestrian
+        }
+    };
 
     let mut cameras = Vec::new();
-    if is_vehicle {
-        if let Ok(car_transform) = q_vehicle.single() {
-            cameras.push(game_logic::lod::CameraReference {
-                center: car_transform.translation,
-                max_range: camera_range,
-            });
-        }
-    } else if let (Some(controlled), Some(_rig)) = (controlled_char.as_ref(), camera_rig.as_ref()) {
-        if let Some(char_entity) = controlled.controller {
-            if let Ok(char_transform) = q_character.get(char_entity) {
-                cameras.push(game_logic::lod::CameraReference {
-                    center: char_transform.translation,
-                    max_range: camera_range,
-                });
-            }
-        }
-    } else if let Some(camera_transform) = q_camera.iter().next() {
+    if let Some(camera) = q_camera.iter().next() {
         cameras.push(game_logic::lod::CameraReference {
-            center: camera_transform.translation,
-            max_range: camera_range,
+            center: camera.translation(),
+            velocity: kin.velocity,
+            sample_radius,
         });
     }
-
-    for &ref_pos in &lod_state.reference_points {
-        cameras.push(game_logic::lod::CameraReference {
-            center: ref_pos,
-            max_range: 5.0,
-        });
-    }
-
-    let max_lod = lod_state.max_lod;
-    let tiles_per_diagonal = lod_state.tiles_per_diagonal;
 
     let args = game_logic::lod::LodComputeRequest {
         spawned_nodes: nodes,
@@ -155,8 +174,10 @@ pub fn spawn_lod_task(
         cameras,
         lod_budget: budget,
         max_lod,
-        tiles_per_diagonal,
+        min_tiles_per_diagonal: lod_state.min_tiles_per_diagonal,
+        max_tiles_per_diagonal: lod_state.max_tiles_per_diagonal,
         enable_visibility_cull: lod_state.enable_visibility_cull,
+        base_url: crate::config::DATA_BASE_URL.to_string(),
     };
 
     let api_client = client.0.clone();

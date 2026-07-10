@@ -1,121 +1,148 @@
 use crate::lod::CameraReference;
-use crate::map::{BBox, MapTreeAssetInfo, MapTreeNodePath};
+use crate::map::{BBox, MapTreeNodePath};
 use parry3d::bounding_volume::Aabb;
-use parry3d::math::{Pose, Vector};
+use parry3d::math::Vector;
 use parry3d::partitioning::{Bvh, BvhBuildStrategy, TraversalAction};
 use parry3d::query::{Ray, RayCast};
-use parry3d::shape::HeightField;
-use parry3d::utils::Array2;
+use parry3d::shape::TriMesh;
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// A worker-global cache storing computed height maps to avoid redundant rasterization.
-pub static HEIGHTMAP_CACHE: RwLock<Option<HashMap<MapTreeNodePath, HeightField>>> =
+/// Worker-global LRU of per-node occluder trimeshes, keyed by the Debug
+/// formatting of the node path (`format!("{:?}", path)`). Bounded so wasm
+/// worker memory does not grow with every tile ever seen.
+pub static TRIMESH_CACHE: RwLock<Option<crate::worker::lru::LruCache<Arc<TriMesh>>>> =
     RwLock::const_new(None);
 
-/// Helper function to invert a `Pose` (Isometry) without relying on trait methods.
-#[inline]
-pub fn invert_pose(pose: &Pose) -> Pose {
-    let inv_rot = pose.rotation.inverse();
-    let inv_trans = inv_rot * -pose.translation;
-    Pose::from_parts(inv_trans, inv_rot)
+const TRIMESH_CACHE_ENTRIES: usize = 256;
+
+/// Worker-global persistent occluder world. `compute_lod_changes` diffs it
+/// against the client's spawned tile set each call instead of rebuilding it
+/// (and re-fetching every occluder GLB) from scratch — the rebuild is what
+/// made each LOD recompute cost hundreds of milliseconds.
+pub static OCCLUDER_WORLD_CACHE: RwLock<Option<OccluderWorld>> = RwLock::const_new(None);
+
+/// Worker-global cache of visibility verdicts, keyed by
+/// (node path, hash of quantized camera cells + sample radii). The LOD walk
+/// re-tests the same nodes every convergence round; verdicts from previous
+/// rounds/frames are reused until the camera leaves its 2 m cell, the entry
+/// ages past the TTL, or the probabilistic refresh re-rolls it.
+pub static VIS_VERDICT_CACHE: RwLock<Option<HashMap<(String, u64), (bool, i64)>>> =
+    RwLock::const_new(None);
+
+/// Verdicts older than this are recomputed (occluders may have changed).
+pub const VIS_VERDICT_TTL_MS: i64 = 4000;
+
+/// Safety bound on the verdict map; cleared wholesale when exceeded.
+pub const VIS_VERDICT_MAX_ENTRIES: usize = 16384;
+
+/// Probabilistic refresh: ~5% of cache hits are re-tested anyway, so a stale
+/// verdict (e.g. occluders changed under a stationary camera) heals within a
+/// few recomputes instead of persisting for the full TTL.
+pub fn verdict_should_refresh(path_key: &str, now_ms: i64) -> bool {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    path_key.hash(&mut h);
+    (now_ms / 500).hash(&mut h);
+    h.finish() % 20 == 0
 }
 
-/// Simplifies a mesh collider data into a 64x64 heightfield.
-/// Triangles are projected onto the XZ plane and barycentric coordinates are used
-/// to sample heights at grid cell centers. Holes are filled via a 1-pixel dilation pass.
-pub fn build_heightfield_from_mesh(
-    bbox: &BBox,
-    vertices: &[[f32; 3]],
-    indices: &[[u32; 3]],
-) -> HeightField {
-    let nrows = 64;
-    let ncols = 64;
-    let dx = (bbox.max.x - bbox.min.x) / 63.0;
-    let dz = (bbox.max.z - bbox.min.z) / 63.0;
+/// Builds a parry TriMesh from world-space collider geometry.
+/// Returns None (with a warn! log) on empty or degenerate input instead of
+/// panicking — a panic would trap the whole wasm worker.
+pub fn build_trimesh_from_mesh(vertices: &[[f32; 3]], indices: &[[u32; 3]]) -> Option<TriMesh> {
+    if vertices.is_empty() || indices.is_empty() {
+        return None;
+    }
+    let verts: Vec<Vector> = vertices.iter().map(|v| Vector::from(*v)).collect();
+    match TriMesh::new(verts, indices.to_vec()) {
+        Ok(tm) => Some(tm),
+        Err(e) => {
+            tracing::warn!("TriMesh build failed: {:?}", e);
+            None
+        }
+    }
+}
 
-    let sentinel = bbox.min.y - 10.0;
-    let mut data = vec![sentinel; nrows * ncols];
+/// Returns the occluder trimesh for one node, fetching missing tile GLBs
+/// through the worker tile cache (and HTTP cache) if needed.
+/// `assets` is (asset_id, glb_path) for every renderable asset of the node.
+/// NEVER holds the TRIMESH_CACHE lock across an await.
+pub async fn get_or_build_trimesh(
+    path: &MapTreeNodePath,
+    assets: &[(String, String)],
+    base_url: &str,
+) -> Option<Arc<TriMesh>> {
+    let key = format!("{:?}", path);
 
-    for &tri_idx in indices {
-        let a = Vector::from(vertices[tri_idx[0] as usize]);
-        let b = Vector::from(vertices[tri_idx[1] as usize]);
-        let c = Vector::from(vertices[tri_idx[2] as usize]);
+    // 1. cache probe (short-lived lock)
+    {
+        let mut guard = TRIMESH_CACHE.write().await;
+        let cache =
+            guard.get_or_insert_with(|| crate::worker::lru::LruCache::new(TRIMESH_CACHE_ENTRIES));
+        if let Some(tm) = cache.get(&key) {
+            return Some(tm);
+        }
+    } // guard dropped here, before any fetch await
 
-        let min_x = a.x.min(b.x).min(c.x);
-        let max_x = a.x.max(b.x).max(c.x);
-        let min_z = a.z.min(b.z).min(c.z);
-        let max_z = a.z.max(b.z).max(c.z);
-
-        let j_min = (((min_x - bbox.min.x) / dx).floor() as isize).clamp(0, 63) as usize;
-        let j_max = (((max_x - bbox.min.x) / dx).ceil() as isize).clamp(0, 63) as usize;
-        let i_min = (((min_z - bbox.min.z) / dz).floor() as isize).clamp(0, 63) as usize;
-        let i_max = (((max_z - bbox.min.z) / dz).ceil() as isize).clamp(0, 63) as usize;
-
-        for i in i_min..=i_max {
-            for j in j_min..=j_max {
-                let px = bbox.min.x + (j as f32) * dx;
-                let pz = bbox.min.z + (i as f32) * dz;
-
-                let v0 = b - a;
-                let v1 = c - a;
-                let v2 = Vector::new(px, 0.0, pz) - a;
-
-                let d00 = v0.x * v0.x + v0.z * v0.z;
-                let d01 = v0.x * v1.x + v0.z * v1.z;
-                let d11 = v1.x * v1.x + v1.z * v1.z;
-                let d20 = v2.x * v0.x + v2.z * v0.z;
-                let d21 = v2.x * v1.x + v2.z * v1.z;
-
-                let denom = d00 * d11 - d01 * d01;
-                if denom.abs() > 1e-6 {
-                    let v = (d11 * d20 - d01 * d21) / denom;
-                    let w = (d00 * d21 - d01 * d20) / denom;
-                    let u = 1.0 - v - w;
-
-                    if u >= -1e-4 && v >= -1e-4 && w >= -1e-4 {
-                        let h = u * a.y + v * b.y + w * c.y;
-                        let idx = i + j * nrows;
-                        if h > data[idx] {
-                            data[idx] = h;
-                        }
+    // 2. gather collider meshes, fetching misses
+    let mut combined_vertices: Vec<[f32; 3]> = Vec::new();
+    let mut combined_indices: Vec<[u32; 3]> = Vec::new();
+    for (asset_id, glb_path) in assets {
+        let mesh = match crate::worker::tile_impl::get_tile_collider(asset_id).await {
+            Some(m) => Some(m),
+            None => {
+                // Cache miss: fetch the GLB (fills the tile LRU as a side effect).
+                match crate::worker::tile_impl::fetch_map_tile(crate::tile::FetchTileRequest {
+                    base_url: base_url.to_string(),
+                    tile_id: asset_id.clone(),
+                    glb_path: glb_path.clone(),
+                })
+                .await
+                {
+                    Ok(resp) => resp.collider_mesh,
+                    Err(e) => {
+                        tracing::warn!("occluder tile fetch failed for {}: {:?}", asset_id, e);
+                        None
                     }
                 }
+            }
+        };
+        if let Some(mesh) = mesh {
+            let vertex_offset = combined_vertices.len() as u32;
+            combined_vertices.extend(mesh.vertices);
+            for tri in mesh.indices {
+                combined_indices.push([
+                    tri[0] + vertex_offset,
+                    tri[1] + vertex_offset,
+                    tri[2] + vertex_offset,
+                ]);
             }
         }
     }
 
-    // Hole-filling / dilation pass
-    let mut filled_data = data.clone();
-    for i in 0..nrows {
-        for j in 0..ncols {
-            let idx = i + j * nrows;
-            if data[idx] < bbox.min.y - 1e-3 {
-                let mut sum = 0.0;
-                let mut count = 0;
-                for di in -1..=1 {
-                    for dj in -1..=1 {
-                        let ni = i as isize + di;
-                        let nj = j as isize + dj;
-                        if ni >= 0 && ni < nrows as isize && nj >= 0 && nj < ncols as isize {
-                            let nidx = ni as usize + nj as usize * nrows;
-                            if data[nidx] >= bbox.min.y - 1e-3 {
-                                sum += data[nidx];
-                                count += 1;
-                            }
-                        }
-                    }
-                }
-                if count > 0 {
-                    filled_data[idx] = sum / count as f32;
-                }
-            }
-        }
-    }
+    let tm = Arc::new(build_trimesh_from_mesh(
+        &combined_vertices,
+        &combined_indices,
+    )?);
 
-    let heights_zx = Array2::new(nrows, ncols, filled_data);
-    let scale = Vector::new(bbox.max.x - bbox.min.x, 1.0, bbox.max.z - bbox.min.z);
-    HeightField::new(heights_zx, scale)
+    // 3. cache insert (short-lived lock)
+    {
+        let mut guard = TRIMESH_CACHE.write().await;
+        let cache =
+            guard.get_or_insert_with(|| crate::worker::lru::LruCache::new(TRIMESH_CACHE_ENTRIES));
+        cache.insert(key, tm.clone());
+    }
+    Some(tm)
+}
+
+/// Cache-only trimesh lookup — never fetches. Used by the walk's lock-step
+/// occluder refinement, which must not await the network mid-walk.
+pub async fn get_cached_trimesh(path: &MapTreeNodePath) -> Option<Arc<TriMesh>> {
+    let key = format!("{:?}", path);
+    let mut guard = TRIMESH_CACHE.write().await;
+    guard.as_mut()?.get(&key)
 }
 
 fn bbox_contains(candidate: &BBox, target: &BBox, epsilon: f32) -> bool {
@@ -130,124 +157,67 @@ fn bbox_contains(candidate: &BBox, target: &BBox, epsilon: f32) -> bool {
 /// The spatial database built dynamically from currently spawned tiles and coarse horizon tiles.
 pub struct OccluderWorld {
     pub bvh: Bvh,
-    pub heightfields: HashMap<u32, HeightField>,
-    pub transforms: HashMap<u32, Pose>,
+    pub trimeshes: HashMap<u32, Arc<TriMesh>>,
     pub id_to_path: HashMap<u32, MapTreeNodePath>,
+    pub path_to_id: HashMap<MapTreeNodePath, u32>,
     pub aabbs: HashMap<u32, BBox>,
+    pub next_id: u32,
 }
 
 impl OccluderWorld {
-    /// Builds a dynamic `OccluderWorld` using a set of spawned paths and static coarse assets.
-    pub async fn rebuild_bvh(
-        spawned_nodes: &BTreeSet<MapTreeNodePath>,
-        coarse_assets: &[MapTreeAssetInfo],
-    ) -> Self {
-        let mut leaves = Vec::new();
-        let mut heightfields = HashMap::new();
-        let mut transforms = HashMap::new();
-        let mut id_to_path = HashMap::new();
-        let mut aabbs = HashMap::new();
-        let mut next_id = 0;
-        let manifest = crate::worker::manifest_impl::get_manifest_cache()
-            .await
-            .ok();
-
-        let mut hm_cache_guard = HEIGHTMAP_CACHE.write().await;
-        let hm_cache = hm_cache_guard.get_or_insert_with(HashMap::new);
-
-        // Gather all relevant assets to treat as potential occluders:
-        // 1. All currently active spawned nodes.
-        // 2. Coarse tiles representing the background map.
-        let mut candidates = Vec::new();
-        for path in spawned_nodes {
-            candidates.push((path.clone(), None));
-        }
-        for asset in coarse_assets {
-            candidates.push((asset._octant_path.clone(), Some(asset)));
-        }
-
-        for (path, coarse_asset_opt) in candidates {
-            // Find bounding box from manifest cache
-            let (bbox, assets_to_fetch) = if let Some(asset) = coarse_asset_opt {
-                (asset.bbox, vec![asset.name.0.clone()])
-            } else {
-                if let Some(ref manifest) = manifest {
-                    if let Some(node) = manifest.all_nodes.get(&path) {
-                        (
-                            node.bbox,
-                            node.assets.iter().map(|a| a.0.clone()).collect::<Vec<_>>(),
-                        )
-                    } else {
-                        continue;
-                    }
-                } else {
-                    continue;
-                }
-            };
-
-            // Retrieve or build heightfield
-            let hf_opt = if let Some(hf) = hm_cache.get(&path) {
-                Some(hf.clone())
-            } else {
-                let mut combined_vertices = Vec::new();
-                let mut combined_indices = Vec::new();
-
-                for asset_id in &assets_to_fetch {
-                    if let Some(mesh) = crate::worker::tile_impl::get_tile_collider(asset_id).await
-                    {
-                        let vertex_offset = combined_vertices.len() as u32;
-                        combined_vertices.extend(mesh.vertices);
-                        for tri in mesh.indices {
-                            combined_indices.push([
-                                tri[0] + vertex_offset,
-                                tri[1] + vertex_offset,
-                                tri[2] + vertex_offset,
-                            ]);
-                        }
-                    }
-                }
-
-                if !combined_vertices.is_empty() {
-                    let hf =
-                        build_heightfield_from_mesh(&bbox, &combined_vertices, &combined_indices);
-                    hm_cache.insert(path.clone(), hf.clone());
-                    Some(hf)
-                } else {
-                    None
-                }
-            };
-
-            if let Some(hf) = hf_opt {
-                let leaf_id = next_id;
-                next_id += 1;
-
-                let parry_aabb = Aabb::new(bbox.min, bbox.max);
-                leaves.push(parry_aabb);
-
-                let center_x = (bbox.min.x + bbox.max.x) / 2.0;
-                let center_z = (bbox.min.z + bbox.max.z) / 2.0;
-                let pose =
-                    Pose::from_parts(Vector::new(center_x, 0.0, center_z), glam::Quat::IDENTITY);
-
-                heightfields.insert(leaf_id, hf);
-                transforms.insert(leaf_id, pose);
-                id_to_path.insert(leaf_id, path);
-                aabbs.insert(leaf_id, bbox);
-            }
-        }
-
-        let bvh = Bvh::from_leaves(BvhBuildStrategy::Binned, &leaves);
-
+    /// An empty world; occluders are added incrementally with insert_occluder.
+    pub fn new_empty() -> Self {
         OccluderWorld {
-            bvh,
-            heightfields,
-            transforms,
-            id_to_path,
-            aabbs,
+            bvh: Bvh::from_leaves(BvhBuildStrategy::Binned, &[]),
+            trimeshes: HashMap::new(),
+            id_to_path: HashMap::new(),
+            path_to_id: HashMap::new(),
+            aabbs: HashMap::new(),
+            next_id: 0,
         }
     }
 
-    /// Casts a ray from `origin` to `target`. Returns true if it is occluded by any heightfield.
+    /// Inserts one occluder whose trimesh has already been resolved.
+    /// No-op if the path is already present.
+    pub fn insert_occluder(&mut self, path: &MapTreeNodePath, bbox: &BBox, trimesh: Arc<TriMesh>) {
+        if self.path_to_id.contains_key(path) {
+            return;
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        self.bvh.insert(Aabb::new(bbox.min, bbox.max), id);
+        self.trimeshes.insert(id, trimesh);
+        self.id_to_path.insert(id, path.clone());
+        self.path_to_id.insert(path.clone(), id);
+        self.aabbs.insert(id, *bbox);
+    }
+
+    /// Removes one occluder; no-op if absent.
+    pub fn remove_node(&mut self, path: &MapTreeNodePath) {
+        if let Some(id) = self.path_to_id.remove(path) {
+            self.bvh.remove(id);
+            self.trimeshes.remove(&id);
+            self.id_to_path.remove(&id);
+            self.aabbs.remove(&id);
+        }
+    }
+
+    /// Drops every occluder whose path is not in `keep`. Together with
+    /// insert_occluder this diffs the persistent world against the client's
+    /// current spawned set.
+    pub fn retain_paths(&mut self, keep: &BTreeSet<MapTreeNodePath>) {
+        let stale: Vec<MapTreeNodePath> = self
+            .path_to_id
+            .keys()
+            .filter(|p| !keep.contains(*p))
+            .cloned()
+            .collect();
+        for path in stale {
+            self.remove_node(&path);
+        }
+    }
+
+    /// Casts a ray from `origin` to `target`. Returns true if it is occluded by any trimesh.
     pub fn is_ray_occluded(
         &self,
         origin: Vector,
@@ -255,6 +225,12 @@ impl OccluderWorld {
         exclude_path: &MapTreeNodePath,
         exclude_bbox: &BBox,
     ) -> bool {
+        // Reject non-finite endpoints before they reach parry. A NaN/inf ray can
+        // trigger undefined behaviour / a wasm trap deep inside the trimesh
+        // ray cast, which on the browser silently aborts the whole worker.
+        if !origin.is_finite() || !target.is_finite() {
+            return false;
+        }
         let dir = target - origin;
         let dist = dir.length();
         if dist < 1e-3 {
@@ -276,7 +252,7 @@ impl OccluderWorld {
 
             if let Some(leaf_id) = node.leaf_data() {
                 if let Some(path) = self.id_to_path.get(&leaf_id) {
-                    let same_lineage = path.0.starts_with(&exclude_path.0)   // target or its descendant
+                    let same_lineage = path.0.starts_with(&exclude_path.0) // target or its descendant
                         || exclude_path.0.starts_with(&path.0); // an ancestor of the target
                     if same_lineage {
                         return TraversalAction::Continue;
@@ -288,20 +264,12 @@ impl OccluderWorld {
                         return TraversalAction::Continue;
                     }
 
-                    if let Some(hf) = self.heightfields.get(&leaf_id) {
-                        if let Some(pose) = self.transforms.get(&leaf_id) {
-                            let inv_pose = invert_pose(pose);
-                            let local_ray = ray.transform_by(&inv_pose);
-                            if let Some(intersection) =
-                                hf.cast_local_ray_and_get_normal(&local_ray, dist, true)
-                            {
-                                if intersection.time_of_impact < dist {
-                                    let hit_point = local_ray.point_at(intersection.time_of_impact);
-                                    if hit_point.y >= cand_bbox.min.y + 1e-3 {
-                                        occluded = true;
-                                        return TraversalAction::EarlyExit;
-                                    }
-                                }
+                    if let Some(tm) = self.trimeshes.get(&leaf_id) {
+                        // Trimesh vertices are world-space: local space == world space, no pose.
+                        if let Some(toi) = tm.cast_local_ray(&ray, dist, true) {
+                            if toi < dist {
+                                occluded = true;
+                                return TraversalAction::EarlyExit;
                             }
                         }
                     }
@@ -315,7 +283,6 @@ impl OccluderWorld {
     }
 
     /// Checks if a node is visible from any camera position.
-    /// Generates samples on the hemisphere facing the target node, plus the look target itself.
     pub fn is_node_visible(
         &self,
         node_bbox: &BBox,
@@ -325,66 +292,110 @@ impl OccluderWorld {
         if cameras.is_empty() {
             return true; // no camera constraint => cannot cull
         }
-        if self.heightfields.is_empty() {
+        if self.trimeshes.is_empty() {
             return true; // no occluders => everything visible
         }
 
-        // Target points on the node's AABB (corners + center)
+        // Target points on the node's AABB: center + 8 corners + 6 face
+        // centers, all pulled 5% toward the center. Un-shrunk corners and
+        // faces lie exactly on the shared boundary with neighboring tiles,
+        // so rays to them graze neighbor geometry at the endpoint and report
+        // spurious occlusion — distant tiles then never refine.
         let center = (node_bbox.min + node_bbox.max) / 2.0;
-        let corners = [
-            Vector::new(node_bbox.min.x, node_bbox.min.y, node_bbox.min.z),
-            Vector::new(node_bbox.min.x, node_bbox.min.y, node_bbox.max.z),
-            Vector::new(node_bbox.min.x, node_bbox.max.y, node_bbox.min.z),
-            Vector::new(node_bbox.min.x, node_bbox.max.y, node_bbox.max.z),
-            Vector::new(node_bbox.max.x, node_bbox.min.y, node_bbox.min.z),
-            Vector::new(node_bbox.max.x, node_bbox.min.y, node_bbox.max.z),
-            Vector::new(node_bbox.max.x, node_bbox.max.y, node_bbox.min.z),
-            Vector::new(node_bbox.max.x, node_bbox.max.y, node_bbox.max.z),
-            center,
-        ];
+        let shrink = |p: Vector| -> Vector { center + (p - center) * 0.95 };
+        let (min, max) = (node_bbox.min, node_bbox.max);
+        // Top corners before bottom ones: sight lines from a street-level
+        // camera clear a tile's top first, and `sees_node` early-exits on the
+        // first unoccluded target.
+        let mut targets: Vec<Vector> = Vec::with_capacity(16);
+        targets.push(center);
+        for corner in [
+            Vector::new(min.x, max.y, min.z),
+            Vector::new(min.x, max.y, max.z),
+            Vector::new(max.x, max.y, min.z),
+            Vector::new(max.x, max.y, max.z),
+            Vector::new(min.x, min.y, min.z),
+            Vector::new(min.x, min.y, max.z),
+            Vector::new(max.x, min.y, min.z),
+            Vector::new(max.x, min.y, max.z),
+        ] {
+            targets.push(shrink(corner));
+        }
+        for face in [
+            Vector::new(min.x, center.y, center.z),
+            Vector::new(max.x, center.y, center.z),
+            Vector::new(center.x, min.y, center.z),
+            Vector::new(center.x, max.y, center.z),
+            Vector::new(center.x, center.y, min.z),
+            Vector::new(center.x, center.y, max.z),
+        ] {
+            targets.push(shrink(face));
+        }
 
-        // The camera sphere samples model *uncertainty* in the camera position
-        // between LOD recomputes (the camera can drift a few metres before the next
-        // request). `camera.max_range` is a LOD *reach* distance (hundreds–thousands
-        // of metres in `lod_flow.rs`); using it as the sample-sphere radius scatters
-        // test cameras so far out that some sample always has a clear line of sight,
-        // which makes the visibility gate return `true` for everything and disables
-        // culling entirely. Bound it to a small drift radius so the samples stay in
-        // the camera's actual neighbourhood and share its occlusion.
-        const MAX_CAMERA_DRIFT: f32 = 6.0;
+        const MIN_SAMPLING_RADIUS: f32 = 0.25;
+        // Velocity below this (m/s) is noise; skip lookahead points.
+        const MIN_LOOKAHEAD_SPEED: f32 = 0.5;
 
         for camera in cameras {
-            // Check direct line of sight from the actual camera position.
-            for &q in &corners {
-                if !self.is_ray_occluded(camera.center, q, node_path, node_bbox) {
-                    return true; // Visible from the camera itself.
+            // The node point nearest to the camera. For a tile seen down a
+            // street canyon this lies on the near face on the canyon axis —
+            // a sight line the corner/face samples all miss laterally.
+            let nearest = shrink(Vector::new(
+                camera.center.x.clamp(min.x.min(max.x), min.x.max(max.x)),
+                camera.center.y.clamp(min.y.min(max.y), min.y.max(max.y)),
+                camera.center.z.clamp(min.z.min(max.z), min.z.max(max.z)),
+            ));
+
+            // Closure: can any target point be seen from this origin?
+            let sees_node = |origin: Vector| -> bool {
+                std::iter::once(&nearest)
+                    .chain(targets.iter())
+                    .any(|&q| !self.is_ray_occluded(origin, q, node_path, node_bbox))
+            };
+
+            // 1. The camera point itself is always definitive when clear.
+            if sees_node(camera.center) {
+                return true;
+            }
+
+            let r = camera.sample_radius;
+            if r < MIN_SAMPLING_RADIUS {
+                continue; // point-based model: nothing more to test for this camera
+            }
+
+            // Candidate extra origins, all within radius r of the camera.
+            let mut origins: Vec<Vector> = Vec::with_capacity(11);
+
+            // 2. Velocity lookahead: where the camera is about to be.
+            let speed = camera.velocity.length();
+            if speed > MIN_LOOKAHEAD_SPEED {
+                let v_dir = camera.velocity / speed;
+                for k in [1.0 / 3.0, 2.0 / 3.0, 1.0] {
+                    origins.push(camera.center + v_dir * (r * k));
                 }
             }
 
-            let drift = camera.max_range.min(MAX_CAMERA_DRIFT);
-            if drift <= 1e-3 {
-                continue; // no drift budget => camera-center test above is definitive
+            // 3. Horizontal ring: turns the velocity doesn't predict.
+            for k in 0..8 {
+                let a = (k as f32) * std::f32::consts::FRAC_PI_4;
+                origins.push(camera.center + Vector::new(a.cos() * r, 0.0, a.sin() * r));
             }
 
-            // Fibonacci-sphere samples around the camera position (uniform, small radius).
-            let num_samples = 16;
-            for s in 0..num_samples {
-                let y = 1.0 - (s as f32 / (num_samples - 1) as f32) * 2.0;
-                let radius = (1.0 - y * y).sqrt();
-                let golden_ratio = (1.0 + 5.0f32.sqrt()) / 2.0;
-                let theta = 2.0 * std::f32::consts::PI * (s as f32) / golden_ratio;
-                let offset = Vector::new(radius * theta.cos(), y, radius * theta.sin());
-
-                let cam_pos = camera.center + offset * drift;
-                for &q in &corners {
-                    if !self.is_ray_occluded(cam_pos, q, node_path, node_bbox) {
-                        return true; // Visible from a plausible near-camera position.
-                    }
+            for origin in origins {
+                // Pre-filter: only use origins the real camera can see. An origin
+                // behind a wall or under the terrain fails this test and is skipped,
+                // so it can never falsely re-grant visibility (the failure mode of
+                // the old large-radius sphere model).
+                if self.is_ray_occluded(camera.center, origin, node_path, node_bbox) {
+                    continue;
+                }
+                if sees_node(origin) {
+                    return true;
                 }
             }
         }
 
-        false // Occluded from the camera and its whole drift neighbourhood.
+        false
     }
 }
 
@@ -393,11 +404,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_heightfield_vertical_raycast() {
-        let bbox = BBox {
-            min: glam::Vec3::new(0.0, 0.0, 0.0),
-            max: glam::Vec3::new(10.0, 10.0, 10.0),
-        };
+    fn test_trimesh_vertical_raycast() {
         let vertices = vec![
             [0.0, 5.0, 0.0],
             [10.0, 5.0, 0.0],
@@ -405,25 +412,15 @@ mod tests {
             [0.0, 5.0, 10.0],
         ];
         let indices = vec![[0, 1, 2], [0, 2, 3]];
+        let tm = build_trimesh_from_mesh(&vertices, &indices).expect("trimesh builds");
 
-        let hf = build_heightfield_from_mesh(&bbox, &vertices, &indices);
+        let ray = Ray::new(Vector::new(5.0, 10.0, 5.0), Vector::new(0.0, -1.0, 0.0));
+        let toi = tm.cast_local_ray(&ray, 10.0, true).expect("ray hits");
+        assert!((ray.point_at(toi).y - 5.0).abs() < 1e-4);
+    }
 
-        // Ray starts at (5.0, 10.0, 5.0) and points straight down
-        let origin = Vector::new(5.0, 10.0, 5.0);
-        let dir = Vector::new(0.0, -1.0, 0.0);
-        let dist = 10.0;
-        let ray = Ray::new(origin, dir);
-
-        let intersection = hf.cast_local_ray_and_get_normal(&ray, dist, true);
-        assert!(intersection.is_some(), "Ray should hit the heightfield");
-        let hit = intersection.unwrap();
-        assert!(hit.time_of_impact < dist);
-
-        let hit_point = ray.point_at(hit.time_of_impact);
-        assert!(
-            (hit_point.y - 5.0).abs() < 1e-4,
-            "Hit height should be 5.0, got {}",
-            hit_point.y
-        );
+    #[test]
+    fn test_trimesh_degenerate_input() {
+        assert!(build_trimesh_from_mesh(&[], &[]).is_none());
     }
 }

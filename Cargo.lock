@@ -5069,6 +5069,7 @@ dependencies = [
  "anyhow",
  "api_asscrack",
  "bytes",
+ "futures",
  "glam 0.32.1",
  "gltf",
  "net_crackpipe",

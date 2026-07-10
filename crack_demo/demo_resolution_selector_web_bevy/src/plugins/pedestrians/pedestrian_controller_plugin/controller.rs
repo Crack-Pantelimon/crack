@@ -190,8 +190,8 @@ pub fn apply_movement_damping(
     }
 }
 
-/// Clamps horizontal speed to the current movement-mode cap. Sprint starts at 2x jog speed and
-/// ramps toward `SPRINT_MAX_MULT` x jog speed while Shift is held.
+/// Clamps horizontal speed to the current movement-mode cap. Walking ramps from
+/// [`WALK_START_SPEED`] to [`JOG_SPEED`]; sprint ramps from jog pace to `SPRINT_MAX_MULT * JOG_SPEED`.
 pub fn apply_speed_cap(
     time: Res<Time>,
     mut query: Query<
@@ -205,10 +205,26 @@ pub fn apply_speed_cap(
         if rolling {
             continue;
         }
-        // Advance / reset the sprint ramp timer.
+
+        let horizontal = (velocity.x * velocity.x + velocity.z * velocity.z).sqrt() as f32;
+        let moving = horizontal > MOVE_ANIM_THRESHOLD;
+        let releasing_sprint =
+            modifiers.sprint_secs > 0.0 && !modifiers.sprint && !modifiers.crouch;
+
+        // Advance / reset walk and sprint ramp timers.
         if modifiers.sprint && !modifiers.crouch {
             modifiers.sprint_secs = (modifiers.sprint_secs + dt).min(SPRINT_RAMP_TIME);
+            modifiers.walk_secs = 0.0;
+        } else if modifiers.crouch || !moving {
+            modifiers.walk_secs = 0.0;
+            modifiers.sprint_secs = 0.0;
         } else {
+            // Walking (no sprint, no crouch).
+            if releasing_sprint {
+                modifiers.walk_secs = walk_secs_from_speed(horizontal.min(JOG_SPEED));
+            } else {
+                modifiers.walk_secs = (modifiers.walk_secs + dt).min(WALK_RAMP_TIME);
+            }
             modifiers.sprint_secs = 0.0;
         }
 
@@ -220,13 +236,12 @@ pub fn apply_speed_cap(
                 CROUCH_SPEED
             }
         } else if modifiers.sprint {
-            let t = modifiers.sprint_secs / SPRINT_RAMP_TIME;
-            JOG_SPEED * (1.0 + (SPRINT_MAX_MULT - 1.0) * t)
+            sprint_speed_cap(modifiers.sprint_secs)
         } else {
-            JOG_SPEED
+            walk_speed_cap(modifiers.walk_secs)
         } as Scalar;
 
-        let horizontal = (velocity.x * velocity.x + velocity.z * velocity.z).sqrt();
+        let horizontal = horizontal as Scalar;
         if horizontal > cap && horizontal > 0.0 {
             let factor = cap / horizontal;
             velocity.x *= factor;

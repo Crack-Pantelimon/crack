@@ -464,32 +464,14 @@ pub fn do_split_requests(
     let mut split_finished = vec![];
 
     let mut k = 0;
-    for (split_req, _req_ent) in q_split.iter() {
-        let assets_ready = split_req.load_children.iter().all(|x| {
-            x.1.iter().all(|(_, handle, _, _)| {
-                matches!(
-                    asset_server.get_load_state(handle),
-                    Some(bevy::asset::LoadState::Loaded)
-                )
-            })
-        });
-
-        if assets_ready {
-            split_finished.push(split_req);
-            commands.entity(_req_ent).despawn();
-            k += 1;
-            if k >= SPLIT_PER_FRAME {
-                break;
-            }
-        }
-
+    for (split_req, req_ent) in q_split.iter() {
         let asset_errors = split_req
             .load_children
             .iter()
             .flat_map(|x| {
                 x.1.iter().filter_map(|(_, handle, _, _)| {
                     match asset_server.get_load_state(handle) {
-                        Some(bevy::asset::LoadState::Failed(_e)) => Some(_e),
+                        Some(bevy::asset::LoadState::Failed(e)) => Some(e),
                         _ => None,
                     }
                 })
@@ -502,6 +484,28 @@ pub fn do_split_requests(
                     split_req,
                     item
                 );
+            }
+            // Drop the failed request: it can never become ready, and while
+            // it lives spawn_lod_task refuses to run at all.
+            commands.entity(req_ent).despawn();
+            continue;
+        }
+
+        let assets_ready = split_req.load_children.iter().all(|x| {
+            x.1.iter().all(|(_, handle, _, _)| {
+                matches!(
+                    asset_server.get_load_state(handle),
+                    Some(bevy::asset::LoadState::Loaded)
+                )
+            })
+        });
+
+        if assets_ready {
+            split_finished.push(split_req);
+            commands.entity(req_ent).despawn();
+            k += 1;
+            if k >= SPLIT_PER_FRAME {
+                break;
             }
         }
     }
@@ -533,6 +537,31 @@ pub fn do_merge_requests(
 
     let mut k = 0;
     for (merge_req, req_ent) in q_merge.iter() {
+        let asset_errors = merge_req
+            .load_parent
+            .1
+            .iter()
+            .filter_map(
+                |(_, handle, _, _)| match asset_server.get_load_state(handle) {
+                    Some(bevy::asset::LoadState::Failed(error)) => Some(error),
+                    _ => None,
+                },
+            )
+            .collect::<Vec<_>>();
+        if !asset_errors.is_empty() {
+            for error in asset_errors {
+                tracing::error!(
+                    "Got Asset Loading error on Map Tile Merge! {:?} {:?}",
+                    merge_req,
+                    error
+                );
+            }
+            // Drop the failed request: it can never become ready, and while
+            // it lives spawn_lod_task refuses to run at all.
+            commands.entity(req_ent).despawn();
+            continue;
+        }
+
         let parent_ready = merge_req.load_parent.1.iter().all(|(_, handle, _, _)| {
             matches!(
                 asset_server.get_load_state(handle),
@@ -546,24 +575,6 @@ pub fn do_merge_requests(
             if k >= MERGE_PER_FRAME {
                 break;
             }
-        }
-        let asset_errors = merge_req
-            .load_parent
-            .1
-            .iter()
-            .filter_map(
-                |(_, handle, _, _)| match asset_server.get_load_state(handle) {
-                    Some(bevy::asset::LoadState::Failed(error)) => Some(error),
-                    _ => None,
-                },
-            )
-            .collect::<Vec<_>>();
-        for error in asset_errors {
-            tracing::error!(
-                "Got Asset Loading error on Map Tile Merge! {:?} {:?}",
-                merge_req,
-                error
-            );
         }
     }
     for merge_req in merge_finished {
