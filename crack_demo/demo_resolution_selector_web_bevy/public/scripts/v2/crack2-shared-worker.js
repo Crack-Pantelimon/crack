@@ -16,10 +16,23 @@ let nextClientId = 1;
 let currentRetryDelay = 120; // Starts at 120ms, doubles on failure
 let retryTimeoutId = null;
 
-// Message Queue and active processing state
+// Message Queue and in-flight processing state.
+//
+// The Dedicated Worker is fully async: each `execute` message it receives spawns
+// an independent task and replies out-of-order as it completes. So we do NOT
+// serialize on a single slot — we dispatch every queued message immediately and
+// track all outstanding requests concurrently in `inFlight`, keyed by a
+// SharedWorker-assigned monotonic `seq`. Each entry owns its own dead-worker
+// timeout. Replies are routed back to the originating client by `clientId`; the
+// `seq` is only used to find and clear the matching in-flight entry's timer.
+//
+// `messageQueue` only holds messages that arrived before the Dedicated Worker
+// port was bridged (or that got re-queued after a worker failure); once the port
+// is live it is drained immediately by `pump()`.
 const messageQueue = [];
-let currentProcessingItem = null;
-let processingTimeoutId = null;
+const inFlight = new Map(); // seq -> { clientId, payload, timeoutId }
+let nextSeq = 1;
+let reallocating = false; // guards against a failure stampede when many timers fire at once
 
 // How long a single API call may run before we assume the Dedicated Worker is dead.
 // This must be generous: real calls fetch + parse remote assets (e.g. the map
@@ -78,13 +91,11 @@ self.onconnect = (event) => {
         // console.log('[SharedWorker] Received reply from Dedicated Worker:', dbData);
 
         if (dbData.type === 'execute_reply') {
-          // Clear active processing timeout and complete current item
-          if (currentProcessingItem && dbData.clientId === currentProcessingItem.clientId) {
-            if (processingTimeoutId) {
-              clearTimeout(processingTimeoutId);
-              processingTimeoutId = null;
-            }
-            currentProcessingItem = null;
+          // Clear the timeout for the matching in-flight request and complete it.
+          const entry = inFlight.get(dbData.seq);
+          if (entry) {
+            clearTimeout(entry.timeoutId);
+            inFlight.delete(dbData.seq);
           }
 
           const targetPort = clientPorts.get(dbData.clientId);
@@ -97,17 +108,14 @@ self.onconnect = (event) => {
           } else {
             console.warn(`[SharedWorker] Target port for client ${dbData.clientId} no longer exists. Reply dropped.`);
           }
-
-          // Process the next message in the queue
-          processQueue();
         }
       });
 
       dbWorkerPort.start();
       console.log('[SharedWorker] Dedicated Worker Port fully bridged and listening.');
-      
-      // Trigger queue processing
-      processQueue();
+
+      // Flush any messages that queued up while the worker was unbridged.
+      pump();
       return;
     }
 
@@ -118,7 +126,7 @@ self.onconnect = (event) => {
         clientId: clientId,
         payload: data.payload
       });
-      processQueue();
+      pump();
       return;
     }
 
@@ -161,17 +169,9 @@ self.onconnect = (event) => {
 
       if (clientId === leaderClientId) {
         console.warn('[SharedWorker] Leader client disconnected. Clearing worker references and electing new leader...');
-        
-        if (processingTimeoutId) {
-          clearTimeout(processingTimeoutId);
-          processingTimeoutId = null;
-        }
 
-        if (currentProcessingItem) {
-          console.log('[SharedWorker] Putting active message back to queue due to leader disconnect.');
-          messageQueue.unshift(currentProcessingItem);
-          currentProcessingItem = null;
-        }
+        // Re-queue every outstanding request so it gets retried on the new worker.
+        requeueAllInFlight();
 
         dbWorkerPort = null;
         leaderClientId = null;
@@ -192,37 +192,46 @@ self.onconnect = (event) => {
 };
 
 /**
- * Process the next item in the message queue
+ * Drain the message queue, dispatching every pending message to the Dedicated
+ * Worker concurrently. Deferred until the worker port is bridged.
  */
-function processQueue() {
+function pump() {
   if (!dbWorkerPort) {
-    console.log('[SharedWorker] Queue processing deferred: Dedicated Worker is not connected.');
+    // Not connected yet — messages stay queued and flush from REGISTER_DB_PORT.
     return;
   }
 
-  if (messageQueue.length === 0) {
-    return;
+  // Stop if a dispatch failure mid-drain triggered reallocation (dbWorkerPort is
+  // torn down / messages get re-queued for the next worker).
+  while (dbWorkerPort && !reallocating && messageQueue.length > 0) {
+    dispatch(messageQueue.shift());
   }
+}
 
-  if (currentProcessingItem !== null) {
-    console.log('[SharedWorker] Queue is already processing an active message.');
-    return;
-  }
+/**
+ * Send a single message to the Dedicated Worker, tracking it as in-flight with
+ * its own dead-worker timeout. Does not block other messages.
+ */
+function dispatch(item) {
+  const seq = nextSeq++;
+  // console.log(`[SharedWorker] Dispatching message seq=${seq} for client ${item.clientId}:`, item.payload);
 
-  // Retrieve next message
-  currentProcessingItem = messageQueue.shift();
-  const item = currentProcessingItem;
-  // console.log(`[SharedWorker] Dispatching message for client ${item.clientId} to Dedicated Worker:`, item.payload);
-
-  // Set response timeout. If no reply comes back, we assume the worker was killed.
-  processingTimeoutId = setTimeout(() => {
-    console.warn(`[SharedWorker] Dedicated Worker message processing timed out after ${PROCESSING_TIMEOUT_MS}ms (msg_type=${item.payload && item.payload.msg_type})! Assuming worker was killed.`);
+  // Per-message response timeout. If no reply comes back, we assume the worker was killed.
+  const timeoutId = setTimeout(() => {
+    console.warn(`[SharedWorker] Dedicated Worker message processing timed out after ${PROCESSING_TIMEOUT_MS}ms (seq=${seq}, msg_type=${item.payload && item.payload.msg_type})! Assuming worker was killed.`);
     handleDedicatedWorkerFailure();
   }, PROCESSING_TIMEOUT_MS);
+
+  inFlight.set(seq, {
+    clientId: item.clientId,
+    payload: item.payload,
+    timeoutId: timeoutId
+  });
 
   try {
     dbWorkerPort.postMessage({
       type: 'execute',
+      seq: seq,
       clientId: item.clientId,
       payload: item.payload
     });
@@ -233,24 +242,32 @@ function processQueue() {
 }
 
 /**
+ * Clear all in-flight timers and move every outstanding request back to the
+ * front of the queue so it is retried on the next Dedicated Worker.
+ */
+function requeueAllInFlight() {
+  if (inFlight.size === 0) return;
+  console.log(`[SharedWorker] Re-queueing ${inFlight.size} in-flight message(s) for retry.`);
+  for (const entry of inFlight.values()) {
+    clearTimeout(entry.timeoutId);
+    messageQueue.unshift({ clientId: entry.clientId, payload: entry.payload });
+  }
+  inFlight.clear();
+}
+
+/**
  * Handles communication failures with the Dedicated Worker.
  * Attempts to instruct the leader tab to terminate its worker.
  * Waits up to 120ms for a SHUTDOWN_OK reply, then elects a new leader randomly.
  */
 function handleDedicatedWorkerFailure() {
-  if (processingTimeoutId) {
-    clearTimeout(processingTimeoutId);
-    processingTimeoutId = null;
-  }
+  // Many in-flight messages can time out (or fail to post) at once when the
+  // worker actually dies. Only run the reallocation once until it completes.
+  if (reallocating) return;
+  reallocating = true;
 
-  const failedItem = currentProcessingItem;
-  currentProcessingItem = null;
-
-  // Put the failed item back at the front of the queue
-  if (failedItem) {
-    console.log('[SharedWorker] Putting failed message back to the front of the queue.');
-    messageQueue.unshift(failedItem);
-  }
+  // Re-queue every outstanding request so it gets retried on the new worker.
+  requeueAllInFlight();
 
   const leaderPort = clientPorts.get(leaderClientId);
   let resolved = false;
@@ -268,6 +285,9 @@ function handleDedicatedWorkerFailure() {
     self.pendingShutdownResolver = null;
     dbWorkerPort = null;
     leaderClientId = null;
+
+    // Allow the next (new) worker to fail independently.
+    reallocating = false;
 
     console.log('[SharedWorker] Allocating a new Dedicated Worker on a random tab...');
     electNewLeaderRandomly();

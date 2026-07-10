@@ -73,7 +73,7 @@ async function init_wasm_bindgen() {
               // Perform asynchronous payload modification (prepend "reply: " to all string fields)
               let modifiedPayload = originalPayload;
               if (originalPayload.msg_type) {
-                console.log('[DedicatedWorker] Got Application Message with msg_type = ', originalPayload.msg_type);
+                // console.log('[DedicatedWorker] Got Application Message with msg_type = ', originalPayload.msg_type);
                 modifiedPayload = await computePayloadReply(originalPayload);
               } else {
                 console.error('[DedicatedWorker] Got Payload Without msg_type!', originalPayload);
@@ -83,6 +83,7 @@ async function init_wasm_bindgen() {
 
               bridgedPort.postMessage({
                 type: 'execute_reply',
+                seq: bridgeData.seq,
                 clientId: bridgeData.clientId,
                 is_error: false,
                 payload: modifiedPayload
@@ -91,6 +92,7 @@ async function init_wasm_bindgen() {
               console.error('[DedicatedWorker] Error during computePayloadReply:', err);
               bridgedPort.postMessage({
                 type: 'execute_reply',
+                seq: bridgeData.seq,
                 clientId: bridgeData.clientId,
                 is_error: true,
                 payload: { is_error: true, error: err.message || 'Processing error' }

@@ -38,12 +38,15 @@
  *    - Purpose: Client submits a query/message to the system.
  * 
  * 8. Routing to Dedicated Worker
- *    - Shared Worker -> Dedicated Worker (via Port 2): { type: 'execute', clientId: <clientId>, payload: <message_obj> }
- *    - Purpose: Forward the client's message to the Dedicated Worker, tagging it with the sender's clientId.
- * 
+ *    - Shared Worker -> Dedicated Worker (via Port 2): { type: 'execute', seq: <seq>, clientId: <clientId>, payload: <message_obj> }
+ *    - Purpose: Forward the client's message to the Dedicated Worker, tagging it with the sender's clientId
+ *      and a Shared-Worker-assigned `seq`. Messages are dispatched concurrently (no head-of-line blocking);
+ *      the Dedicated Worker processes each asynchronously and may reply out of order.
+ *
  * 9. Replying from Dedicated Worker
- *    - Dedicated Worker -> Shared Worker (via Port 1): { type: 'execute_reply', clientId: <clientId>, payload: <modified_message_obj> }
- *    - Purpose: Dedicated Worker responds with the modified payload (string fields prefixed with "reply: ").
+ *    - Dedicated Worker -> Shared Worker (via Port 1): { type: 'execute_reply', seq: <seq>, clientId: <clientId>, payload: <modified_message_obj> }
+ *    - Purpose: Dedicated Worker responds; `seq` is echoed back so the Shared Worker can match the reply
+ *      to its in-flight entry (and clear that request's timeout). `clientId` routes the reply to its tab.
  * 
  * 10. Routing Back to Client
  *    - Shared Worker -> Client: { type: 'forwarded_reply', payload: <modified_message_obj> }
