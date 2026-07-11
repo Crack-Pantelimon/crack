@@ -27,7 +27,7 @@ OUTPUT_PARQUET = ROOT_DIR / "detections.parquet"
 RENDERS_DIR = ROOT_DIR / "street_cleanup" / "renders"
 
 BLENDER_BATCH_SIZE = 32
-MAX_WORKERS = 4
+MAX_WORKERS = 12
 
 def run_blender_batch(batch: list[dict]) -> tuple[int, int]:
     batch_json_path = f"/tmp/blender_batch_{batch[0]['octant_path']}.json"
@@ -38,7 +38,7 @@ def run_blender_batch(batch: list[dict]) -> tuple[int, int]:
         "blender",
         "-b",
         "-P",
-        str(ROOT_DIR / "_data" / "3d_data_v2" / "street_cleanup" / "render_top_down.py"),
+        str(ROOT_DIR / "street_cleanup" / "render_top_down.py"),
         "--",
         batch_json_path
     ]
@@ -153,7 +153,7 @@ def main():
             "glb_path": str(t.glb_path),
             "jpg_path": str(jpg_path),
             "meta_path": str(meta_path),
-            "resolution": [1024, 1024],
+            "resolution": [128, 128],
             "lat_lon_bbox": {
                 "lat_north": t.lat_north,
                 "lat_south": t.lat_south,
@@ -186,7 +186,9 @@ def main():
                 total_ok += ok
                 total_fail += fail
                 logger.info(f"Blender Progress: {i}/{len(batches)} batches | Rendered OK: {total_ok}, Failed: {total_fail}")
+                sys.stdout.flush()
         logger.info(f"Blender rendering completed in {time.time() - t0:.1f}s.")
+        sys.stdout.flush()
 
     # 5. Load YOLOv7 model
     if not ONNX_PATH.exists():
@@ -247,10 +249,10 @@ def main():
             px, py = latlon_to_pixel(lat, lon, width, height, lat_lon_bbox)
             if 0.0 <= px <= float(width) and 0.0 <= py <= float(height):
                 # Calculate pixel bbox for tree (4m diameter ~ 60x60 pixels in 1024px zoom)
-                bx0 = max(0.0, px - 30.0)
-                bx1 = min(float(width), px + 30.0)
-                by0 = max(0.0, py - 30.0)
-                by1 = min(float(height), py + 30.0)
+                bx0 = max(0.0, px - 3.75)
+                bx1 = min(float(width), px + 3.75)
+                by0 = max(0.0, py - 3.75)
+                by1 = min(float(height), py + 3.75)
                 
                 parquet_data["octtree_id"].append(octant_path)
                 parquet_data["resolution_x"].append(width)
@@ -261,16 +263,20 @@ def main():
                 parquet_data["bbox_y1"].append(float(by1))
                 parquet_data["class"].append("tree")
 
-        if idx % 100 == 0 or idx == len(render_specs):
+        if idx % 50 == 0 or idx == len(render_specs):
             logger.info(f"Processed detections for {idx}/{len(render_specs)} tiles...")
+            sys.stdout.flush()
 
     logger.info(f"Detection processing completed in {time.time() - t0_inf:.1f}s.")
+    sys.stdout.flush()
 
     # 6. Save as Parquet file
     logger.info(f"Writing Parquet table with {len(parquet_data['octtree_id'])} detections to {OUTPUT_PARQUET}...")
+    sys.stdout.flush()
     table = pa.Table.from_pydict(parquet_data)
     pq.write_table(table, str(OUTPUT_PARQUET))
     logger.info("Parquet table generated successfully.")
+    sys.stdout.flush()
 
 if __name__ == "__main__":
     main()

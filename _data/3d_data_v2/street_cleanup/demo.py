@@ -38,7 +38,7 @@ logging.basicConfig(
 logger = logging.getLogger("demo")
 
 OCTANT_PATH = "30436272704361707403"
-RENDER_SIZE = 1024
+RENDER_SIZE = 128
 DEMO_DIR = Path("street_cleanup/demo")
 DEMO_JPG = DEMO_DIR / "demo1.jpg"
 DEMO_JSON = DEMO_DIR / "demo1.json"

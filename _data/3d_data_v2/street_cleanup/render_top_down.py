@@ -75,7 +75,27 @@ def ensure_gpu_rendering() -> None:
 
 
 def clear_scene() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+    # Delete all objects in current scene
+    if bpy.context.scene:
+        bpy.ops.object.select_all(action='SELECT')
+        bpy.ops.object.delete(use_global=False)
+    
+    # Remove unused data blocks to prevent memory leaks and speed up GLTF imports
+    for block in list(bpy.data.meshes):
+        if block.users == 0:
+            bpy.data.meshes.remove(block)
+    for block in list(bpy.data.materials):
+        if block.users == 0:
+            bpy.data.materials.remove(block)
+    for block in list(bpy.data.textures):
+        if block.users == 0:
+            bpy.data.textures.remove(block)
+    for block in list(bpy.data.images):
+        if block.users == 0:
+            bpy.data.images.remove(block)
+    for block in list(bpy.data.cameras):
+        if block.users == 0:
+            bpy.data.cameras.remove(block)
 
 
 def convert_materials_to_emission() -> None:
@@ -152,6 +172,16 @@ def setup_render_settings(scene: bpy.types.Scene, *, width: int, height: int) ->
     scene.render.resolution_percentage = 100
     scene.render.film_transparent = False
 
+    # Speed optimizations for Eevee/Eevee Next on CPU
+    if hasattr(scene, "eevee"):
+        try:
+            scene.eevee.use_shadows = False
+            scene.eevee.use_gtao = False
+            scene.eevee.use_ssr = False
+            scene.eevee.use_bloom = False
+        except Exception:
+            pass
+
     if not scene.world:
         scene.world = bpy.data.worlds.new("World")
     scene.world.use_nodes = True
@@ -185,7 +215,7 @@ def render_tile(tile: dict) -> bool:
     horizontal_extent = max(bbox["size"][0], bbox["size"][1])
     if horizontal_extent <= 0:
         horizontal_extent = 1.0
-    ortho_scale = horizontal_extent * ORTHO_PADDING
+    ortho_scale = horizontal_extent * ORTHO_PADDING * tile.get("ortho_scale_multiplier", 1.0)
 
     cam_data = bpy.data.cameras.new(name="TopDownCam")
     cam_data.type = "ORTHO"
