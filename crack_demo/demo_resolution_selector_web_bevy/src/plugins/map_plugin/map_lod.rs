@@ -155,7 +155,7 @@ pub struct TileSwapRequests {
     pub culled_nodes: Vec<game_logic::lod::CulledNodeSummary>,
 }
 
-const TILE_REVEAL_DELAY_FRAMES: u8 = 3;
+const TILE_REVEAL_DELAY_FRAMES: u8 = 2;
 
 #[derive(Component)]
 pub struct PendingTileReveal {
@@ -204,7 +204,7 @@ pub fn start_tile_swap_requests(
         return;
     }
 
-    const PARALLEL_SPLIT_FETCH: i32 = 4;
+    const PARALLEL_SPLIT_FETCH: i32 = 2;
     const PARALLEL_MERGE_FETCH: i32 = 8;
     let current_splits = q_split.iter().len() as i32;
     let current_merges = q_merge.iter().len() as i32;
@@ -454,7 +454,7 @@ pub fn poll_tile_group_fetches(
 }
 
 const SPLIT_PER_FRAME: usize = 1;
-const MERGE_PER_FRAME: usize = 1;
+const MERGE_PER_FRAME: usize = 2;
 
 pub fn do_split_requests(
     mut commands: Commands,

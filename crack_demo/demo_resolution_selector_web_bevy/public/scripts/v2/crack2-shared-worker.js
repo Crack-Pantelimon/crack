@@ -7,6 +7,16 @@
  * Maintains a message queue to prevent message loss during worker crashes/re-allocations.
  */
 
+// If a payload carries a binary `msg_content` (a Uint8Array), return its backing
+// ArrayBuffer in a transfer list so postMessage moves it zero-copy instead of
+// structured-cloning the (300kb-1MB) bytes. Guards against error payloads (no
+// msg_content) and detached/empty buffers, where re-transferring an already-
+// detached buffer would throw DataCloneError.
+function payloadTransferList(payload) {
+  const buf = payload && payload.msg_content && payload.msg_content.buffer;
+  return buf instanceof ArrayBuffer && buf.byteLength > 0 ? [buf] : [];
+}
+
 let dbWorkerPort = null;
 let leaderClientId = null;
 const clientPorts = new Map();
@@ -100,11 +110,13 @@ self.onconnect = (event) => {
 
           const targetPort = clientPorts.get(dbData.clientId);
           if (targetPort) {
+            // Transfer the reply buffer to the client: this is the terminal hop
+            // and the shared worker keeps no reference to the reply payload.
             targetPort.postMessage({
               type: 'forwarded_reply',
               is_error: dbData.is_error,
               payload: dbData.payload
-            });
+            }, payloadTransferList(dbData.payload));
           } else {
             console.warn(`[SharedWorker] Target port for client ${dbData.clientId} no longer exists. Reply dropped.`);
           }
@@ -229,6 +241,11 @@ function dispatch(item) {
   });
 
   try {
+    // NOTE: deliberately NOT transferring item.payload.msg_content here. This
+    // payload is retained in `inFlight` and may be re-dispatched to a fresh worker
+    // if the current one dies (see requeueAllInFlight). Transferring would detach
+    // the buffer and silently re-send empty content on retry, so the request leg
+    // pays one structured clone in exchange for crash-retry correctness.
     dbWorkerPort.postMessage({
       type: 'execute',
       seq: seq,

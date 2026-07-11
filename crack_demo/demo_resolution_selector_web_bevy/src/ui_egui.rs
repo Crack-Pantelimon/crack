@@ -383,7 +383,7 @@ fn ui_example_system(
             ui.label(
                 egui::RichText::new(format!("FPS: {:.0}", *fps))
                     .color(egui::Color32::from_rgb(0, 220, 80))
-                    .size(18.0)
+                    .size(12.0)
                     .strong(),
             );
         });

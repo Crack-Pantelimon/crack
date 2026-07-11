@@ -58,6 +58,16 @@
  * ============================================================================
  */
 
+// If a payload carries a binary `msg_content` (a Uint8Array produced by the wasm
+// side), return its backing ArrayBuffer in a transfer list so postMessage moves
+// it zero-copy instead of structured-cloning the (300kb-1MB) bytes. Guards against
+// error payloads (no msg_content) and detached/empty buffers (byteLength 0), where
+// re-transferring an already-detached buffer would throw DataCloneError.
+function payloadTransferList(payload) {
+    const buf = payload && payload.msg_content && payload.msg_content.buffer;
+    return buf instanceof ArrayBuffer && buf.byteLength > 0 ? [buf] : [];
+}
+
 // Ping/pong tuning. wasm-bindgen init + OPFS install can take a while on a cold
 // load, so give the handshake generous headroom before declaring a worker dead.
 const PING_TIMEOUT_MS = 500;   // how long to wait for a single pong
@@ -298,10 +308,12 @@ export function init_workers2() {
     const handles = {
         send_message(message_obj) {
             // console.log('[Client] WorkerHandles.send_message() called with:', message_obj);
+            // Transfer the payload buffer: the wasm side just built this object and
+            // never touches it again after send, so moving it is safe.
             sharedWorker.port.postMessage({
                 type: 'client_message',
                 payload: message_obj
-            });
+            }, payloadTransferList(message_obj));
         },
         set_onmessage(callback) {
             console.log('[Client] WorkerHandles.set_onmessage() registered callback.');

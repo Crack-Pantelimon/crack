@@ -11,6 +11,16 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// If a payload carries a binary `msg_content` (a Uint8Array produced by the wasm
+// side), return its backing ArrayBuffer in a transfer list so postMessage moves
+// it zero-copy instead of structured-cloning the (300kb-1MB) bytes. Guards against
+// error payloads (no msg_content) and detached/empty buffers, where re-transferring
+// an already-detached buffer would throw DataCloneError.
+function payloadTransferList(payload) {
+    const buf = payload && payload.msg_content && payload.msg_content.buffer;
+    return buf instanceof ArrayBuffer && buf.byteLength > 0 ? [buf] : [];
+}
+
 async function init_wasm_bindgen() {
     console.log('[DedicatedWorker] wasm_bindgen 2');
     await wasm_bindgen("/pkg_web_serviceworker/web_worker_bg.wasm?v=b080a68bec6b7837db6e1a95f5747011");
@@ -81,13 +91,15 @@ async function init_wasm_bindgen() {
 
               // console.log('[DedicatedWorker] Finished processing. Sending reply back:', modifiedPayload);
 
+              // Transfer the reply buffer: computePayloadReply built modifiedPayload
+              // freshly from wasm memory and we never touch it again after posting.
               bridgedPort.postMessage({
                 type: 'execute_reply',
                 seq: bridgeData.seq,
                 clientId: bridgeData.clientId,
                 is_error: false,
                 payload: modifiedPayload
-              });
+              }, payloadTransferList(modifiedPayload));
             } catch (err) {
               console.error('[DedicatedWorker] Error during computePayloadReply:', err);
               bridgedPort.postMessage({
