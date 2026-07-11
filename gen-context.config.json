@@ -3,10 +3,7 @@
   "output": ".github/copilot-instructions.md",
   "outputs": [
     "copilot",
-    "codex",
-    "claude",
-    "gemini",
-    "cursor"
+    "codex"
   ],
   "_srcDirs_comment": "Source directories to scan. OMIT this key to use auto-detection (recommended).",
   "_srcDirs_comment2": "Auto-detection reads package.json/go.mod/Cargo.toml and scans top-level dirs automatically.",
@@ -58,7 +55,7 @@
     "CLAUDE.md",
     "context-*.md",
     "*-context.md",
-    ".github",
+    ".github", ".cursorrules",
     "Cargo.toml",
     "Dockerfile",
     "Readme.md",
@@ -74,7 +71,7 @@
   "maxTokens": 6000,
   "_autoMaxTokens_comment": "Auto-scale budget based on repo size. Default: true.",
   "_autoMaxTokens_formula": "effective = clamp(totalSigTokens \u00d7 coverageTarget, 4000, modelContextLimit \u00d7 maxTokensHeadroom)",
-  "autoMaxTokens": true,
+  "autoMaxTokens": false,
   "_coverageTarget_comment": "Fraction of source files to target for inclusion (0.0\u20131.0). Default: 0.80 = 80%.",
   "coverageTarget": 0.8,
   "_modelContextLimit_comment": "Model context window size (tokens). Hard cap = modelContextLimit \u00d7 maxTokensHeadroom.",
