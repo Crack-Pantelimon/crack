@@ -176,26 +176,26 @@ pub fn tree_navigator_ui(
             ui.label(format!("Spawned Assets: {}", num_assets));
             ui.label(format!("Spawned Vertices: {}", total_vertices));
 
-            ui.separator();
-            ui.heading("Tree Navigator");
+            // ui.separator();
+            // ui.heading("Tree Navigator");
 
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for node_path in rendered_paths {
-                    let is_selected = lod_state.selected_node.as_ref() == Some(&node_path.0);
-                    let label_text = format!("Path: {}", node_path.0);
+            // egui::ScrollArea::vertical().show(ui, |ui| {
+            //     for node_path in rendered_paths {
+            //         let is_selected = lod_state.selected_node.as_ref() == Some(&node_path.0);
+            //         let label_text = format!("Path: {}", node_path.0);
 
-                    ui.horizontal(|ui| {
-                        let resp = ui.selectable_label(is_selected, label_text);
-                        if resp.clicked() {
-                            if is_selected {
-                                node_to_deselect = true;
-                            } else {
-                                node_to_select = Some(node_path.0.clone());
-                            }
-                        }
-                    });
-                }
-            });
+            //         ui.horizontal(|ui| {
+            //             let resp = ui.selectable_label(is_selected, label_text);
+            //             if resp.clicked() {
+            //                 if is_selected {
+            //                     node_to_deselect = true;
+            //                 } else {
+            //                     node_to_select = Some(node_path.0.clone());
+            //                 }
+            //             }
+            //         });
+            //     }
+            // });
         });
 
     if node_to_deselect {
