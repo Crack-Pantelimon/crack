@@ -74,6 +74,8 @@ struct GratarGame {
     is_started: bool,
     is_finished: bool,
     needs_music_start: bool,
+    /// True once the AudioSink has been detected (audio is actually playing)
+    music_playing: bool,
     song_time: f32,
     notes: Vec<RhythmNote>,
     score: u32,
@@ -155,6 +157,7 @@ impl Default for GratarGame {
             is_started: false,
             is_finished: false,
             needs_music_start: false,
+            music_playing: false,
             song_time: 0.0,
             notes,
             score: 0,
@@ -165,8 +168,7 @@ impl Default for GratarGame {
             last_rating_timer: 0.0,
             bpm,
         }
-    }
-}
+    }}
 
 #[derive(Resource)]
 struct CameraDirector {
@@ -683,24 +685,25 @@ fn smoke_particles_system(
 fn rhythm_game_system(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut game: ResMut<GratarGame>,
     mut gratar_query: Query<&mut HydraulicGratar>,
-    audio_query: Query<Entity, With<AudioPlayer>>,
+    audio_query: Query<Entity, With<MusicTrack>>,
+    sink_query: Query<&AudioSink, With<MusicTrack>>,
 ) {
     if !game.is_started {
         if keyboard.just_pressed(KeyCode::Space) {
             game.is_started = true;
             game.needs_music_start = true;
+            game.music_playing = false;
             game.is_finished = false;
             game.song_time = 0.0;
             game.score = 0;
             game.combo = 0;
             game.max_combo = 0;
             game.multiplier = 1;
-            game.last_rating = "START!".to_string();
-            game.last_rating_timer = 0.8;
+            game.last_rating = "Loading...".to_string();
+            game.last_rating_timer = 2.0;
             for note in game.notes.iter_mut() {
                 note.hit = false;
             }
@@ -717,13 +720,16 @@ fn rhythm_game_system(
             commands.entity(entity).despawn();
         }
 
-        // Spawn the music player
+        // Spawn the music player with MusicTrack marker
         let song_url = format!(
             "{}sound_data/ManeleMp3.Net%20-%20NICOLAE%20GUTA%20-%20LOCUL%201%20NUMAI%201%20%5BORIGINALA%5D.mp3",
             demo_resolution_selector_web_bevy::config::DATA_BASE_URL
         );
+        info!("[AUDIO] Loading song from URL: {}", song_url);
+        let handle = asset_server.load::<bevy::audio::AudioSource>(&song_url);
         commands.spawn((
-            AudioPlayer::new(asset_server.load(song_url)),
+            MusicTrack,
+            AudioPlayer::new(handle),
             PlaybackSettings {
                 mode: bevy::audio::PlaybackMode::Despawn,
                 volume: bevy::audio::Volume::Linear(1.0),
@@ -731,17 +737,38 @@ fn rhythm_game_system(
                 ..default()
             },
         ));
+        game.music_playing = false;
     }
 
-    // 1. Advance track time
-    game.song_time += time.delta_secs();
+    // Positive = notes arrive earlier (use when audio beats come before the note hits the target).
+    // Tune this value to match the song's actual beat offset.
+    const AUDIO_SYNC_OFFSET_SECS: f32 = -1.0;
+
+    // 1. Sync song_time from actual audio playback position
+    if let Ok(sink) = sink_query.single() {
+        let pos = sink.position().as_secs_f32();
+        if !game.music_playing {
+            game.music_playing = true;
+            game.last_rating = "GO!".to_string();
+            game.last_rating_timer = 0.8;
+            info!("[AUDIO] Music playback started at pos={:.3}s", pos);
+        }
+        game.song_time = pos + AUDIO_SYNC_OFFSET_SECS;
+    } else if !game.music_playing {
+        // AudioSink not yet available — still loading/decoding
+        // Keep song_time at 0 so the note chart doesn't scroll ahead of the music
+        game.song_time = 0.0;
+        return;
+    }
+    // If music_playing is true but sink is gone, the song finished (Despawn mode)
 
     // 2. Check song end
-    if game.song_time > 212.0 {
+    if game.song_time > 212.0 || (game.music_playing && sink_query.is_empty()) {
         game.is_started = false;
         game.is_finished = true;
+        game.music_playing = false;
         
-        // Despawn the music player
+        // Despawn any remaining music entity
         for entity in audio_query.iter() {
             commands.entity(entity).despawn();
         }
@@ -934,13 +961,14 @@ fn rhythm_ui_system(
                     {
                         game.is_started = true;
                         game.needs_music_start = true;
+                        game.music_playing = false;
                         game.song_time = 0.0;
                         game.score = 0;
                         game.combo = 0;
                         game.max_combo = 0;
                         game.multiplier = 1;
-                        game.last_rating = "START!".to_string();
-                        game.last_rating_timer = 0.8;
+                        game.last_rating = "Loading...".to_string();
+                        game.last_rating_timer = 2.0;
                         for note in game.notes.iter_mut() {
                             note.hit = false;
                         }
@@ -995,13 +1023,14 @@ fn rhythm_ui_system(
                         game.is_started = true;
                         game.is_finished = false;
                         game.needs_music_start = true;
+                        game.music_playing = false;
                         game.song_time = 0.0;
                         game.score = 0;
                         game.combo = 0;
                         game.max_combo = 0;
                         game.multiplier = 1;
-                        game.last_rating = "START!".to_string();
-                        game.last_rating_timer = 0.8;
+                        game.last_rating = "Loading...".to_string();
+                        game.last_rating_timer = 2.0;
                         for note in game.notes.iter_mut() {
                             note.hit = false;
                         }
@@ -1361,3 +1390,4 @@ fn get_camera_shot_targets(shot_idx: usize, orbit_angle: f32, gratar_pos: Vec3) 
         }
     }
 }
+
