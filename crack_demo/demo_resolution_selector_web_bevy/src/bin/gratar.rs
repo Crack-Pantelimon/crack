@@ -73,6 +73,7 @@ struct RhythmNote {
 struct GratarGame {
     is_started: bool,
     is_finished: bool,
+    needs_music_start: bool,
     song_time: f32,
     notes: Vec<RhythmNote>,
     score: u32,
@@ -87,40 +88,64 @@ struct GratarGame {
 impl Default for GratarGame {
     fn default() -> Self {
         let mut notes = Vec::new();
-        let bpm = 120.0;
-        let beat_duration = 60.0 / bpm; // 0.5s per beat
+        let bpm = 160.0; // Nicolae Guta - Locul 1 is 160 BPM
+        let beat_duration = 60.0 / bpm; // 0.375s per beat
+        let step_duration = beat_duration / 2.0; // 0.1875s per step (half beats)
 
-        // Pre-generate a 100-note rhythm track starting at 3.0s (beat 6)
-        for beat in 6..100 {
-            // Rhythmic patterns: singles, doubles, syncopations
-            let should_spawn = if beat % 4 == 0 {
-                true
-            } else if beat % 4 == 2 {
-                rand::random::<f32>() > 0.3
-            } else if beat % 8 == 1 || beat % 8 == 5 {
-                rand::random::<f32>() > 0.6
+        // Generate rhythm notes from step 64 (~12 seconds, when beat starts) to step 1100 (~206 seconds)
+        for step in 64..1100 {
+            let pattern_step = step % 8;
+            let mut spawn = false;
+            let mut dir = NoteDirection::Up;
+
+            if step < 128 {
+                // Intro build-up: slow downbeats
+                if pattern_step == 0 {
+                    spawn = true;
+                    dir = if (step / 8) % 2 == 0 { NoteDirection::Left } else { NoteDirection::Right };
+                }
+            } else if step >= 512 && step < 768 {
+                // Chorus (Intense fast manele rolls): spawn on steps 0, 2, 3, 4, 6, 7
+                if pattern_step == 0 {
+                    spawn = true;
+                    dir = NoteDirection::Down;
+                } else if pattern_step == 2 {
+                    spawn = true;
+                    dir = NoteDirection::Left;
+                } else if pattern_step == 3 {
+                    spawn = true;
+                    dir = NoteDirection::Right;
+                } else if pattern_step == 4 {
+                    spawn = true;
+                    dir = NoteDirection::Up;
+                } else if pattern_step == 6 {
+                    spawn = true;
+                    dir = NoteDirection::Left;
+                } else if pattern_step == 7 {
+                    spawn = true;
+                    dir = NoteDirection::Right;
+                }
             } else {
-                false
-            };
+                // Standard bouncy Manele syncopated rhythm: spawn on steps 0, 3, 5, 6
+                if pattern_step == 0 {
+                    spawn = true;
+                    dir = NoteDirection::Down;
+                } else if pattern_step == 3 {
+                    spawn = true;
+                    dir = NoteDirection::Left;
+                } else if pattern_step == 5 {
+                    spawn = true;
+                    dir = NoteDirection::Right;
+                } else if pattern_step == 6 {
+                    spawn = true;
+                    dir = NoteDirection::Up;
+                }
+            }
 
-            if should_spawn {
-                let dir = match beat % 5 {
-                    0 => NoteDirection::Left,
-                    1 => NoteDirection::Right,
-                    2 => NoteDirection::Up,
-                    3 => NoteDirection::Down,
-                    _ => {
-                        if beat % 3 == 0 {
-                            NoteDirection::Up
-                        } else {
-                            NoteDirection::Right
-                        }
-                    }
-                };
-
+            if spawn {
                 notes.push(RhythmNote {
                     direction: dir,
-                    time: beat as f32 * beat_duration,
+                    time: step as f32 * step_duration,
                     hit: false,
                 });
             }
@@ -129,6 +154,7 @@ impl Default for GratarGame {
         Self {
             is_started: false,
             is_finished: false,
+            needs_music_start: false,
             song_time: 0.0,
             notes,
             score: 0,
@@ -139,8 +165,7 @@ impl Default for GratarGame {
             last_rating_timer: 0.0,
             bpm,
         }
-    }
-}
+    }}
 
 #[derive(Resource)]
 struct CameraDirector {
@@ -189,21 +214,128 @@ fn setup_gratar(
         ))
         .id();
 
-    // 2. Gratar Bowl (Body)
-    let body_mesh = meshes.add(Cuboid::new(1.6, 0.5, 0.9));
-    let body_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.12, 0.12, 0.13),
-        perceptual_roughness: 0.8,
+    // 2. Gratar Bowl (Hollow metal tub body built of 5 plates)
+    let wall_color = Color::srgb(0.08, 0.08, 0.09);
+    let metal_mat = materials.add(StandardMaterial {
+        base_color: wall_color,
+        metallic: 0.8,
+        perceptual_roughness: 0.65,
         ..default()
     });
-    let child_body = commands
+
+    // Plate dimensions & positions
+    // Bottom plate
+    let bottom = commands
         .spawn((
-            Mesh3d(body_mesh),
-            MeshMaterial3d(body_mat),
-            Transform::from_xyz(0.0, 0.0, 0.0),
+            Mesh3d(meshes.add(Cuboid::new(1.6, 0.04, 0.9))),
+            MeshMaterial3d(metal_mat.clone()),
+            Transform::from_xyz(0.0, -0.22, 0.0),
         ))
         .id();
-    commands.entity(root).add_child(child_body);
+    commands.entity(root).add_child(bottom);
+
+    // Left wall
+    let left_wall = commands
+        .spawn((
+            Mesh3d(meshes.add(Cuboid::new(0.04, 0.44, 0.9))),
+            MeshMaterial3d(metal_mat.clone()),
+            Transform::from_xyz(-0.78, 0.0, 0.0),
+        ))
+        .id();
+    commands.entity(root).add_child(left_wall);
+
+    // Right wall
+    let right_wall = commands
+        .spawn((
+            Mesh3d(meshes.add(Cuboid::new(0.04, 0.44, 0.9))),
+            MeshMaterial3d(metal_mat.clone()),
+            Transform::from_xyz(0.78, 0.0, 0.0),
+        ))
+        .id();
+    commands.entity(root).add_child(right_wall);
+
+    // Front wall
+    let front_wall = commands
+        .spawn((
+            Mesh3d(meshes.add(Cuboid::new(1.52, 0.44, 0.04))),
+            MeshMaterial3d(metal_mat.clone()),
+            Transform::from_xyz(0.0, 0.0, 0.43),
+        ))
+        .id();
+    commands.entity(root).add_child(front_wall);
+
+    // Back wall
+    let back_wall = commands
+        .spawn((
+            Mesh3d(meshes.add(Cuboid::new(1.52, 0.44, 0.04))),
+            MeshMaterial3d(metal_mat.clone()),
+            Transform::from_xyz(0.0, 0.0, -0.43),
+        ))
+        .id();
+    commands.entity(root).add_child(back_wall);
+
+    // Side Ventilation Holes (represented by dark small cylinder caps on outer walls)
+    let vent_mesh = meshes.add(Cylinder::new(0.015, 0.005));
+    let vent_mat = materials.add(StandardMaterial {
+        base_color: Color::BLACK,
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+    for x in [-0.5, -0.25, 0.0, 0.25, 0.5] {
+        // Front wall vents
+        let vent_front = commands
+            .spawn((
+                Mesh3d(vent_mesh.clone()),
+                MeshMaterial3d(vent_mat.clone()),
+                Transform::from_xyz(x, -0.1, 0.452)
+                    .with_rotation(Quat::from_rotation_x(90.0f32.to_radians())),
+            ))
+            .id();
+        commands.entity(root).add_child(vent_front);
+
+        // Back wall vents
+        let vent_back = commands
+            .spawn((
+                Mesh3d(vent_mesh.clone()),
+                MeshMaterial3d(vent_mat.clone()),
+                Transform::from_xyz(x, -0.1, -0.452)
+                    .with_rotation(Quat::from_rotation_x(90.0f32.to_radians())),
+            ))
+            .id();
+        commands.entity(root).add_child(vent_back);
+    }
+
+    // Handles: steel tubes on left/right side walls
+    let handle_chrome_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.7, 0.72, 0.75),
+        metallic: 0.95,
+        perceptual_roughness: 0.15,
+        ..default()
+    });
+
+    for side in [-1.0f32, 1.0f32] {
+        let x_base = side * 0.8;
+        // Two standoff connectors
+        for z in [-0.2, 0.2] {
+            let standoff = commands
+                .spawn((
+                    Mesh3d(meshes.add(Cuboid::new(0.08, 0.02, 0.02))),
+                    MeshMaterial3d(handle_chrome_mat.clone()),
+                    Transform::from_xyz(x_base + side * 0.04, 0.0, z),
+                ))
+                .id();
+            commands.entity(root).add_child(standoff);
+        }
+        // Connecting bar
+        let bar = commands
+            .spawn((
+                Mesh3d(meshes.add(Cuboid::new(0.02, 0.02, 0.42))),
+                MeshMaterial3d(handle_chrome_mat.clone()),
+                Transform::from_xyz(x_base + side * 0.08, 0.0, 0.0),
+            ))
+            .id();
+        commands.entity(root).add_child(bar);
+    }
 
     // 3. Four Legs (Chrome look)
     let leg_mesh = meshes.add(Cuboid::new(0.08, 0.9, 0.08));
@@ -232,64 +364,194 @@ fn setup_gratar(
         commands.entity(root).add_child(child_leg);
     }
 
-    // 4. Hot Coals
-    let coal_mesh = meshes.add(Cuboid::new(1.4, 0.1, 0.7));
-    let coal_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.05, 0.05, 0.05),
-        emissive: LinearRgba::new(3.0, 0.5, 0.0, 1.0), // sizzling glowing orange!
+    // 4. Bed of 50 individual Glowing Charcoal Embers
+    let ash_coal_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.06, 0.06, 0.07),
+        perceptual_roughness: 0.95,
+        ..default()
+    });
+    let glow_coal_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.18, 0.06, 0.04),
+        emissive: LinearRgba::new(8.0, 1.8, 0.1, 1.0), // intense glowing orange/yellow embers
         perceptual_roughness: 0.9,
         ..default()
     });
-    let child_coal = commands
-        .spawn((
-            Mesh3d(coal_mesh),
-            MeshMaterial3d(coal_mat),
-            Transform::from_xyz(0.0, 0.1, 0.0),
-        ))
-        .id();
-    commands.entity(root).add_child(child_coal);
 
-    // 5. Grill Grate
-    let grate_mesh = meshes.add(Cuboid::new(1.5, 0.02, 0.8));
-    let grate_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.8, 0.82, 0.85),
-        metallic: 0.95,
-        perceptual_roughness: 0.1,
-        ..default()
-    });
-    let child_grate = commands
-        .spawn((
-            Mesh3d(grate_mesh),
-            MeshMaterial3d(grate_mat),
-            Transform::from_xyz(0.0, 0.22, 0.0),
-        ))
-        .id();
-    commands.entity(root).add_child(child_grate);
+    // Mesh handles to reuse
+    let cuboid_coal_mesh = meshes.add(Cuboid::new(0.12, 0.09, 0.12));
+    let sphere_coal_mesh = meshes.add(Sphere::new(0.06));
 
-    // 6. Sausages / Mici
-    let sausage_mesh = meshes.add(Cuboid::new(0.12, 0.1, 0.36));
-    let sausage_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.3, 0.12, 0.08), // brown cooked grill look
-        perceptual_roughness: 0.6,
-        ..default()
-    });
+    // Seed/determinstic randomized pile of coals
+    let mut coal_rand_x = 0.123f32;
+    let mut coal_rand_z = 0.567f32;
+    let mut coal_rand_y = 0.891f32;
 
-    let sausage_configs = [
-        (Vec3::new(-0.4, 0.28, -0.15), 25.0f32.to_radians()),
-        (Vec3::new(0.0, 0.28, 0.1), -15.0f32.to_radians()),
-        (Vec3::new(0.4, 0.28, -0.2), 10.0f32.to_radians()),
-        (Vec3::new(0.5, 0.28, 0.25), -45.0f32.to_radians()),
-    ];
+    let next_rand = |seed: &mut f32| -> f32 {
+        *seed = (*seed * 43.12351 + 0.9234).fract();
+        *seed
+    };
 
-    for (pos, angle) in sausage_configs {
-        let child_sausage = commands
+    for i in 0..50 {
+        let rx = next_rand(&mut coal_rand_x) * 2.0 - 1.0; // [-1.0, 1.0]
+        let rz = next_rand(&mut coal_rand_z) * 2.0 - 1.0;
+        let ry = next_rand(&mut coal_rand_y);
+
+        let coal_x = rx * 0.68;
+        let coal_z = rz * 0.35;
+        let coal_y = -0.16 + ry * 0.14;
+
+        let use_glow = i % 3 != 0; // ~66% glow, 33% ash
+        let mat = if use_glow { glow_coal_mat.clone() } else { ash_coal_mat.clone() };
+        let mesh = if i % 2 == 0 { cuboid_coal_mesh.clone() } else { sphere_coal_mesh.clone() };
+
+        let yaw = next_rand(&mut coal_rand_x) * std::f32::consts::TAU;
+        let pitch = next_rand(&mut coal_rand_z) * std::f32::consts::TAU;
+
+        let child_coal = commands
             .spawn((
-                Mesh3d(sausage_mesh.clone()),
-                MeshMaterial3d(sausage_mat.clone()),
-                Transform::from_translation(pos).with_rotation(Quat::from_rotation_y(angle)),
+                Mesh3d(mesh),
+                MeshMaterial3d(mat),
+                Transform::from_xyz(coal_x, coal_y, coal_z)
+                    .with_rotation(Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0)),
             ))
             .id();
-        commands.entity(root).add_child(child_sausage);
+        commands.entity(root).add_child(child_coal);
+    }
+
+    // 5. Realistic Wireframe Steel Grill Grate (Frame + 24 parallel wires)
+    let grate_steel_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.38, 0.39, 0.42),
+        metallic: 0.9,
+        perceptual_roughness: 0.4,
+        ..default()
+    });
+
+    let wire_mesh = meshes.add(Cuboid::new(0.008, 0.012, 0.8));
+    let frame_z_mesh = meshes.add(Cuboid::new(0.02, 0.02, 0.82));
+    let frame_x_mesh = meshes.add(Cuboid::new(1.49, 0.02, 0.02));
+
+    // Outer frame borders
+    // Left border
+    let border_l = commands
+        .spawn((
+            Mesh3d(frame_z_mesh.clone()),
+            MeshMaterial3d(grate_steel_mat.clone()),
+            Transform::from_xyz(-0.74, 0.22, 0.0),
+        ))
+        .id();
+    commands.entity(root).add_child(border_l);
+
+    // Right border
+    let border_r = commands
+        .spawn((
+            Mesh3d(frame_z_mesh.clone()),
+            MeshMaterial3d(grate_steel_mat.clone()),
+            Transform::from_xyz(0.74, 0.22, 0.0),
+        ))
+        .id();
+    commands.entity(root).add_child(border_r);
+
+    // Front border
+    let border_f = commands
+        .spawn((
+            Mesh3d(frame_x_mesh.clone()),
+            MeshMaterial3d(grate_steel_mat.clone()),
+            Transform::from_xyz(0.0, 0.22, 0.4),
+        ))
+        .id();
+    commands.entity(root).add_child(border_f);
+
+    // Back border
+    let border_b = commands
+        .spawn((
+            Mesh3d(frame_x_mesh.clone()),
+            MeshMaterial3d(grate_steel_mat.clone()),
+            Transform::from_xyz(0.0, 0.22, -0.4),
+        ))
+        .id();
+    commands.entity(root).add_child(border_b);
+
+    // Parallel wires (24 wires spaced across X = -0.71 to 0.71)
+    let wire_count = 24;
+    for w in 0..wire_count {
+        let t = w as f32 / (wire_count - 1) as f32;
+        let x_pos = -0.71 + t * 1.42;
+
+        let wire = commands
+            .spawn((
+                Mesh3d(wire_mesh.clone()),
+                MeshMaterial3d(grate_steel_mat.clone()),
+                Transform::from_xyz(x_pos, 0.22, 0.0),
+            ))
+            .id();
+        commands.entity(root).add_child(wire);
+    }
+
+    // 6. Sausages / Romanian Mici
+    // Modeled as a Capsule3d
+    let mic_radius = 0.045;
+    let mic_half_length = 0.11;
+    let mic_mesh = meshes.add(Capsule3d::new(mic_radius, mic_half_length));
+    
+    // Glistening, juicy cooked meat look
+    let mic_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.28, 0.14, 0.09), // rich caramelized dark brown
+        perceptual_roughness: 0.55,               // semi-glossy roasted texture
+        reflectance: 0.25,                        // realistic organic highlight
+        ..default()
+    });
+
+    // Charcoal black grill marks material
+    let grill_mark_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.01, 0.01, 0.01),
+        perceptual_roughness: 0.95,
+        ..default()
+    });
+    // Thin cuboid that slightly wraps over the top surface
+    let grill_mark_mesh = meshes.add(Cuboid::new(0.092, 0.006, 0.012));
+
+    // Spawning 7 mici in a natural arrangement
+    let mic_configs = [
+        (Vec3::new(-0.45, 0.28, -0.15), 18.0f32.to_radians()),
+        (Vec3::new(-0.2, 0.28, 0.18), -8.0f32.to_radians()),
+        (Vec3::new(0.05, 0.28, -0.2), 35.0f32.to_radians()),
+        (Vec3::new(0.1, 0.28, 0.1), -25.0f32.to_radians()),
+        (Vec3::new(0.35, 0.28, -0.15), 12.0f32.to_radians()),
+        (Vec3::new(0.48, 0.28, 0.2), -40.0f32.to_radians()),
+        (Vec3::new(-0.5, 0.28, 0.15), -15.0f32.to_radians()),
+    ];
+
+    for (pos, angle) in mic_configs {
+        // Spawning a mic capsule, oriented horizontally (rotate on X to lay down, then on Y for pattern angle)
+        // By default, Capsule3d is oriented vertically along local Y.
+        // We rotate it by 90 degrees around X so its length is along local Z.
+        let local_rot = Quat::from_rotation_x(90.0f32.to_radians());
+        let final_rot = Quat::from_rotation_y(angle) * local_rot;
+
+        let child_mic = commands
+            .spawn((
+                Mesh3d(mic_mesh.clone()),
+                MeshMaterial3d(mic_mat.clone()),
+                Transform::from_translation(pos).with_rotation(final_rot),
+            ))
+            .id();
+        commands.entity(root).add_child(child_mic);
+
+        // Add 4 parallel burnt grill marks on top of each mic
+        // Since the mic is rotated so its length is Z, local Z ranges from -0.11 to 0.11
+        // Spaced along Z, we place thin black strips at local Y = mic_radius (0.045)
+        let z_offsets = [-0.07, -0.02, 0.03, 0.08];
+        for z_off in z_offsets {
+            let mark = commands
+                .spawn((
+                    Mesh3d(grill_mark_mesh.clone()),
+                    MeshMaterial3d(grill_mark_mat.clone()),
+                    Transform::from_xyz(0.0, mic_radius - 0.001, z_off),
+                ))
+                .id();
+            // Parent the mark directly to the mic so it rotates and moves with it
+            commands.entity(child_mic).add_child(mark);
+        }
     }
 }
 
@@ -418,14 +680,18 @@ fn smoke_particles_system(
 
 /// Evaluates player note timing hits and updates game statistics
 fn rhythm_game_system(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut game: ResMut<GratarGame>,
     mut gratar_query: Query<&mut HydraulicGratar>,
+    audio_query: Query<Entity, With<AudioPlayer>>,
 ) {
     if !game.is_started {
         if keyboard.just_pressed(KeyCode::Space) {
             game.is_started = true;
+            game.needs_music_start = true;
             game.is_finished = false;
             game.song_time = 0.0;
             game.score = 0;
@@ -441,13 +707,52 @@ fn rhythm_game_system(
         return;
     }
 
+    // Handle music starting (either from spacebar or UI button click)
+    if game.needs_music_start {
+        game.needs_music_start = false;
+        
+        // Stop any existing song playing
+        let mut despawned_count = 0;
+        for entity in audio_query.iter() {
+            commands.entity(entity).despawn();
+            despawned_count += 1;
+        }
+        if despawned_count > 0 {
+            info!("[AUDIO] Despawned {} existing audio entities", despawned_count);
+        }
+
+        // Spawn the music player
+        let song_url = format!(
+            "{}sound_data/ManeleMp3.Net%20-%20NICOLAE%20GUTA%20-%20LOCUL%201%20NUMAI%201%20%5BORIGINALA%5D.mp3",
+            demo_resolution_selector_web_bevy::config::DATA_BASE_URL
+        );
+        info!("[AUDIO] Loading song from URL: {}", song_url);
+        let handle = asset_server.load::<bevy::audio::AudioSource>(&song_url);
+        info!("[AUDIO] Asset handle created, spawning AudioPlayer entity");
+        commands.spawn((
+            AudioPlayer::new(handle),
+            PlaybackSettings {
+                mode: bevy::audio::PlaybackMode::Despawn,
+                volume: bevy::audio::Volume::Linear(1.0),
+                spatial: false, // global stereo
+                ..default()
+            },
+        ));
+        info!("[AUDIO] AudioPlayer entity spawned successfully");
+    }
+
     // 1. Advance track time
     game.song_time += time.delta_secs();
 
     // 2. Check song end
-    if game.song_time > 52.0 {
+    if game.song_time > 212.0 {
         game.is_started = false;
         game.is_finished = true;
+        
+        // Despawn the music player
+        for entity in audio_query.iter() {
+            commands.entity(entity).despawn();
+        }
         return;
     }
 
@@ -636,6 +941,7 @@ fn rhythm_ui_system(
                         .clicked()
                     {
                         game.is_started = true;
+                        game.needs_music_start = true;
                         game.song_time = 0.0;
                         game.score = 0;
                         game.combo = 0;
@@ -643,6 +949,9 @@ fn rhythm_ui_system(
                         game.multiplier = 1;
                         game.last_rating = "START!".to_string();
                         game.last_rating_timer = 0.8;
+                        for note in game.notes.iter_mut() {
+                            note.hit = false;
+                        }
                     }
                 });
             });
@@ -666,13 +975,13 @@ fn rhythm_ui_system(
                     ui.label(format!("FINAL SCORE: {}", game.score));
                     ui.label(format!("MAX COMBO: x{}", game.max_combo));
 
-                    let grade = if game.score >= 12000 {
+                    let grade = if game.score >= 140000 {
                         "S - Legendary Gratar Master 👑"
-                    } else if game.score >= 8000 {
+                    } else if game.score >= 90000 {
                         "A - Good Mici Flipper 🍳"
-                    } else if game.score >= 5000 {
+                    } else if game.score >= 50000 {
                         "B - Casual Cook 🥩"
-                    } else if game.score >= 2000 {
+                    } else if game.score >= 20000 {
                         "C - Charcoal Burner 🪵"
                     } else {
                         "F - Burnt to a Crisp ☠️"
@@ -693,6 +1002,7 @@ fn rhythm_ui_system(
                     {
                         game.is_started = true;
                         game.is_finished = false;
+                        game.needs_music_start = true;
                         game.song_time = 0.0;
                         game.score = 0;
                         game.combo = 0;
