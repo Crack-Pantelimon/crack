@@ -9,10 +9,15 @@ import json
 import os
 import sys
 
+import bmesh
 import bpy
+import numpy as np
 from mathutils import Vector
 
 APEX_OFFSET = 3.0
+COLLIDER_SCALE = 1.2
+MASK_SIZE = 1024
+CAR_GRAY = 0.35
 
 
 def clear_scene():
@@ -137,56 +142,265 @@ def create_road_object(
     return obj
 
 
-def create_car_pyramid(
-    car_index: int,
+def resolve_corner_heights(raw_zs: list[float | None], top: float) -> list[float]:
+    """Fill corner ray misses with the average z of the corners that hit (else top)."""
+    hits = [z for z in raw_zs if z is not None]
+    avg = sum(hits) / len(hits) if hits else top
+    return [z if z is not None else avg for z in raw_zs]
+
+
+def convex_hull_2d(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Andrew's monotone chain; returns CCW hull (>=3 unique points) or [] otherwise."""
+    pts = sorted(set((round(x, 6), round(y, 6)) for x, y in points))
+    if len(pts) < 3:
+        return pts
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def build_collider_mesh(
     corners_latlon: list[list[float]],
     center_latlon: list[float],
     latlon_bbox: dict,
     terrain_bbox: dict,
     top: float,
     depsgraph,
-) -> bpy.types.Object | None:
-    """Build an apex-raised pyramid from four corner lat/lon points and a center."""
-    base_z: list[float] = []
+) -> tuple[list[tuple[float, float, float]], list[list[int]], list[tuple[float, float]]]:
+    """
+    Build a box collider molded onto the terrain. Returns (verts, faces, hull_xy).
+    All ray casts happen here (before any car object is linked into the scene).
+    """
     base_xy: list[tuple[float, float]] = []
-
+    raw_z: list[float | None] = []
     for lat, lon in corners_latlon:
         x, y = latlon_to_xy(lon, lat, latlon_bbox, terrain_bbox)
-        z = raycast_height(x, y, top, depsgraph)
-        if z is None:
-            z = top
         base_xy.append((x, y))
-        base_z.append(z)
+        raw_z.append(raycast_height(x, y, top, depsgraph))
+    ground_z = resolve_corner_heights(raw_z, top)
 
     cx, cy = latlon_to_xy(center_latlon[1], center_latlon[0], latlon_bbox, terrain_bbox)
     center_z = raycast_height(cx, cy, top, depsgraph)
     if center_z is None:
-        center_z = top
+        center_z = sum(ground_z) / len(ground_z)
     apex_z = center_z + APEX_OFFSET
+    min_ground = min(ground_z)
 
-    verts = [
-        (base_xy[0][0], base_xy[0][1], base_z[0]),
-        (base_xy[1][0], base_xy[1][1], base_z[1]),
-        (base_xy[2][0], base_xy[2][1], base_z[2]),
-        (base_xy[3][0], base_xy[3][1], base_z[3]),
-        (cx, cy, apex_z),
-    ]
-    faces = [
-        (0, 1, 2, 3),
-        (0, 4, 1),
-        (1, 4, 2),
-        (2, 4, 3),
-        (3, 4, 0),
-    ]
+    bm = bmesh.new()
+    bottom = [bm.verts.new((base_xy[i][0], base_xy[i][1], ground_z[i])) for i in range(4)]
+    topv = [bm.verts.new((base_xy[i][0], base_xy[i][1], apex_z)) for i in range(4)]
+    bm.faces.new(tuple(reversed(bottom)))
+    bm.faces.new(tuple(topv))
+    for i in range(4):
+        j = (i + 1) % 4
+        bm.faces.new((bottom[i], bottom[j], topv[j], topv[i]))
 
+    bmesh.ops.subdivide_edges(
+        bm, edges=bm.edges[:], cuts=3, use_grid_fill=True
+    )
+    bm.verts.ensure_lookup_table()
+
+    # Mold the top face down onto the terrain, column by column (each XY position
+    # shared by a ground vertex and a top vertex, plus any side-wall levels between
+    # them). Raycasting only the top-of-column vertex and re-interpolating the rest
+    # keeps side-wall vertices attached to the new (lowered) top instead of the old
+    # flat apex — otherwise they linger at their pre-mold height and create a rim
+    # around the border where it looks "unlowered" relative to the interior.
+    columns: dict[tuple[float, float], list] = {}
+    for v in bm.verts:
+        columns.setdefault((round(v.co.x, 4), round(v.co.y, 4)), []).append(v)
+    for verts_in_col in columns.values():
+        verts_in_col.sort(key=lambda v: v.co.z)
+
+    top_hits: list[float | None] = [
+        raycast_height(verts_in_col[-1].co.x, verts_in_col[-1].co.y, top, depsgraph)
+        for verts_in_col in columns.values()
+    ]
+    resolved_top = resolve_corner_heights(top_hits, (min_ground + apex_z) / 2.0)
+
+    for verts_in_col, present in zip(columns.values(), resolved_top):
+        new_top_z = (apex_z + present) / 2.0
+        ground_z_col = verts_in_col[0].co.z
+        n = len(verts_in_col)
+        for i, v in enumerate(verts_in_col):
+            frac = i / (n - 1) if n > 1 else 1.0
+            v.co.z = ground_z_col + frac * (new_top_z - ground_z_col)
+
+    # Enlarge 20% about the centroid.
+    cog = Vector((0.0, 0.0, 0.0))
+    for v in bm.verts:
+        cog += v.co
+    cog /= len(bm.verts)
+    for v in bm.verts:
+        v.co = cog + COLLIDER_SCALE * (v.co - cog)
+
+    bm.verts.index_update()
+    verts = [tuple(v.co) for v in bm.verts]
+    faces = [[v.index for v in f.verts] for f in bm.faces]
+    hull = convex_hull_2d([(v[0], v[1]) for v in verts])
+    bm.free()
+    return verts, faces, hull
+
+
+def create_car_object(
+    car_index: int,
+    verts: list[tuple[float, float, float]],
+    faces: list[list[int]],
+) -> bpy.types.Object:
+    """Link a pre-built collider mesh into the cars collection."""
     mesh = bpy.data.meshes.new(name=f"car_{car_index}_mesh")
     mesh.from_pydata(verts, [], faces)
     mesh.update()
 
     obj = bpy.data.objects.new(name=f"car_{car_index}", object_data=mesh)
-    cars_coll = get_or_create_collection("cars")
-    cars_coll.objects.link(obj)
+    get_or_create_collection("cars").objects.link(obj)
     return obj
+
+
+def _point_in_hull(px, py, hull: np.ndarray):
+    """Vectorized point-in-convex-CCW-polygon test."""
+    inside = np.ones(px.shape, dtype=bool)
+    m = len(hull)
+    for i in range(m):
+        x1, y1 = hull[i]
+        x2, y2 = hull[(i + 1) % m]
+        cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)
+        inside &= cross >= -1e-9
+    return inside
+
+
+def paint_car_mask(
+    terrain_obj: bpy.types.Object,
+    hulls: list[list[tuple[float, float]]],
+    image_name: str,
+) -> bpy.types.Image | None:
+    """
+    Rasterize car footprints into a black mask image using the terrain's own UV unwrap.
+    A texel is painted white when its world XY (barycentric-interpolated from the tile
+    triangle) falls inside any car footprint hull.
+    """
+    mesh = terrain_obj.data
+    if not mesh.uv_layers or not mesh.materials:
+        return None
+
+    hull_arrays = [np.asarray(h, dtype=np.float64) for h in hulls if len(h) >= 3]
+    if not hull_arrays:
+        return None
+    hull_bboxes = [
+        (h[:, 0].min(), h[:, 0].max(), h[:, 1].min(), h[:, 1].max()) for h in hull_arrays
+    ]
+
+    uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
+    uv_data = uv_layer.data
+    mw = np.array(terrain_obj.matrix_world)
+
+    n = len(mesh.vertices)
+    co = np.empty(n * 3, dtype=np.float64)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(n, 3)
+    world = (np.hstack([co, np.ones((n, 1))]) @ mw.T)[:, :3]
+
+    mesh.calc_loop_triangles()
+    size = MASK_SIZE
+    mask = np.zeros((size, size), dtype=np.float32)
+
+    for lt in mesh.loop_triangles:
+        vs = lt.vertices
+        ls = lt.loops
+        w0, w1, w2 = world[vs[0]], world[vs[1]], world[vs[2]]
+        u0 = uv_data[ls[0]].uv
+        u1 = uv_data[ls[1]].uv
+        u2 = uv_data[ls[2]].uv
+        p0 = (u0[0] * size, u0[1] * size)
+        p1 = (u1[0] * size, u1[1] * size)
+        p2 = (u2[0] * size, u2[1] * size)
+
+        minx = max(int(np.floor(min(p0[0], p1[0], p2[0]))), 0)
+        maxx = min(int(np.ceil(max(p0[0], p1[0], p2[0]))), size - 1)
+        miny = max(int(np.floor(min(p0[1], p1[1], p2[1]))), 0)
+        maxy = min(int(np.ceil(max(p0[1], p1[1], p2[1]))), size - 1)
+        if minx > maxx or miny > maxy:
+            continue
+
+        denom = (p1[1] - p2[1]) * (p0[0] - p2[0]) + (p2[0] - p1[0]) * (p0[1] - p2[1])
+        if abs(denom) < 1e-12:
+            continue
+
+        gx, gy = np.meshgrid(
+            np.arange(minx, maxx + 1) + 0.5, np.arange(miny, maxy + 1) + 0.5
+        )
+        a = ((p1[1] - p2[1]) * (gx - p2[0]) + (p2[0] - p1[0]) * (gy - p2[1])) / denom
+        b = ((p2[1] - p0[1]) * (gx - p2[0]) + (p0[0] - p2[0]) * (gy - p2[1])) / denom
+        c = 1.0 - a - b
+        inside = (a >= 0) & (b >= 0) & (c >= 0)
+        if not inside.any():
+            continue
+
+        wx = a * w0[0] + b * w1[0] + c * w2[0]
+        wy = a * w0[1] + b * w1[1] + c * w2[1]
+        painted = np.zeros_like(inside)
+        for hull, bb in zip(hull_arrays, hull_bboxes):
+            sel = inside & (wx >= bb[0]) & (wx <= bb[1]) & (wy >= bb[2]) & (wy <= bb[3])
+            if not sel.any():
+                continue
+            painted |= sel & _point_in_hull(wx, wy, hull)
+        if painted.any():
+            mask[miny : maxy + 1, minx : maxx + 1][painted] = 1.0
+
+    if not mask.any():
+        return None
+
+    existing = bpy.data.images.get(image_name)
+    if existing is not None:
+        bpy.data.images.remove(existing)
+    img = bpy.data.images.new(image_name, width=size, height=size, alpha=False)
+    img.colorspace_settings.name = "Non-Color"
+    rgba = np.zeros((size, size, 4), dtype=np.float32)
+    rgba[..., 0] = mask
+    rgba[..., 1] = mask
+    rgba[..., 2] = mask
+    rgba[..., 3] = 1.0
+    img.pixels.foreach_set(rgba.reshape(-1))
+    img.update()
+    img.pack()
+    return img
+
+
+def attach_car_mask_material(terrain_obj: bpy.types.Object, mask_img: bpy.types.Image) -> None:
+    """
+    Append a second, inspection-only material slot showing the raw car mask.
+    Appending a material slot without reassigning any polygon's material_index
+    leaves every face rendering with slot 0 (the original tile material) — this
+    slot exists purely so the mask can be opened and viewed by hand.
+    """
+    mat = bpy.data.materials.new(name=f"{terrain_obj.name}_cars_mat")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    for node in list(nt.nodes):
+        nt.nodes.remove(node)
+
+    tex_node = nt.nodes.new("ShaderNodeTexImage")
+    tex_node.image = mask_img
+    tex_node.label = "car_mask"
+
+    emit_node = nt.nodes.new("ShaderNodeEmission")
+    output_node = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(tex_node.outputs["Color"], emit_node.inputs["Color"])
+    nt.links.new(emit_node.outputs["Emission"], output_node.inputs["Surface"])
+
+    terrain_obj.data.materials.append(mat)
 
 
 def process_item(item: dict) -> None:
@@ -198,6 +412,15 @@ def process_item(item: dict) -> None:
 
     clear_scene()
     bpy.ops.import_scene.gltf(filepath=glb_path)
+
+    terrain_obj = next(
+        (
+            o
+            for o in bpy.data.objects
+            if o.type == "MESH" and o.data.uv_layers and o.data.materials
+        ),
+        None,
+    )
 
     terrain_bbox = measure_terrain_bbox()
     top = terrain_bbox["up"][1]
@@ -236,21 +459,33 @@ def process_item(item: dict) -> None:
     if cars_json_path and os.path.isfile(cars_json_path):
         with open(cars_json_path, encoding="utf-8") as f:
             cars_data = json.load(f)
+
+        # Build all collider meshes first (ray casts against terrain only, before any
+        # car object is linked into the scene), then link them.
+        collider_specs = []
         for car in cars_data.get("cars", []):
             corners = car.get("corners_latlon")
             center = car.get("center_latlon")
             if not corners or len(corners) != 4 or not center:
                 continue
-            create_car_pyramid(
-                cars_created,
-                corners,
-                center,
-                latlon_bbox,
-                terrain_bbox,
-                top,
-                depsgraph,
+            collider_specs.append(
+                build_collider_mesh(
+                    corners, center, latlon_bbox, terrain_bbox, top, depsgraph
+                )
             )
+
+        hulls = []
+        for verts, faces, hull in collider_specs:
+            create_car_object(cars_created, verts, faces)
+            hulls.append(hull)
             cars_created += 1
+
+        if hulls and terrain_obj is not None:
+            mask_img = paint_car_mask(
+                terrain_obj, hulls, f"{octtree_path}_cars"
+            )
+            if mask_img is not None:
+                attach_car_mask_material(terrain_obj, mask_img)
 
     os.makedirs(os.path.dirname(out_blend_path), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=out_blend_path)
