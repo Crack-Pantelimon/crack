@@ -140,8 +140,8 @@ fn ui_example_system(
         if smallest_dim > 0.0 {
             const TARGET_PX_REZ: f32 = 770.0;
             const STEP: f32 = 0.05;
-            let resolution_frac = ((TARGET_PX_REZ / smallest_dim / STEP / 1.6).round() * STEP)
-                .clamp(0.25, 1.0);
+            let resolution_frac =
+                ((TARGET_PX_REZ / smallest_dim / STEP / 1.6).round() * STEP).clamp(0.25, 1.0);
             ui_state.resolution = (resolution_frac * 100.0).round() as i32;
             tracing::info!("INIT RESOLUTION SCALE = {}", ui_state.resolution);
 

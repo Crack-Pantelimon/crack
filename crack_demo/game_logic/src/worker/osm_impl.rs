@@ -56,7 +56,10 @@ pub async fn fetch_osm_data(args: FetchArgs) -> anyhow::Result<OsmDataResult> {
     let mut result_categories = BTreeMap::new();
 
     for (category_name, file_name) in files {
-        let file_url = format!("{}/3d_data_v2/data_osm/original/{}", args.base_url, file_name);
+        let file_url = format!(
+            "{}/3d_data_v2/data_osm/original/{}",
+            args.base_url, file_name
+        );
         tracing::info!("Worker loading GeoJSON file: {}", file_url);
 
         let geojson_text = match super::http::http_get_text(&file_url).await {

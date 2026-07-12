@@ -38,14 +38,12 @@ rust_pkg/storage_crackhouse/src/models.rs:182  # TODO: ! Get existing model SQLs
 rust_pkg/api_asscrack/src/crack_worker/api_worker.rs:43  # TODO: get which is missing...
 ```
 
-## changes (last 5 commits — 5 hours ago)
+## changes (last 5 commits — 10 seconds ago)
 ```
-_data/3d_data_v2/_blend_build_map.py          +weld_terrain_mesh  +build_terrain_bvh  +raycast_hit  +raycast_height
+_data/3d_data_v2/_blend_build_map.py          +weld_terrain_mesh  +build_terrain_bvh  +_hsv_saturation  +_sample_ground_palette
 _data/3d_data_v2/_blend_render_postprocess.py +pick_render_engine  +convert_materials_to_emission  +make_cage_material  +show_car_wrappers_as_cage
 _data/3d_data_v2/_blend_render_topdown.py     ~setup_render_settings
 _data/3d_data_v2/_check_blend.py              +_find_base_color_image  +check_blend
-_data/3d_data_v2/osm_postprocess_batch.py     +obb_pixel_to_latlon_corners  ~bbox_pixel_to_latlon_corners  ~pixel_to_latlon  ~run_detect_stage
-_data/3d_data_v2/yolo_v8_obb_sat.py           +load_net  +_rotated_corners  +detect_cars
 ```
 
 ## _data
@@ -163,6 +161,15 @@ def main()  :443-445
 
 ## crack_demo
 
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/map_plugin_ui.rs
+```
+pub fn configure_map_extent_gizmo(mut store: ResMut<GizmoConfigStore>)
+pub fn draw_tree_bboxes(_gizmos: Gizmos, _data_res: Res<MapTree>, _lod_state: Res<MapLODState>, _tiles_query: Query<&TreeMapTile>, _ui_state: Option<Res<crate::ui_egui::UiState>>,)
+pub fn draw_map_extent_gizmo(mut gizmos: Gizmos<MapExtentGizmoGroup>, data_res: Res<MapTree>, ui_state: Option<Res<crate::ui_egui::UiState>>,)
+pub fn tree_navigator_ui(mut contexts: EguiContexts, data_res: Res<MapTree>, mut lod_state: ResMut<MapLODState>, tiles_query: Query<&TreeMapTile>, ui_state: Option<ResMut<crate::ui_egui::UiState>>,)
+pub fn draw_reference_points_gizmos(mut gizmos: Gizmos, data_res: Res<MapTree>, lod_state: Res<MapLODState>, camera_query: Query<&Transform, With<Camera>>,)
+```
+
 ### crack_demo/demo_resolution_selector_web_bevy/src/main_game_plugin.rs
 ```
 pub struct MainGamePlugin
@@ -257,15 +264,6 @@ pub fn do_split_requests(mut commands: Commands, q_split: Query<(&TileShouldSpli
 pub fn do_merge_requests(mut commands: Commands, q_merge: Query<(&TileShouldMerge, Entity)
 pub fn reveal_pending_tiles(mut commands: Commands, mut q_pending: Query<(Entity, &mut PendingTileReveal)
 pub fn check_map_loaded_status(tiles_query: Query<&TreeMapTile>, lod_state: Res<MapLODState>, loading_status: Option<ResMut<crate::plugins::geojson::GameLoadingStatus>>, mut commands: Commands, mut next_state: ResMut<NextState<InitialMapLoadFinished>>, mut osm_state: ResMut<NextState<OsmDatabaseLoadFinished>>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/map_plugin_ui.rs
-```
-pub fn configure_map_extent_gizmo(mut store: ResMut<GizmoConfigStore>)
-pub fn draw_tree_bboxes(_gizmos: Gizmos, _data_res: Res<MapTree>, _lod_state: Res<MapLODState>, _tiles_query: Query<&TreeMapTile>, _ui_state: Option<Res<crate::ui_egui::UiState>>,)
-pub fn draw_map_extent_gizmo(mut gizmos: Gizmos<MapExtentGizmoGroup>, data_res: Res<MapTree>, ui_state: Option<Res<crate::ui_egui::UiState>>,)
-pub fn tree_navigator_ui(mut contexts: EguiContexts, data_res: Res<MapTree>, mut lod_state: ResMut<MapLODState>, tiles_query: Query<&TreeMapTile>, ui_state: Option<ResMut<crate::ui_egui::UiState>>,)
-pub fn draw_reference_points_gizmos(mut gizmos: Gizmos, data_res: Res<MapTree>, lod_state: Res<MapLODState>, camera_query: Query<&Transform, With<Camera>>,)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/mod.rs

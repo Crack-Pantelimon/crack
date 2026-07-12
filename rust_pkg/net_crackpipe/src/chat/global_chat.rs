@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-     chat::chat_presence::PresenceList,
-    chat::chat_ticket::ChatTicket, IChatRoomType,
-};
+use crate::{chat::chat_presence::PresenceList, chat::chat_ticket::ChatTicket, IChatRoomType};
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct GlobalChatRoomType;

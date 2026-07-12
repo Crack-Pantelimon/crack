@@ -217,15 +217,8 @@ fn classify_hit(hit_entity: Entity, q: &ClassifyQueries) -> (Entity, PickKind) {
         if a.weapon_model.contains(cur) || a.weapon_kind.get(cur).is_ok() {
             let kind = a.weapon_kind.get(cur).ok().copied();
             let controller = find_controller(cur, &w.parents, &a.controller);
-            let weapon_id = controller
-                .and_then(|e| a.equipped.get(e).ok().map(|w| w.0.clone()));
-            return (
-                cur,
-                PickKind::Weapon {
-                    kind,
-                    weapon_id,
-                },
-            );
+            let weapon_id = controller.and_then(|e| a.equipped.get(e).ok().map(|w| w.0.clone()));
+            return (cur, PickKind::Weapon { kind, weapon_id });
         }
 
         match w.parents.get(cur) {
