@@ -8,7 +8,6 @@ Invoked as:
 import json
 import os
 import sys
-from math import acos, degrees
 
 import bmesh
 import bpy
@@ -17,18 +16,36 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
 APEX_OFFSET = 3.0
+# The car collider hull is built at COLLIDER_SCALE (120%) of the car footprint. To cut
+# the car bump out of the ground we clone that hull and shrink it to CUT_SCALE of its
+# size, i.e. 0.92 * 1.2 = 1.104 (~110% of the original car), leaving a thin ring of
+# ground uncut so the fill triangles blend into the surrounding terrain.
 COLLIDER_SCALE = 1.2
-MASK_SIZE = 512
-CAR_GRAY = 0.35
-CLASSIFY_MASK_SIZE = 512
-NORMAL_ANGLE_THRESHOLD_DEG = 30.0
-# Height ramp: 0 at ground_avg, 1 at this fraction of the ground→roof span (was 0.5).
-HEIGHT_AIR_FRACTION = 0.25
+CUT_SCALE = 0.92
+GROUND_PALETTE_SIZE = 100
 
 
 def clear_scene():
     """Wipe the current scene so the next tile imports into a clean slate."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+def weld_terrain_mesh(obj: bpy.types.Object, dist: float = 1e-4) -> None:
+    """
+    Merge coincident vertices in a terrain mesh. Photogrammetry GLBs arrive as a
+    "triangle soup": adjacent triangles share the exact same corner positions but use
+    *separate* vertices, so the surface has no topological connectivity and every edge
+    reads as a boundary. That makes hole/rim detection after a cut meaningless. Welding
+    by a tiny distance stitches the soup into a connected surface (positions are already
+    identical, so the shape is unchanged) while per-loop UVs are preserved, so the knife
+    cut leaves a single clean boundary loop we can actually fill.
+    """
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=dist)
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
 
 
 def measure_terrain_bbox() -> dict:
@@ -86,10 +103,10 @@ def build_terrain_bvh(terrain_objs: list[bpy.types.Object] | None) -> BVHTree | 
     """
     Build a world-space BVH over all terrain meshes once, up front. All ray casts in
     this script query this single static tree instead of calling into Blender's
-    per-object ray_cast (which, called tens of thousands of times across the per-pixel
-    classify loop, is both far slower and has been observed to crash Blender outright).
-    Building once here also means road/car objects created later can never be hit by a
-    ray, since they were never part of the tree to begin with.
+    per-object ray_cast (which, called tens of thousands of times, is both far slower
+    and has been observed to crash Blender outright). Building once here also means
+    road/car objects created later can never be hit by a ray, since they were never
+    part of the tree to begin with.
     """
     if not terrain_objs:
         return None
@@ -195,28 +212,6 @@ def resolve_corner_heights(raw_zs: list[float | None], top: float) -> list[float
     return [z if z is not None else avg for z in raw_zs]
 
 
-def convex_hull_2d(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """Andrew's monotone chain; returns CCW hull (>=3 unique points) or [] otherwise."""
-    pts = sorted(set((round(x, 6), round(y, 6)) for x, y in points))
-    if len(pts) < 3:
-        return pts
-
-    def cross(o, a, b):
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-    lower = []
-    for p in pts:
-        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
-            lower.pop()
-        lower.append(p)
-    upper = []
-    for p in reversed(pts):
-        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
-            upper.pop()
-        upper.append(p)
-    return lower[:-1] + upper[:-1]
-
-
 def build_collider_mesh(
     corners_latlon: list[list[float]],
     center_latlon: list[float],
@@ -226,31 +221,18 @@ def build_collider_mesh(
     bvh: BVHTree | None,
 ) -> dict:
     """
-    Build a box collider molded onto the terrain. Returns a dict with verts, faces,
-    hull_xy, and the ground reference (normal + average corner height) sampled at the
-    corners plus the roof height, used later to classify car-vs-ground pixels.
+    Build a closed box collider molded onto the terrain, enlarged COLLIDER_SCALE about
+    its centroid. Returns {verts, faces}; the hull is linked into the scene as a car
+    marker, and its XY footprint (shrunk to CUT_SCALE) drives the knife that cuts the
+    car bump out of the ground (see cut_car_from_terrain / _build_footprint_prism).
     """
     base_xy: list[tuple[float, float]] = []
     raw_z: list[float | None] = []
-    raw_normal: list[Vector | None] = []
     for lat, lon in corners_latlon:
         x, y = latlon_to_xy(lon, lat, latlon_bbox, terrain_bbox)
         base_xy.append((x, y))
-        hit = raycast_hit(x, y, top, bvh)
-        raw_z.append(hit[0] if hit else None)
-        raw_normal.append(hit[1] if hit else None)
+        raw_z.append(raycast_height(x, y, top, bvh))
     ground_z = resolve_corner_heights(raw_z, top)
-
-    ground_hits_z = [z for z in raw_z if z is not None]
-    ground_avg_z = sum(ground_hits_z) / len(ground_hits_z) if ground_hits_z else top
-    ground_normals = [n for n in raw_normal if n is not None]
-    if ground_normals:
-        ground_normal = Vector((0.0, 0.0, 0.0))
-        for n in ground_normals:
-            ground_normal += n
-        ground_normal.normalize()
-    else:
-        ground_normal = Vector((0.0, 0.0, 1.0))
 
     cx, cy = latlon_to_xy(center_latlon[1], center_latlon[0], latlon_bbox, terrain_bbox)
     center_z = raycast_height(cx, cy, top, bvh)
@@ -299,7 +281,7 @@ def build_collider_mesh(
             frac = i / (n - 1) if n > 1 else 1.0
             v.co.z = ground_z_col + frac * (new_top_z - ground_z_col)
 
-    # Enlarge 20% about the centroid.
+    # Enlarge about the centroid.
     cog = Vector((0.0, 0.0, 0.0))
     for v in bm.verts:
         cog += v.co
@@ -310,16 +292,8 @@ def build_collider_mesh(
     bm.verts.index_update()
     verts = [tuple(v.co) for v in bm.verts]
     faces = [[v.index for v in f.verts] for f in bm.faces]
-    hull = convex_hull_2d([(v[0], v[1]) for v in verts])
     bm.free()
-    return {
-        "verts": verts,
-        "faces": faces,
-        "hull": hull,
-        "ground_normal": ground_normal,
-        "ground_avg_z": ground_avg_z,
-        "roof_z": apex_z,
-    }
+    return {"verts": verts, "faces": faces}
 
 
 def create_car_object(
@@ -337,138 +311,46 @@ def create_car_object(
     return obj
 
 
-def _point_in_hull(px, py, hull: np.ndarray):
-    """Vectorized point-in-convex-CCW-polygon test."""
-    inside = np.ones(px.shape, dtype=bool)
-    m = len(hull)
-    for i in range(m):
-        x1, y1 = hull[i]
-        x2, y2 = hull[(i + 1) % m]
-        cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)
-        inside &= cross >= -1e-9
-    return inside
+def _hsv_saturation(rgb: np.ndarray) -> np.ndarray:
+    """Vectorized HSV saturation: s = (max - min) / max, 0 where max == 0."""
+    mx = rgb.max(axis=-1)
+    mn = rgb.min(axis=-1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(mx > 0, (mx - mn) / mx, 0.0)
 
 
-def paint_car_mask(
-    terrain_obj: bpy.types.Object,
-    hulls: list[list[tuple[float, float]]],
-    image_name: str,
-) -> tuple[bpy.types.Image | None, np.ndarray | None]:
+def _sample_ground_palette(rgb: np.ndarray) -> np.ndarray:
     """
-    Rasterize car footprints into a black mask image using the terrain's own UV unwrap.
-    A texel is painted white when its world XY (barycentric-interpolated from the tile
-    triangle) falls inside any car footprint hull.
+    Pick up to GROUND_PALETTE_SIZE random ground-like colors (mid-luminance,
+    low-saturation) from a flat (N,3) array of texture pixels. Filtering out the very
+    dark (photogrammetry texture borders / shadows are pure black, whose saturation is
+    0 and would otherwise dominate a naive lowest-saturation pick) and the very bright
+    (lane markings) leaves asphalt/concrete tones. Falls back progressively so a palette
+    is always returned when any pixels exist.
     """
-    mesh = terrain_obj.data
-    if not mesh.uv_layers or not mesh.materials:
-        return None
+    lum = rgb.mean(axis=1)
+    sat = _hsv_saturation(rgb)
+    for lo, hi, smax in ((0.12, 0.75, 0.30), (0.08, 0.85, 0.45), (0.0, 1.0, 1.0)):
+        cand = rgb[(lum > lo) & (lum < hi) & (sat < smax)]
+        if len(cand) >= 1:
+            break
+    if len(cand) == 0:
+        return np.empty((0, 3), dtype=np.float32)
+    n_keep = min(GROUND_PALETTE_SIZE, len(cand))
+    idx = np.random.choice(len(cand), size=n_keep, replace=False)
+    return cand[idx].astype(np.float32).copy()
 
-    hull_arrays = [np.asarray(h, dtype=np.float64) for h in hulls if len(h) >= 3]
-    if not hull_arrays:
-        return None
-    hull_bboxes = [
-        (h[:, 0].min(), h[:, 0].max(), h[:, 1].min(), h[:, 1].max()) for h in hull_arrays
-    ]
 
-    uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
-    uv_data = uv_layer.data
-    mw = np.array(terrain_obj.matrix_world)
-
-    n = len(mesh.vertices)
-    co = np.empty(n * 3, dtype=np.float64)
-    mesh.vertices.foreach_get("co", co)
-    co = co.reshape(n, 3)
-    world = (np.hstack([co, np.ones((n, 1))]) @ mw.T)[:, :3]
-
-    mesh.calc_loop_triangles()
-    size = MASK_SIZE
-    mask = np.zeros((size, size), dtype=np.float32)
-
-    for lt in mesh.loop_triangles:
-        vs = lt.vertices
-        ls = lt.loops
-        w0, w1, w2 = world[vs[0]], world[vs[1]], world[vs[2]]
-        u0 = uv_data[ls[0]].uv
-        u1 = uv_data[ls[1]].uv
-        u2 = uv_data[ls[2]].uv
-        p0 = (u0[0] * size, u0[1] * size)
-        p1 = (u1[0] * size, u1[1] * size)
-        p2 = (u2[0] * size, u2[1] * size)
-
-        minx = max(int(np.floor(min(p0[0], p1[0], p2[0]))), 0)
-        maxx = min(int(np.ceil(max(p0[0], p1[0], p2[0]))), size - 1)
-        miny = max(int(np.floor(min(p0[1], p1[1], p2[1]))), 0)
-        maxy = min(int(np.ceil(max(p0[1], p1[1], p2[1]))), size - 1)
-        if minx > maxx or miny > maxy:
-            continue
-
-        denom = (p1[1] - p2[1]) * (p0[0] - p2[0]) + (p2[0] - p1[0]) * (p0[1] - p2[1])
-        if abs(denom) < 1e-12:
-            continue
-
-        gx, gy = np.meshgrid(
-            np.arange(minx, maxx + 1) + 0.5, np.arange(miny, maxy + 1) + 0.5
-        )
-        a = ((p1[1] - p2[1]) * (gx - p2[0]) + (p2[0] - p1[0]) * (gy - p2[1])) / denom
-        b = ((p2[1] - p0[1]) * (gx - p2[0]) + (p0[0] - p2[0]) * (gy - p2[1])) / denom
-        c = 1.0 - a - b
-        inside = (a >= 0) & (b >= 0) & (c >= 0)
-        if not inside.any():
-            continue
-
-        wx = a * w0[0] + b * w1[0] + c * w2[0]
-        wy = a * w0[1] + b * w1[1] + c * w2[1]
-        painted = np.zeros_like(inside)
-        for hull, bb in zip(hull_arrays, hull_bboxes):
-            sel = inside & (wx >= bb[0]) & (wx <= bb[1]) & (wy >= bb[2]) & (wy <= bb[3])
-            if not sel.any():
-                continue
-            painted |= sel & _point_in_hull(wx, wy, hull)
-        if painted.any():
-            mask[miny : maxy + 1, minx : maxx + 1][painted] = 1.0
-
-    if not mask.any():
+def _find_base_color_image(
+    mat: bpy.types.Material,
+) -> tuple[bpy.types.ShaderNodeTexImage | None, bpy.types.Image | None]:
+    """Return the first TEX_IMAGE node and its image in `mat`, or (None, None)."""
+    if not mat or not mat.use_nodes or not mat.node_tree:
         return None, None
-
-    return _make_mask_image(image_name, mask), mask
-
-
-def attach_mask_material(
-    terrain_obj: bpy.types.Object, mask_img: bpy.types.Image, mat_name: str
-) -> None:
-    """
-    Append an inspection-only material slot showing a raw mask texture.
-    Appending a material slot without reassigning any polygon's material_index
-    leaves every face rendering with slot 0 (the original tile material) — this
-    slot exists purely so the mask can be opened and viewed by hand.
-    """
-    mat = bpy.data.materials.new(name=mat_name)
-    if not mat.use_nodes:
-        mat.use_nodes = True
-    nt = mat.node_tree
-    for node in list(nt.nodes):
-        nt.nodes.remove(node)
-
-    tex_node = nt.nodes.new("ShaderNodeTexImage")
-    tex_node.image = mask_img
-    tex_node.label = mask_img.name
-
-    emit_node = nt.nodes.new("ShaderNodeEmission")
-    output_node = nt.nodes.new("ShaderNodeOutputMaterial")
-    nt.links.new(tex_node.outputs["Color"], emit_node.inputs["Color"])
-    nt.links.new(emit_node.outputs["Emission"], output_node.inputs["Surface"])
-
-    terrain_obj.data.materials.append(mat)
-
-
-def _make_mask_image(name: str, mask: np.ndarray) -> bpy.types.Image:
-    size = mask.shape[0]
-    rgba = np.zeros((size, size, 4), dtype=np.float32)
-    rgba[..., 0] = mask
-    rgba[..., 1] = mask
-    rgba[..., 2] = mask
-    rgba[..., 3] = 1.0
-    return _make_color_image(name, rgba, "Non-Color")
+    for node in mat.node_tree.nodes:
+        if node.type == "TEX_IMAGE" and node.image is not None:
+            return node, node.image
+    return None, None
 
 
 def _make_color_image(
@@ -486,247 +368,407 @@ def _make_color_image(
     return img
 
 
-def _hsv_saturation(rgb: np.ndarray) -> np.ndarray:
-    """Vectorized HSV saturation: s = (max - min) / max, 0 where max == 0."""
-    mx = rgb.max(axis=-1)
-    mn = rgb.min(axis=-1)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return np.where(mx > 0, (mx - mn) / mx, 0.0)
-
-
-def _resample_mask_nearest(mask: np.ndarray, h: int, w: int) -> np.ndarray:
-    """Nearest-neighbor resample of a 2D mask to (h, w) via np.ix_."""
-    src_h, src_w = mask.shape
-    yi = np.clip(
-        np.round(np.linspace(0, src_h - 1, h)).astype(int), 0, src_h - 1
-    )
-    xi = np.clip(
-        np.round(np.linspace(0, src_w - 1, w)).astype(int), 0, src_w - 1
-    )
-    return mask[np.ix_(yi, xi)]
-
-
-def _find_base_color_image(
-    mat: bpy.types.Material,
-) -> tuple[bpy.types.ShaderNodeTexImage | None, bpy.types.Image | None]:
-    """Return the first TEX_IMAGE node and its image in `mat`, or (None, None)."""
-    if not mat or not mat.use_nodes or not mat.node_tree:
-        return None, None
-    for node in mat.node_tree.nodes:
-        if node.type == "TEX_IMAGE" and node.image is not None:
-            return node, node.image
-    return None, None
-
-
-def build_painted_material(
-    mesh: bpy.types.Object,
-    index: int,
-    ground_mask: np.ndarray,
-    air_mask: np.ndarray,
-) -> None:
+def build_fill_material(
+    mesh: bpy.types.Object, index: int
+) -> tuple[int, int] | None:
     """
-    Copy the mesh's slot-0 material, repaint air-mask pixels with low-saturation
-    ground colors sampled from ground-mask pixels, append the material, and assign
-    every face to it.
+    Build a dedicated material for the ground-fill triangles and append it to the mesh
+    (the terrain's own faces keep their original material and, crucially, their original
+    texture — untouched).
+
+    The material's texture is a tiny 1×N *palette* strip: N ground-like colors sampled
+    from the terrain (mid-luminance, low-saturation — asphalt/concrete, skipping the
+    pure-black texture borders and bright lane markings). Each fill triangle is later
+    pointed, via its UVs, at one random texel of this strip, so it renders as a flat
+    random ground tone. Painting a separate strip instead of rasterizing into the shared
+    terrain atlas is what keeps the cut from corrupting the rest of the ground: fill UVs
+    that straddled atlas seams used to overwrite unrelated texels and flatten distant
+    faces. Returns (palette_size, fill_slot) or None.
     """
     if not mesh.data.materials:
-        return
+        return None
     orig_mat = mesh.data.materials[0]
-    tex_node, image = _find_base_color_image(orig_mat)
+    _, image = _find_base_color_image(orig_mat)
     if image is None:
-        log(f"[{mesh.name}] no base-color image, skipping painted material")
-        return
+        log(f"[{mesh.name}] no base-color image, skipping fill material")
+        return None
 
     w, h = image.size
     flat = np.empty(w * h * 4, dtype=np.float32)
     image.pixels.foreach_get(flat)
     rgba = flat.reshape(h, w, 4)
+    colors = _sample_ground_palette(rgba[..., :3].reshape(-1, 3))
+    if colors.shape[0] == 0:
+        log(f"[{mesh.name}] no ground palette colors, skipping fill material")
+        return None
 
-    ground_rs = _resample_mask_nearest(ground_mask, h, w)
-    air_rs = _resample_mask_nearest(air_mask, h, w)
-
-    ground_sel = ground_rs > 0.5
-    ground_rgb = rgba[ground_sel, :3]
-    if ground_rgb.shape[0] > 0:
-        sat = _hsv_saturation(ground_rgb)
-        order = np.argsort(sat)
-        n_keep = min(100, len(order))
-        colors = ground_rgb[order[:n_keep]].copy()
-        np.random.shuffle(colors)
-    else:
-        colors = np.empty((0, 3), dtype=np.float32)
-
-    painted = rgba.copy()
-    if colors.shape[0] > 0:
-        air_sel = air_rs > 0.5
-        if air_sel.any():
-            picks = np.random.randint(0, colors.shape[0], size=int(air_sel.sum()))
-            painted[air_sel, :3] = colors[picks]
-
-    new_image = _make_color_image(
+    n = colors.shape[0]
+    palette = np.ones((1, n, 4), dtype=np.float32)
+    palette[0, :, :3] = colors
+    palette_img = _make_color_image(
         f"car_painted_with_ground_tex_{index}",
-        painted,
+        palette,
         image.colorspace_settings.name,
     )
 
-    painted_mat = orig_mat.copy()
-    painted_mat.name = f"car_painted_with_ground_{index}"
-    ptex, _ = _find_base_color_image(painted_mat)
+    fill_mat = orig_mat.copy()
+    fill_mat.name = f"car_painted_with_ground_{index}"
+    ptex, _ = _find_base_color_image(fill_mat)
     if ptex is not None:
-        ptex.image = new_image
+        ptex.image = palette_img
+        ptex.interpolation = "Closest"  # sample one flat texel, no cross-color blend
+        ptex.extension = "EXTEND"
 
-    mesh.data.materials.append(painted_mat)
-    new_slot = len(mesh.data.materials) - 1
-    for poly in mesh.data.polygons:
-        poly.material_index = new_slot
+    mesh.data.materials.append(fill_mat)
+    fill_slot = len(mesh.data.materials) - 1
+    return n, fill_slot
 
 
-def paint_car_ground_air_masks(
-    terrain_obj: bpy.types.Object,
-    car_refs: list[dict],
-    image_prefix: str,
-    mesh_index: int,
-    bvh: BVHTree | None,
-    top: float,
-    car_mask: np.ndarray,
-) -> tuple[
-    bpy.types.Image | None,
-    bpy.types.Image | None,
-    np.ndarray,
-    np.ndarray,
-]:
-    """
-    Classify car footprint pixels into "_car_air" (car body) and "_car_ground"
-    (car silhouette minus air), by raycasting every pixel of a small
-    (CLASSIFY_MASK_SIZE) working mask and comparing the hit normal/height against
-    each car's ground reference sampled at its bbox corners (see build_collider_mesh):
+def _palette_uv(n: int) -> tuple[float, float]:
+    """A UV pointing at the centre of one random texel of the 1×N palette strip."""
+    j = np.random.randint(0, n)
+    return ((j + 0.5) / n, 0.5)
 
-    - normal_component: 1.0 if the hit normal differs from the ground normal by more
-      than NORMAL_ANGLE_THRESHOLD_DEG, else 0.0.
-    - height_component: 0.0 at the average ground corner, 1.0 at HEIGHT_AIR_FRACTION
-      of the way from that height to the car roof (apex_z), linear in between.
-    - combined = max(height_component, normal_component) is the continuous air score
-      for that pixel (either signal suffices; height ramp is steeper than before).
-    - "_car_air" is the binarized air score; "_car_ground" is binarized
-      clamp(car_mask - air, 0, 1) so only car-silhouette pixels not classified as
-      air are marked as ground.
 
-    Only pixels that fall inside a car hull get raycast, so the ray count stays small
-    even though the mesh itself may have many more triangles than mask pixels.
-    """
-    mesh = terrain_obj.data
-    if not mesh.uv_layers or not mesh.materials:
-        empty = np.zeros((CLASSIFY_MASK_SIZE, CLASSIFY_MASK_SIZE), dtype=np.float32)
-        return None, None, empty, empty
+def _convex_hull_2d(points: np.ndarray) -> list[tuple[float, float]]:
+    """Andrew's monotone chain; returns a CCW hull (>=3 unique points) or [] otherwise."""
+    pts = sorted(set((round(float(x), 5), round(float(y), 5)) for x, y in points))
+    if len(pts) < 3:
+        return pts
 
-    valid_refs = [ref for ref in car_refs if len(ref["hull"]) >= 3]
-    hull_arrays = [np.asarray(ref["hull"], dtype=np.float64) for ref in valid_refs]
-    if not hull_arrays:
-        empty = np.zeros((CLASSIFY_MASK_SIZE, CLASSIFY_MASK_SIZE), dtype=np.float32)
-        return None, None, empty, empty
-    hull_bboxes = [
-        (h[:, 0].min(), h[:, 0].max(), h[:, 1].min(), h[:, 1].max()) for h in hull_arrays
-    ]
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
-    uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
-    uv_data = uv_layer.data
-    mw = np.array(terrain_obj.matrix_world)
+    lower = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
 
-    n = len(mesh.vertices)
-    co = np.empty(n * 3, dtype=np.float64)
-    mesh.vertices.foreach_get("co", co)
-    co = co.reshape(n, 3)
-    world = (np.hstack([co, np.ones((n, 1))]) @ mw.T)[:, :3]
 
-    mesh.calc_loop_triangles()
-    size = CLASSIFY_MASK_SIZE
-    air_mask = np.zeros((size, size), dtype=np.float32)
+def _point_in_convex(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
+    """Point-in-CCW-convex-polygon test (edges treated as inside)."""
+    m = len(poly)
+    for i in range(m):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % m]
+        if (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1) < 0.0:
+            return False
+    return True
 
-    for lt in mesh.loop_triangles:
-        vs = lt.vertices
-        ls = lt.loops
-        w0, w1, w2 = world[vs[0]], world[vs[1]], world[vs[2]]
-        u0 = uv_data[ls[0]].uv
-        u1 = uv_data[ls[1]].uv
-        u2 = uv_data[ls[2]].uv
-        p0 = (u0[0] * size, u0[1] * size)
-        p1 = (u1[0] * size, u1[1] * size)
-        p2 = (u2[0] * size, u2[1] * size)
 
-        minx = max(int(np.floor(min(p0[0], p1[0], p2[0]))), 0)
-        maxx = min(int(np.ceil(max(p0[0], p1[0], p2[0]))), size - 1)
-        miny = max(int(np.floor(min(p0[1], p1[1], p2[1]))), 0)
-        maxy = min(int(np.ceil(max(p0[1], p1[1], p2[1]))), size - 1)
-        if minx > maxx or miny > maxy:
+def _separate_boundary_loops(edges: list) -> list[tuple[list, bool]]:
+    """Chain a set of BMEdges into (vertex_chain, closed) loops/open paths."""
+    adj: dict = {}
+    for e in edges:
+        a, b = e.verts[0], e.verts[1]
+        adj.setdefault(a, []).append((b, e))
+        adj.setdefault(b, []).append((a, e))
+
+    used: set = set()
+    remaining = set(edges)
+    chains: list[tuple[list, bool]] = []
+
+    def unused(v):
+        return [(o, e) for (o, e) in adj[v] if e not in used]
+
+    while remaining:
+        start = next((v for v in adj if len(unused(v)) == 1), None)
+        if start is None:
+            start = next(iter(remaining)).verts[0]
+        chain = [start]
+        cur = start
+        closed = False
+        while True:
+            inc = unused(cur)
+            if not inc:
+                break
+            o, e = inc[0]
+            used.add(e)
+            remaining.discard(e)
+            if o is start:
+                closed = True
+                break
+            chain.append(o)
+            cur = o
+        chains.append((chain, closed))
+    return chains
+
+
+def _fan_fill_loops(bm, rim: list) -> list:
+    """Fallback fill: fan each boundary loop from a fresh centroid vertex."""
+    faces: list = []
+    for chain, closed in _separate_boundary_loops(rim):
+        if len(chain) < 3:
             continue
+        center_co = Vector((0.0, 0.0, 0.0))
+        for v in chain:
+            center_co += v.co
+        center_co /= len(chain)
+        cvert = bm.verts.new(center_co)
+        if closed:
+            pairs = [(chain[i], chain[(i + 1) % len(chain)]) for i in range(len(chain))]
+        else:
+            pairs = [(chain[i], chain[i + 1]) for i in range(len(chain) - 1)]
+        for a, b in pairs:
+            try:
+                faces.append(bm.faces.new((a, b, cvert)))
+            except ValueError:
+                continue
+    return faces
 
-        denom = (p1[1] - p2[1]) * (p0[0] - p2[0]) + (p2[0] - p1[0]) * (p0[1] - p2[1])
-        if abs(denom) < 1e-12:
-            continue
 
-        gx, gy = np.meshgrid(
-            np.arange(minx, maxx + 1) + 0.5, np.arange(miny, maxy + 1) + 0.5
+def _fill_loops(bm, rim: list) -> list:
+    """
+    Triangulate the region(s) bounded by the rim edges. Prefer bmesh.ops.triangle_fill
+    (even, well-shaped triangles from the boundary verts only); if it fills nothing
+    (e.g. a badly non-planar loop it refuses), fall back to a centroid fan so the hole
+    is always closed.
+    """
+    try:
+        res = bmesh.ops.triangle_fill(
+            bm, use_beauty=True, use_dissolve=False, edges=list(rim)
         )
-        a = ((p1[1] - p2[1]) * (gx - p2[0]) + (p2[0] - p1[0]) * (gy - p2[1])) / denom
-        b = ((p2[1] - p0[1]) * (gx - p2[0]) + (p0[0] - p2[0]) * (gy - p2[1])) / denom
-        c = 1.0 - a - b
-        inside = (a >= 0) & (b >= 0) & (c >= 0)
-        if not inside.any():
+    except RuntimeError:
+        res = None
+    faces = (
+        [g for g in res["geom"] if isinstance(g, bmesh.types.BMFace)] if res else []
+    )
+    if not faces:
+        faces = _fan_fill_loops(bm, rim)
+    return faces
+
+
+def _build_footprint_prism(
+    car_obj: bpy.types.Object,
+    z0: float,
+    z1: float,
+    mark_mat: bpy.types.Material,
+) -> tuple[bpy.types.Object | None, list[tuple[float, float]]]:
+    """
+    Build the cutter for one car: take the car collider's XY footprint, shrink it to
+    CUT_SCALE about its centroid, and extrude it into a vertical prism spanning
+    [z0, z1] (the full terrain z-range plus a margin). A full-height prism — rather
+    than the finite-height collider box — is what makes the knife cut a clean, closed
+    ring around the footprint regardless of how the terrain undulates through it.
+    Returns (cutter_object, footprint_polygon) or (None, []) if the footprint is
+    degenerate. Verts are world-space (car colliders have identity matrix_world).
+    """
+    n = len(car_obj.data.vertices)
+    co = np.empty(n * 3, dtype=np.float64)
+    car_obj.data.vertices.foreach_get("co", co)
+    co = co.reshape(n, 3)
+    cog_xy = co[:, :2].mean(axis=0)
+    shrunk_xy = cog_xy + CUT_SCALE * (co[:, :2] - cog_xy)
+    poly = _convex_hull_2d(shrunk_xy)
+    if len(poly) < 3:
+        return None, []
+
+    m = len(poly)
+    verts = [(x, y, z0) for x, y in poly] + [(x, y, z1) for x, y in poly]
+    faces = [[i, (i + 1) % m, (i + 1) % m + m, i + m] for i in range(m)]
+
+    mesh = bpy.data.meshes.new(f"{car_obj.name}_cutter_mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    mesh.materials.append(mark_mat)
+    for poly_f in mesh.polygons:
+        poly_f.material_index = 0
+
+    clone = bpy.data.objects.new(f"{car_obj.name}_cutter", mesh)
+    bpy.context.scene.collection.objects.link(clone)
+    return clone, poly
+
+
+def cut_car_from_terrain(
+    mesh_obj: bpy.types.Object,
+    car_obj: bpy.types.Object,
+    z_range: tuple[float, float],
+    mark_mat: bpy.types.Material,
+    n_colors: int,
+    fill_slot: int,
+) -> tuple[int, int, list]:
+    """
+    Cut one car's footprint volume out of the terrain and rebuild flat ground:
+      1. Knife the terrain with a vertical prism built from the shrunk car footprint
+         (mesh.intersect), tagging the prism faces with mark_mat.
+      2. Delete the prism faces and every terrain face whose centroid falls inside the
+         footprint — leaving a clean, knife-cut hole.
+      3. Triangulate each boundary loop of the hole, assign the fill material, and point
+         each new triangle's UVs at a random texel of the ground palette strip.
+    Returns (rim_edges, fill_faces, footprint_poly).
+    """
+    z0, z1 = z_range
+    clone, poly = _build_footprint_prism(car_obj, z0, z1, mark_mat)
+    if clone is None:
+        return 0, 0, []
+
+    # Knife the prism into the terrain: join, then intersect the (selected) prism faces
+    # against the (unselected) terrain faces.
+    bpy.ops.object.select_all(action="DESELECT")
+    clone.select_set(True)
+    mesh_obj.select_set(True)
+    bpy.context.view_layer.objects.active = mesh_obj
+    bpy.ops.object.join()
+
+    cutter_slot = next(
+        (j for j, m in enumerate(mesh_obj.data.materials) if m is mark_mat), None
+    )
+    if cutter_slot is None:
+        return 0, 0, []
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    be = bmesh.from_edit_mesh(mesh_obj.data)
+    for f in be.faces:
+        f.select_set(f.material_index == cutter_slot)
+    bmesh.update_edit_mesh(mesh_obj.data)
+    try:
+        bpy.ops.mesh.intersect(
+            mode="SELECT_UNSELECT", separate_mode="NONE", solver="EXACT"
+        )
+    except RuntimeError as e:
+        log(f"[{mesh_obj.name}] knife failed: {e}")
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    rim, fill = _rebuild_hole(mesh_obj, cutter_slot, poly, n_colors, fill_slot)
+    return rim, fill, poly
+
+
+def _rebuild_hole(
+    mesh_obj: bpy.types.Object,
+    cutter_slot: int,
+    poly: list[tuple[float, float]],
+    n_colors: int,
+    fill_slot: int,
+) -> tuple[int, int]:
+    """Delete cutter + inside-footprint faces, triangulate the hole, palette-map the fill."""
+    bm = bmesh.new()
+    bm.from_mesh(mesh_obj.data)
+    bm.faces.ensure_lookup_table()
+    uv_lay = bm.loops.layers.uv.active
+    if uv_lay is None and bm.loops.layers.uv:
+        uv_lay = bm.loops.layers.uv[0]
+    mw = mesh_obj.matrix_world
+
+    del_set = set()
+    for f in bm.faces:
+        if f.material_index == cutter_slot:
+            del_set.add(f)
             continue
+        c = mw @ f.calc_center_median()
+        if _point_in_convex(c.x, c.y, poly):
+            del_set.add(f)
 
-        wx = a * w0[0] + b * w1[0] + c * w2[0]
-        wy = a * w0[1] + b * w1[1] + c * w2[1]
+    # The hole rim: edges that keep exactly one neighbour after the delete (their other
+    # neighbour(s) are removed). Collected before the delete so the loops stay intact.
+    rim = []
+    for e in bm.edges:
+        lf = e.link_faces
+        n_del = sum(1 for f in lf if f in del_set)
+        if n_del >= 1 and (len(lf) - n_del) == 1:
+            rim.append(e)
 
-        for ref, hull, bb in zip(valid_refs, hull_arrays, hull_bboxes):
-            sel = inside & (wx >= bb[0]) & (wx <= bb[1]) & (wy >= bb[2]) & (wy <= bb[3])
-            if not sel.any():
-                continue
-            sel = sel & _point_in_hull(wx, wy, hull)
-            if not sel.any():
-                continue
+    bmesh.ops.delete(bm, geom=list(del_set), context="FACES")
+    rim = [e for e in rim if e.is_valid]
+    if not rim:
+        bm.normal_update()
+        bm.to_mesh(mesh_obj.data)
+        bm.free()
+        mesh_obj.data.update()
+        return 0, 0
 
-            ground_normal = ref["ground_normal"]
-            ground_avg = ref["ground_avg_z"]
-            roof = ref["roof_z"]
-            midpoint = ground_avg + HEIGHT_AIR_FRACTION * (roof - ground_avg)
+    # Fill the boundary loop(s) with a proper triangulation instead of a centroid fan.
+    # triangle_fill spans the loop with well-shaped triangles built only from the rim
+    # verts (it adds no interior vertices), so (a) it fills the entire loop — no leftover
+    # black gaps — and (b) the triangles are evenly sized by the rim spacing rather than
+    # a pinwheel radiating from a single centre vertex.
+    fill_faces = _fill_loops(bm, rim)
+    _assign_fill(fill_faces, fill_slot, n_colors, uv_lay, mw)
 
-            for py, px in zip(*np.nonzero(sel)):
-                hit = raycast_hit(wx[py, px], wy[py, px], top, bvh)
-                if hit is None:
-                    continue
-                z, normal = hit
+    bm.to_mesh(mesh_obj.data)
+    bm.free()
+    mesh_obj.data.update()
+    return len(rim), len(fill_faces)
 
-                cos_angle = max(-1.0, min(1.0, normal.dot(ground_normal)))
-                angle_deg = degrees(acos(cos_angle))
-                normal_component = 1.0 if angle_deg > NORMAL_ANGLE_THRESHOLD_DEG else 0.0
 
-                if midpoint > ground_avg:
-                    height_component = max(
-                        0.0, min(1.0, (z - ground_avg) / (midpoint - ground_avg))
-                    )
-                else:
-                    height_component = 1.0 if z > ground_avg else 0.0
+def _assign_fill(fill_faces, fill_slot, n_colors, uv_lay, mw) -> None:
+    """Give each fill triangle the fill material, a random palette UV, and an up normal."""
+    for f in fill_faces:
+        f.material_index = fill_slot
+        if uv_lay is not None:
+            uv = _palette_uv(n_colors)
+            for loop in f.loops:
+                loop[uv_lay].uv = uv
+    if fill_faces:
+        for f in fill_faces:
+            f.normal_update()
+        # Ground fill faces should face up, not be back-facing.
+        for f in fill_faces:
+            if (mw.to_3x3() @ f.normal).z < 0.0:
+                f.normal_flip()
 
-                combined = max(height_component, normal_component)
-                fy, fx = miny + py, minx + px
-                air_mask[fy, fx] = max(air_mask[fy, fx], combined)
 
-    ground_mask = np.clip(car_mask - air_mask, 0.0, 1.0)
-    air_mask = (air_mask > 0.5).astype(np.float32)
-    ground_mask = (ground_mask > 0.5).astype(np.float32)
+def _edge_between(a, b):
+    for e in a.link_edges:
+        if e.other_vert(a) is b:
+            return e
+    return None
 
-    suffix = f"_{mesh_index}"
-    ground_img = (
-        _make_mask_image(f"{image_prefix}_car_ground{suffix}", ground_mask)
-        if ground_mask.any()
-        else None
-    )
-    air_img = (
-        _make_mask_image(f"{image_prefix}_car_air{suffix}", air_mask)
-        if air_mask.any()
-        else None
-    )
-    return ground_img, air_img, ground_mask, air_mask
+
+def _close_footprint_holes(
+    mesh_obj: bpy.types.Object,
+    polys: list,
+    n_colors: int,
+    fill_slot: int,
+) -> int:
+    """
+    Final cleanup for one terrain mesh: fill any *small* boundary loop that lies wholly
+    inside a car footprint. These are thin no-data slivers the per-car cut can leave at
+    the reconstructed car/ground border (the car occluded the ground, so photogrammetry
+    has gaps there). Loops that extend outside every footprint — the real pre-existing
+    photogrammetry holes and the tile's outer edge — are left untouched.
+    """
+    if not polys:
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(mesh_obj.data)
+    bm.edges.ensure_lookup_table()
+    uv_lay = bm.loops.layers.uv.active
+    if uv_lay is None and bm.loops.layers.uv:
+        uv_lay = bm.loops.layers.uv[0]
+    mw = mesh_obj.matrix_world
+
+    def inside_any(v) -> bool:
+        w = mw @ v.co
+        return any(_point_in_convex(w.x, w.y, p) for p in polys)
+
+    boundary = [e for e in bm.edges if len(e.link_faces) == 1]
+    fill_edges: list = []
+    for chain, closed in _separate_boundary_loops(boundary):
+        if not closed or len(chain) < 3:
+            continue
+        if not all(inside_any(v) for v in chain):
+            continue
+        for i in range(len(chain)):
+            e = _edge_between(chain[i], chain[(i + 1) % len(chain)])
+            if e is not None:
+                fill_edges.append(e)
+    if not fill_edges:
+        bm.free()
+        return 0
+
+    fill_faces = _fill_loops(bm, fill_edges)
+    _assign_fill(fill_faces, fill_slot, n_colors, uv_lay, mw)
+    bm.to_mesh(mesh_obj.data)
+    bm.free()
+    mesh_obj.data.update()
+    return len(fill_faces)
 
 
 def log(msg: str) -> None:
@@ -750,6 +792,10 @@ def process_item(item: dict) -> None:
         if o.type == "MESH" and o.data.uv_layers and o.data.materials
     ]
     log(f"[{octtree_path}] terrain meshes: {len(terrain_objs)}")
+
+    for mesh_obj in terrain_objs:
+        weld_terrain_mesh(mesh_obj)
+    log(f"[{octtree_path}] terrain welded")
 
     terrain_bbox = measure_terrain_bbox()
     top = terrain_bbox["up"][1]
@@ -788,8 +834,6 @@ def process_item(item: dict) -> None:
         roads_created += 1
     log(f"[{octtree_path}] roads created: {roads_created}")
 
-    empty_mask = np.zeros((MASK_SIZE, MASK_SIZE), dtype=np.float32)
-    hulls: list[list[tuple[float, float]]] = []
     collider_specs: list[dict] = []
     cars_json_path = item.get("cars_json")
     if cars_json_path and os.path.isfile(cars_json_path):
@@ -798,13 +842,11 @@ def process_item(item: dict) -> None:
 
         cars_list = cars_data.get("cars", [])
         log(f"[{octtree_path}] building {len(cars_list)} car collider(s)")
-        cars_created = 0
         for i, car in enumerate(cars_list):
             corners = car.get("corners_latlon")
             center = car.get("center_latlon")
             if not corners or len(corners) != 4 or not center:
                 continue
-            log(f"[{octtree_path}] collider {i}/{len(cars_list)}: build_collider_mesh")
             collider_specs.append(
                 build_collider_mesh(
                     corners, center, latlon_bbox, terrain_bbox, top, bvh
@@ -812,45 +854,50 @@ def process_item(item: dict) -> None:
             )
         log(f"[{octtree_path}] collider meshes built: {len(collider_specs)}")
 
-        for spec in collider_specs:
-            create_car_object(cars_created, spec["verts"], spec["faces"])
-            hulls.append(spec["hull"])
-            cars_created += 1
-        log(f"[{octtree_path}] car objects linked: {cars_created}")
+    car_objs: list[bpy.types.Object] = []
+    for i, spec in enumerate(collider_specs):
+        car_objs.append(create_car_object(i, spec["verts"], spec["faces"]))
+    log(f"[{octtree_path}] car objects linked: {len(car_objs)}")
+
+    # Full terrain z-span (plus margin) that every cutter prism is extruded through.
+    z_range = (terrain_bbox["up"][0] - 10.0, terrain_bbox["up"][1] + 10.0)
+    # One shared marker material tags cutter geometry so it can be knifed then deleted.
+    mark_mat = bpy.data.materials.new("CUTTER_MARK")
 
     for i, mesh_obj in enumerate(terrain_objs):
-        if hulls:
-            log(f"[{octtree_path}] mesh {i} ({mesh_obj.name}): paint_car_mask")
-            mask_img, car_mask = paint_car_mask(
-                mesh_obj, hulls, f"{octtree_path}_cars_{i}"
+        log(f"[{octtree_path}] mesh {i} ({mesh_obj.name}): build_fill_material")
+        fill = build_fill_material(mesh_obj, i)
+        if fill is None:
+            continue
+        n_colors, fill_slot = fill
+
+        if not car_objs:
+            continue
+
+        log(f"[{octtree_path}] mesh {i}: cutting {len(car_objs)} car(s)")
+        total_rim = 0
+        total_fill = 0
+        footprints: list = []
+        for car_obj in car_objs:
+            rim, filled, poly = cut_car_from_terrain(
+                mesh_obj,
+                car_obj,
+                z_range,
+                mark_mat,
+                n_colors,
+                fill_slot,
             )
-            if mask_img is not None:
-                attach_mask_material(mesh_obj, mask_img, f"cars_{i}")
-
-            log(f"[{octtree_path}] mesh {i}: paint_car_ground_air_masks")
-            if car_mask is not None:
-                ground_img, air_img, ground_mask, air_mask = paint_car_ground_air_masks(
-                    mesh_obj,
-                    collider_specs,
-                    octtree_path,
-                    i,
-                    bvh,
-                    top,
-                    car_mask,
-                )
-            else:
-                ground_img, air_img = None, None
-                ground_mask, air_mask = empty_mask, empty_mask
-            log(f"[{octtree_path}] mesh {i}: ground_air masks done")
-            if ground_img is not None:
-                attach_mask_material(mesh_obj, ground_img, f"ground_{i}")
-            if air_img is not None:
-                attach_mask_material(mesh_obj, air_img, f"air_{i}")
-        else:
-            ground_mask, air_mask = empty_mask, empty_mask
-
-        log(f"[{octtree_path}] mesh {i}: build_painted_material")
-        build_painted_material(mesh_obj, i, ground_mask, air_mask)
+            total_rim += rim
+            total_fill += filled
+            if poly:
+                footprints.append(poly)
+        cleanup = _close_footprint_holes(
+            mesh_obj, footprints, n_colors, fill_slot
+        )
+        log(
+            f"[{octtree_path}] mesh {i}: cut done, {total_rim} rim edges, "
+            f"{total_fill} fill faces, {cleanup} cleanup faces"
+        )
 
     log(f"[{octtree_path}] saving {out_blend_path}")
     os.makedirs(os.path.dirname(out_blend_path), exist_ok=True)

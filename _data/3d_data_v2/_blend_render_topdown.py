@@ -184,7 +184,7 @@ def setup_render_settings(scene: bpy.types.Scene, *, width: int, height: int) ->
     scene.world.use_nodes = True
     bg_node = scene.world.node_tree.nodes.get("Background")
     if bg_node:
-        bg_node.inputs["Color"].default_value = (0.7, 0.8, 0.9, 1.0)
+        bg_node.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
 
 
 def render_tile(tile: dict) -> bool:
