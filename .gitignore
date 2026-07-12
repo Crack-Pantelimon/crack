@@ -10,7 +10,6 @@ post.db
 gain.ndjson
 copilot-instructions.md
 gemini-context.md
-AGENTS.md
 CLAUDE.md
 .cursorrules
 copilot-instructions.md
@@ -18,6 +17,5 @@ copilot-instructions.md
 context-*.md
 *-context.md
 CLAUDE.md
-AGENTS.md
 gain.ndjson
 .cursorrules

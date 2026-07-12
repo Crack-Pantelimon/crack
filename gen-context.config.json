@@ -89,7 +89,7 @@
   "_strategy_full": "  full       \u2014 single file, all signatures, always injected (default)",
   "_strategy_per_module": "  per-module \u2014 one .github/context-<module>.md per srcDir + thin overview",
   "_strategy_hot_cold": "  hot-cold   \u2014 recently changed files injected; rest in context-cold.md (MCP)",
-  "strategy": "per-module",
+  "strategy": "full",
   "_hotCommits_comment": "Only used by hot-cold strategy: how many recent commits count as 'hot'",
   "hotCommits": 10,
   "_depMap_comment": "Include a compact import dependency map at the top of the output (~50-100 extra tokens)",

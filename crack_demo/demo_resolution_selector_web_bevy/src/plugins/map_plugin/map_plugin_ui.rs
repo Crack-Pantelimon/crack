@@ -97,8 +97,8 @@ pub fn tree_navigator_ui(
         return;
     }
 
-    let mut node_to_select = None;
-    let mut node_to_deselect = false;
+    let  node_to_select = None;
+    let  node_to_deselect = false;
 
     // Calculate metrics
     let rendered_paths: std::collections::BTreeSet<MapTreeNodePath> = tiles_query
