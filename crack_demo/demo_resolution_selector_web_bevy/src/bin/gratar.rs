@@ -8,12 +8,90 @@ use demo_resolution_selector_web_bevy::utils::setup_debug_scene::SetupDebugScene
 #[derive(Component)]
 struct MusicTrack;
 
+#[derive(serde::Deserialize, bevy::reflect::TypePath, Debug, Clone)]
+struct RhythmChartNote {
+    time: f32,
+    direction: String,
+}
+
+#[derive(serde::Deserialize, bevy::asset::Asset, bevy::reflect::TypePath, Debug, Clone)]
+struct RhythmChart {
+    bpm: f32,
+    notes: Vec<RhythmChartNote>,
+}
+
+#[derive(Default, bevy::reflect::TypePath)]
+struct RhythmChartLoader;
+
+impl bevy::asset::AssetLoader for RhythmChartLoader {
+    type Asset = RhythmChart;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    async fn load(
+        &self,
+        reader: &mut dyn bevy::asset::io::Reader,
+        _settings: &Self::Settings,
+        _load_context: &mut bevy::asset::LoadContext<'_>,
+    ) -> Result<Self::Asset, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        let chart: RhythmChart = serde_json::from_slice(&bytes)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Ok(chart)
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["json"]
+    }
+}
+
+fn encode_url_path(s: &str) -> String {
+    s.chars().map(|c| {
+        match c {
+            ' ' => "%20".to_string(),
+            '[' => "%5B".to_string(),
+            ']' => "%5D".to_string(),
+            '%' => "%25".to_string(),
+            '#' => "%23".to_string(),
+            '?' => "%3F".to_string(),
+            '&' => "%26".to_string(),
+            _ => c.to_string()
+        }
+    }).collect()
+}
+
+fn get_available_songs() -> Vec<String> {
+    let mut songs = Vec::new();
+    #[cfg(not(target_family = "wasm"))]
+    {
+        if let Ok(entries) = std::fs::read_dir("_data/sound_data") {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().map_or(false, |ext| ext == "mp3") {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        songs.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    if songs.is_empty() {
+        songs.push("ManeleMp3.Net - NICOLAE GUTA - LOCUL 1 NUMAI 1 [ORIGINALA].mp3".to_string());
+    }
+    // Sort songs alphabetically for consistent UI
+    songs.sort();
+    songs
+}
+
 fn main() {
     make_basic_app("Gratar")
         .add_plugins(SetupDebugScenePlugin)
         .add_plugins(EguiPlugin::default())
         .init_resource::<GratarGame>()
         .init_resource::<CameraDirector>()
+        .init_asset::<RhythmChart>()
+        .init_asset_loader::<RhythmChartLoader>()
         .add_systems(Startup, setup_gratar)
         .add_systems(
             Update,
@@ -90,73 +168,16 @@ struct GratarGame {
     last_rating: String,
     last_rating_timer: f32,
     bpm: f32,
+
+    chart_handle: Option<Handle<RhythmChart>>,
+    selected_song: String,
+    available_songs: Vec<String>,
 }
 
 impl Default for GratarGame {
     fn default() -> Self {
-        let mut notes = Vec::new();
-        let bpm = 160.0; // Nicolae Guta - Locul 1 is 160 BPM
-        let beat_duration = 60.0 / bpm; // 0.375s per beat
-        let step_duration = beat_duration / 2.0; // 0.1875s per step (half beats)
-
-        // Generate rhythm notes from step 64 (~12 seconds, when beat starts) to step 1100 (~206 seconds)
-        for step in 64..1100 {
-            let pattern_step = step % 8;
-            let mut spawn = false;
-            let mut dir = NoteDirection::Up;
-
-            if step < 128 {
-                // Intro build-up: slow downbeats
-                if pattern_step == 0 {
-                    spawn = true;
-                    dir = if (step / 8) % 2 == 0 { NoteDirection::Left } else { NoteDirection::Right };
-                }
-            } else if step >= 512 && step < 768 {
-                // Chorus (Intense fast manele rolls): spawn on steps 0, 2, 3, 4, 6, 7
-                if pattern_step == 0 {
-                    spawn = true;
-                    dir = NoteDirection::Down;
-                } else if pattern_step == 2 {
-                    spawn = true;
-                    dir = NoteDirection::Left;
-                } else if pattern_step == 3 {
-                    spawn = true;
-                    dir = NoteDirection::Right;
-                } else if pattern_step == 4 {
-                    spawn = true;
-                    dir = NoteDirection::Up;
-                } else if pattern_step == 6 {
-                    spawn = true;
-                    dir = NoteDirection::Left;
-                } else if pattern_step == 7 {
-                    spawn = true;
-                    dir = NoteDirection::Right;
-                }
-            } else {
-                // Standard bouncy Manele syncopated rhythm: spawn on steps 0, 3, 5, 6
-                if pattern_step == 0 {
-                    spawn = true;
-                    dir = NoteDirection::Down;
-                } else if pattern_step == 3 {
-                    spawn = true;
-                    dir = NoteDirection::Left;
-                } else if pattern_step == 5 {
-                    spawn = true;
-                    dir = NoteDirection::Right;
-                } else if pattern_step == 6 {
-                    spawn = true;
-                    dir = NoteDirection::Up;
-                }
-            }
-
-            if spawn {
-                notes.push(RhythmNote {
-                    direction: dir,
-                    time: step as f32 * step_duration,
-                    hit: false,
-                });
-            }
-        }
+        let songs = get_available_songs();
+        let default_song = songs[0].clone();
 
         Self {
             is_started: false,
@@ -164,16 +185,20 @@ impl Default for GratarGame {
             needs_music_start: false,
             music_playing: false,
             song_time: 0.0,
-            notes,
+            notes: Vec::new(),
             score: 0,
             combo: 0,
             max_combo: 0,
             multiplier: 1,
             last_rating: "".to_string(),
             last_rating_timer: 0.0,
-            bpm,
+            bpm: 160.0,
+            chart_handle: None,
+            selected_song: default_song,
+            available_songs: songs,
         }
-    }}
+    }
+}
 
 #[derive(Resource)]
 struct CameraDirector {
@@ -515,8 +540,8 @@ fn setup_gratar(
         perceptual_roughness: 0.95,
         ..default()
     });
-    // Thin cuboid that slightly wraps over the top surface
-    let grill_mark_mesh = meshes.add(Cuboid::new(0.092, 0.006, 0.012));
+    // Torus that wraps perfectly around the round mic surface
+    let grill_mark_mesh = meshes.add(Torus::new(0.003, 0.045));
 
     // Spawning 7 mici in a natural arrangement
     let mic_configs = [
@@ -545,16 +570,15 @@ fn setup_gratar(
             .id();
         commands.entity(root).add_child(child_mic);
 
-        // Add 4 parallel burnt grill marks on top of each mic
-        // Since the mic is rotated so its length is Z, local Z ranges from -0.11 to 0.11
-        // Spaced along Z, we place thin black strips at local Y = mic_radius (0.045)
-        let z_offsets = [-0.07, -0.02, 0.03, 0.08];
-        for z_off in z_offsets {
+        // Add 4 parallel burnt grill marks wrapping around each mic
+        // Since the capsule mesh is oriented vertically along local Y, we place concentric toruses spaced along Y.
+        let y_offsets = [-0.07, -0.02, 0.03, 0.08];
+        for y_off in y_offsets {
             let mark = commands
                 .spawn((
                     Mesh3d(grill_mark_mesh.clone()),
                     MeshMaterial3d(grill_mark_mat.clone()),
-                    Transform::from_xyz(0.0, mic_radius - 0.001, z_off),
+                    Transform::from_xyz(0.0, y_off, 0.0),
                 ))
                 .id();
             // Parent the mark directly to the mic so it rotates and moves with it
@@ -690,6 +714,7 @@ fn smoke_particles_system(
 fn rhythm_game_system(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    chart_assets: Res<Assets<RhythmChart>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut game: ResMut<GratarGame>,
     mut gratar_query: Query<&mut HydraulicGratar>,
@@ -709,9 +734,7 @@ fn rhythm_game_system(
             game.multiplier = 1;
             game.last_rating = "Loading...".to_string();
             game.last_rating_timer = 2.0;
-            for note in game.notes.iter_mut() {
-                note.hit = false;
-            }
+            game.notes.clear();
         }
         return;
     }
@@ -725,12 +748,48 @@ fn rhythm_game_system(
             commands.entity(entity).despawn();
         }
 
+        let json_filename = game.selected_song.replace(".mp3", ".json");
+
+        // Automatically run python script if JSON doesn't exist
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let json_path = format!("_data/sound_data/{}", json_filename);
+            if !std::path::Path::new(&json_path).exists() {
+                let mp3_path = format!("_data/sound_data/{}", game.selected_song);
+                info!("JSON missing, automatically running python generator for {}", mp3_path);
+
+                let status = std::process::Command::new("python3")
+                    .arg("scripts/generate_beat_chart.py")
+                    .arg(&mp3_path)
+                    .status();
+                match status {
+                    Ok(s) if s.success() => {
+                        info!("Successfully generated beat chart!");
+                    }
+                    other => {
+                        error!("Failed to generate beat chart: {:?}", other);
+                    }
+                }
+            }
+        }
+
         // Spawn the music player with MusicTrack marker
+        let encoded_song = encode_url_path(&game.selected_song);
         let song_url = format!(
-            "{}sound_data/ManeleMp3.Net%20-%20NICOLAE%20GUTA%20-%20LOCUL%201%20NUMAI%201%20%5BORIGINALA%5D.mp3",
-            demo_resolution_selector_web_bevy::config::DATA_BASE_URL
+            "{}sound_data/{}",
+            demo_resolution_selector_web_bevy::config::DATA_BASE_URL,
+            encoded_song
         );
-        info!("[AUDIO] Loading song from URL: {}", song_url);
+        
+        let encoded_json = encode_url_path(&json_filename);
+        let chart_url = format!(
+            "{}sound_data/{}",
+            demo_resolution_selector_web_bevy::config::DATA_BASE_URL,
+            encoded_json
+        );
+
+        info!("[AUDIO] Loading song: {} and chart: {}", song_url, chart_url);
+
         let handle = asset_server.load::<bevy::audio::AudioSource>(&song_url);
         commands.spawn((
             MusicTrack,
@@ -742,7 +801,51 @@ fn rhythm_game_system(
                 ..default()
             },
         ));
+
+        let chart_handle = asset_server.load::<RhythmChart>(&chart_url);
+        game.chart_handle = Some(chart_handle);
         game.music_playing = false;
+        game.notes.clear();
+    }
+
+    // If we have a pending chart loading, wait for it
+    if let Some(handle) = &game.chart_handle {
+        if let Some(chart) = chart_assets.get(handle) {
+            game.bpm = chart.bpm;
+            game.notes = chart.notes.iter().map(|n| {
+                let dir = match n.direction.as_str() {
+                    "Left" => NoteDirection::Left,
+                    "Right" => NoteDirection::Right,
+                    "Up" => NoteDirection::Up,
+                    _ => NoteDirection::Down,
+                };
+                RhythmNote {
+                    direction: dir,
+                    time: n.time,
+                    hit: false,
+                }
+            }).collect();
+            game.chart_handle = None;
+            info!("Loaded rhythm chart from JSON: {} notes, BPM: {}", game.notes.len(), game.bpm);
+        } else {
+            // Check if load failed
+            if let Some(load_state) = asset_server.get_load_state(handle.id()) {
+                if matches!(load_state, bevy::asset::LoadState::Failed(_)) {
+                    game.last_rating = "Error: JSON missing! Run python generator.".to_string();
+                    game.last_rating_timer = 5.0;
+                    game.chart_handle = None;
+                    game.is_started = false;
+                    game.needs_music_start = false;
+                    for entity in audio_query.iter() {
+                        commands.entity(entity).despawn();
+                    }
+                    return;
+                }
+            }
+            // Still loading, keep song_time at 0
+            game.song_time = 0.0;
+            return;
+        }
     }
 
     // Positive = notes arrive earlier (use when audio beats come before the note hits the target).
@@ -768,7 +871,7 @@ fn rhythm_game_system(
     // If music_playing is true but sink is gone, the song finished (Despawn mode)
 
     // 2. Check song end
-    if game.song_time > 212.0 || (game.music_playing && sink_query.is_empty()) {
+    if (game.music_playing && sink_query.is_empty()) || game.song_time > 600.0 {
         game.is_started = false;
         game.is_finished = true;
         game.music_playing = false;
@@ -784,7 +887,7 @@ fn rhythm_game_system(
     let song_time = game.song_time;
     let mut any_missed = false;
     for note in game.notes.iter_mut() {
-        if !note.hit && song_time > note.time + 0.45 {
+        if !note.hit && song_time > note.time + 0.22 {
             note.hit = true;
             any_missed = true;
         }
@@ -841,7 +944,7 @@ fn rhythm_game_system(
     for (idx, note) in game.notes.iter().enumerate() {
         if !note.hit && note.direction == dir {
             let diff = (note.time - game.song_time).abs();
-            if diff < min_diff && diff <= 0.45 {
+            if diff < min_diff && diff <= 0.22 {
                 min_diff = diff;
                 closest_idx = Some(idx);
             }
@@ -852,11 +955,11 @@ fn rhythm_game_system(
         game.notes[idx].hit = true;
 
         // Score depending on timing precision
-        if min_diff < 0.12 {
+        if min_diff < 0.08 {
             game.score += 100 * game.multiplier;
             game.combo += 1;
             game.last_rating = "PERFECT!".to_string();
-        } else if min_diff < 0.28 {
+        } else if min_diff < 0.16 {
             game.score += 50 * game.multiplier;
             game.combo += 1;
             game.last_rating = "GOOD!".to_string();
@@ -936,10 +1039,11 @@ fn rhythm_ui_system(
     if !game.is_started && !game.is_finished {
         // Start Overlay
         egui::Window::new("Cezar's Gratar Challenge")
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(egui::pos2(screen_w / 2.0, screen_h / 2.0))
             .collapsible(false)
             .resizable(false)
-            .default_width(320.0)
+            .default_width(360.0)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(
@@ -960,6 +1064,31 @@ fn rhythm_ui_system(
 
                     ui.allocate_space(egui::vec2(0.0, 10.0));
 
+                    ui.horizontal(|ui| {
+                        ui.label("Select Song:");
+                        if ui.button("🔄 Refresh List").clicked() {
+                            game.available_songs = get_available_songs();
+                        }
+                    });
+                    
+                    let songs = game.available_songs.clone();
+                    for song in &songs {
+                        let is_selected = game.selected_song == *song;
+                        let display_name = song.replace(".mp3", "");
+                        if ui.selectable_label(is_selected, display_name).clicked() {
+                            game.selected_song = song.clone();
+                        }
+                    }
+
+                    ui.allocate_space(egui::vec2(0.0, 8.0));
+                    ui.label(
+                        egui::RichText::new("To add a new song:\n1. Drop your MP3 file into _data/sound_data/\n2. Click 🔄 Refresh List above\n3. Select and start (the beat chart is generated automatically!)")
+                            .small()
+                            .color(egui::Color32::from_rgb(160, 160, 160))
+                    );
+
+                    ui.allocate_space(egui::vec2(0.0, 12.0));
+
                     if ui
                         .button(egui::RichText::new("START CHALLENGE (SPACEBAR)").strong().size(14.0))
                         .clicked()
@@ -974,16 +1103,15 @@ fn rhythm_ui_system(
                         game.multiplier = 1;
                         game.last_rating = "Loading...".to_string();
                         game.last_rating_timer = 2.0;
-                        for note in game.notes.iter_mut() {
-                            note.hit = false;
-                        }
+                        game.notes.clear();
                     }
                 });
             });
     } else if game.is_finished {
         // Finish Overlay
         egui::Window::new("Challenge Finished!")
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(egui::pos2(screen_w / 2.0, screen_h / 2.0))
             .collapsible(false)
             .resizable(false)
             .default_width(320.0)
@@ -1036,16 +1164,14 @@ fn rhythm_ui_system(
                         game.multiplier = 1;
                         game.last_rating = "Loading...".to_string();
                         game.last_rating_timer = 2.0;
-                        for note in game.notes.iter_mut() {
-                            note.hit = false;
-                        }
+                        game.notes.clear();
                     }
                 });
             });
     } else {
         // Active Rhythm HUD Panel
         let hud_w = 780.0f32.min(screen_w - 40.0);
-        let hud_h = 100.0;
+        let hud_h = 115.0; // Increased height to fit top and bottom rows nicely
 
         let hud_x = (screen_w - hud_w) / 2.0;
         let hud_y = screen_h - hud_h - 25.0;
@@ -1073,19 +1199,17 @@ fn rhythm_ui_system(
                     egui::StrokeKind::Inside,
                 );
 
-                // 1. Stats Box
-                let stats_rect = egui::Rect::from_min_max(
-                    egui::pos2(hud_x + 15.0, hud_y + 12.0),
-                    egui::pos2(hud_x + 180.0, hud_y + hud_h - 12.0),
-                );
-                painter.rect_filled(
-                    stats_rect,
-                    6.0,
-                    egui::Color32::from_black_alpha(120),
+                // --- TOP ROW: STATS & CAMERA INFO ---
+                // Draw a subtle horizontal divider line under the top section
+                let divider_y = hud_y + 40.0;
+                painter.line_segment(
+                    [egui::pos2(hud_x + 15.0, divider_y), egui::pos2(hud_x + hud_w - 15.0, divider_y)],
+                    egui::Stroke::new(1.0, egui::Color32::from_white_alpha(30)),
                 );
 
+                // 1. Stats (Left Aligned)
                 painter.text(
-                    egui::pos2(hud_x + 25.0, hud_y + 26.0),
+                    egui::pos2(hud_x + 25.0, hud_y + 22.0),
                     egui::Align2::LEFT_CENTER,
                     format!("SCORE: {:06}", game.score),
                     egui::FontId::monospace(13.0),
@@ -1101,7 +1225,7 @@ fn rhythm_ui_system(
                 };
 
                 painter.text(
-                    egui::pos2(hud_x + 25.0, hud_y + 50.0),
+                    egui::pos2(hud_x + 160.0, hud_y + 22.0),
                     egui::Align2::LEFT_CENTER,
                     format!("COMBO: x{}", game.combo),
                     egui::FontId::monospace(13.0),
@@ -1109,17 +1233,41 @@ fn rhythm_ui_system(
                 );
 
                 painter.text(
-                    egui::pos2(hud_x + 25.0, hud_y + 74.0),
+                    egui::pos2(hud_x + 270.0, hud_y + 22.0),
                     egui::Align2::LEFT_CENTER,
                     format!("MULT: x{}", game.multiplier),
                     egui::FontId::monospace(13.0),
                     egui::Color32::from_rgb(78, 205, 196),
                 );
 
-                // 2. Scrolling Track
-                let track_y = hud_y + hud_h / 2.0;
-                let track_start = hud_x + 200.0;
-                let track_end = hud_x + hud_w - 200.0;
+                // 2. Camera Status (Right Aligned)
+                painter.text(
+                    egui::pos2(hud_x + hud_w - 380.0, hud_y + 22.0),
+                    egui::Align2::LEFT_CENTER,
+                    "CAMERA: [1-5] SHOTS",
+                    egui::FontId::monospace(11.0),
+                    egui::Color32::from_rgb(180, 180, 180),
+                );
+
+                let cycle_status = if director.auto_cycle { "ON" } else { "OFF" };
+                let cycle_color = if director.auto_cycle {
+                    egui::Color32::from_rgb(0, 255, 244)
+                } else {
+                    egui::Color32::from_rgb(140, 140, 140)
+                };
+
+                painter.text(
+                    egui::pos2(hud_x + hud_w - 220.0, hud_y + 22.0),
+                    egui::Align2::LEFT_CENTER,
+                    format!("[C] AUTO-CYCLE: {cycle_status}"),
+                    egui::FontId::monospace(11.0),
+                    cycle_color,
+                );
+
+                // --- BOTTOM ROW: SCROLLING TRACK ---
+                let track_y = hud_y + 78.0;
+                let track_start = hud_x + 25.0;
+                let track_end = hud_x + hud_w - 25.0;
 
                 // Main track line
                 painter.line_segment(
@@ -1128,7 +1276,7 @@ fn rhythm_ui_system(
                 );
 
                 // Target timing keycap shape
-                let target_x = hud_x + 260.0;
+                let target_x = hud_x + 85.0;
                 let beat_pulse = 2.5 * (game.song_time * 2.0 * std::f32::consts::PI).sin().abs();
                 let target_w = 40.0;
                 let target_h = 40.0;
@@ -1150,7 +1298,7 @@ fn rhythm_ui_system(
                 );
 
                 // 3. Render scrolling notes as keycaps
-                let scroll_speed = 280.0; // pixels per second
+                let scroll_speed = 200.0; // Slower scroll speed for comfortable playability
 
                 for note in &game.notes {
                     if note.hit {
@@ -1160,10 +1308,10 @@ fn rhythm_ui_system(
                     let x_pos = target_x + (note.time - game.song_time) * scroll_speed;
                     if x_pos >= target_x - 30.0 && x_pos <= track_end + 15.0 {
                         let color = match note.direction {
-                            NoteDirection::Left => egui::Color32::from_rgb(239, 71, 111),
-                            NoteDirection::Right => egui::Color32::from_rgb(78, 205, 196),
-                            NoteDirection::Up => egui::Color32::from_rgb(255, 209, 102),
-                            NoteDirection::Down => egui::Color32::from_rgb(6, 214, 160),
+                            NoteDirection::Left => egui::Color32::from_rgb(255, 50, 100),
+                            NoteDirection::Right => egui::Color32::from_rgb(0, 200, 255),
+                            NoteDirection::Up => egui::Color32::from_rgb(255, 200, 0),
+                            NoteDirection::Down => egui::Color32::from_rgb(80, 255, 80),
                         };
 
                         let rect_w = 36.0;
@@ -1193,55 +1341,21 @@ fn rhythm_ui_system(
                         );
 
                         let label = match note.direction {
-                            NoteDirection::Left => "A/←",
-                            NoteDirection::Right => "D/→",
-                            NoteDirection::Up => "W/↑",
-                            NoteDirection::Down => "S/↓",
+                            NoteDirection::Left => "A",
+                            NoteDirection::Right => "D",
+                            NoteDirection::Up => "W",
+                            NoteDirection::Down => "S",
                         };
 
                         painter.text(
                             egui::pos2(x_pos, track_y),
                             egui::Align2::CENTER_CENTER,
                             label,
-                            egui::FontId::monospace(12.0),
-                            egui::Color32::BLACK,
+                            egui::FontId::monospace(15.0),
+                            egui::Color32::from_rgb(10, 10, 10),
                         );
                     }
                 }
-
-                // 4. Camera controls helper panel (Right side)
-                let cam_box_rect = egui::Rect::from_min_max(
-                    egui::pos2(hud_x + hud_w - 180.0, hud_y + 12.0),
-                    egui::pos2(hud_x + hud_w - 15.0, hud_y + hud_h - 12.0),
-                );
-                painter.rect_filled(
-                    cam_box_rect,
-                    6.0,
-                    egui::Color32::from_black_alpha(120),
-                );
-
-                painter.text(
-                    egui::pos2(hud_x + hud_w - 170.0, hud_y + 26.0),
-                    egui::Align2::LEFT_CENTER,
-                    "CAMERA SHOTS:",
-                    egui::FontId::monospace(11.0),
-                    egui::Color32::from_rgb(180, 180, 180),
-                );
-                painter.text(
-                    egui::pos2(hud_x + hud_w - 170.0, hud_y + 48.0),
-                    egui::Align2::LEFT_CENTER,
-                    "[1-5] Preset Shots",
-                    egui::FontId::monospace(11.0),
-                    egui::Color32::WHITE,
-                );
-                let cycle_status = if director.auto_cycle { "ON" } else { "OFF" };
-                painter.text(
-                    egui::pos2(hud_x + hud_w - 170.0, hud_y + 70.0),
-                    egui::Align2::LEFT_CENTER,
-                    format!("[C] Auto-cycle: {cycle_status}"),
-                    egui::FontId::monospace(11.0),
-                    egui::Color32::from_rgb(0, 180, 216),
-                );
             });
     }
 }
