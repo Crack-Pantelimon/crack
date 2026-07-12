@@ -172,6 +172,9 @@ struct GratarGame {
     chart_handle: Option<Handle<RhythmChart>>,
     selected_song: String,
     available_songs: Vec<String>,
+    is_generating: bool,
+    #[cfg(not(target_family = "wasm"))]
+    generator_process: Option<std::process::Child>,
 }
 
 impl Default for GratarGame {
@@ -196,6 +199,9 @@ impl Default for GratarGame {
             chart_handle: None,
             selected_song: default_song,
             available_songs: songs,
+            is_generating: false,
+            #[cfg(not(target_family = "wasm"))]
+            generator_process: None,
         }
     }
 }
@@ -721,7 +727,69 @@ fn rhythm_game_system(
     audio_query: Query<Entity, With<MusicTrack>>,
     sink_query: Query<&AudioSink, With<MusicTrack>>,
 ) {
+    // Handle background beat chart generation progress check
+    #[cfg(not(target_family = "wasm"))]
+    {
+        if game.is_generating {
+            if let Some(ref mut child) = game.generator_process {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        if status.success() {
+                            info!("Successfully generated beat chart asynchronously!");
+                        } else {
+                            error!("Failed to generate beat chart asynchronously: exit status {:?}", status);
+                        }
+                        game.is_generating = false;
+                        game.generator_process = None;
+                        // Trigger music start now that the file exists!
+                        game.needs_music_start = true;
+                    }
+                    Ok(None) => {
+                        // Still generating, skip all other processing and keep the game paused
+                        return;
+                    }
+                    Err(e) => {
+                        error!("Error checking generator status: {:?}", e);
+                        game.is_generating = false;
+                        game.generator_process = None;
+                        game.needs_music_start = true;
+                    }
+                }
+            } else {
+                game.is_generating = false;
+                game.needs_music_start = true;
+            }
+        }
+    }
+
     if !game.is_started {
+        // Handle keyboard song selection
+        if !game.is_finished && !game.available_songs.is_empty() {
+            let mut current_idx = game.available_songs.iter().position(|s| s == &game.selected_song).unwrap_or(0);
+            let mut changed = false;
+
+            if keyboard.just_pressed(KeyCode::ArrowUp) || keyboard.just_pressed(KeyCode::KeyW) {
+                if current_idx > 0 {
+                    current_idx -= 1;
+                } else {
+                    current_idx = game.available_songs.len() - 1;
+                }
+                changed = true;
+            } else if keyboard.just_pressed(KeyCode::ArrowDown) || keyboard.just_pressed(KeyCode::KeyS) {
+                if current_idx < game.available_songs.len() - 1 {
+                    current_idx += 1;
+                } else {
+                    current_idx = 0;
+                }
+                changed = true;
+            }
+
+            if changed {
+                game.selected_song = game.available_songs[current_idx].clone();
+                info!("Selected song via keyboard: {}", game.selected_song);
+            }
+        }
+
         if keyboard.just_pressed(KeyCode::Space) {
             game.is_started = true;
             game.needs_music_start = true;
@@ -756,18 +824,23 @@ fn rhythm_game_system(
             let json_path = format!("_data/sound_data/{}", json_filename);
             if !std::path::Path::new(&json_path).exists() {
                 let mp3_path = format!("_data/sound_data/{}", game.selected_song);
-                info!("JSON missing, automatically running python generator for {}", mp3_path);
+                info!("JSON missing, spawning python generator asynchronously for {}", mp3_path);
 
-                let status = std::process::Command::new("python3")
+                match std::process::Command::new("python3")
                     .arg("scripts/generate_beat_chart.py")
                     .arg(&mp3_path)
-                    .status();
-                match status {
-                    Ok(s) if s.success() => {
-                        info!("Successfully generated beat chart!");
+                    .spawn()
+                {
+                    Ok(child) => {
+                        game.is_generating = true;
+                        game.generator_process = Some(child);
+                        // Reset needs_music_start so it gets re-triggered when done
+                        game.needs_music_start = false;
+                        game.is_started = true;
+                        return;
                     }
-                    other => {
-                        error!("Failed to generate beat chart: {:?}", other);
+                    Err(e) => {
+                        error!("Failed to spawn python generator: {:?}", e);
                     }
                 }
             }
@@ -1012,30 +1085,72 @@ fn rhythm_ui_system(
     if game.last_rating_timer > 0.0 {
         game.last_rating_timer -= time.delta_secs();
 
-        let color = match game.last_rating.as_str() {
-            "PERFECT!" => egui::Color32::from_rgb(0, 255, 127),
-            "GOOD!" => egui::Color32::from_rgb(0, 180, 216),
-            "BAD!" | "BAD timing!" => egui::Color32::from_rgb(255, 110, 0),
-            "MISS!" => egui::Color32::from_rgb(255, 0, 0),
-            _ => egui::Color32::WHITE,
+        let (text, color) = match game.last_rating.as_str() {
+            "PERFECT!" => ("🔥 PERFECT! 🔥", egui::Color32::from_rgb(0, 255, 127)),
+            "GOOD!" => ("✨ GOOD! ✨", egui::Color32::from_rgb(0, 180, 216)),
+            "BAD!" | "BAD timing!" => ("⚠️ BAD! ⚠️", egui::Color32::from_rgb(255, 110, 0)),
+            "MISS!" => ("❌ MISS! ❌", egui::Color32::from_rgb(255, 0, 0)),
+            other => (other, egui::Color32::WHITE),
         };
 
-        let size = 26.0 + 24.0 * (game.last_rating_timer / 0.6).min(1.0);
+        // Determine transition progress (duration is approx 0.6s to 0.8s)
+        let progress = (game.last_rating_timer / 0.8).min(1.0);
+        let size = 28.0 + 26.0 * progress;
+        
+        // Dynamic transparency for fade-out effect
+        let alpha = (progress * 255.0) as u8;
+        let text_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+        let bg_alpha = (progress * 210.0) as u8;
+        let stroke_alpha = (progress * 160.0) as u8;
 
         egui::Area::new(egui::Id::new("rating_overlay"))
-            .fixed_pos(egui::pos2(screen_w / 2.0, screen_h / 2.0 - 120.0))
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, -140.0))
             .show(ctx, |ui| {
-                ui.painter().text(
-                    egui::pos2(0.0, 0.0),
-                    egui::Align2::CENTER_CENTER,
-                    &game.last_rating,
-                    egui::FontId::proportional(size),
-                    color,
-                );
+                egui::Frame::default()
+                    .fill(egui::Color32::from_rgba_unmultiplied(12, 12, 16, bg_alpha))
+                    .corner_radius(20.0)
+                    .inner_margin(egui::Margin::symmetric(24, 12))
+                    .stroke(egui::Stroke::new(2.5, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), stroke_alpha)))
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(text)
+                                    .font(egui::FontId::proportional(size))
+                                    .color(text_color)
+                                    .strong()
+                            )
+                            .wrap_mode(egui::TextWrapMode::Extend)
+                        );
+                    });
             });
     }
 
     // 2. Play screen branching
+    if game.is_generating {
+        egui::Window::new("Analyzing Beat Chart")
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(egui::pos2(screen_w / 2.0, screen_h / 2.0))
+            .collapsible(false)
+            .resizable(false)
+            .default_width(320.0)
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.allocate_space(egui::vec2(0.0, 10.0));
+                    ui.add(egui::widgets::Spinner::new().size(36.0));
+                    ui.allocate_space(egui::vec2(0.0, 12.0));
+                    ui.label(
+                        egui::RichText::new("🍖 ANALYZING SONG BEATS... 🍖")
+                            .strong()
+                            .size(15.0)
+                            .color(egui::Color32::from_rgb(0, 180, 216))
+                    );
+                    ui.label("This will take a few seconds.");
+                    ui.allocate_space(egui::vec2(0.0, 10.0));
+                });
+            });
+        return;
+    }
+
     if !game.is_started && !game.is_finished {
         // Start Overlay
         egui::Window::new("Cezar's Gratar Challenge")
@@ -1064,27 +1179,31 @@ fn rhythm_ui_system(
 
                     ui.allocate_space(egui::vec2(0.0, 10.0));
 
-                    ui.horizontal(|ui| {
-                        ui.label("Select Song:");
-                        if ui.button("🔄 Refresh List").clicked() {
-                            game.available_songs = get_available_songs();
-                        }
-                    });
+                    ui.label("Select Song (W/S or Up/Down Arrow):");
                     
                     let songs = game.available_songs.clone();
                     for song in &songs {
                         let is_selected = game.selected_song == *song;
                         let display_name = song.replace(".mp3", "");
-                        if ui.selectable_label(is_selected, display_name).clicked() {
-                            game.selected_song = song.clone();
+                        if is_selected {
+                            ui.label(
+                                egui::RichText::new(format!("▶  {}", display_name))
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(0, 180, 216))
+                            );
+                        } else {
+                            ui.label(
+                                egui::RichText::new(format!("   {}", display_name))
+                                    .color(egui::Color32::from_rgb(160, 160, 160))
+                            );
                         }
                     }
 
                     ui.allocate_space(egui::vec2(0.0, 8.0));
                     ui.label(
-                        egui::RichText::new("To add a new song:\n1. Drop your MP3 file into _data/sound_data/\n2. Click 🔄 Refresh List above\n3. Select and start (the beat chart is generated automatically!)")
+                        egui::RichText::new("To add a new song:\n1. Drop your MP3 file into _data/sound_data/\n2. Restart the game to detect it\n3. Select and start (the beat chart is generated automatically!)")
                             .small()
-                            .color(egui::Color32::from_rgb(160, 160, 160))
+                            .color(egui::Color32::from_rgb(140, 140, 140))
                     );
 
                     ui.allocate_space(egui::vec2(0.0, 12.0));
