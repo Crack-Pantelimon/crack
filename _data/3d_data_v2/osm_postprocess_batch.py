@@ -29,7 +29,7 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 
 from octree import octant_path_to_bbox
-import yolo_v7_sat
+import yolo_v8_obb_sat
 
 logging.basicConfig(
     level=logging.INFO,
@@ -102,18 +102,12 @@ def pixel_to_latlon(px: float, py: float, meta: dict) -> tuple[float, float]:
     return lat, lon
 
 
-def bbox_pixel_to_latlon_corners(
-    bbox_pixel: list[int], meta: dict
+def obb_pixel_to_latlon_corners(
+    corners_pixel: list[list[float]], meta: dict
 ) -> tuple[list[list[float]], list[float]]:
-    x1, y1, x2, y2 = bbox_pixel
-    corners = [
-        list(pixel_to_latlon(x1, y1, meta)),
-        list(pixel_to_latlon(x2, y1, meta)),
-        list(pixel_to_latlon(x2, y2, meta)),
-        list(pixel_to_latlon(x1, y2, meta)),
-    ]
-    cx = (x1 + x2) / 2.0
-    cy = (y1 + y2) / 2.0
+    corners = [list(pixel_to_latlon(px, py, meta)) for px, py in corners_pixel]
+    cx = sum(p[0] for p in corners_pixel) / len(corners_pixel)
+    cy = sum(p[1] for p in corners_pixel) / len(corners_pixel)
     center = list(pixel_to_latlon(cx, cy, meta))
     return corners, center
 
@@ -319,16 +313,18 @@ def run_detect_stage(tile_records: list[dict], net) -> None:
             logger.warning(f"{tile}: failed to read {render_jpg}")
             continue
 
-        dets = yolo_v7_sat.detect_cars(net, img)
+        dets = yolo_v8_obb_sat.detect_cars(net, img)
         with open(render_meta, encoding="utf-8") as f:
             meta = json.load(f)
 
         cars = []
         for det in dets:
-            corners, center = bbox_pixel_to_latlon_corners(det["bbox_pixel"], meta)
+            corners, center = obb_pixel_to_latlon_corners(det["corners_pixel"], meta)
             cars.append(
                 {
                     "bbox_pixel": det["bbox_pixel"],
+                    "angle_deg": det["angle_deg"],
+                    "class_name": det["class_name"],
                     "confidence": det["confidence"],
                     "corners_latlon": corners,
                     "center_latlon": center,
@@ -433,7 +429,7 @@ def main():
 
     run_render_stage(tile_specs)
 
-    net = yolo_v7_sat.load_net()
+    net = yolo_v8_obb_sat.load_net()
     run_detect_stage(tile_records, net)
 
     run_blend_stage(items)
