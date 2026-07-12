@@ -1,0 +1,75 @@
+<!doctype html><html lang=en><meta charset=UTF-8><meta content="width=device-width,initial-scale=1" name=viewport><title>Crack! - Gratar Challenge</title><script type=module>async function __trunkInitializer(init, source, sourceSize, initializer, initWithObject) {
+  if (initializer === undefined) {
+    return await init(initWithObject ? { module_or_path: source } : source);
+  }
+
+  const {
+    onStart, onProgress, onComplete, onSuccess, onFailure
+  } = initializer;
+
+  onStart?.();
+
+  const response = fetch(source)
+      .then((response) => {
+        const reader = response.body.getReader();
+        const headers = response.headers;
+        const status = response.status;
+        const statusText = response.statusText;
+
+        const total = sourceSize;
+        let current = 0;
+
+        const stream = new ReadableStream({
+          start(controller) {
+            function push() {
+              reader.read().then(({done, value}) => {
+                if (done) {
+                  onProgress?.({current: total, total});
+                  controller.close();
+                  return;
+                }
+
+                current += value.byteLength;
+                onProgress?.({current, total});
+                controller.enqueue(value);
+                push();
+              });
+            }
+
+            push();
+          },
+        });
+
+        return {
+          stream, init: {
+            headers, status, statusText
+          }
+        };
+      })
+      .then(({stream, init}) =>
+          new Response(stream, init),
+      );
+
+  return init(initWithObject ? { module_or_path: response } : response)
+      .then((value) => {
+        onComplete?.();
+        onSuccess?.(value);
+        return value;
+      }, (reason) => {
+        onComplete?.();
+        onFailure?.(reason);
+        return reason;
+      });
+}
+
+
+import init, * as bindings from '/crack/gratar-c38e38d59559a81b.js';
+import initializer from '/crack/9b26a68ebab42af4-trunk-init.js';
+
+const wasm = await __trunkInitializer(init, '/crack/gratar-c38e38d59559a81b_bg.wasm', 121478913, initializer(), true);
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));</script><link href=/crack/style-b17dbb95d4faf3d8.css rel=stylesheet><link href=/crack/favicon-9cb6ec2a8787749f.ico rel=icon><script src=/scripts/storage.js></script><script src=/scripts/start-audio.js></script><script src=/scripts/v2/crack2-client.js type=module></script><link crossorigin href=/crack/gratar-c38e38d59559a81b.js rel=modulepreload><link crossorigin href=/crack/9b26a68ebab42af4-trunk-init.js rel=modulepreload><link as=fetch crossorigin href=/crack/gratar-c38e38d59559a81b_bg.wasm rel=preload type=application/wasm></head><body><main><div class=canvas-container id=canvas-container><div class=canvas-parent id=canvas-parent><canvas height=600 id=the-canvas width=800></canvas></div></div><div id=loading-screen><h1 id=loading-screen-text>Loading...</h1></div></main></body></html>
