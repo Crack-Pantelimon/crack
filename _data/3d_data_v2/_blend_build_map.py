@@ -22,6 +22,8 @@ MASK_SIZE = 512
 CAR_GRAY = 0.35
 CLASSIFY_MASK_SIZE = 512
 NORMAL_ANGLE_THRESHOLD_DEG = 30.0
+# Height ramp: 0 at ground_avg, 1 at this fraction of the ground→roof span (was 0.5).
+HEIGHT_AIR_FRACTION = 0.25
 
 
 def clear_scene():
@@ -219,8 +221,8 @@ def build_collider_mesh(
 ) -> dict:
     """
     Build a box collider molded onto the terrain. Returns a dict with verts, faces,
-    hull_xy, and the ground reference (normal + max height) sampled at the corners
-    plus the roof height, used later to classify car-vs-ground pixels.
+    hull_xy, and the ground reference (normal + average corner height) sampled at the
+    corners plus the roof height, used later to classify car-vs-ground pixels.
     """
     base_xy: list[tuple[float, float]] = []
     raw_z: list[float | None] = []
@@ -234,7 +236,7 @@ def build_collider_mesh(
     ground_z = resolve_corner_heights(raw_z, top)
 
     ground_hits_z = [z for z in raw_z if z is not None]
-    ground_max_z = max(ground_hits_z) if ground_hits_z else top
+    ground_avg_z = sum(ground_hits_z) / len(ground_hits_z) if ground_hits_z else top
     ground_normals = [n for n in raw_normal if n is not None]
     if ground_normals:
         ground_normal = Vector((0.0, 0.0, 0.0))
@@ -309,7 +311,7 @@ def build_collider_mesh(
         "faces": faces,
         "hull": hull,
         "ground_normal": ground_normal,
-        "ground_max_z": ground_max_z,
+        "ground_avg_z": ground_avg_z,
         "roof_z": apex_z,
     }
 
@@ -345,7 +347,7 @@ def paint_car_mask(
     terrain_obj: bpy.types.Object,
     hulls: list[list[tuple[float, float]]],
     image_name: str,
-) -> bpy.types.Image | None:
+) -> tuple[bpy.types.Image | None, np.ndarray | None]:
     """
     Rasterize car footprints into a black mask image using the terrain's own UV unwrap.
     A texel is painted white when its world XY (barycentric-interpolated from the tile
@@ -420,9 +422,9 @@ def paint_car_mask(
             mask[miny : maxy + 1, minx : maxx + 1][painted] = 1.0
 
     if not mask.any():
-        return None
+        return None, None
 
-    return _make_mask_image(image_name, mask)
+    return _make_mask_image(image_name, mask), mask
 
 
 def attach_mask_material(
@@ -477,19 +479,23 @@ def paint_car_ground_air_masks(
     image_prefix: str,
     bvh: BVHTree | None,
     top: float,
+    car_mask: np.ndarray,
 ) -> tuple[bpy.types.Image | None, bpy.types.Image | None]:
     """
-    Split the car silhouette into a "_car_ground" mask (ground around the car) and
-    a "_car_air" mask (the car body itself), by raycasting every pixel of a small
+    Classify car footprint pixels into "_car_air" (car body) and "_car_ground"
+    (car silhouette minus air), by raycasting every pixel of a small
     (CLASSIFY_MASK_SIZE) working mask and comparing the hit normal/height against
     each car's ground reference sampled at its bbox corners (see build_collider_mesh):
 
     - normal_component: 1.0 if the hit normal differs from the ground normal by more
       than NORMAL_ANGLE_THRESHOLD_DEG, else 0.0.
-    - height_component: 0.0 at the highest ground corner, 1.0 at the midpoint between
-      that height and the car roof (apex_z), linear in between.
-    - combined = clamp(normal_component + height_component, 0, 1) is the "_car_air"
-      value for that pixel; "_car_ground" is its complement.
+    - height_component: 0.0 at the average ground corner, 1.0 at HEIGHT_AIR_FRACTION
+      of the way from that height to the car roof (apex_z), linear in between.
+    - combined = max(height_component, normal_component) is the continuous air score
+      for that pixel (either signal suffices; height ramp is steeper than before).
+    - "_car_air" is the binarized air score; "_car_ground" is binarized
+      clamp(car_mask - air, 0, 1) so only car-silhouette pixels not classified as
+      air are marked as ground.
 
     Only pixels that fall inside a car hull get raycast, so the ray count stays small
     even though the mesh itself may have many more triangles than mask pixels.
@@ -518,7 +524,6 @@ def paint_car_ground_air_masks(
 
     mesh.calc_loop_triangles()
     size = CLASSIFY_MASK_SIZE
-    ground_mask = np.zeros((size, size), dtype=np.float32)
     air_mask = np.zeros((size, size), dtype=np.float32)
 
     for lt in mesh.loop_triangles:
@@ -565,9 +570,9 @@ def paint_car_ground_air_masks(
                 continue
 
             ground_normal = ref["ground_normal"]
-            ground_max = ref["ground_max_z"]
+            ground_avg = ref["ground_avg_z"]
             roof = ref["roof_z"]
-            midpoint = ground_max + 0.5 * (roof - ground_max)
+            midpoint = ground_avg + HEIGHT_AIR_FRACTION * (roof - ground_avg)
 
             for py, px in zip(*np.nonzero(sel)):
                 hit = raycast_hit(wx[py, px], wy[py, px], top, bvh)
@@ -579,17 +584,20 @@ def paint_car_ground_air_masks(
                 angle_deg = degrees(acos(cos_angle))
                 normal_component = 1.0 if angle_deg > NORMAL_ANGLE_THRESHOLD_DEG else 0.0
 
-                if midpoint > ground_max:
+                if midpoint > ground_avg:
                     height_component = max(
-                        0.0, min(1.0, (z - ground_max) / (midpoint - ground_max))
+                        0.0, min(1.0, (z - ground_avg) / (midpoint - ground_avg))
                     )
                 else:
-                    height_component = 1.0 if z > ground_max else 0.0
+                    height_component = 1.0 if z > ground_avg else 0.0
 
-                combined = min(1.0, normal_component + height_component)
+                combined = max(height_component, normal_component)
                 fy, fx = miny + py, minx + px
                 air_mask[fy, fx] = max(air_mask[fy, fx], combined)
-                ground_mask[fy, fx] = max(ground_mask[fy, fx], 1.0 - combined)
+
+    ground_mask = np.clip(car_mask - air_mask, 0.0, 1.0)
+    air_mask = (air_mask > 0.5).astype(np.float32)
+    ground_mask = (ground_mask > 0.5).astype(np.float32)
 
     if not air_mask.any() and not ground_mask.any():
         return None, None
@@ -695,7 +703,7 @@ def process_item(item: dict) -> None:
 
         if hulls and terrain_obj is not None:
             log(f"[{octtree_path}] paint_car_mask")
-            mask_img = paint_car_mask(
+            mask_img, car_mask = paint_car_mask(
                 terrain_obj, hulls, f"{octtree_path}_cars"
             )
             if mask_img is not None:
@@ -704,9 +712,12 @@ def process_item(item: dict) -> None:
                 )
 
             log(f"[{octtree_path}] paint_car_ground_air_masks")
-            ground_img, air_img = paint_car_ground_air_masks(
-                terrain_obj, collider_specs, octtree_path, bvh, top
-            )
+            if car_mask is not None:
+                ground_img, air_img = paint_car_ground_air_masks(
+                    terrain_obj, collider_specs, octtree_path, bvh, top, car_mask
+                )
+            else:
+                ground_img, air_img = None, None
             log(f"[{octtree_path}] ground_air masks done")
             if ground_img is not None:
                 attach_mask_material(
