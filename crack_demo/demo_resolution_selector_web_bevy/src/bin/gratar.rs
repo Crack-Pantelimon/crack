@@ -1162,7 +1162,7 @@ fn rhythm_ui_system(
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.label(
-                        egui::RichText::new("🍖 THE LOW-RIDER BBQ CHALLENGE 🍖")
+                        egui::RichText::new("🍖 GRATAR HERO 🍖")
                             .strong()
                             .size(16.0),
                     );
