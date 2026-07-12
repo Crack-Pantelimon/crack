@@ -8,16 +8,20 @@ Invoked as:
 import json
 import os
 import sys
+from math import acos, degrees
 
 import bmesh
 import bpy
 import numpy as np
 from mathutils import Vector
+from mathutils.bvhtree import BVHTree
 
 APEX_OFFSET = 3.0
 COLLIDER_SCALE = 1.2
-MASK_SIZE = 1024
+MASK_SIZE = 512
 CAR_GRAY = 0.35
+CLASSIFY_MASK_SIZE = 512
+NORMAL_ANGLE_THRESHOLD_DEG = 30.0
 
 
 def clear_scene():
@@ -76,16 +80,50 @@ def latlon_to_xy(lon: float, lat: float, latlon_bbox: dict, terrain_bbox: dict) 
     return x, y
 
 
-def raycast_height(x: float, y: float, top: float, depsgraph) -> float | None:
-    """Cast downward from above the terrain bbox; return hit z or None."""
-    origin = Vector((x, y, top + 1.0))
-    direction = Vector((0.0, 0.0, -1.0))
-    hit, loc, *_rest = bpy.context.scene.ray_cast(
-        depsgraph, origin, direction
+def build_terrain_bvh(terrain_obj: bpy.types.Object | None) -> BVHTree | None:
+    """
+    Build a world-space BVH of `terrain_obj` once, up front. All ray casts in this
+    script query this single static tree instead of calling into Blender's per-object
+    ray_cast (which, called tens of thousands of times across the per-pixel classify
+    loop, is both far slower and has been observed to crash Blender outright). Building
+    once here also means road/car objects created later can never be hit by a ray,
+    since they were never part of the tree to begin with.
+    """
+    if terrain_obj is None:
+        return None
+    mesh = terrain_obj.data
+    mesh.calc_loop_triangles()
+    n = len(mesh.vertices)
+    co = np.empty(n * 3, dtype=np.float64)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(n, 3)
+    mw = np.array(terrain_obj.matrix_world)
+    world = (np.hstack([co, np.ones((n, 1))]) @ mw.T)[:, :3]
+    verts = [Vector(v) for v in world]
+    tris = [tuple(lt.vertices) for lt in mesh.loop_triangles]
+    if not tris:
+        return None
+    return BVHTree.FromPolygons(verts, tris, all_triangles=True)
+
+
+def raycast_hit(
+    x: float, y: float, top: float, bvh: BVHTree | None
+) -> tuple[float, Vector] | None:
+    """Cast downward from above the terrain bbox; return (hit z, hit normal) or None."""
+    if bvh is None:
+        return None
+    loc, normal, _index, _dist = bvh.ray_cast(
+        Vector((x, y, top + 1.0)), Vector((0.0, 0.0, -1.0))
     )
-    if hit:
-        return loc.z
-    return None
+    if loc is None:
+        return None
+    return loc.z, normal.normalized()
+
+
+def raycast_height(x: float, y: float, top: float, bvh: BVHTree | None) -> float | None:
+    """Cast downward from above the terrain bbox; return hit z or None."""
+    hit = raycast_hit(x, y, top, bvh)
+    return hit[0] if hit else None
 
 
 def resolve_heights(heights: list[float | None]) -> list[float] | None:
@@ -177,22 +215,37 @@ def build_collider_mesh(
     latlon_bbox: dict,
     terrain_bbox: dict,
     top: float,
-    depsgraph,
-) -> tuple[list[tuple[float, float, float]], list[list[int]], list[tuple[float, float]]]:
+    bvh: BVHTree | None,
+) -> dict:
     """
-    Build a box collider molded onto the terrain. Returns (verts, faces, hull_xy).
-    All ray casts happen here (before any car object is linked into the scene).
+    Build a box collider molded onto the terrain. Returns a dict with verts, faces,
+    hull_xy, and the ground reference (normal + max height) sampled at the corners
+    plus the roof height, used later to classify car-vs-ground pixels.
     """
     base_xy: list[tuple[float, float]] = []
     raw_z: list[float | None] = []
+    raw_normal: list[Vector | None] = []
     for lat, lon in corners_latlon:
         x, y = latlon_to_xy(lon, lat, latlon_bbox, terrain_bbox)
         base_xy.append((x, y))
-        raw_z.append(raycast_height(x, y, top, depsgraph))
+        hit = raycast_hit(x, y, top, bvh)
+        raw_z.append(hit[0] if hit else None)
+        raw_normal.append(hit[1] if hit else None)
     ground_z = resolve_corner_heights(raw_z, top)
 
+    ground_hits_z = [z for z in raw_z if z is not None]
+    ground_max_z = max(ground_hits_z) if ground_hits_z else top
+    ground_normals = [n for n in raw_normal if n is not None]
+    if ground_normals:
+        ground_normal = Vector((0.0, 0.0, 0.0))
+        for n in ground_normals:
+            ground_normal += n
+        ground_normal.normalize()
+    else:
+        ground_normal = Vector((0.0, 0.0, 1.0))
+
     cx, cy = latlon_to_xy(center_latlon[1], center_latlon[0], latlon_bbox, terrain_bbox)
-    center_z = raycast_height(cx, cy, top, depsgraph)
+    center_z = raycast_height(cx, cy, top, bvh)
     if center_z is None:
         center_z = sum(ground_z) / len(ground_z)
     apex_z = center_z + APEX_OFFSET
@@ -225,7 +278,7 @@ def build_collider_mesh(
         verts_in_col.sort(key=lambda v: v.co.z)
 
     top_hits: list[float | None] = [
-        raycast_height(verts_in_col[-1].co.x, verts_in_col[-1].co.y, top, depsgraph)
+        raycast_height(verts_in_col[-1].co.x, verts_in_col[-1].co.y, top, bvh)
         for verts_in_col in columns.values()
     ]
     resolved_top = resolve_corner_heights(top_hits, (min_ground + apex_z) / 2.0)
@@ -251,7 +304,14 @@ def build_collider_mesh(
     faces = [[v.index for v in f.verts] for f in bm.faces]
     hull = convex_hull_2d([(v[0], v[1]) for v in verts])
     bm.free()
-    return verts, faces, hull
+    return {
+        "verts": verts,
+        "faces": faces,
+        "hull": hull,
+        "ground_normal": ground_normal,
+        "ground_max_z": ground_max_z,
+        "roof_z": apex_z,
+    }
 
 
 def create_car_object(
@@ -362,10 +422,43 @@ def paint_car_mask(
     if not mask.any():
         return None
 
-    existing = bpy.data.images.get(image_name)
+    return _make_mask_image(image_name, mask)
+
+
+def attach_mask_material(
+    terrain_obj: bpy.types.Object, mask_img: bpy.types.Image, mat_name: str
+) -> None:
+    """
+    Append an inspection-only material slot showing a raw mask texture.
+    Appending a material slot without reassigning any polygon's material_index
+    leaves every face rendering with slot 0 (the original tile material) — this
+    slot exists purely so the mask can be opened and viewed by hand.
+    """
+    mat = bpy.data.materials.new(name=mat_name)
+    if not mat.use_nodes:
+        mat.use_nodes = True
+    nt = mat.node_tree
+    for node in list(nt.nodes):
+        nt.nodes.remove(node)
+
+    tex_node = nt.nodes.new("ShaderNodeTexImage")
+    tex_node.image = mask_img
+    tex_node.label = mask_img.name
+
+    emit_node = nt.nodes.new("ShaderNodeEmission")
+    output_node = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(tex_node.outputs["Color"], emit_node.inputs["Color"])
+    nt.links.new(emit_node.outputs["Emission"], output_node.inputs["Surface"])
+
+    terrain_obj.data.materials.append(mat)
+
+
+def _make_mask_image(name: str, mask: np.ndarray) -> bpy.types.Image:
+    size = mask.shape[0]
+    existing = bpy.data.images.get(name)
     if existing is not None:
         bpy.data.images.remove(existing)
-    img = bpy.data.images.new(image_name, width=size, height=size, alpha=False)
+    img = bpy.data.images.new(name, width=size, height=size, alpha=False)
     img.colorspace_settings.name = "Non-Color"
     rgba = np.zeros((size, size, 4), dtype=np.float32)
     rgba[..., 0] = mask
@@ -378,29 +471,136 @@ def paint_car_mask(
     return img
 
 
-def attach_car_mask_material(terrain_obj: bpy.types.Object, mask_img: bpy.types.Image) -> None:
+def paint_car_ground_air_masks(
+    terrain_obj: bpy.types.Object,
+    car_refs: list[dict],
+    image_prefix: str,
+    bvh: BVHTree | None,
+    top: float,
+) -> tuple[bpy.types.Image | None, bpy.types.Image | None]:
     """
-    Append a second, inspection-only material slot showing the raw car mask.
-    Appending a material slot without reassigning any polygon's material_index
-    leaves every face rendering with slot 0 (the original tile material) — this
-    slot exists purely so the mask can be opened and viewed by hand.
+    Split the car silhouette into a "_car_ground" mask (ground around the car) and
+    a "_car_air" mask (the car body itself), by raycasting every pixel of a small
+    (CLASSIFY_MASK_SIZE) working mask and comparing the hit normal/height against
+    each car's ground reference sampled at its bbox corners (see build_collider_mesh):
+
+    - normal_component: 1.0 if the hit normal differs from the ground normal by more
+      than NORMAL_ANGLE_THRESHOLD_DEG, else 0.0.
+    - height_component: 0.0 at the highest ground corner, 1.0 at the midpoint between
+      that height and the car roof (apex_z), linear in between.
+    - combined = clamp(normal_component + height_component, 0, 1) is the "_car_air"
+      value for that pixel; "_car_ground" is its complement.
+
+    Only pixels that fall inside a car hull get raycast, so the ray count stays small
+    even though the mesh itself may have many more triangles than mask pixels.
     """
-    mat = bpy.data.materials.new(name=f"{terrain_obj.name}_cars_mat")
-    mat.use_nodes = True
-    nt = mat.node_tree
-    for node in list(nt.nodes):
-        nt.nodes.remove(node)
+    mesh = terrain_obj.data
+    if not mesh.uv_layers or not mesh.materials:
+        return None, None
 
-    tex_node = nt.nodes.new("ShaderNodeTexImage")
-    tex_node.image = mask_img
-    tex_node.label = "car_mask"
+    valid_refs = [ref for ref in car_refs if len(ref["hull"]) >= 3]
+    hull_arrays = [np.asarray(ref["hull"], dtype=np.float64) for ref in valid_refs]
+    if not hull_arrays:
+        return None, None
+    hull_bboxes = [
+        (h[:, 0].min(), h[:, 0].max(), h[:, 1].min(), h[:, 1].max()) for h in hull_arrays
+    ]
 
-    emit_node = nt.nodes.new("ShaderNodeEmission")
-    output_node = nt.nodes.new("ShaderNodeOutputMaterial")
-    nt.links.new(tex_node.outputs["Color"], emit_node.inputs["Color"])
-    nt.links.new(emit_node.outputs["Emission"], output_node.inputs["Surface"])
+    uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
+    uv_data = uv_layer.data
+    mw = np.array(terrain_obj.matrix_world)
 
-    terrain_obj.data.materials.append(mat)
+    n = len(mesh.vertices)
+    co = np.empty(n * 3, dtype=np.float64)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(n, 3)
+    world = (np.hstack([co, np.ones((n, 1))]) @ mw.T)[:, :3]
+
+    mesh.calc_loop_triangles()
+    size = CLASSIFY_MASK_SIZE
+    ground_mask = np.zeros((size, size), dtype=np.float32)
+    air_mask = np.zeros((size, size), dtype=np.float32)
+
+    for lt in mesh.loop_triangles:
+        vs = lt.vertices
+        ls = lt.loops
+        w0, w1, w2 = world[vs[0]], world[vs[1]], world[vs[2]]
+        u0 = uv_data[ls[0]].uv
+        u1 = uv_data[ls[1]].uv
+        u2 = uv_data[ls[2]].uv
+        p0 = (u0[0] * size, u0[1] * size)
+        p1 = (u1[0] * size, u1[1] * size)
+        p2 = (u2[0] * size, u2[1] * size)
+
+        minx = max(int(np.floor(min(p0[0], p1[0], p2[0]))), 0)
+        maxx = min(int(np.ceil(max(p0[0], p1[0], p2[0]))), size - 1)
+        miny = max(int(np.floor(min(p0[1], p1[1], p2[1]))), 0)
+        maxy = min(int(np.ceil(max(p0[1], p1[1], p2[1]))), size - 1)
+        if minx > maxx or miny > maxy:
+            continue
+
+        denom = (p1[1] - p2[1]) * (p0[0] - p2[0]) + (p2[0] - p1[0]) * (p0[1] - p2[1])
+        if abs(denom) < 1e-12:
+            continue
+
+        gx, gy = np.meshgrid(
+            np.arange(minx, maxx + 1) + 0.5, np.arange(miny, maxy + 1) + 0.5
+        )
+        a = ((p1[1] - p2[1]) * (gx - p2[0]) + (p2[0] - p1[0]) * (gy - p2[1])) / denom
+        b = ((p2[1] - p0[1]) * (gx - p2[0]) + (p0[0] - p2[0]) * (gy - p2[1])) / denom
+        c = 1.0 - a - b
+        inside = (a >= 0) & (b >= 0) & (c >= 0)
+        if not inside.any():
+            continue
+
+        wx = a * w0[0] + b * w1[0] + c * w2[0]
+        wy = a * w0[1] + b * w1[1] + c * w2[1]
+
+        for ref, hull, bb in zip(valid_refs, hull_arrays, hull_bboxes):
+            sel = inside & (wx >= bb[0]) & (wx <= bb[1]) & (wy >= bb[2]) & (wy <= bb[3])
+            if not sel.any():
+                continue
+            sel = sel & _point_in_hull(wx, wy, hull)
+            if not sel.any():
+                continue
+
+            ground_normal = ref["ground_normal"]
+            ground_max = ref["ground_max_z"]
+            roof = ref["roof_z"]
+            midpoint = ground_max + 0.5 * (roof - ground_max)
+
+            for py, px in zip(*np.nonzero(sel)):
+                hit = raycast_hit(wx[py, px], wy[py, px], top, bvh)
+                if hit is None:
+                    continue
+                z, normal = hit
+
+                cos_angle = max(-1.0, min(1.0, normal.dot(ground_normal)))
+                angle_deg = degrees(acos(cos_angle))
+                normal_component = 1.0 if angle_deg > NORMAL_ANGLE_THRESHOLD_DEG else 0.0
+
+                if midpoint > ground_max:
+                    height_component = max(
+                        0.0, min(1.0, (z - ground_max) / (midpoint - ground_max))
+                    )
+                else:
+                    height_component = 1.0 if z > ground_max else 0.0
+
+                combined = min(1.0, normal_component + height_component)
+                fy, fx = miny + py, minx + px
+                air_mask[fy, fx] = max(air_mask[fy, fx], combined)
+                ground_mask[fy, fx] = max(ground_mask[fy, fx], 1.0 - combined)
+
+    if not air_mask.any() and not ground_mask.any():
+        return None, None
+
+    ground_img = _make_mask_image(f"{image_prefix}_car_ground", ground_mask)
+    air_img = _make_mask_image(f"{image_prefix}_car_air", air_mask)
+    return ground_img, air_img
+
+
+def log(msg: str) -> None:
+    print(msg, flush=True)
 
 
 def process_item(item: dict) -> None:
@@ -410,6 +610,7 @@ def process_item(item: dict) -> None:
     latlon_bbox = item["latlon_bbox"]
     roads = item.get("roads", [])
 
+    log(f"[{octtree_path}] clear_scene + import {glb_path}")
     clear_scene()
     bpy.ops.import_scene.gltf(filepath=glb_path)
 
@@ -421,11 +622,16 @@ def process_item(item: dict) -> None:
         ),
         None,
     )
+    log(f"[{octtree_path}] terrain_obj={terrain_obj.name if terrain_obj else None}")
 
     terrain_bbox = measure_terrain_bbox()
     top = terrain_bbox["up"][1]
-    depsgraph = bpy.context.evaluated_depsgraph_get()
 
+    log(f"[{octtree_path}] building terrain BVH")
+    bvh = build_terrain_bvh(terrain_obj)
+    log(f"[{octtree_path}] terrain BVH ready")
+
+    log(f"[{octtree_path}] building {len(roads)} road(s)")
     roads_created = 0
     for road_entry in roads:
         feature = road_entry["feature"]
@@ -445,7 +651,7 @@ def process_item(item: dict) -> None:
         for lon, lat in coords:
             x, y = latlon_to_xy(lon, lat, latlon_bbox, terrain_bbox)
             xy_coords.append((x, y))
-            raw_heights.append(raycast_height(x, y, top, depsgraph))
+            raw_heights.append(raycast_height(x, y, top, bvh))
 
         resolved = resolve_heights(raw_heights)
         if resolved is None:
@@ -453,6 +659,7 @@ def process_item(item: dict) -> None:
 
         create_road_object(feature_id, xy_coords, resolved)
         roads_created += 1
+    log(f"[{octtree_path}] roads created: {roads_created}")
 
     cars_created = 0
     cars_json_path = item.get("cars_json")
@@ -460,33 +667,57 @@ def process_item(item: dict) -> None:
         with open(cars_json_path, encoding="utf-8") as f:
             cars_data = json.load(f)
 
-        # Build all collider meshes first (ray casts against terrain only, before any
-        # car object is linked into the scene), then link them.
+        # Build all collider meshes first, then link them. All ray casts (here and in
+        # paint_car_ground_air_masks below) are object-scoped to terrain_obj, so linking
+        # the colliders into the scene beforehand no longer risks self-occlusion.
+        cars_list = cars_data.get("cars", [])
+        log(f"[{octtree_path}] building {len(cars_list)} car collider(s)")
         collider_specs = []
-        for car in cars_data.get("cars", []):
+        for i, car in enumerate(cars_list):
             corners = car.get("corners_latlon")
             center = car.get("center_latlon")
             if not corners or len(corners) != 4 or not center:
                 continue
+            log(f"[{octtree_path}] collider {i}/{len(cars_list)}: build_collider_mesh")
             collider_specs.append(
                 build_collider_mesh(
-                    corners, center, latlon_bbox, terrain_bbox, top, depsgraph
+                    corners, center, latlon_bbox, terrain_bbox, top, bvh
                 )
             )
+        log(f"[{octtree_path}] collider meshes built: {len(collider_specs)}")
 
         hulls = []
-        for verts, faces, hull in collider_specs:
-            create_car_object(cars_created, verts, faces)
-            hulls.append(hull)
+        for spec in collider_specs:
+            create_car_object(cars_created, spec["verts"], spec["faces"])
+            hulls.append(spec["hull"])
             cars_created += 1
+        log(f"[{octtree_path}] car objects linked: {cars_created}")
 
         if hulls and terrain_obj is not None:
+            log(f"[{octtree_path}] paint_car_mask")
             mask_img = paint_car_mask(
                 terrain_obj, hulls, f"{octtree_path}_cars"
             )
             if mask_img is not None:
-                attach_car_mask_material(terrain_obj, mask_img)
+                attach_mask_material(
+                    terrain_obj, mask_img, f"{terrain_obj.name}_cars_mat"
+                )
 
+            log(f"[{octtree_path}] paint_car_ground_air_masks")
+            ground_img, air_img = paint_car_ground_air_masks(
+                terrain_obj, collider_specs, octtree_path, bvh, top
+            )
+            log(f"[{octtree_path}] ground_air masks done")
+            if ground_img is not None:
+                attach_mask_material(
+                    terrain_obj, ground_img, f"{terrain_obj.name}_car_ground"
+                )
+            if air_img is not None:
+                attach_mask_material(
+                    terrain_obj, air_img, f"{terrain_obj.name}_car_air"
+                )
+
+    log(f"[{octtree_path}] saving {out_blend_path}")
     os.makedirs(os.path.dirname(out_blend_path), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=out_blend_path)
 

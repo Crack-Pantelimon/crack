@@ -50,10 +50,28 @@ ROOT_DEPTH = 10
 
 
 def run_blender_batch(script: str, batch_json_path: str) -> str:
-    """Run a Blender -P script over a batch JSON file; fatal on non-zero exit."""
+    """
+    Run a Blender -P script over a batch JSON file, streaming its output live as it's
+    produced (rather than buffering until exit) so progress is visible even if the
+    process later crashes/segfaults without a chance to flush a final report.
+    """
     cmd = ["blender", "-b", "-P", script, "--", batch_json_path]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    output = (proc.stdout or "") + (proc.stderr or "")
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        env=env,
+    )
+    lines = []
+    for line in proc.stdout:
+        line = line.rstrip("\n")
+        lines.append(line)
+        logger.info(f"[blender] {line}")
+    proc.wait()
+    output = "\n".join(lines)
     if proc.returncode != 0:
         raise RuntimeError(
             f"Blender script {script} crashed (returncode={proc.returncode}).\n"
