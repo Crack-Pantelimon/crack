@@ -92,4 +92,3 @@ impl Material for BlendFxMaterial {
         Ok(())
     }
 }
-

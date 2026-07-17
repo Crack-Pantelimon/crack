@@ -213,8 +213,7 @@ pub fn generate_cloud_shadow_image() -> Image {
             let mut amp = 0.5f32;
             let mut period = 4i32;
             for _ in 0..6 {
-                sum += amp
-                    * vnoise_periodic(u * period as f32, v * period as f32, period);
+                sum += amp * vnoise_periodic(u * period as f32, v * period as f32, period);
                 amp *= 0.5;
                 period *= 2;
             }
