@@ -1,7 +1,5 @@
-use bevy::core_pipeline::Skybox;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::prelude::*;
-use bevy::render::render_resource::{TextureViewDescriptor, TextureViewDimension};
 
 use crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera;
 
@@ -17,27 +15,12 @@ impl Plugin for MainScenePlugin {
                 crate::ui_egui::web_set_loading_status(false, "");
             }),
         );
-        app.add_systems(Update, convert_and_apply_skybox);
         info!("done loading: MainScenePlugin");
     }
 }
 
-#[derive(Resource)]
-pub struct SkyboxState {
-    pub handle: Handle<Image>,
-    pub loaded: bool,
-}
-
 fn setup_camera_and_load(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let skybox_texture_url = format!("{}skybox_clouds.png", crate::config::DATA_BASE_URL);
-    let skybox_handle = asset_server.load(skybox_texture_url);
-
-    commands.insert_resource(SkyboxState {
-        handle: skybox_handle,
-        loaded: false,
-    });
-
-    // Keep only default camera spawning with Skybox component
+    // The sky itself is rendered procedurally by `cloud_sky::CloudSkyPlugin`.
     commands.spawn((
         Transform::from_xyz(0.0, 10.5, -30.0).looking_at(Vec3::ZERO, Vec3::Y),
         Camera {
@@ -47,11 +30,6 @@ fn setup_camera_and_load(mut commands: Commands, asset_server: Res<AssetServer>)
         Camera3d::default(),
         MainCamera,
         Tonemapping::None,
-        Skybox {
-            image: None,
-            brightness: 1000.0,
-            ..default()
-        },
         AmbientLight {
             color: Color::srgb(0.75, 0.85, 1.0),
             brightness: 1000.0,
@@ -134,59 +112,4 @@ fn setup_camera_and_load(mut commands: Commands, asset_server: Res<AssetServer>)
         ),
         crate::plugins::geojson::Bus335Marker,
     ));
-}
-
-fn convert_and_apply_skybox(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut images: ResMut<Assets<Image>>,
-    state: Option<ResMut<SkyboxState>>,
-    mut q_camera: Query<(Entity, &mut Skybox), With<MainCamera>>,
-) {
-    let Some(mut state) = state else {
-        return;
-    };
-
-    if state.loaded {
-        return;
-    }
-
-    if let Some(load_state) = asset_server.get_load_state(&state.handle) {
-        if matches!(load_state, bevy::asset::LoadState::Loaded) {
-            if let Some(mut image) = images.get_mut(&state.handle) {
-                let layers = image.height() / image.width();
-                if layers == 6 {
-                    if let Err(err) = image.reinterpret_stacked_2d_as_array(layers) {
-                        error!("Failed to reinterpret skybox image: {:?}", err);
-                    } else {
-                        image.texture_view_descriptor = Some(TextureViewDescriptor {
-                            dimension: Some(TextureViewDimension::Cube),
-                            ..default()
-                        });
-
-                        info!("Skybox cubemap configured successfully! Applying to camera...");
-                        for (entity, mut skybox) in &mut q_camera {
-                            skybox.image = Some(state.handle.clone());
-
-                            // Insert EnvironmentMapLight so that the skybox influences the lighting
-                            commands.entity(entity).insert(EnvironmentMapLight {
-                                diffuse_map: state.handle.clone(),
-                                specular_map: state.handle.clone(),
-                                intensity: 200.0,
-                                ..default()
-                            });
-                        }
-                        state.loaded = true;
-                    }
-                } else {
-                    error!(
-                        "Skybox image has invalid aspect ratio for cubemap (layers: {}, width: {}, height: {})",
-                        layers,
-                        image.width(),
-                        image.height()
-                    );
-                }
-            }
-        }
-    }
 }

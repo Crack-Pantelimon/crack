@@ -2,14 +2,24 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
 use super::settings::CloudSkySettings;
+use crate::ui_egui::UiState;
 
-/// Always-open control window for the cloud skybox demo.
+/// Control window for the cloud sky. Opened from the Debug menu in the main
+/// game; always open in the `clouds` demo binary.
 pub fn cloud_sky_window(
     mut contexts: EguiContexts,
+    mut ui_state: ResMut<UiState>,
     mut settings: ResMut<CloudSkySettings>,
-) -> Result {
-    let ctx = contexts.ctx_mut()?;
+) {
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    if !ui_state.show_clouds_sky {
+        return;
+    }
+
     egui::Window::new("☁ Clouds & Sky")
+        .open(&mut ui_state.show_clouds_sky)
         .default_width(300.0)
         .show(ctx, |ui| {
             let s = &mut *settings;
@@ -55,5 +65,4 @@ pub fn cloud_sky_window(
                 );
             });
         });
-    Ok(())
 }

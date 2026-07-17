@@ -49,15 +49,5 @@ pub fn vfx_controls_window(
                         .text("Smoke every N shots"),
                 );
             });
-
-            ui.collapsing("Clouds", |ui| {
-                ui.checkbox(&mut s.clouds, "Enabled");
-                ui.checkbox(&mut s.debug_solid, "Debug solid flat white");
-                ui.add(egui::Slider::new(&mut s.cloud_coverage, 0.0..=1.0).text("Coverage"));
-                ui.add(egui::Slider::new(&mut s.cloud_opacity, 0.0..=1.0).text("Opacity"));
-                ui.add(egui::Slider::new(&mut s.cloud_wind_x, -0.05..=0.05).text("Wind X"));
-                ui.add(egui::Slider::new(&mut s.cloud_wind_y, -0.05..=0.05).text("Wind Y"));
-                ui.add(egui::Slider::new(&mut s.cloud_scale, 0.0005..=0.02).text("Scale"));
-            });
         });
 }

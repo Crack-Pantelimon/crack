@@ -3,7 +3,6 @@ use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
 
 pub mod car_explosion;
-pub mod clouds;
 pub mod gun_fx;
 pub mod materials;
 pub mod settings;
@@ -16,9 +15,8 @@ pub use gun_fx::GunFxEvent;
 pub use smoke_emitter::SmokeEmitter;
 
 use car_explosion::{ExplosionFlashes, car_explosion_observer, draw_explosion_flashes};
-use clouds::{position_clouds_over_map, setup_clouds, sync_cloud_uniforms};
 use gun_fx::{GunFxCounter, gun_fx_observer, tick_gun_smoke_emitters};
-use materials::{AdditiveFxMaterial, BlendFxMaterial, CloudMaterial};
+use materials::{AdditiveFxMaterial, BlendFxMaterial};
 use settings::VfxSettings;
 use smoke_emitter::tick_smoke_emitters;
 use spawn::{despawn_expired_fx, setup_vfx_meshes, tick_vfx_drift};
@@ -31,17 +29,15 @@ pub struct VisualFXPlugin;
 impl Plugin for VisualFXPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "billboard_fx.wgsl");
-        embedded_asset!(app, "clouds.wgsl");
 
         app.init_resource::<VfxSettings>()
             .init_resource::<ExplosionFlashes>()
             .init_resource::<GunFxCounter>()
             .add_plugins(MaterialPlugin::<AdditiveFxMaterial>::default())
             .add_plugins(MaterialPlugin::<BlendFxMaterial>::default())
-            .add_plugins(MaterialPlugin::<CloudMaterial>::default())
             .add_observer(car_explosion_observer)
             .add_observer(gun_fx_observer)
-            .add_systems(Startup, (setup_vfx_meshes, setup_clouds))
+            .add_systems(Startup, setup_vfx_meshes)
             .add_systems(
                 Update,
                 (
@@ -50,8 +46,6 @@ impl Plugin for VisualFXPlugin {
                     tick_smoke_emitters,
                     tick_gun_smoke_emitters,
                     draw_explosion_flashes,
-                    sync_cloud_uniforms,
-                    position_clouds_over_map,
                 ),
             );
 

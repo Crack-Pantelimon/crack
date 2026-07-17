@@ -11,10 +11,8 @@ pub struct VfxSettings {
     pub gun_hit_sparks: bool,
     pub gun_muzzle_flash: bool,
     pub gun_muzzle_smoke: bool,
-    pub clouds: bool,
     pub car_explosion_gizmos: bool, // 3 damage wireframe spheres (default off)
     pub disabled_car_gizmos: bool,  // green warning sphere around disabled cars (default off)
-    pub debug_solid: bool,          // debug cloud plane toggle
 
     // sliders
     pub fireball_lifetime: f32,
@@ -23,11 +21,6 @@ pub struct VfxSettings {
     pub smoke_opacity: f32,
     pub tracer_width: f32,
     pub spark_count_scale: f32,
-    pub cloud_coverage: f32,
-    pub cloud_opacity: f32,
-    pub cloud_wind_x: f32,
-    pub cloud_wind_y: f32,
-    pub cloud_scale: f32,
     pub muzzle_smoke_every: u32,
 }
 
@@ -42,21 +35,14 @@ impl Default for VfxSettings {
             gun_hit_sparks: true,
             gun_muzzle_flash: true,
             gun_muzzle_smoke: true,
-            clouds: true,
             car_explosion_gizmos: false, // default off
             disabled_car_gizmos: false,  // default off
-            debug_solid: false,
             fireball_lifetime: 0.6,
             fireball_radius: 4.0,
             smoke_lifetime: 1.5,
             smoke_opacity: 0.8,
             tracer_width: 0.04,
             spark_count_scale: 1.0,
-            cloud_coverage: 0.30, // retuned from 0.45
-            cloud_opacity: 0.70,  // retuned from 0.35
-            cloud_wind_x: 0.005,
-            cloud_wind_y: 0.005,
-            cloud_scale: 0.0015, // retuned from 0.004
             muzzle_smoke_every: 3,
         }
     }

@@ -40,6 +40,7 @@ pub struct UiState {
     pub show_sound_settings: bool,
     pub master_volume: f32,
     pub show_vfx_shaders: bool,
+    pub show_clouds_sky: bool,
 }
 impl Default for UiState {
     fn default() -> Self {
@@ -63,6 +64,7 @@ impl Default for UiState {
             show_sound_settings: false,
             master_volume: 0.6,
             show_vfx_shaders: false,
+            show_clouds_sky: false,
         }
     }
 }
@@ -88,6 +90,7 @@ impl UiState {
             show_sound_settings: false,
             master_volume: 0.6,
             show_vfx_shaders: false,
+            show_clouds_sky: false,
         }
     }
 }
@@ -393,6 +396,10 @@ fn ui_example_system(
                 }
                 if ui.button("VFX Shaders").clicked() {
                     ui_state.show_vfx_shaders = !ui_state.show_vfx_shaders;
+                    ui.close();
+                }
+                if ui.button("Clouds & Sky").clicked() {
+                    ui_state.show_clouds_sky = !ui_state.show_clouds_sky;
                     ui.close();
                 }
             });

@@ -25,6 +25,9 @@ impl Plugin for CloudSkyPlugin {
         embedded_asset!(app, "ground_shadow.wgsl");
 
         app.init_resource::<CloudSkySettings>()
+            // Binaries that pull this plugin in via `SetupDebugScenePlugin`
+            // don't have `UiEguiPlugin`, so make sure the resource exists.
+            .init_resource::<crate::ui_egui::UiState>()
             .add_plugins(MaterialPlugin::<SkyDomeMaterial>::default())
             .add_plugins(MaterialPlugin::<PrecipOverlayMaterial>::default())
             .add_plugins(MaterialPlugin::<CloudGroundShadowMaterial>::default())

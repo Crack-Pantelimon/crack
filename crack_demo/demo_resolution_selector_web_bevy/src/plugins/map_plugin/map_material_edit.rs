@@ -1,4 +1,3 @@
-use bevy::core_pipeline::Skybox;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
@@ -39,7 +38,6 @@ pub struct MapMaterialEditState {
     // Lighting settings
     pub dir_light_illuminance: f32,
     pub ambient_light_brightness: f32,
-    pub skybox_brightness: f32,
 }
 
 impl Default for MapMaterialEditState {
@@ -54,7 +52,6 @@ impl Default for MapMaterialEditState {
             // Lighting defaults without HDR
             dir_light_illuminance: 3500.0,
             ambient_light_brightness: 1000.0,
-            skybox_brightness: 1000.0,
         }
     }
 }
@@ -65,7 +62,6 @@ fn map_material_edit_ui(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut q_dir_lights: Query<&mut DirectionalLight>,
     mut q_ambient_lights: Query<&mut AmbientLight, With<MainCamera>>,
-    mut q_skybox: Query<&mut Skybox, With<MainCamera>>,
 ) {
     if !state.show_window {
         return;
@@ -103,11 +99,6 @@ fn map_material_edit_ui(
                     .text("Ambient Brightness"),
             );
 
-            ui.add(
-                egui::Slider::new(&mut state.skybox_brightness, 0.0..=5000.0)
-                    .text("Skybox Brightness"),
-            );
-
             ui.allocate_space(egui::Vec2::new(1.0, 10.0));
 
             if ui.button("Update").clicked() {
@@ -129,11 +120,6 @@ fn map_material_edit_ui(
                 // 3. Update ambient lights
                 for mut light in &mut q_ambient_lights {
                     light.brightness = state.ambient_light_brightness;
-                }
-
-                // 4. Update skybox brightness
-                for mut skybox in &mut q_skybox {
-                    skybox.brightness = state.skybox_brightness;
                 }
             }
         });

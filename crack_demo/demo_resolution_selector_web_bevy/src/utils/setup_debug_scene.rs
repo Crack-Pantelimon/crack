@@ -11,11 +11,13 @@ use crate::{
 };
 
 /// This plugin will create simple implementation for ground, scene and camera. There is no camera controller.
+/// It also brings in the procedural cloud sky ([`crate::plugins::cloud_sky::CloudSkyPlugin`]).
 pub struct SetupDebugScenePlugin;
 
 impl Plugin for SetupDebugScenePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, setup_scene);
+        app.add_plugins(crate::plugins::cloud_sky::CloudSkyPlugin)
+            .add_systems(PreStartup, setup_scene);
     }
 }
 
