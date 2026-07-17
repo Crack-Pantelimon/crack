@@ -35,14 +35,47 @@ Clean up any task directories you create while testing (`DELETE /api/tasks/<id>`
 or `rm -rf .pi/crack/tasks/<id>`) — don't leave scratch tasks behind in
 `.pi/crack/tasks/`.
 
+### Testing the `pi` CLI itself
+
+The "Regenerate Title" button shells out to the `pi` CLI
+(`_run_pi_title_generation` in `app.py`), which is only installed *inside*
+`crack-dev` — it won't be on the host `PATH`. Before debugging a
+regenerate-title failure in the app, confirm `pi` itself works by running it
+directly in the container:
+
+```bash
+docker exec crack-dev /bin/bash -exc "pi --version"
+
+# same non-interactive form the endpoint uses (model, no session/tools, print+exit)
+docker exec crack-dev /bin/bash -exc "pi --model google/gemma-4-31b-it -p --no-session --no-tools 'Say hello in 3 words'"
+```
+
+Note `pi` has no `run` subcommand and no `--prompt-file` flag — that mismatch
+was the cause of the original "regenerate title does nothing" bug. The prompt
+text goes in as a plain positional argument, not a file. Since the app's own
+server process already runs inside `crack-dev` (see above), `_run_pi_title_generation`
+calls `pi` with a plain `subprocess.run(...)`, no `docker exec` wrapper needed —
+`docker exec` is only for you, testing from the host shell.
+
+The endpoint logs everything needed to diagnose a failure without re-running
+anything by hand: the full prompt, the `+`-prefixed command line
+(`shlex.join`'d, matching bash `-x` style), the configured timeout
+(`PI_TIMEOUT_SECONDS`), the elapsed wall time, and a summary of the output.
+These go through `logging.getLogger("uvicorn.error")` (the only logger
+uvicorn attaches a handler to by default) and show up in `docker logs
+crack-dev`.
+
 ## Storage layout
 
 - `.pi/crack/tasks/<task_id>/*.md` — prompt files, globbed fresh from disk on
   every request (no caching/DB, so editing a file on disk is immediately
   visible through the UI).
 - `.pi/crack/tasks/<task_id>/info.json` — `{created_at, modified_at, title}`.
-- `.pi/crack/tasks/<task_id>/.title_<filename>.txt` — last AI-generated title
-  for a given prompt file (from the "Regenerate Title" button).
+  There is exactly one title per task (shown in the page header); prompt rows
+  do **not** have their own titles. "Regenerate Title"
+  (`POST /api/tasks/<id>/regenerate-title`) fills a draft into the title
+  input from the combined content of all prompt files — it does not save
+  until the Save button is clicked.
 - **Task id format is fixed**: `<ms_epoch_timestamp>_<slugified_title>`,
   generated once in `paths.generate_task_id()` at creation time and never
   changed afterward (renaming a task only updates `info.json["title"]`, not
@@ -110,7 +143,7 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## deps
 ```
-src/crack_server/app.py ← __future__, fastapi, pydantic, crack_server
+src/crack_server/app.py ← __future__, fastapi, crack_server, shlex
 src/crack_server/main.py ← uvicorn
 src/crack_server/paths.py ← __future__
 ```
@@ -153,36 +186,26 @@ code-fence plain
 
 ### src/crack_server/app.py
 ```
-class PromptBody(BaseModel) {content?}  :25-26
-class PromptCreate(BaseModel) {name*, content?}  :29-31
-class TaskCreate(BaseModel) {task_id*, title?}  :34-36
-class TitleUpdate(BaseModel) {title*}  :39-40
-def index() → HTMLResponse  :134-169
-def api_delete_task(task_id: str) → dict  :185-203  # Delete a task directory
-def api_tasks() → dict  :207-209
-def api_get_task_info(task_id: str) → dict  :213-218
-def api_update_task_info(task_id: str, body: TitleUpdate) → dict  :222-230
-def api_list_prompts(task_id: str) → dict  :234-239
-def api_get_prompt(task_id: str, filename: str) → dict  :243-250
-def api_create_prompt(task_id: str, body: PromptCreate) → dict  :254-259
-def api_create_prompt_auto(task_id: str, body: PromptBody) → dict  :263-275  # Create a prompt with auto-generated filename (prompt
-def api_update_prompt(task_id: str, filename: str, body: PromptBody) → dict  :279-284
-def api_delete_prompt(task_id: str, filename: str) → dict  :288-295
-def api_regenerate_title(task_id: str, filename: str) → dict  :299-345  # Regenerate title for a prompt using pi with gemma-4-31b-it m
-def task_page(task_id: str) → HTMLResponse  :349-402
-def task_prompts_list(task_id: str) → HTMLResponse  :406-448  # Return the prompt list HTML fragment for htmx
-def prompt_editor(task_id: str, filename: str) → HTMLResponse  :452-486  # Return the editor panel HTML for a prompt
-GET /  →  index()  :134-169
-POST /api/tasks  →  api_create_task()  :173-181
-DELETE /api/tasks/{task_id}  →  api_delete_task()  :185-203
-GET /api/tasks  →  api_tasks()  :207-209
-GET /api/tasks/{task_id}/info  →  api_get_task_info()  :213-218
-PUT /api/tasks/{task_id}/info  →  api_update_task_info()  :222-230
-GET /api/tasks/{task_id}/prompts  →  api_list_prompts()  :234-239
-GET /api/tasks/{task_id}/prompts/{filename}  →  api_get_prompt()  :243-250
-POST /api/tasks/{task_id}/prompts  →  api_create_prompt()  :254-259
-POST /api/tasks/{task_id}/prompts/auto  →  api_create_prompt_auto()  :263-275
-PUT /api/tasks/{task_id}/prompts/{filename}  →  api_update_prompt()  :279-284
+def index() → HTMLResponse  :214-246
+def api_delete_prompt(task_id: str, filename: str) → HTMLResponse  :371-379  # Returns an empty fragment so htmx's outerHTML swap removes t
+def api_regenerate_task_title(task_id: str) → HTMLResponse  :422-447  # Regenerate the task title from the combined content of its p
+def task_page(task_id: str) → HTMLResponse  :451-482
+def task_prompts_list(task_id: str) → HTMLResponse  :486-492  # Return the prompt list HTML fragment for htmx (initial load 
+GET /  →  index()  :214-246
+POST /api/tasks  →  api_create_task()  :250-259
+DELETE /api/tasks/{task_id}  →  api_delete_task()  :263-282
+GET /api/tasks  →  api_tasks()  :286-288
+GET /api/tasks/{task_id}/info  →  api_get_task_info()  :292-297
+PUT /api/tasks/{task_id}/info  →  api_update_task_info()  :301-311
+GET /api/tasks/{task_id}/prompts  →  api_list_prompts()  :315-320
+GET /api/tasks/{task_id}/prompts/{filename}  →  api_get_prompt()  :324-331
+POST /api/tasks/{task_id}/prompts  →  api_create_prompt()  :335-356
+PUT /api/tasks/{task_id}/prompts/{filename}  →  api_update_prompt()  :360-367
+DELETE /api/tasks/{task_id}/prompts/{filename}  →  api_delete_prompt()  :371-379
+POST /api/tasks/{task_id}/regenerate-title  →  api_regenerate_task_title()  :422-447
+GET /tasks/{task_id}  →  task_page()  :451-482
+GET /tasks/{task_id}/prompts-list  →  task_prompts_list()  :486-492
+GET /tasks/{task_id}/prompt-row/{filename}  →  prompt_row()  :496-502
 ```
 
 ### src/crack_server/main.py
@@ -204,12 +227,15 @@ def delete_prompt(task_id: str, filename: str, root: Path | None) → None  :82-
 def info_path(task_id: str, root: Path | None) → Path  :90-91
 def read_info(task_id: str, root: Path | None) → dict  :94-101
 def write_info(task_id: str, info: dict, root: Path | None) → None  :104-110
-def create_task(task_id: str, title: str | None, root: Path | None) → dict  :113-128  # Create a new task directory with info
-def next_prompt_filename(task_id: str, root: Path | None) → str | None  :131-140  # Return the next available prompt filename (prompt
+def slugify_title(title: str) → str  :113-116  # Replace runs of non-alphanumeric characters with '_', stripp
+def generate_task_id(title: str) → str  :119-121  # Task id format: <ms_epoch_timestamp>_<slugified_title>
+def create_task(task_id: str, title: str | None, root: Path | None) → dict  :124-139  # Create a new task directory with info
+def next_prompt_filename(task_id: str, root: Path | None) → str | None  :142-151  # Return the next available prompt filename (prompt
 ```
 
 ### src/crack_server/static/app.css
 ```
+.prompt-row
 .prompt-row
 .prompt-row
 .title-row
@@ -217,5 +243,4 @@ def next_prompt_filename(task_id: str, root: Path | None) → str | None  :131-1
 .htmx-indicator
 .htmx-request
 .htmx-request
-.task-card
 ```

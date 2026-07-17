@@ -19,5 +19,5 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ### src/lib.rs
 ```
-pub async fn run_bootstrap_if_needed() → anyhow::Result<()>
+pub async fn run_bootstrap_if_needed() → anyhow::Result<()>  :53-58
 ```

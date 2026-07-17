@@ -24,31 +24,129 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 _data/3d_data_v2/_blend_build_map.py ← mathutils, bmesh, bpy, numpy
 _data/3d_data_v2/_blend_render_postprocess.py ← __future__, mathutils, bpy
 _data/3d_data_v2/_blend_render_topdown.py ← __future__, mathutils, bpy
-_data/3d_data_v2/_check_blend.py ← bpy, numpy
+.pi/crack/server/src/crack_server/app.py ← __future__, fastapi, crack_server, shlex
+.pi/crack/server/src/crack_server/main.py ← uvicorn
+.pi/crack/server/src/crack_server/paths.py ← __future__
+_data/3d_data_v2/yolo_v8_obb_sat.py ← __future__, cv2, numpy
+```
+
+## changes (last 5 commits — 3 minutes ago)
+```
+.pi/crack/server/src/crack_server/app.py      +_esc  +_format_time  +_render_base  +_render_task_card
+.pi/crack/server/src/crack_server/main.py     +main
+.pi/crack/server/src/crack_server/paths.py    +project_root  +tasks_dir  +task_dir  +validate_prompt_filename
+```
+
+## .pi
+
+### .pi/crack/server/pyproject.toml
+```
+table [project]
+table [project.scripts]
+table [build-system]
+table [tool.hatch.build.targets.wheel]
+table [tool.hatch.build.targets.wheel.sources]
+key name
+key version
+key description
+key readme
+key requires-python
+key dependencies
+key crack-server
+key build-backend
+```
+
+### .pi/crack/server/README.md
+```
+h1 crack-pi-server
+h1 from repository root
+code-fence bash
+code-fence plain
+```
+
+### .pi/crack/server/src/crack_server/app.py
+```
+def index() → HTMLResponse  :214-246
+def api_delete_prompt(task_id: str, filename: str) → HTMLResponse  :371-379  # Returns an empty fragment so htmx's outerHTML swap removes t
+def api_regenerate_task_title(task_id: str) → HTMLResponse  :422-447  # Regenerate the task title from the combined content of its p
+def task_page(task_id: str) → HTMLResponse  :451-482
+def task_prompts_list(task_id: str) → HTMLResponse  :486-492  # Return the prompt list HTML fragment for htmx (initial load 
+GET /  →  index()  :214-246
+POST /api/tasks  →  api_create_task()  :250-259
+DELETE /api/tasks/{task_id}  →  api_delete_task()  :263-282
+GET /api/tasks  →  api_tasks()  :286-288
+GET /api/tasks/{task_id}/info  →  api_get_task_info()  :292-297
+PUT /api/tasks/{task_id}/info  →  api_update_task_info()  :301-311
+GET /api/tasks/{task_id}/prompts  →  api_list_prompts()  :315-320
+GET /api/tasks/{task_id}/prompts/{filename}  →  api_get_prompt()  :324-331
+POST /api/tasks/{task_id}/prompts  →  api_create_prompt()  :335-356
+PUT /api/tasks/{task_id}/prompts/{filename}  →  api_update_prompt()  :360-367
+DELETE /api/tasks/{task_id}/prompts/{filename}  →  api_delete_prompt()  :371-379
+POST /api/tasks/{task_id}/regenerate-title  →  api_regenerate_task_title()  :422-447
+GET /tasks/{task_id}  →  task_page()  :451-482
+GET /tasks/{task_id}/prompts-list  →  task_prompts_list()  :486-492
+GET /tasks/{task_id}/prompt-row/{filename}  →  prompt_row()  :496-502
+```
+
+### .pi/crack/server/src/crack_server/main.py
+```
+def main() → None  :8-11
+```
+
+### .pi/crack/server/src/crack_server/paths.py
+```
+def project_root() → Path  :16-18
+def tasks_dir(root: Path | None) → Path  :21-22
+def task_dir(task_id: str, root: Path | None) → Path  :25-28
+def validate_prompt_filename(name: str) → str  :31-35
+def list_task_ids(root: Path | None) → list[str]  :38-42
+def list_prompt_files(task_id: str, root: Path | None) → list[dict[str, str | int]]  :45-63  # Glob *
+def read_prompt(task_id: str, filename: str, root: Path | None) → str  :66-71
+def write_prompt(task_id: str, filename: str, content: str, root: Path | None) → None  :74-79
+def delete_prompt(task_id: str, filename: str, root: Path | None) → None  :82-87
+def info_path(task_id: str, root: Path | None) → Path  :90-91
+def read_info(task_id: str, root: Path | None) → dict  :94-101
+def write_info(task_id: str, info: dict, root: Path | None) → None  :104-110
+def slugify_title(title: str) → str  :113-116  # Replace runs of non-alphanumeric characters with '_', stripp
+def generate_task_id(title: str) → str  :119-121  # Task id format: <ms_epoch_timestamp>_<slugified_title>
+def create_task(task_id: str, title: str | None, root: Path | None) → dict  :124-139  # Create a new task directory with info
+def next_prompt_filename(task_id: str, root: Path | None) → str | None  :142-151  # Return the next available prompt filename (prompt
+```
+
+### .pi/crack/server/src/crack_server/static/app.css
+```
+.prompt-row
+.prompt-row
+.prompt-row
+.title-row
+.title-input
+.htmx-indicator
+.htmx-request
+.htmx-request
 ```
 
 ## _data
 
 ### _data/3d_data_v2/_blend_build_map.py
 ```
-def clear_scene()  :28-30  # Wipe the current scene so the next tile imports into a clean
-def weld_terrain_mesh(obj: bpy.types.Object, dist: float) → None  :33-48
-def measure_terrain_bbox() → dict  :51-81  # Compute axis-aligned bounds of all mesh objects in Blender c
-def latlon_to_xy(lon: float, lat: float, latlon_bbox: dict, terrain_bbox: dict) → tuple[float, float]  :84-99  # Map lat/lon to Blender (east, north) via bilinear extrapolat
-def build_terrain_bvh(terrain_objs: list[bpy.types.Object] | None) → BVHTree | None  :102-131  # Build a world-space BVH over all terrain meshes once, up fro
-def raycast_hit(x: float, y: float, top: float, bvh: BVHTree | None) → tuple[float, Vector] | None  :134-135  # Cast downward from above the terrain bbox; return (hit z, hi
-def raycast_height(x: float, y: float, top: float, bvh: BVHTree | None) → float | None  :148-151  # Cast downward from above the terrain bbox; return hit z or N
-def resolve_heights(heights: list[float | None]) → list[float] | None  :154-178  # Fill ray-cast misses from nearest chain neighbor with a hit
-def get_or_create_collection(name: str) → bpy.types.Collection  :181-186
-def create_road_object(feature_id, coords_xy: list[tuple[float, float]], heights: list[float]) → bpy.types.Object  :189-192  # Create a mesh polyline named road_<feature_id> in the roads 
-def resolve_corner_heights(raw_zs: list[float | None], top: float) → list[float]  :208-212  # Fill corner ray misses with the average z of the corners tha
-def build_collider_mesh(corners_latlon: list[list[float]], center_latlon: list[float], latlon_bbox: dict, terrain_bbox: dict, top: float, bvh: BVHTree | None) → dict  :215-221  # Build a closed box collider molded onto the terrain, enlarge
-def create_car_object(car_index: int, verts: list[tuple[float, float, float]], faces: list[list[int]]) → bpy.types.Object  :299-302  # Link a pre-built collider mesh into the cars collection
-def build_fill_material(mesh: bpy.types.Object, index: int) → tuple[int, int] | None  :371-372
-def cut_car_from_terrain(mesh_obj: bpy.types.Object, car_obj: bpy.types.Object, z_range: tuple[float, float], mark_mat: bpy.types.Material, n_colors: int, fill_slot: int) → tuple[int, int, list]  :589-595
-def log(msg: str) → None  :774-775
-def process_item(item: dict) → None  :778-904
-def main()  :907-936
+def clear_scene  :28-30
+def weld_terrain_mesh  :33-48
+def measure_terrain_bbox  :51-81
+def latlon_to_xy  :84-99
+def build_terrain_bvh  :102-131
+def raycast_hit  :134-135
+def raycast_height  :148-151
+def resolve_heights  :154-178
+def get_or_create_collection  :181-186
+def create_road_object  :189-192
+def resolve_corner_heights  :208-212
+def build_collider_mesh  :215-221
+def create_car_object  :299-302
+def build_fill_material  :371-372
+def cut_car_from_terrain  :589-595
+def log  :774-775
+def process_item  :778-904
+def main  :907-936
 ```
 
 ### _data/3d_data_v2/_blend_render_postprocess.py
@@ -77,12 +175,23 @@ def render_tile(tile: dict) → bool  :190-253
 def main() → None  :256-287
 ```
 
-### _data/3d_data_v2/_check_blend.py
+### _data/3d_data_v2/yolo_v8_obb_sat.py
 ```
-def check_blend(blend_path: str) → None  :17-115
+def load_net  :29-33
+def detect_cars  :43-48
 ```
 
 ## _docker
+
+### _docker/_cont_start.sh
+```
+export CRACK_PI_PROJECT_ROOT
+```
+
+### _docker/build.sh
+```
+export IMG_NAME
+```
 
 ### _docker/run.sh
 ```
@@ -91,106 +200,37 @@ export IMG_NAME
 
 ## crack_demo
 
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/debug_picker.rs
-```
-pub struct DebugPickerPlugin
-pub struct DebugPickerState
-pub struct PickResult
-pub enum PickKind
-impl DebugPickerPlugin
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/main_scene_plugin.rs
-```
-pub struct MainScenePlugin
-impl MainScenePlugin
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/map_material_edit.rs
-```
-pub struct MapMaterialEditPlugin
-pub struct MapMaterialEditState
-impl MapMaterialEditPlugin
-impl MapMaterialEditState
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/visual_fx/materials.rs
-```
-pub struct BillboardParams
-pub struct AdditiveFxMaterial
-pub struct BlendFxMaterial
-pub enum FxKind
-impl AdditiveFxMaterial
-impl BlendFxMaterial
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/visual_fx/mod.rs
-```
-pub struct VisualFXPlugin
-impl VisualFXPlugin
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/visual_fx/settings.rs
-```
-pub struct VfxSettings
-impl VfxSettings
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/plugins/visual_fx/ui.rs
-```
-pub fn vfx_controls_window(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>, mut s: ResMut<VfxSettings>,)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/ui_egui.rs
-```
-pub struct UiEguiPlugin
-pub struct UiState
-impl UiEguiPlugin
-impl UiState
-impl UiState
-  pub fn with_physics_debug() → Self
-impl UiState
-pub fn web_set_loading_status(_show: bool, _message: &str)
-```
-
-### crack_demo/demo_resolution_selector_web_bevy/src/utils/setup_debug_scene.rs
-```
-pub struct SetupDebugScenePlugin
-pub struct DebugSceneGroundComponent
-impl SetupDebugScenePlugin
-```
-
 ### crack_demo/game_logic/src/worker/osm_impl.rs
 ```
-pub async fn fetch_osm_data(args: FetchArgs) → anyhow::Result<OsmDataResult>
+pub async fn fetch_osm_data(args: FetchArgs) → anyhow::Result<OsmDataResult>  :14-104
 ```
 
 ## rust_pkg
 
 ### rust_pkg/net_crackpipe/src/chat/global_chat.rs
 ```
-pub struct GlobalChatRoomType
-pub struct GlobalChatPresence
-pub enum GlobalChatMessageContent
-pub enum GlobalChatBootstrapQuery
-pub enum MatchHandshakeType
-impl GlobalChatRoomType
+pub struct GlobalChatRoomType  :6-6
+pub struct GlobalChatPresence  :16-20
+pub enum GlobalChatMessageContent  :24-36
+pub enum GlobalChatBootstrapQuery  :40-43
+pub enum MatchHandshakeType  :46-51
+impl GlobalChatRoomType  :8-14
 ```
 
 ### rust_pkg/net_crackpipe/src/global_matchmaker.rs
 ```
-pub struct GlobalMatchmaker
-pub struct BootstrapNodeInfo
-impl GlobalMatchmakerInner
-  pub async fn shutdown(&mut self) → Result<()>
-impl GlobalMatchmaker
-impl GlobalMatchmaker
-  pub async fn sleep(&self, duration: Duration)
-  pub async fn shutdown(&self) → Result<()>
-  pub fn user_secrets(&self) → std::sync::Arc<UserIdentity...
-  pub fn own_node_identity(&self) → NodeIdentity
-  pub fn user(&self) → UserIdentity
-  pub async fn global_chat_controller(&self) → Option<ChatController<Globa...
-  pub async fn bs_global_chat_controller(&self) → Option<ChatController<Globa...
-  pub async fn display_debug_info(&self) → Result<String>
+pub struct GlobalMatchmaker  :39-48
+pub struct BootstrapNodeInfo  :98-104
+impl GlobalMatchmakerInner  :65-89
+  pub async fn shutdown(&mut self) → Result<()>  :66-66
+impl GlobalMatchmaker  :91-95
+impl GlobalMatchmaker  :106-247
+  pub async fn sleep(&self, duration: Duration)  :107-107
+  pub async fn shutdown(&self) → Result<()>  :110-110
+  pub fn user_secrets(&self) → std::sync::Arc<UserIdentity...  :122-122
+  pub fn own_node_identity(&self) → NodeIdentity  :125-125
+  pub fn user(&self) → UserIdentity  :132-132
+  pub async fn global_chat_controller(&self) → Option<ChatController<Globa...  :136-136
+  pub async fn bs_global_chat_controller(&self) → Option<ChatController<Globa...  :139-139
+  pub async fn display_debug_info(&self) → Result<String>  :142-142
 ```

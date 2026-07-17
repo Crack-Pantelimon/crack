@@ -19,6 +19,6 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ### src/lib.rs
 ```
-pub struct ThreadWorkerFactory
-impl ThreadWorkerFactory
+pub struct ThreadWorkerFactory  :13-15
+impl ThreadWorkerFactory  :18-25
 ```

@@ -19,7 +19,7 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ### src/lib.rs
 ```
-pub async fn _js_init_dedicated_worker() → Result<(), JsValue>
-pub async fn _js_compute_payload_reply(msg: JsValue) → Result<JsValue, JsValue>
-pub async fn web_worker_registration(mapping: Arc<ApiImplMapping>,) → std::result::Result<(), JsV...
+pub async fn _js_init_dedicated_worker() → Result<(), JsValue>  :13-28
+pub async fn _js_compute_payload_reply(msg: JsValue) → Result<JsValue, JsValue>  :31-37
+pub async fn web_worker_registration(mapping: Arc<ApiImplMapping>,) → std::result::Result<(), JsV...  :121-132
 ```
