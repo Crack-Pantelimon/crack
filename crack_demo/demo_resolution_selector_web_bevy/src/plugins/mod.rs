@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod cars_driving;
+pub mod cloud_sky;
 pub mod crack_plugin;
 pub mod debug_picker;
 pub mod game_freecam;
