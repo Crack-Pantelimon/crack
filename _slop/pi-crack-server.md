@@ -1,15 +1,7 @@
-we have a webserver under .pi/crack/server that is currently a little bit bugged:
-- the "add prompt" and "edit prompt" form should also show filename.
-- all the prompts should always be viewable from the tasks item at all times. they can be sent empty, in which case we try filenames prompt2..prompt9.md in order. The edit button in each item will only change from non-editable to editable version.
-- all created task ids start with the integer milisecond tiemstamp and then the user title with non-alphanum replaced with _
-- use the title "Crack Task: ... " on the sub-page for the tasks
-- the "or specify custom name" button is very confusing, remove its functionality and instead just use the main form . also i think the ui is not replacing the things it thinks it's replacing - review for htmx errors.
-- review that the code paths for the ui and backend interaction and 
-- all save and edit buttons fail to work - review the server code please
+In .pi/crack/server
+
+- now, each prompt has "regenerate title" button and title section, but we instead want the only "title" to be the one for the whole section (the top title). So there is onely one title, and the "Regenerate Ttitle" comes in between the title edit box and the save button.
+- The Regenerate title button is currently not working. We want to use a prompt template together with "pi" cli tool to run using gemma is currently not working at all. Let's add more logggin and timeouts and information to the call when we call it. We should log: the full prompt, the output summary, the timeouts involved, the command line with + in front of it when we run pi, the time taken for a result. Then, test out inside the container that the pi command line works by using docker exec -it crack-dev /bin/bash -exc "pi --version" to run pi. Check that we can summarize things like that. 
 
 
-in the task list home page:
-- the create task button should add the timestamp to the id as a prefix by default
-
-
-The server is running at all times from the docker container and is availabel at localhost:9847 for curl review. Add technical details that a model might want to know to the AGENTS.md server file at the very top of the file (above the spam with the code references) at this file: .pi/crack/server/AGENTS.md - and add any other things a lesser model running on a new session might want to know when working on these files. 
+Write a full implementation change plan for a lesser model to run into _slop/pi-crack-plan.md

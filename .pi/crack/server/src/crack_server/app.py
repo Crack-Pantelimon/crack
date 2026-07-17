@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import html
+import logging
+import shlex
 import subprocess
 import textwrap
 import time
@@ -18,6 +20,13 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app = FastAPI(title="crack-pi-server")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Use uvicorn's configured logger so INFO messages actually reach the console —
+# the root logger has no handler attached under uvicorn's default logging config.
+logger = logging.getLogger("uvicorn.error")
+
+PI_MODEL = "google/gemma-4-31b-it"
+PI_TIMEOUT_SECONDS = 120
 
 
 PROMPT_TITLE_TEMPLATE = textwrap.dedent("""
@@ -94,18 +103,34 @@ def _render_task_card(task_id: str, info: dict) -> str:
     """
 
 
+def _render_title_input(task_id: str, title: str) -> str:
+    """Render the title <input> alone, so the regenerate-title endpoint can swap just
+    this element (outerHTML) without resubmitting/saving the form."""
+    safe_id = _esc(task_id)
+    safe_title = _esc(title)
+    return (
+        f'<input type="text" name="title" id="title-input-{safe_id}" class="title-input" '
+        f'value="{safe_title}" placeholder="Task title" '
+        f'hx-put="/api/tasks/{safe_id}/info" hx-trigger="change delay:500ms, blur" '
+        f'hx-target="closest header" hx-swap="outerHTML">'
+    )
+
+
 def _render_task_header(task_id: str, info: dict) -> str:
-    """Render the task page header, including the editable title form."""
+    """Render the task page header, including the editable title form. This is the only
+    title in the UI — prompt rows no longer have their own titles."""
     safe_id = _esc(task_id)
     safe_title = _esc(info.get("title", task_id))
     created = _format_time(info.get("created_at", 0))
     modified = _format_time(info.get("modified_at", 0))
+    title_input = _render_title_input(task_id, info.get("title", task_id))
     return f"""
     <header style="margin-bottom: 1.5rem;">
       <div class="title-row" style="margin-bottom: 1rem;">
         <h1 style="margin: 0; flex: 1;">{safe_title}</h1>
         <form hx-put="/api/tasks/{safe_id}/info" hx-target="closest header" hx-swap="outerHTML" style="flex: 1; display: flex; gap: 0.5rem; align-items: center;">
-          <input type="text" name="title" class="title-input" value="{safe_title}" placeholder="Task title" hx-put="/api/tasks/{safe_id}/info" hx-trigger="change delay:500ms, blur" hx-target="closest header" hx-swap="outerHTML">
+          {title_input}
+          <button type="button" hx-post="/api/tasks/{safe_id}/regenerate-title" hx-target="#title-input-{safe_id}" hx-swap="outerHTML" class="secondary">Regenerate Title</button>
           <button type="submit" class="secondary">Save</button>
         </form>
       </div>
@@ -113,16 +138,6 @@ def _render_task_header(task_id: str, info: dict) -> str:
       <p><a href="/">← All tasks</a></p>
     </header>
     """
-
-
-def _read_saved_title(task_id: str, filename: str) -> str:
-    title_file = paths.task_dir(task_id) / f".title_{filename}.txt"
-    if title_file.is_file():
-        try:
-            return title_file.read_text(encoding="utf-8").strip()
-        except OSError:
-            pass
-    return ""
 
 
 def _render_prompt_row(task_id: str, filename: str, editing: bool = False) -> str:
@@ -157,24 +172,15 @@ def _render_prompt_row(task_id: str, filename: str, editing: bool = False) -> st
         </article>
         """
 
-    saved_title = _read_saved_title(task_id, filename)
-    title_html = (
-        f'<span id="title-{safe_name}">{_esc(saved_title)}</span>'
-        if saved_title
-        else f'<span id="title-{safe_name}" style="color: #666;">(no generated title)</span>'
-    )
-
     return f"""
     <article class="prompt-row">
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
         <span class="name">{safe_name}</span>
-        {title_html}
         <small style="color: #666;">{size} bytes • {mtime}</small>
       </div>
       <textarea readonly rows="4">{safe_content}</textarea>
       <div class="actions">
         <button hx-get="/tasks/{safe_id}/prompt-row/{safe_name}?editing=true" hx-target="closest article" hx-swap="outerHTML">Edit</button>
-        <button hx-post="/api/tasks/{safe_id}/prompts/{safe_name}/regenerate-title" hx-target="#title-{safe_name}" hx-swap="innerHTML" class="secondary">Regenerate Title</button>
         <form hx-delete="/api/tasks/{safe_id}/prompts/{safe_name}" hx-target="closest article" hx-swap="outerHTML swap:1s" hx-confirm="Delete '{safe_name}'?" style="margin: 0;">
           <button type="submit" class="secondary" style="color: #c44; border-color: #c44;">Remove</button>
         </form>
@@ -373,51 +379,72 @@ def api_delete_prompt(task_id: str, filename: str) -> HTMLResponse:
     return HTMLResponse("")
 
 
-@app.post("/api/tasks/{task_id}/prompts/{filename}/regenerate-title")
-def api_regenerate_title(task_id: str, filename: str) -> HTMLResponse:
-    """Regenerate title for a prompt using pi with gemma-4-31b-it model. Returns the
-    title text as an HTML fragment (target: #title-{filename}, swap: innerHTML)."""
+def _run_pi_title_generation(prompt: str) -> str:
+    """Run `pi` non-interactively to turn prompt content into a short title. Logs the
+    full prompt, the exact command line, the timeout, the elapsed time, and an output
+    summary so failures are diagnosable from server logs alone."""
+    cmd = ["pi", "--model", PI_MODEL, "--print", "--no-session", "--no-tools", prompt]
+
+    logger.info("regenerate-title: full prompt:\n%s", prompt)
+    logger.info("regenerate-title: timeout=%ss", PI_TIMEOUT_SECONDS)
+    logger.info("+ %s", shlex.join(cmd))
+
+    start = time.monotonic()
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=PI_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        elapsed = time.monotonic() - start
+        logger.error("regenerate-title: pi timed out after %.2fs", elapsed)
+        raise HTTPException(status_code=500, detail="pi command timed out")
+    except FileNotFoundError:
+        elapsed = time.monotonic() - start
+        logger.error("regenerate-title: pi command not found on PATH (after %.2fs)", elapsed)
+        raise HTTPException(status_code=500, detail="pi command not found")
+
+    elapsed = time.monotonic() - start
+    logger.info("regenerate-title: pi exited %d in %.2fs", result.returncode, elapsed)
+
+    if result.returncode != 0:
+        logger.error("regenerate-title: pi stderr:\n%s", result.stderr)
+        raise HTTPException(status_code=500, detail=f"pi command failed: {result.stderr}")
+
+    title = result.stdout.strip()
+    logger.info("regenerate-title: output summary: %r", title[:200])
+    return title
+
+
+@app.post("/api/tasks/{task_id}/regenerate-title")
+def api_regenerate_task_title(task_id: str) -> HTMLResponse:
+    """Regenerate the task title from the combined content of its prompt files, using pi
+    with the gemma-4-31b-it model. Returns the re-rendered title <input> (target: the
+    title input, swap: outerHTML) — the new title is a draft in the input until the user
+    clicks Save."""
     try:
         paths.task_dir(task_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    try:
-        content = paths.read_prompt(task_id, filename)
-    except (ValueError, FileNotFoundError) as e:
-        raise HTTPException(status_code=404, detail="prompt not found") from e
+    prompts = paths.list_prompt_files(task_id)
+    if not prompts:
+        raise HTTPException(status_code=400, detail="no prompt files to summarize")
+
+    contents = []
+    for p in prompts:
+        try:
+            contents.append(paths.read_prompt(task_id, str(p["name"])))
+        except FileNotFoundError:
+            continue  # deleted between listing and reading
+    content = "\n\n---\n\n".join(contents)
 
     prompt = PROMPT_TITLE_TEMPLATE.format(content=content)
+    title = _run_pi_title_generation(prompt)
 
-    import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-        f.write(prompt)
-        prompt_file = f.name
-
-    try:
-        result = subprocess.run(
-            ["pi", "run", "--model", "google/gemma-4-31b-it", "--prompt-file", prompt_file],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"pi command failed: {result.stderr}")
-
-        title = result.stdout.strip()
-        title_file = paths.task_dir(task_id) / f".title_{filename}.txt"
-        title_file.write_text(title, encoding="utf-8")
-
-        return HTMLResponse(_esc(title))
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=500, detail="pi command timed out")
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="pi command not found")
-    finally:
-        try:
-            Path(prompt_file).unlink(missing_ok=True)
-        except OSError:
-            pass
+    return HTMLResponse(_render_title_input(task_id, title))
 
 
 @app.get("/tasks/{task_id}", response_class=HTMLResponse)
