@@ -25,7 +25,6 @@ _data/3d_data_v2/_blend_build_map.py ← mathutils, bmesh, bpy, numpy
 _data/3d_data_v2/_blend_render_postprocess.py ← __future__, mathutils, bpy
 _data/3d_data_v2/_blend_render_topdown.py ← __future__, mathutils, bpy
 _data/3d_data_v2/_check_blend.py ← bpy, numpy
-_data/3d_data_v2/osm_postprocess_batch.py ← octree, cv2, pyarrow, yolo_v8_obb_sat
 ```
 
 ## _data
@@ -83,33 +82,75 @@ def main() → None  :256-287
 def check_blend(blend_path: str) → None  :17-115
 ```
 
-### _data/3d_data_v2/osm_postprocess_batch.py
+## _docker
+
+### _docker/run.sh
 ```
-def run_blender_batch(script: str, batch_json_path: str) → str  :52-80  # Run a Blender -P script over a batch JSON file, streaming it
-def glb_path_for_tile(tile: str) → Path  :83-87  # Return the on-disk GLB path for an octant path (matches main
-def tile_sidecar_paths(tile: str) → dict[str, Path]  :90-97
-def pixel_to_latlon(px: float, py: float, meta: dict) → tuple[float, float]  :100-120  # Map render pixel to lat/lon using ortho camera + mesh-bbox a
-def obb_pixel_to_latlon_corners(corners_pixel: list[list[float]], meta: dict) → tuple[list[list[float]], li...  :123-124
-def node_inside_bbox(lon: float, lat: float, bbox) → bool  :133-135  # Half-open containment: south <= lat < north, west <= lon < e
-def trim_road_feature(feature: dict, bbox) → dict | None  :138-175  # Keep coordinate indices inside bbox or adjacent to an inside
-def has_lanes(feature: dict) → bool  :178-180
-def lookup_manifest_row(manifest_dataset, tile: str) → dict | None  :183-189
-def query_road_feature_ids(octtree_dataset, candidate: str) → list  :192-203
-def load_road_features(features_dataset, feature_ids: list[int]) → list[dict]  :206-223
-def find_roads_for_tile(tile: str, octtree_dataset, features_dataset) → tuple[str | None, list[dict]]  :226-229  # Walk up the parent chain from tile until qualifying roads ar
-def build_work_item(tile: str, manifest_row: dict, road_source_path: str | None, roads: list[dict], sidecars: dict[str, Path]) → dict  :254-259
-def load_sample_tiles() → list[str]  :288-290
-def run_render_stage(tile_specs: list[dict]) → None  :293-307
-def run_detect_stage(tile_records: list[dict], net) → None  :310-358
-def run_blend_stage(items: list[dict]) → None  :361-375
-def main()  :378-469
+export IMG_NAME
 ```
 
 ## crack_demo
 
-### crack_demo/demo_resolution_selector_web_bevy/index.clouds.html
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/debug_picker.rs
 ```
-title: Crack! - Clouds
+pub struct DebugPickerPlugin
+pub struct DebugPickerState
+pub struct PickResult
+pub enum PickKind
+impl DebugPickerPlugin
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/main_scene_plugin.rs
+```
+pub struct MainScenePlugin
+impl MainScenePlugin
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/map_plugin/map_material_edit.rs
+```
+pub struct MapMaterialEditPlugin
+pub struct MapMaterialEditState
+impl MapMaterialEditPlugin
+impl MapMaterialEditState
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/visual_fx/materials.rs
+```
+pub struct BillboardParams
+pub struct AdditiveFxMaterial
+pub struct BlendFxMaterial
+pub enum FxKind
+impl AdditiveFxMaterial
+impl BlendFxMaterial
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/visual_fx/mod.rs
+```
+pub struct VisualFXPlugin
+impl VisualFXPlugin
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/visual_fx/settings.rs
+```
+pub struct VfxSettings
+impl VfxSettings
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/plugins/visual_fx/ui.rs
+```
+pub fn vfx_controls_window(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>, mut s: ResMut<VfxSettings>,)
+```
+
+### crack_demo/demo_resolution_selector_web_bevy/src/ui_egui.rs
+```
+pub struct UiEguiPlugin
+pub struct UiState
+impl UiEguiPlugin
+impl UiState
+impl UiState
+  pub fn with_physics_debug() → Self
+impl UiState
+pub fn web_set_loading_status(_show: bool, _message: &str)
 ```
 
 ### crack_demo/demo_resolution_selector_web_bevy/src/utils/setup_debug_scene.rs

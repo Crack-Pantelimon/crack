@@ -1,0 +1,80 @@
+/* Pico.css provides base styling - only custom additions needed */
+
+main {
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.prompt-row {
+  display: block;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.prompt-row .name {
+  font-family: ui-monospace, monospace;
+  font-weight: bold;
+}
+
+.prompt-row textarea {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+  margin: 0.5rem 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.add {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ccc;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.title-input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.error {
+  color: #a22;
+  margin: 0.5rem 0;
+}
+
+.success {
+  color: #2a2;
+  margin: 0.5rem 0;
+}
+
+/* htmx loading indicator */
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 200ms ease-in;
+}
+
+.htmx-request .htmx-indicator {
+  opacity: 1;
+}
+
+.htmx-request.htmx-indicator {
+  opacity: 1;
+}
+
+/* Task card styling */
+.task-card {
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.htmx-swapping .task-card {
+  opacity: 0;
+  transform: translateX(-20px);
+}
