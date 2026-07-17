@@ -847,19 +847,11 @@ fn rhythm_game_system(
         }
 
         // Spawn the music player with MusicTrack marker
-        let encoded_song = encode_url_path(&game.selected_song);
-        let song_url = format!(
-            "{}sound_data/{}",
-            demo_resolution_selector_web_bevy::config::DATA_BASE_URL,
-            encoded_song
-        );
+        let song_url = encode_url_path(&game.selected_song);
+
         
-        let encoded_json = encode_url_path(&json_filename);
-        let chart_url = format!(
-            "{}sound_data/{}",
-            demo_resolution_selector_web_bevy::config::DATA_BASE_URL,
-            encoded_json
-        );
+        let chart_url = encode_url_path(&json_filename);
+
 
         info!("[AUDIO] Loading song: {} and chart: {}", song_url, chart_url);
 

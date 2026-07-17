@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>Crack! - Clouds</title>
+  <link data-trunk rel="rust" data-bin="clouds" data-initializer="public/trunk-init.js" />
+  <link data-trunk rel="css" data-inline href="/public/style.css">
+  <link data-trunk rel="icon" href="/public/favicon.ico">
+
+  <link data-trunk rel="copy-dir" href="public" data-target-path="/" />
+
+  <!-- SPECIFIC TO CRACK -->
+  <script src="/scripts/storage.js"></script>
+  <script src="/scripts/start-audio.js"></script>
+  <script src="/scripts/v2/crack2-client.js" type="module"></script>
+  <!-- END SPECIFIC -->
+
+</head>
+
+<body>
+  <main>
+    <div id="canvas-container" class="canvas-container">
+      <div id="canvas-parent" class="canvas-parent">
+        <canvas id="the-canvas" width="800" height="600"></canvas>
+      </div>
+    </div>
+    <div id="loading-screen">
+      <h1 id="loading-screen-text">Loading...</h1>
+    </div>
+  </main>
+</body>
+
+</html>
