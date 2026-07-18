@@ -1,13 +1,14 @@
-- [ ] Modify `_render_base()` in `src/crack_server/app.py` to add optional `footer` parameter with default `""`
-- [ ] Add `_render_server_footer()` helper function in `src/crack_server/app.py` returning `<footer class="server-footer">crack-pi-server</footer>`
-- [ ] Update `task_page()` in `src/crack_server/app.py` to call `_render_server_footer()` and pass it to `_render_base(footer=...)`
-- [ ] Append footer CSS styles to `src/crack_server/static/app.css` (margin-top, padding-top, border-top, text-align, font-size, color)
-- [ ] Run syntax check: `docker exec crack-dev python -m py_compile src/crack_server/app.py`
-- [ ] Create test task via `curl -s -X POST http://localhost:9847/api/tasks -d "title=Footer Test"` and capture task_id
-- [ ] Verify task page contains footer: `curl -s "http://localhost:9847/tasks/$TASK_ID" | grep -c 'class="server-footer"'` returns 1
-- [ ] Verify homepage lacks footer: `curl -s http://localhost:9847/ | grep -c 'class="server-footer"'` returns 0
-- [ ] Clean up test task: `curl -s -X DELETE "http://localhost:9847/api/tasks/$TASK_ID"`
-- [ ] Manual: Open task page in browser, scroll to bottom, verify "crack-pi-server" appears muted, centered, with top border and spacing
-- [ ] Manual: Open homepage `http://localhost:9847/` and confirm no footer
-- [ ] Manual: Open stage config pages (`/stages/explore`, `/stages/plan`) and confirm no footer
-- [ ] Manual: Inspect element, verify footer is `<footer class="server-footer">crack-pi-server</footer>` inside `<main>`
+- [ ] Add `import os` to the stdlib import group in `src/crack_server/app.py` (after `import html` / `import logging`)
+- [ ] Modify `task_page()` in `src/crack_server/app.py`: read `os.environ.get("CRACK_PI_FOOTER_NAME", "crack-pi-server")`, escape via `_esc()`, and append `<footer class="task-page-footer"><small>{footer_name}</small></footer>` to the `body` f-string after `{tabs_panels}`
+- [ ] Add `.task-page-footer` and `.task-page-footer small` CSS rules to `src/crack_server/static/app.css` (margin-top: 2rem, padding-top: 1rem, border-top: 1px solid #ccc, text-align: center; small color: #666)
+- [ ] Verify syntax: `python -m py_compile src/crack_server/app.py` exits 0
+- [ ] Verify task page contains exactly one `class="task-page-footer"` element
+- [ ] Verify footer is inside `<main>` (between tabs and `</main>`)
+- [ ] Verify homepage (`/`) does NOT contain `class="task-page-footer"`
+- [ ] Verify stage config pages (`/stages/plan`, `/stages/explore`) do NOT contain `class="task-page-footer"`
+- [ ] Verify default name "crack-pi-server" renders when env var unset
+- [ ] Verify configured name renders when `CRACK_PI_FOOTER_NAME` is set (local test)
+- [ ] Verify HTML escaping works for names containing `<` / `&` (manual sanity)
+- [ ] Manual: open task page in browser, scroll to bottom, confirm small centered muted footer with top border inside `<main>`
+- [ ] Manual: open homepage and stage config pages, confirm no footer appears
+- [ ] Manual: inspect element, confirm markup `<footer class="task-page-footer"><small>crack-pi-server</small></footer>` inside `<main>` before `</main>` and before `<script src="/static/app.js">`

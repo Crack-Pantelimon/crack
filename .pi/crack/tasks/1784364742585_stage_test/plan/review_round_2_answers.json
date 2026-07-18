@@ -1,0 +1,7 @@
+{
+  "q1": "Append footer string at end of `body` in `task_page` (inside <main>, guaranteed)",
+  "q2": "CRACK_PI_FOOTER_NAME, fallback \"crack-pi-server\"",
+  "q3": "Yes \u2014 insert into actual `<main>{body}</main>` structure; sketch details (class=\"container\") were just illustrative",
+  "q4": "Read in `task_page` directly via os.environ.get(\"CRACK_PI_SERVER_NAME\", \"crack-pi-server\")",
+  "q5": "Task-scoped `.task-page-footer` class added to app.css"
+}
