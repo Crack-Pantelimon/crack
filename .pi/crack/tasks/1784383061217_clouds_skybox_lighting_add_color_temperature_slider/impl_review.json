@@ -14,9 +14,23 @@
       "thinking": "",
       "tool_blocks": [],
       "elapsed": 0.356
+    },
+    {
+      "hop": 3,
+      "text": "",
+      "thinking": "",
+      "tool_blocks": [],
+      "elapsed": 0.355
+    },
+    {
+      "hop": 4,
+      "text": "",
+      "thinking": "",
+      "tool_blocks": [],
+      "elapsed": 0.438
     }
   ],
-  "total_turns": 2,
+  "total_turns": 4,
   "stop_reason": null,
   "error": "",
   "started_at": 1784388379.867591,
