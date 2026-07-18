@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "web-search": {
+      "command": "node",
+      "args": ["/root/web-search-mcp/dist/index.js"],
+      "env": {
+        "BROWSER_HEADLESS": "true"
+      }
+    },
+    "chromium": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@1.6.0",
+        "--headless",
+        "--isolated",
+        "--executablePath",
+        "/usr/bin/chromium",
+        "--chromeArg=--no-sandbox",
+        "--chromeArg=--disable-gpu",
+        "--no-usage-statistics"
+      ]
+    },
+    "firefox": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.78",
+        "--browser",
+        "firefox",
+        "--headless",
+        "--isolated"
+      ]
+    }
+  }
+}

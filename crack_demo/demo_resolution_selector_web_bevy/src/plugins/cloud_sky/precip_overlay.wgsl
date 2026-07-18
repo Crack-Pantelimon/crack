@@ -7,6 +7,7 @@
 
 struct SkyParams {
     sun_dir: vec4<f32>, // xyz = direction toward sun, w = day factor
+    sun_temperature: f32, // Kelvin (1500..6000)
     amounts: vec4<f32>, // x = cumulus, y = cirrus, z = storm, w = overcast
     detail: vec4<f32>,  // per-layer octaves + cloud scale
     wind: vec4<f32>,    // xy = wind scroll, z = rain intensity, w = snow intensity

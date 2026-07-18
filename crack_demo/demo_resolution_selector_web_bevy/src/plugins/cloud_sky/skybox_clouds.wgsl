@@ -7,6 +7,7 @@
 
 struct SkyParams {
     sun_dir: vec4<f32>, // xyz = direction toward sun, w = day factor (0..1)
+    sun_temperature: f32, // Kelvin (1500..6000)
     amounts: vec4<f32>, // x = cumulus, y = cirrus, z = storm, w = overcast
     detail: vec4<f32>,  // x/y/z = FBM octaves per layer, w = cloud scale
     wind: vec4<f32>,    // xy = wind uv scroll / s, z = rain, w = snow
@@ -71,7 +72,28 @@ fn fbm(p_in: vec2<f32>, octaves: f32) -> f32 {
 // Sky background
 // ---------------------------------------------------------------------------
 
-fn sky_color(rd: vec3<f32>, sun_dir: vec3<f32>, day: f32, overcast: f32) -> vec3<f32> {
+fn kelvin_to_rgb(kelvin: f32) -> vec3<f32> {
+    let k = clamp(kelvin / 100.0, 10.0, 400.0);
+    var r: f32;
+    var g: f32;
+    var b: f32;
+    if (k <= 66.0) {
+        r = 255.0;
+        g = clamp(99.4708 * log(k) - 161.1195, 0.0, 255.0);
+        if (k <= 19.0) {
+            b = 0.0;
+        } else {
+            b = clamp(138.5177 * log(k - 10.0) - 305.0448, 0.0, 255.0);
+        }
+    } else {
+        r = clamp(329.6987 * pow(k - 60.0, -0.133204759), 0.0, 255.0);
+        g = clamp(288.12216 * pow(k - 60.0, -0.0755148492), 0.0, 255.0);
+        b = 255.0;
+    }
+    return vec3<f32>(r, g, b) / 255.0;
+}
+
+fn sky_color(rd: vec3<f32>, sun_dir: vec3<f32>, day: f32, overcast: f32, sun_temperature: f32) -> vec3<f32> {
     let elev = clamp(rd.y, 0.0, 1.0);
     let g = pow(elev, 0.55);
 
@@ -82,13 +104,15 @@ fn sky_color(rd: vec3<f32>, sun_dir: vec3<f32>, day: f32, overcast: f32) -> vec3
     var col = mix(night_col, day_col, day);
 
     let sundot = clamp(dot(rd, sun_dir), 0.0, 1.0);
+    let sun_color = kelvin_to_rgb(sun_temperature);
     // warm glow around the sun, stronger when the sun is low
     let low_sun = 1.0 - clamp(sun_dir.y * 2.5, 0.0, 1.0);
-    let warm = mix(vec3<f32>(1.0, 0.9, 0.7), vec3<f32>(1.0, 0.55, 0.25), low_sun);
+    let overhead_color = vec3<f32>(0.9, 0.95, 1.0);
+    let warm = mix(sun_color, overhead_color, low_sun);
     col += warm * pow(sundot, 8.0) * 0.30 * day;
     col += warm * pow(sundot, 64.0) * 0.45 * day;
     // sun disc
-    col += vec3<f32>(1.0, 0.95, 0.85) * pow(sundot, 1800.0) * 8.0 * day;
+    col += sun_color * pow(sundot, 1800.0) * 8.0 * day;
 
     // stars at night
     if (day < 0.35 && rd.y > 0.02) {
@@ -188,7 +212,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let overcast = u.amounts.w;
     let sundot = clamp(dot(rd, sun_dir), 0.0, 1.0);
 
-    var col = sky_color(rd, sun_dir, day, overcast);
+    var col = sky_color(rd, sun_dir, day, overcast, u.sun_temperature);
 
     // clouds only above the horizon; fade them into the haze near it
     if (rd.y > 0.005) {

@@ -31,6 +31,7 @@ pub fn make_sky_params(s: &CloudSkySettings) -> SkyParamsUniform {
     let wind = s.wind_vec();
     SkyParamsUniform {
         sun_dir: Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, day_factor),
+        sun_temperature: s.sun_temperature,
         amounts: Vec4::new(s.cumulus_amount, s.cirrus_amount, s.storm_amount, overcast),
         detail: Vec4::new(
             s.cumulus_detail,
@@ -117,6 +118,62 @@ pub fn follow_camera(
     }
 }
 
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t.clamp(0.0, 1.0)
+}
+
+/// Map Kelvin (1000..40000) to sRGB for directional light and sky tinting.
+fn kelvin_to_rgb(kelvin: f32) -> Color {
+    let k = kelvin.clamp(1000.0, 40000.0) / 100.0;
+    let (r, g, b) = if k <= 66.0 {
+        (
+            255.0,
+            (99.4708 * k.ln() - 161.1195).clamp(0.0, 255.0),
+            if k <= 19.0 {
+                0.0
+            } else {
+                (138.5177 * (k - 10.0).ln() - 305.0448).clamp(0.0, 255.0)
+            },
+        )
+    } else {
+        (
+            (329.6987 * (k - 60.0).powf(-0.133204759)).clamp(0.0, 255.0),
+            (288.12216 * (k - 60.0).powf(-0.0755148492)).clamp(0.0, 255.0),
+            255.0,
+        )
+    };
+    Color::srgb(r / 255.0, g / 255.0, b / 255.0)
+}
+
+fn auto_sun_temperature_from_time(t: f32) -> f32 {
+    if t < 5.0 || t >= 21.0 {
+        4000.0
+    } else if t < 7.0 {
+        lerp(2000.0, 3500.0, (t - 5.0) / 2.0)
+    } else if t < 10.0 {
+        lerp(3500.0, 5000.0, (t - 7.0) / 3.0)
+    } else if t < 14.0 {
+        lerp(5000.0, 6000.0, (t - 10.0) / 4.0)
+    } else if t < 17.0 {
+        lerp(6000.0, 5000.0, (t - 14.0) / 3.0)
+    } else if t < 19.0 {
+        lerp(5000.0, 2500.0, (t - 17.0) / 2.0)
+    } else {
+        lerp(2500.0, 4000.0, (t - 19.0) / 2.0)
+    }
+}
+
+/// Overwrite `sun_temperature` from the time-of-day slider when auto mode is on.
+pub fn auto_sun_temperature(mut settings: ResMut<CloudSkySettings>) {
+    if !settings.auto_temperature {
+        return;
+    }
+    let next = auto_sun_temperature_from_time(settings.time_of_day);
+    if (settings.sun_temperature - next).abs() > f32::EPSILON {
+        settings.sun_temperature = next;
+    }
+}
+
 /// Push slider values into the material assets whenever the UI changes them.
 pub fn sync_sky_uniforms(
     settings: Res<CloudSkySettings>,
@@ -148,12 +205,14 @@ pub fn sync_sun_light(
     mut ambient_q: Query<&mut AmbientLight>,
 ) {
     let (sun_dir, day_factor) = settings.sun_dir_and_day_factor();
+    let sun_color = kelvin_to_rgb(settings.sun_temperature);
     let mut light_dir = sun_dir;
     light_dir.y = light_dir.y.max(0.08);
     for (mut transform, mut light) in light_q.iter_mut() {
         *transform = Transform::from_translation(light_dir.normalize_or_zero() * 100.0)
             .looking_at(Vec3::ZERO, Vec3::Y);
         light.illuminance = 30.0 + 3470.0 * day_factor;
+        light.color = sun_color;
     }
     for mut ambient in ambient_q.iter_mut() {
         ambient.brightness = 150.0 + 850.0 * day_factor;

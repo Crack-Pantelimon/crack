@@ -25,6 +25,14 @@ pub fn cloud_sky_window(
             let s = &mut *settings;
 
             ui.collapsing("Sky", |ui| {
+                ui.add_enabled_ui(!s.auto_temperature, |ui| {
+                    ui.add(
+                        egui::Slider::new(&mut s.sun_temperature, 1500.0..=6000.0)
+                            .text("Sun Temperature (K)")
+                            .suffix(" K"),
+                    );
+                });
+                ui.checkbox(&mut s.auto_temperature, "Auto Temperature (Time of Day)");
                 ui.add(egui::Slider::new(&mut s.time_of_day, 0.0..=24.0).text("Time of day"));
                 ui.add(
                     egui::Slider::new(&mut s.wind_speed, 0.0..=0.2)

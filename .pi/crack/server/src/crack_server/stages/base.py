@@ -588,6 +588,13 @@ def render_actions_table(turns: list[dict]) -> str:
     Turn text is cleaned of control blocks/sentinels before display."""
     rows: list[str] = []
     for turn in turns:
+        # Content-less turns (empty model responses) have nothing to show.
+        if not (
+            turn.get("text", "").strip()
+            or turn.get("thinking", "").strip()
+            or turn.get("tool_blocks")
+        ):
+            continue
         thinking = turn.get("thinking", "")
         text = _clean_turn_text(turn.get("text", ""))
         elapsed = turn.get("elapsed")

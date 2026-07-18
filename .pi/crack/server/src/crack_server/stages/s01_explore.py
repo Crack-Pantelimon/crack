@@ -90,7 +90,7 @@ def _persist_explore_turn(task_id: str, current_turn: dict, hop: int) -> None:
         "elapsed": current_turn.get("elapsed"),
     }
     state.setdefault("turns", []).append(turn)
-    state["turns_completed"] = len(state["turns"])
+    state["turns_completed"] = pi_runner.count_turn_groups(state["turns"])
     state["hops_completed"] = max(state.get("hops_completed", 0), hop)
     state["path_refs"] = pi_runner.extract_path_refs(_explore_text_for_refs(state))
     paths.write_explore_state(task_id, state)
@@ -243,7 +243,7 @@ class S01Explore(Stage):
             model=self.model_for("agent"),
             session_id=f"explore-{task_id}",
             sessions_dir=paths.explore_sessions_dir(task_id),
-            tools="bash,read",
+            tools="bash,read,mcp",
             message=message,
             start=start,
             sentinel=EXPLORE_SENTINEL,
@@ -306,6 +306,8 @@ class S01Explore(Stage):
 
                 hop += 1
                 reason = self._run_hop(task_id, hop, message, start)
+                if reason == "empty":
+                    raise RuntimeError("pi returned empty responses (no content in any turn)")
                 if reason == "sentinel":
                     stop_reason = "sentinel"
                     break

@@ -115,14 +115,14 @@ class S06Finished(Stage):
                     model=self.model_for("chat"),
                     session_id=f"review-{task_id}",
                     sessions_dir=paths.impl_review_sessions_dir(task_id),
-                    tools="bash,read,edit,write",
+                    tools="bash,read,edit,write,mcp",
                     message=message,
                     start=start,
                     sentinel=None,
                     turns_per_hop=CHAT_TURNS_PER_HOP,
                     max_turns=CHAT_MAX_TURNS,
                     timeout_seconds=CHAT_TIMEOUT_SECONDS,
-                    total_turns=len(existing) + len(new_turns),
+                    total_turns=pi_runner.count_turn_groups(existing + new_turns),
                     persist_turn=persist,
                     hop=hop,
                 )
@@ -132,6 +132,9 @@ class S06Finished(Stage):
 
             state = paths.read_finished_state(task_id)
             state["phase"] = "idle"
+            if reason == "empty":
+                state["error"] = "model returned empty responses"
+                state["error_detail"] = ""
             paths.write_finished_state(task_id, state)
             logger.info("finished: chat exchange %d done for %s", idx, task_id)
         except Exception as e:

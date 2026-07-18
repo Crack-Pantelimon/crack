@@ -50,7 +50,7 @@ RUN (command -v bat >/dev/null || ln -sf /usr/bin/batcat /usr/local/bin/bat) ; \
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal \
     && rustup component add rustfmt clippy \
-    && cargo install -f cargo-binutils trunk \
+    && cargo install -f cargo-binutils trunk wasm-pack \
     && rustup component add llvm-tools-preview \
     && rustup target add wasm32-unknown-unknown
 
@@ -81,7 +81,31 @@ RUN echo "set -g extended-keys on" > /root/.tmux.conf
 RUN echo "set -g extended-keys-format csi-u" >> /root/.tmux.conf
 RUN npm install -g sigmap
 RUN pi install npm:pi-cursor-sdk
+RUN pi install npm:pi-mcp-adapter
 
+# Browsers + WebDriver (chromedriver comes with chromium-driver;
+# geckodriver has no Debian package -> pinned upstream tarball)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    firefox-esr \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sL -o /tmp/geckodriver.tar.gz https://github.com/mozilla/geckodriver/releases/download/v0.37.0/geckodriver-v0.37.0-linux64.tar.gz \
+    && tar -xzf /tmp/geckodriver.tar.gz -C /tmp \
+    && install -m 0755 /tmp/geckodriver /usr/local/bin/ \
+    && rm /tmp/geckodriver.tar.gz /tmp/geckodriver
+
+# web-search-mcp: stdio MCP server (playwright + axios fallback), pinned commit
+RUN git clone https://github.com/mrkrsl/web-search-mcp /root/web-search-mcp \
+    && cd /root/web-search-mcp \
+    && git checkout eeb03f88525cbf74c4019e59a3fea45a537a760b \
+    && npm install \
+    && npx playwright install chromium firefox \
+    && npm run build
+
+# playwright-mcp needs its own patched firefox build (cannot drive system firefox-esr)
+RUN npx -y @playwright/mcp@0.0.78 install-browser firefox
 
 env CRACK_PI_PROJECT_ROOT=/workspace
 

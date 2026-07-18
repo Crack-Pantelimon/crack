@@ -32,7 +32,7 @@ def _dispatch(job: dict) -> None:
     Stage ``_run_*`` methods record their own detailed error state; here we only
     guarantee the job is logged and dequeued so a failure never wedges the queue.
     """
-    from crack_server import app, queue, stages
+    from crack_server import app, chats, queue, stages
 
     slug = job.get("slug")
     step = job.get("step")
@@ -41,6 +41,8 @@ def _dispatch(job: dict) -> None:
     try:
         if slug == app.TITLE_JOB_SLUG:
             app._run_title_regen_worker(task_id)
+        elif slug == chats.CHAT_JOB_SLUG:
+            chats.run_chat(task_id)
         else:
             stage = stages.get(slug)
             if stage is None:

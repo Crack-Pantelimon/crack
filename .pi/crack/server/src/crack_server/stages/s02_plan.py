@@ -207,14 +207,14 @@ class S02Plan(Stage):
                     model=self.model_for("draft"),
                     session_id=f"plan-{task_id}",
                     sessions_dir=paths.plan_sessions_dir(task_id),
-                    tools="bash,read",
+                    tools="bash,read,mcp",
                     message=message,
                     start=start,
                     sentinel=None,
                     turns_per_hop=DRAFT_TURNS_PER_STEP,
                     max_turns=DRAFT_MAX_TURNS,
                     timeout_seconds=DRAFT_TIMEOUT_SECONDS,
-                    total_turns=len(turns),
+                    total_turns=pi_runner.count_turn_groups(turns),
                     persist_turn=persist,
                     hop=hop,
                 )
@@ -229,6 +229,9 @@ class S02Plan(Stage):
                     f"JSON block (at most 5 questions) or "
                     f"{READY_SENTINEL} on its own line."
                 )
+
+            if reason == "empty":
+                raise RuntimeError("pi returned empty responses (no content in any turn)")
 
             text = "\n\n".join(t["text"] for t in turns if t.get("text")).strip()
             if not text:

@@ -1,5 +1,5 @@
 """Stage s04: Implementation — a real tool-using agent that implements the
-approved plan, keeping a walkthrough and todo, committing after every round.
+approved plan, keeping a walkthrough and todo, committing when the stage completes.
 
 Modeled on Plan Review's hop loop. Runs kimi-k2.6 by default and switches to a
 glm fallback after >10 turns or two consecutive turns that fail the same tool the
@@ -204,7 +204,7 @@ class S04Implementation(Stage):
             while True:
                 state = paths.read_implementation_state(task_id)
                 existing_turns = list(state.get("turns", []))
-                total = len(existing_turns)
+                total = pi_runner.count_turn_groups(existing_turns)
                 if total >= IMPL_MAX_TURNS:
                     stop_reason = "turn_cap"
                     break
@@ -239,7 +239,7 @@ class S04Implementation(Stage):
                     model=current_model,
                     session_id=f"impl-{task_id}",
                     sessions_dir=paths.implementation_sessions_dir(task_id),
-                    tools="bash,read,edit,write",
+                    tools="bash,read,edit,write,mcp",
                     message=message,
                     start=start,
                     sentinel=IMPL_SENTINEL,
@@ -250,9 +250,6 @@ class S04Implementation(Stage):
                     persist_turn=persist,
                     hop=round_n,
                 )
-
-                # Commit each round of work preview (best-effort).
-                git_utils.commit(paths.task_dir(task_id), f"work round {round_n} {task_id}")
 
                 # Switch to the fallback model on repeated failure or turn overrun.
                 all_turns = existing_turns + new_turns
@@ -266,6 +263,8 @@ class S04Implementation(Stage):
                     paths.write_implementation_state(task_id, st)
                     logger.info("implementation: switching to fallback model %s", fallback_model)
 
+                if reason == "empty":
+                    raise RuntimeError("pi returned empty responses (no content in any turn)")
                 if reason == "sentinel":
                     stop_reason = "sentinel"
                     break
@@ -376,7 +375,7 @@ class S04Implementation(Stage):
         if phase == "running":
             parts.append(
                 render_spinner(
-                    f"Implementing… {len(turns)}/{IMPL_MAX_TURNS} turns · model {model}"
+                    f"Implementing… {pi_runner.count_turn_groups(turns)}/{IMPL_MAX_TURNS} turns · model {model}"
                 )
             )
 

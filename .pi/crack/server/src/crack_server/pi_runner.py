@@ -303,6 +303,23 @@ def turn_has_content(current_turn: dict) -> bool:
     )
 
 
+def count_turn_groups(turns: list[dict]) -> int:
+    """Count turn *groups*: a consecutive streak of tool-calling turns counts once.
+
+    Turn caps budget model reasoning, not file reads, so a run of turns that only
+    exist to drive tools is one group. This is the same rule run_agent_hop
+    applies incrementally, so stage loops can derive the counted total from the
+    persisted turn list."""
+    count = 0
+    prev_had_tools = False
+    for turn in turns:
+        had_tools = bool(turn.get("tool_blocks"))
+        if not (had_tools and prev_had_tools):
+            count += 1
+        prev_had_tools = had_tools
+    return count
+
+
 def truncate_output(text: str, max_lines: int = READ_MAX_LINES, max_chars: int = READ_MAX_CHARS) -> tuple[str, str | None]:
     """Truncate tool output to max_lines / max_chars (whichever hits first).
 
@@ -443,7 +460,7 @@ def run_agent_hop(
     model: str,
     session_id: str,
     sessions_dir: Path,
-    tools: str,
+    tools: str | None,
     message: str,
     start: float,
     sentinel: str | None,
@@ -457,13 +474,18 @@ def run_agent_hop(
     """Run one hop of a tool-using agent and stream its JSON events.
 
     Generic form of the old `_run_explore_hop`, parameterized on model / session /
-    tools / caps so multiple stages can share it. A hop is capped at
-    ``turns_per_hop`` turn_end events; the pi session is persisted under
+    tools / caps so multiple stages can share it. ``tools=None`` omits ``--tools``
+    so pi runs with every tool it has (built-in + extension, e.g. MCP). A hop is
+    capped at ``turns_per_hop`` *counted* turns; the pi session is persisted under
     ``sessions_dir`` so the next hop/step resumes it via the same --session-id.
-    ``persist_turn(current_turn, hop)`` is called for every completed turn.
-    ``sentinel`` (optional) ends the hop early when it appears in assistant text.
-    Returns the stop reason: "sentinel", "hop_cap", "turn_cap", "time_cap", or
-    "agent_end" (pi finished on its own)."""
+    ``persist_turn(current_turn, hop)`` is called for every completed non-empty
+    turn. Turn counting follows ``count_turn_groups``: a consecutive streak of
+    tool-calling turns increments the counter only once, and turns with no
+    content at all are neither persisted nor counted. ``sentinel`` (optional)
+    ends the hop early when it appears in assistant text. Returns the stop
+    reason: "sentinel", "hop_cap", "turn_cap", "time_cap", "agent_end" (pi
+    finished on its own), or "empty" (pi repeatedly returned content-less turns).
+    """
     sessions_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -473,8 +495,10 @@ def run_agent_hop(
         "-p",
         "--model",
         model,
-        "--tools",
-        tools,
+    ]
+    if tools is not None:
+        cmd += ["--tools", tools]
+    cmd += [
         "--session-id",
         session_id,
         "--session-dir",
@@ -509,6 +533,9 @@ def run_agent_hop(
         # turn_end / toolResult events can attach elapsed seconds to the turn dict.
         turn_started_at: float | None = None
         tool_starts: dict = {}
+        # Group counting (see count_turn_groups): a streak of consecutive
+        # tool-calling turns increments the turn counter only once.
+        prev_had_tools = False
 
         def _persist(turn: dict, h: int) -> None:
             nonlocal persisted
@@ -576,12 +603,26 @@ def run_agent_hop(
                     break
 
                 if etype == "turn_end":
-                    hop_turns += 1
-                    total += 1
+                    if not turn_has_content(current_turn):
+                        # Content-less turns (empty model responses) are noise:
+                        # never persist them and never spend turn budget on them.
+                        logger.warning(
+                            "%s hop %d: empty turn (no text/thinking/tool blocks); skipped",
+                            log_prefix, hop,
+                        )
+                        prev_had_tools = False
+                        continue
+                    had_tools = bool(current_turn.get("tool_blocks"))
+                    counted = not (had_tools and prev_had_tools)
+                    prev_had_tools = had_tools
+                    if counted:
+                        hop_turns += 1
+                        total += 1
                     _persist(current_turn, hop)
                     logger.info(
-                        "%s hop %d: completed turn %d/%d (hop), %d/%d (total)",
+                        "%s hop %d: completed turn %d/%d (hop), %d/%d (total)%s",
                         log_prefix, hop, hop_turns, turns_per_hop, total, max_turns,
+                        "" if counted else " (tool-group continuation, not counted)",
                     )
                     if total >= max_turns:
                         reason = "turn_cap"
@@ -635,7 +676,21 @@ def run_agent_hop(
 
         failed = not res["terminated_by_us"] and res["returncode"] not in (0, None)
         if not failed:
-            return res["reason"]
+            # A clean exit that persisted no real turns means the model returned
+            # only content-less responses: retry, then surface "empty" so callers
+            # fail the stage instead of treating silence as success.
+            if res["persisted"] > 0 or res["reason"] != "agent_end":
+                return res["reason"]
+            if attempt == PI_RETRY_ATTEMPTS - 1:
+                logger.error(
+                    "%s hop %d: pi returned only empty turns after %d attempts",
+                    log_prefix, hop, PI_RETRY_ATTEMPTS,
+                )
+                return "empty"
+            logger.warning(
+                "%s hop %d: pi returned only empty turns; retrying", log_prefix, hop
+            )
+            continue
 
         last_detail = res["detail"]
         last_rc = res["returncode"]

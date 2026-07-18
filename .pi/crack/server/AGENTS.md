@@ -4,10 +4,12 @@ Small FastAPI + htmx + pico.css app. `src/crack_server/app.py` is a thin
 routing layer (task/prompt CRUD, title regen, delegation); `paths.py` holds all
 filesystem access; `pi_runner.py` the shared `pi` subprocess machinery (rate
 limiting, single-shot calls, the JSON-mode hop runner); `models.py` the
-`pi --list-models` cache; and `stages/` the pipeline stages (auto-discovered
-`sNN_*.py` modules with a module-level `STAGE = <Stage>()` — see
-`stages/base.py`). `static/app.css` / `static/app.js` hold the few bits of real
-CSS/JS (linked from `_render_base`).
+`pi --list-models` cache; `chats.py` the unscripted chats (free-form pi
+sessions outside the pipeline, state under `.pi/crack/unscripted_chats/`,
+worker jobs dispatched via the `__chat__` pseudo-slug); and `stages/` the
+pipeline stages (auto-discovered `sNN_*.py` modules with a module-level
+`STAGE = <Stage>()` — see `stages/base.py`). `static/app.css` / `static/app.js`
+hold the few bits of real CSS/JS (linked from `_render_base`).
 
 ## The server is always running — use it
 
@@ -213,11 +215,22 @@ Important implementation details:
   or outerHTML swaps of elements whose tag changes — that combination was the
   bug that could clobber the whole title row down to a lone input.
 - Explore runs in **hops**: up to `EXPLORE_MAX_HOPS` (3) pi invocations of at
-  most `EXPLORE_TURNS_PER_HOP` (5) `turn_end` events each, chained through one
+  most `EXPLORE_TURNS_PER_HOP` (5) *counted* turns each, chained through one
   pi session (`--session-id explore-<task> --session-dir …/explore/sessions`).
-  The worker counts `turn_end`s and terminates the subprocess at the cap
+  The worker counts turns and terminates the subprocess at the cap
   because `pi --mode json` has no `--max-turns` flag; the session file is
   written incrementally, so a SIGTERM'd session still resumes cleanly.
+  - Turn counting follows `pi_runner.count_turn_groups`: a consecutive streak
+    of tool-calling turns increments the cap counter only once (turn budget is
+    for model reasoning, not file reads); every non-empty turn is still
+    persisted to the trajectory. Content-less turns (empty model responses)
+    are neither persisted nor counted; a hop where *every* turn is empty is
+    retried, then reported as stop reason `empty`, which stages turn into an
+    error instead of a fake "done" (this was the missing-trajectory bug: an
+    unauthenticated model returned 60 empty responses that all counted).
+  - `run_agent_hop(tools=None)` omits `--tools` entirely → all built-in +
+    extension tools (incl. the `mcp` proxy tool from pi-mcp-adapter); the
+    stage allowlists name `mcp` explicitly for the same reason.
   - **`--session-id` alone resumes an existing session** — do NOT add
     `--continue`, pi rejects the combination (`Error: --session-id cannot be
     combined with --continue`).

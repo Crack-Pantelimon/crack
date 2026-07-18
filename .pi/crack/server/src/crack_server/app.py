@@ -22,7 +22,7 @@ from markdown_it import MarkdownIt
 
 from crack_server import git_utils
 from crack_server import models as models_mod
-from crack_server import paths, pi_runner, queue, stages
+from crack_server import chats, paths, pi_runner, queue, stages
 from crack_server.stages.base import STATUS_COLORS
 
 # Pseudo-stage slug for the non-stage background title-regen job on the queue.
@@ -504,6 +504,8 @@ def index() -> HTMLResponse:
         {stage_items}
       </ul>
     </section>
+
+    {chats.render_home_section()}
     """
     return HTMLResponse(_render_base("Crack Tasks", body))
 
@@ -913,3 +915,45 @@ def prompt_row(task_id: str, filename: str, editing: bool = Query(default=False)
         return HTMLResponse(_render_prompt_row(task_id, filename, editing=editing))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail="not found") from e
+
+
+# ---------------------------------------------------------------------------
+# Unscripted chats (logic in chats.py; worker dispatch via chats.CHAT_JOB_SLUG)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/chats")
+def api_create_chat() -> Response:
+    """Create a new unscripted chat and redirect (303) into its chat page."""
+    return chats.create_chat()
+
+
+@app.get("/chats/{chat_id}", response_class=HTMLResponse)
+def chat_page(chat_id: str) -> HTMLResponse:
+    chats.check_chat_id(chat_id)
+    info = paths.read_chat_info(chat_id)
+    title = info.get("title") or f"Chat {chat_id}"
+    return HTMLResponse(_render_base(f"Crack Chat: {_esc(title)}", chats.render_chat_page_body(chat_id)))
+
+
+@app.get("/chats/{chat_id}/status", response_class=HTMLResponse)
+def chat_status(chat_id: str) -> HTMLResponse:
+    """Polling fragment returned while the agent is working on a reply."""
+    chats.check_chat_id(chat_id)
+    return HTMLResponse(chats.render_chat_content(chat_id))
+
+
+@app.post("/api/chats/{chat_id}/messages", response_class=HTMLResponse)
+def api_chat_message(
+    chat_id: str,
+    msg: str = Form(default=""),
+    model: str = Form(default=""),
+) -> HTMLResponse:
+    """Append a user message, enqueue the agent, return the updated chat fragment."""
+    return chats.post_message(chat_id, msg, model or None)
+
+
+@app.post("/api/chats/{chat_id}/model", response_class=HTMLResponse)
+def api_chat_model(chat_id: str, model: str = Form(...)) -> HTMLResponse:
+    """Persist the chat's model selection (dropdown saves on change)."""
+    return chats.set_model(chat_id, model)

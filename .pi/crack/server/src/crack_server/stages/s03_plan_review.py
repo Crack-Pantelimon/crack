@@ -238,7 +238,7 @@ class S03PlanReview(Stage):
                 turns_per_hop=CRITIC_TURNS_PER_STEP,
                 max_turns=CRITIC_MAX_TURNS,
                 timeout_seconds=CRITIC_TIMEOUT_SECONDS,
-                total_turns=len(existing_turns) + len(new_turns),
+                total_turns=pi_runner.count_turn_groups(existing_turns + new_turns),
                 persist_turn=persist,
                 hop=hop,
             )
@@ -248,6 +248,9 @@ class S03PlanReview(Stage):
                 "Stop calling tools now. Complete your response — emit either a "
                 "```questions JSON block or PLAN_REVISED on its own line."
             )
+
+        if reason == "empty":
+            raise RuntimeError("pi returned empty responses (no content in any turn)")
 
         text = "\n\n".join(t["text"] for t in new_turns if t.get("text")).strip()
         return text, new_turns
@@ -268,7 +271,7 @@ class S03PlanReview(Stage):
                     )
                     .replace("{plan}", plan_md)
                 )
-                text, _ = self._run_critic_hop(task_id, message, tools="bash,read", log_suffix="critique")
+                text, _ = self._run_critic_hop(task_id, message, tools="bash,read,mcp", log_suffix="critique")
                 questions = parse_questions(text)
                 if not questions:
                     questions = [
@@ -298,7 +301,7 @@ class S03PlanReview(Stage):
                 )
                 message = self.load_template("grill_followup.md").replace("{qa}", qa_all)
                 text, _ = self._run_critic_hop(
-                    task_id, message, tools="bash,read", log_suffix="followup"
+                    task_id, message, tools="bash,read,mcp", log_suffix="followup"
                 )
                 questions = parse_questions(text)
                 if questions and rnd < MAX_AUTO_ROUNDS and READY_TO_REVISE not in text:
@@ -325,7 +328,7 @@ class S03PlanReview(Stage):
                     "Emit a ```questions JSON block with at most 5 clarifying questions."
                 )
                 text, _ = self._run_critic_hop(
-                    task_id, message, tools="bash,read", log_suffix="grill"
+                    task_id, message, tools="bash,read,mcp", log_suffix="grill"
                 )
                 questions = parse_questions(text)
                 if not questions:
@@ -364,7 +367,7 @@ class S03PlanReview(Stage):
                         "{plan_path}", str(plan_path)
                     )
                 text, _ = self._run_critic_hop(
-                    task_id, message, tools="bash,read,edit,write", log_suffix=step
+                    task_id, message, tools="bash,read,edit,write,mcp", log_suffix=step
                 )
                 if PLAN_REVISED_SENTINEL not in text:
                     logger.warning("plan_review: critic did not emit PLAN_REVISED; continuing")

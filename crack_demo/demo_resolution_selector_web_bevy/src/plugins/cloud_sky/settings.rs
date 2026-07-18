@@ -5,6 +5,12 @@ use bevy::prelude::*;
 pub struct CloudSkySettings {
     /// Hour of the day, 0..24. Sunrise ~6, noon 13, sunset ~19.
     pub time_of_day: f32,
+    /// Sunlight color temperature in Kelvin (1500..6000). In auto mode this is
+    /// overwritten every frame from `time_of_day`.
+    pub sun_temperature: f32,
+    /// When true, `auto_sun_temperature()` drives `sun_temperature` from
+    /// `time_of_day` and the manual slider is disabled.
+    pub auto_temperature: bool,
     /// Wind scroll speed of the cloud layers (uv units / second).
     pub wind_speed: f32,
     /// Wind direction in degrees (0 = +X, 90 = +Z).
@@ -40,6 +46,8 @@ impl Default for CloudSkySettings {
     fn default() -> Self {
         Self {
             time_of_day: 14.5,
+            sun_temperature: 5250.0,
+            auto_temperature: true,
             wind_speed: 0.02,
             wind_direction_deg: 45.0,
             cloud_scale: 0.23,

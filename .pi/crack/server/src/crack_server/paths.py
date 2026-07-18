@@ -12,7 +12,9 @@ TASK_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 PROMPT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.md$")
 STAGE_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
 PLAN_ARTEFACT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.(md|json|txt)$")
+CHAT_ID_RE = re.compile(r"^\d{13}(_\d+)?$")
 INFO_FILENAME = "info.json"
+CHAT_STATE_FILENAME = "chat.json"
 TITLE_REGEN_FILENAME = "title_regen.json"
 EXPLORE_FILENAME = "explore.json"
 PLAN_FILENAME = "plan.json"
@@ -531,3 +533,91 @@ def read_finished_state(task_id: str, root: Path | None = None) -> dict:
 
 def write_finished_state(task_id: str, state: dict, root: Path | None = None) -> None:
     _atomic_write_json(finished_path(task_id, root), state)
+
+
+# ---------------------------------------------------------------------------
+# Unscripted chats: free-form pi sessions outside the task pipeline
+# ---------------------------------------------------------------------------
+
+
+def unscripted_chats_dir(root: Path | None = None) -> Path:
+    return (root or project_root()) / ".pi" / "crack" / "unscripted_chats"
+
+
+def chat_dir(chat_id: str, root: Path | None = None) -> Path:
+    if not CHAT_ID_RE.fullmatch(chat_id):
+        raise ValueError("invalid chat_id")
+    return unscripted_chats_dir(root) / chat_id
+
+
+def list_chat_ids(root: Path | None = None) -> list[str]:
+    """Chat ids sorted newest first (ids are ms-epoch prefixed, so name sort = time sort)."""
+    base = unscripted_chats_dir(root)
+    if not base.is_dir():
+        return []
+    return sorted(
+        (p.name for p in base.iterdir() if p.is_dir() and CHAT_ID_RE.fullmatch(p.name)),
+        reverse=True,
+    )
+
+
+def generate_chat_id() -> str:
+    """Chat id: <ms_epoch_timestamp>. Collides only within the same millisecond."""
+    base = int(time.time() * 1000)
+    chat_id = str(base)
+    n = 0
+    while chat_dir(chat_id).exists():
+        n += 1
+        chat_id = f"{base}_{n}"
+    return chat_id
+
+
+def chat_info_path(chat_id: str, root: Path | None = None) -> Path:
+    return chat_dir(chat_id, root) / INFO_FILENAME
+
+
+def read_chat_info(chat_id: str, root: Path | None = None) -> dict:
+    path = chat_info_path(chat_id, root)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_chat_info(chat_id: str, info: dict, root: Path | None = None) -> None:
+    _atomic_write_json(chat_info_path(chat_id, root), info)
+
+
+def chat_state_path(chat_id: str, root: Path | None = None) -> Path:
+    return chat_dir(chat_id, root) / CHAT_STATE_FILENAME
+
+
+def read_chat_state(chat_id: str, root: Path | None = None) -> dict:
+    path = chat_state_path(chat_id, root)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_chat_state(chat_id: str, state: dict, root: Path | None = None) -> None:
+    _atomic_write_json(chat_state_path(chat_id, root), state)
+
+
+def chat_sessions_dir(chat_id: str, root: Path | None = None) -> Path:
+    """Pi session dir for the chat agent: …/unscripted_chats/<chat>/sessions/."""
+    return chat_dir(chat_id, root) / "sessions"
+
+
+def create_chat(chat_id: str, model: str, root: Path | None = None) -> dict:
+    """Create a new chat directory with info.json + chat.json; returns the info dict."""
+    directory = chat_dir(chat_id, root)
+    directory.mkdir(parents=True, exist_ok=False)
+    info = {"id": chat_id, "title": "", "model": model, "created_at": time.time()}
+    write_chat_info(chat_id, info, root)
+    write_chat_state(chat_id, {"phase": "idle", "exchanges": [], "error": "", "error_detail": ""}, root)
+    return info

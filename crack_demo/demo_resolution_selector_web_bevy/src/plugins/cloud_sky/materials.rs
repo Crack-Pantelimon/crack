@@ -10,6 +10,8 @@ use bevy::shader::ShaderRef;
 pub struct SkyParamsUniform {
     /// xyz = direction toward the sun, w = day factor (0 night .. 1 day).
     pub sun_dir: Vec4,
+    /// Sunlight color temperature in Kelvin (1500..6000).
+    pub sun_temperature: f32,
     /// x = cumulus amount, y = cirrus amount, z = storm amount, w = overcast.
     pub amounts: Vec4,
     /// x = cumulus octaves, y = cirrus octaves, z = storm octaves, w = cloud scale.

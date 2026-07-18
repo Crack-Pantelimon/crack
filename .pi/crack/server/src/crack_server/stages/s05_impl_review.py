@@ -138,7 +138,7 @@ class S05ImplReview(Stage):
             while True:
                 state = paths.read_impl_review_state(task_id)
                 existing_turns = list(state.get("turns", []))
-                total = len(existing_turns)
+                total = pi_runner.count_turn_groups(existing_turns)
                 if total >= REVIEW_MAX_TURNS:
                     stop_reason = "turn_cap"
                     break
@@ -169,7 +169,7 @@ class S05ImplReview(Stage):
                     model=self.model_for("reviewer"),
                     session_id=f"review-{task_id}",
                     sessions_dir=paths.impl_review_sessions_dir(task_id),
-                    tools="bash,read,edit,write",
+                    tools="bash,read,edit,write,mcp",
                     message=message,
                     start=start,
                     sentinel=REVIEW_SENTINEL,
@@ -181,8 +181,8 @@ class S05ImplReview(Stage):
                     hop=round_n,
                 )
 
-                git_utils.commit(paths.task_dir(task_id), f"review round {round_n} {task_id}")
-
+                if reason == "empty":
+                    raise RuntimeError("pi returned empty responses (no content in any turn)")
                 if reason == "sentinel":
                     stop_reason = "sentinel"
                     break
@@ -283,7 +283,7 @@ class S05ImplReview(Stage):
             parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
 
         if phase == "running":
-            parts.append(render_spinner(f"Reviewing… {len(turns)}/{REVIEW_MAX_TURNS} turns"))
+            parts.append(render_spinner(f"Reviewing… {pi_runner.count_turn_groups(turns)}/{REVIEW_MAX_TURNS} turns"))
 
         msg_count = max(len(turns) + len(parts), 1)
         return self.wrap_status(
