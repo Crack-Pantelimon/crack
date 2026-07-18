@@ -56,8 +56,9 @@ def _load_template(name: str) -> str:
 
 
 # Raw HTML is disabled: anything the model emits renders as escaped text, so the
-# summary cannot inject markup into the task page.
-_markdown = MarkdownIt("commonmark", {"html": False})
+# summary cannot inject markup into the task page. GFM pipe tables are enabled on
+# top of CommonMark — models routinely answer with tables (tool lists, comparisons).
+_markdown = MarkdownIt("commonmark", {"html": False}).enable("table")
 
 
 def _render_markdown(md_text: str) -> str:

@@ -1,6 +1,6 @@
 {
   "id": "1784395076237",
   "title": "",
-  "model": "nvidia/z-ai/glm-5.2",
+  "model": "nvidia/nemotron-3-nano-30b-a3b",
   "created_at": 1784395076.2383242
 }

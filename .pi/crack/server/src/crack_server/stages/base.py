@@ -581,11 +581,13 @@ def _render_tool_action_row(block: dict) -> str:
     return f"<tr><td>{action_type}</td><td>{middle}</td><td>{size}</td></tr>"
 
 
-def render_actions_table(turns: list[dict]) -> str:
+def render_actions_table(turns: list[dict], include_text: bool = True) -> str:
     """Render agent turns as one compact actions table (one row per action).
 
     Shared by every stage so Explore, Plan, and Plan Review look identical.
-    Turn text is cleaned of control blocks/sentinels before display."""
+    Turn text is cleaned of control blocks/sentinels before display. With
+    ``include_text=False`` the assistant text rows are omitted — used by the
+    chat surface, which renders those answers as markdown alongside the table."""
     rows: list[str] = []
     for turn in turns:
         # Content-less turns (empty model responses) have nothing to show.
@@ -600,7 +602,7 @@ def render_actions_table(turns: list[dict]) -> str:
         elapsed = turn.get("elapsed")
         if thinking:
             rows.append(_render_text_action_row("think", thinking, elapsed))
-        if text:
+        if include_text and text:
             rows.append(_render_text_action_row("text", text, elapsed))
         for block in turn.get("tool_blocks", []):
             rows.append(_render_tool_action_row(block))
@@ -613,9 +615,12 @@ def render_actions_table(turns: list[dict]) -> str:
     )
 
 
-def render_turns_trajectory(turns: list[dict]) -> str:
-    """Agent turns as one `.stage-msg`-wrapped actions table (Explore's look)."""
-    table = render_actions_table(turns)
+def render_turns_trajectory(turns: list[dict], include_text: bool = True) -> str:
+    """Agent turns as one `.stage-msg`-wrapped actions table (Explore's look).
+
+    ``include_text=False`` drops assistant text rows (the chat surface renders
+    those as markdown instead of as escaped snippets in the table)."""
+    table = render_actions_table(turns, include_text=include_text)
     if not table:
         return ""
     return f'<div class="stage-msg">{table}</div>'

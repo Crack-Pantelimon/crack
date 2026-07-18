@@ -19,3 +19,7 @@ context-*.md
 CLAUDE.md
 gain.ndjson
 .cursorrules
+
+# Browser-MCP (playwright / chrome-devtools) scratch output — generated during
+# agent tool runs, never source.
+.playwright-mcp/

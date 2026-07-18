@@ -19,6 +19,7 @@ from crack_server import app as _ui
 from crack_server import models as models_mod
 from crack_server import paths, pi_runner, queue
 from crack_server.stages.base import (
+    _clean_turn_text,
     render_error_msg,
     render_spinner,
     render_turns_trajectory,
@@ -94,6 +95,28 @@ def render_home_section() -> str:
 # -- chat page ----------------------------------------------------------------
 
 
+def render_chat_answer(turns: list[dict]) -> str:
+    """One exchange's agent output: the read/think/tool trajectory as a compact
+    table (assistant text excluded), then that assistant text rendered as
+    markdown. The model answers in markdown, so it must be rendered as HTML
+    rather than shown as an escaped snippet in the actions table."""
+    parts: list[str] = []
+    trajectory = render_turns_trajectory(turns, include_text=False)
+    if trajectory:
+        parts.append(trajectory)
+    answer = "\n\n".join(
+        cleaned
+        for turn in turns
+        if (cleaned := _clean_turn_text(turn.get("text", "")))
+    )
+    if answer:
+        parts.append(
+            '<div class="stage-msg chat-assistant"><strong>Assistant:</strong>'
+            f"{_ui._render_markdown(answer)}</div>"
+        )
+    return "".join(parts)
+
+
 def render_chat_form(chat_id: str, info: dict) -> str:
     """Bottom form: cached-model dropdown (saves on change) + multiline input + Send."""
     current = info.get("model") or DEFAULT_CHAT_MODEL
@@ -136,7 +159,7 @@ def render_chat_content(chat_id: str) -> str:
         )
         turns = exchange.get("turns", [])
         if turns:
-            parts.append(render_turns_trajectory(turns))
+            parts.append(render_chat_answer(turns))
 
     if phase != "chatting" and state.get("error"):
         parts.append(render_error_msg(state.get("error", ""), state.get("error_detail", "")))
