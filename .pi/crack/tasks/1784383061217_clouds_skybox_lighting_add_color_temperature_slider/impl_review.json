@@ -1,0 +1,24 @@
+{
+  "phase": "running",
+  "turns": [
+    {
+      "hop": 1,
+      "text": "",
+      "thinking": "",
+      "tool_blocks": [],
+      "elapsed": 0.391
+    },
+    {
+      "hop": 2,
+      "text": "",
+      "thinking": "",
+      "tool_blocks": [],
+      "elapsed": 0.356
+    }
+  ],
+  "total_turns": 2,
+  "stop_reason": null,
+  "error": "",
+  "started_at": 1784388379.867591,
+  "finished_at": null
+}
