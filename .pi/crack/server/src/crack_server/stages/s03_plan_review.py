@@ -16,8 +16,11 @@ from crack_server.stages.base import (
     collect_answers,
     format_qa_for_prompt,
     parse_questions,
+    render_error_msg,
     render_qa_history,
     render_questions_form,
+    render_retry_button,
+    render_spinner,
     render_turns_trajectory,
 )
 from crack_server import app as _ui
@@ -383,8 +386,29 @@ class S03PlanReview(Stage):
             state = paths.read_plan_review_state(task_id)
             state["phase"] = "error"
             state["error"] = str(e)
+            state["error_detail"] = getattr(e, "detail", "")
+            state["error_step"] = step
             state["finished_at"] = time.time()
             paths.write_plan_review_state(task_id, state)
+
+    def retry_from_error(self, task_id: str) -> None:
+        """Resume the failed review step, continuing the critic's pi session."""
+        state = paths.read_plan_review_state(task_id)
+        if state.get("phase") != "error":
+            return
+        step = state.get("error_step") or "critique"
+        running_phase = {
+            "critique": "review_running",
+            "followup": "resuming",
+            "grill": "resuming",
+            "revise": "revising",
+            "reject": "revising",
+        }.get(step, "review_running")
+        state["phase"] = running_phase
+        state["error"] = ""
+        state["error_detail"] = ""
+        paths.write_plan_review_state(task_id, state)
+        self.enqueue_step(task_id, step)
 
     # -- rendering --------------------------------------------------------------
 
@@ -412,21 +436,11 @@ class S03PlanReview(Stage):
                 plan_md = ""
         todo_md = self._read_todo(task_id)
 
-        if phase in RUNNING_PHASES:
-            label = {
-                "review_running": "Reviewing plan…",
-                "resuming": "Processing answers…",
-                "revising": "Revising plan…",
-            }.get(phase, "Working…")
-            parts.append(f'<div class="stage-msg"><p aria-busy="true">{label}</p></div>')
+        # Trajectory first in every phase; the spinner / error / forms follow it.
+        if phase != "done":
             parts.append(turns_html)
-        elif phase == "error":
-            parts.append(
-                f'<div class="stage-msg"><p style="color: #c44;">Error: {_esc(state.get("error", ""))}</p></div>'
-            )
-            parts.append(turns_html)
-        elif phase == "awaiting_answers":
-            parts.append(turns_html)
+
+        if phase == "awaiting_answers":
             parts.append(qa_html)
             rnd = int(state.get("round", 1))
             questions = state.get("rounds", [{}])[-1].get("questions", [])
@@ -441,7 +455,6 @@ class S03PlanReview(Stage):
                 )
             )
         elif phase == "awaiting_approval":
-            parts.append(turns_html)
             parts.append(qa_html)
             if plan_md:
                 parts.append(
@@ -487,13 +500,29 @@ class S03PlanReview(Stage):
                     f'<div class="stage-msg plan-todo">{_ui._render_markdown(todo_md)}</div>'
                 )
 
+        if phase == "error":
+            parts.append(
+                render_error_msg(state.get("error", ""), state.get("error_detail", ""))
+            )
+
         if phase in ("idle", "done", "error"):
             label = "Re-review" if phase in ("done", "error") else "Start review"
             if self.is_enabled(task_id) or phase in ("done", "error"):
-                parts.append(
-                    f'<div class="stage-msg"><button hx-post="{self.start_url(task_id)}" '
-                    f'hx-target="#{content_id}" hx-swap="outerHTML">{label}</button></div>'
+                buttons = (
+                    f'<button hx-post="{self.start_url(task_id)}" '
+                    f'hx-target="#{content_id}" hx-swap="outerHTML">{label}</button>'
                 )
+                if phase == "error":
+                    buttons += render_retry_button(self, task_id, state.get("error_step"))
+                parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
+
+        if phase in RUNNING_PHASES:
+            label = {
+                "review_running": "Reviewing plan…",
+                "resuming": "Processing answers…",
+                "revising": "Revising plan…",
+            }.get(phase, "Working…")
+            parts.append(render_spinner(label))
 
         msg_count = len(state.get("turns", [])) + len(
             [r for r in state.get("rounds", []) if r.get("answers")]

@@ -15,8 +15,8 @@ import shutil
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from markdown_it import MarkdownIt
 
@@ -224,57 +224,73 @@ def _render_task_glyph(task_id: str, oob: bool = False) -> str:
     )
 
 
-def furthest_active_slug(task_id: str) -> str:
-    """Last running/awaiting stage, else last done, else first stage."""
+def furthest_engaged_slug(task_id: str) -> str:
+    """The last stage that has been *engaged* (status not idle/disabled — i.e.
+    running, awaiting, done, or error), else the first stage.
+
+    This is the auto-follow frontier: while the user views this stage, the page
+    polls and jumps forward the moment a later stage becomes engaged."""
     if not stages.REGISTRY:
         return ""
-    last_running: str | None = None
-    last_done: str | None = None
+    frontier = stages.REGISTRY[0].slug
     for stage in stages.REGISTRY:
-        st = stage.status(task_id)
-        if st in ("running", "awaiting"):
-            last_running = stage.slug
-        elif st == "done":
-            last_done = stage.slug
-    if last_running:
-        return last_running
-    if last_done:
-        return last_done
-    return stages.REGISTRY[0].slug
+        if stage.status(task_id) not in ("idle", "disabled"):
+            frontier = stage.slug
+    return frontier
 
 
-def _render_stage_tabs(task_id: str) -> tuple[str, str, str]:
-    """Return (tab nav HTML, panels HTML, active slug)."""
-    active = furthest_active_slug(task_id)
+def _stage_viewable(task_id: str, stage: "stages.Stage") -> bool:
+    """A stage's tab is navigable once it is enabled or has been engaged."""
+    return stage.is_enabled(task_id) or stage.status(task_id) not in ("idle", "disabled")
+
+
+def view_url(task_id: str, slug: str) -> str:
+    return f"/tasks/{task_id}/view/{slug}"
+
+
+def _render_stage_tabs_nav(task_id: str, active_slug: str) -> str:
+    """Tab bar as real links (<a> for viewable stages, disabled <span> for locked
+    ones). Navigating between tabs is a full page load — no client-side tab state —
+    so the server can force-jump the user by redirecting to another tab's URL."""
     tabs: list[str] = []
-    panels: list[str] = []
-
     for stage in stages.REGISTRY:
         st = stage.status(task_id)
-        enabled = stage.is_enabled(task_id)
+        viewable = _stage_viewable(task_id, stage)
         color_cls = STATUS_COLORS.get(st, "tab--idle")
-        if not enabled and st in ("idle", "disabled"):
+        if not viewable:
             color_cls = "tab--disabled"
-        disabled_attr = "" if enabled or st not in ("idle", "disabled") else " disabled"
-        selected = " selected" if stage.slug == active else ""
-        panel_active = " active" if stage.slug == active else ""
+        selected = " selected" if stage.slug == active_slug else ""
         safe_slug = _esc(stage.slug)
         safe_name = _esc(stage.name)
-        tabs.append(
-            f'<button type="button" class="tab {color_cls}{selected}"'
-            f' data-slug="{safe_slug}" data-target="#panel-{safe_slug}"{disabled_attr}>'
-            f'{safe_name} <span class="tab-dot"></span></button>'
-        )
-        panels.append(
-            f'<section class="stage-panel{panel_active}" id="panel-{safe_slug}"'
-            f' data-slug="{safe_slug}">{stage.render_section(task_id)}</section>'
-        )
+        label = f'{safe_name} <span class="tab-dot"></span>'
+        if viewable:
+            tabs.append(
+                f'<a class="tab {color_cls}{selected}" href="{_esc(view_url(task_id, stage.slug))}"'
+                f' data-slug="{safe_slug}">{label}</a>'
+            )
+        else:
+            tabs.append(
+                f'<span class="tab {color_cls}{selected} disabled" data-slug="{safe_slug}">{label}</span>'
+            )
+    return f'<nav id="stage-tabs" class="stage-tabs">{"".join(tabs)}</nav>'
 
-    nav = f'<nav id="stage-tabs" class="stage-tabs">{"".join(tabs)}</nav>'
-    panel_html = (
-        f'<div id="stage-panels" data-active="{_esc(active)}">{"".join(panels)}</div>'
+
+def _render_stage_follow(task_id: str, slug: str) -> str:
+    """A tiny self-polling element that force-navigates the user forward.
+
+    Included only when viewing the *frontier* stage (and it isn't the last one).
+    It polls ``/follow/{slug}``; when a later stage becomes engaged, that endpoint
+    responds with an ``HX-Redirect`` header and htmx navigates to the new tab —
+    this is how "jump the user to a different tab" is enforced from the server."""
+    if not stages.REGISTRY or slug == stages.REGISTRY[-1].slug:
+        return ""
+    if furthest_engaged_slug(task_id) != slug:
+        return ""  # browsing a past stage — do not auto-follow
+    safe = _esc(slug)
+    return (
+        f'<div class="stage-follow" hx-get="/tasks/{_esc(task_id)}/follow/{safe}"'
+        ' hx-trigger="every 1.5s" hx-swap="outerHTML"></div>'
     )
-    return nav, panel_html, active
 
 
 def _render_task_header(task_id: str, info: dict) -> str:
@@ -749,12 +765,10 @@ async def api_stage_action(task_id: str, slug: str, action: str, request: Reques
     stage = _get_stage_or_404(slug)
     form = await request.form()
     stage.handle_action(action, task_id, form)
-    fragment = stage.render_status(task_id)
-    if slug == "plan_review" and action == "approve":
-        fragment += _render_task_glyph(task_id, oob=True)
-        impl = stages.get("implementation")
-        if impl is not None:
-            fragment += impl.render_status(task_id, oob=True)
+    # The panel swaps in place; the tab glyph is refreshed out-of-band. Any tab
+    # *jump* (e.g. approve → implementation) is handled by the auto-follow poller,
+    # which force-navigates the browser once a later stage becomes engaged.
+    fragment = stage.render_status(task_id) + _render_task_glyph(task_id, oob=True)
     return HTMLResponse(fragment)
 
 
@@ -818,18 +832,18 @@ def api_models(force: bool = Query(default=False)) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@app.get("/tasks/{task_id}", response_class=HTMLResponse)
-def task_page(task_id: str) -> HTMLResponse:
-    _check_task_id(task_id)
-
-    info = paths.read_info(task_id)
+def _render_task_view_body(task_id: str, info: dict, active_slug: str) -> str:
+    """Full task-page body: header, prompts, the tab bar (links), and the single
+    active stage's panel plus its auto-follow poller."""
     safe_id = _esc(task_id)
-    safe_title = _esc(info.get("title", task_id))
     header = _render_task_header(task_id, info)
     next_name = paths.next_prompt_filename(task_id) or "prompt.md"
-    tabs_nav, tabs_panels, _ = _render_stage_tabs(task_id)
+    tabs_nav = _render_stage_tabs_nav(task_id, active_slug)
+    stage = _get_stage_or_404(active_slug)
+    panel = stage.render_section(task_id)
+    follow = _render_stage_follow(task_id, active_slug)
 
-    body = f"""
+    return f"""
     {header}
     <section id="prompt-list">
       <div hx-get="/tasks/{safe_id}/prompts-list" hx-trigger="load"></div>
@@ -845,9 +859,43 @@ def task_page(task_id: str) -> HTMLResponse:
     </details>
 
     {tabs_nav}
-    {tabs_panels}
+    <div id="stage-panels" data-active="{_esc(active_slug)}">
+      <section class="stage-panel active" id="panel-{_esc(active_slug)}" data-slug="{_esc(active_slug)}">{panel}</section>
+    </div>
+    {follow}
     """
+
+
+@app.get("/tasks/{task_id}", response_class=HTMLResponse)
+def task_page(task_id: str) -> Response:
+    """Bare task URL redirects to the furthest engaged stage's tab page."""
+    _check_task_id(task_id)
+    active = furthest_engaged_slug(task_id)
+    return RedirectResponse(url=view_url(task_id, active), status_code=302)
+
+
+@app.get("/tasks/{task_id}/view/{slug}", response_class=HTMLResponse)
+def stage_view(task_id: str, slug: str) -> HTMLResponse:
+    """One tab = one page: shows a single stage's panel. Tabs are <a> links between
+    these pages, so the server can force-navigate the user by responding with a
+    redirect to another tab's URL."""
+    _check_task_id(task_id)
+    _get_stage_or_404(slug)
+    info = paths.read_info(task_id)
+    safe_title = _esc(info.get("title", task_id))
+    body = _render_task_view_body(task_id, info, slug)
     return HTMLResponse(_render_base(f"Crack Task: {safe_title}", body, task_id))
+
+
+@app.get("/tasks/{task_id}/follow/{slug}", response_class=HTMLResponse)
+def stage_follow_poll(task_id: str, slug: str) -> HTMLResponse:
+    """Auto-follow poll: redirect the browser to the frontier stage's tab when it
+    moves past ``slug``; otherwise re-emit the poller so it keeps watching."""
+    _check_task_id(task_id)
+    active = furthest_engaged_slug(task_id)
+    if active != slug:
+        return HTMLResponse("", headers={"HX-Redirect": view_url(task_id, active)})
+    return HTMLResponse(_render_stage_follow(task_id, slug))
 
 
 @app.get("/tasks/{task_id}/prompts-list", response_class=HTMLResponse)

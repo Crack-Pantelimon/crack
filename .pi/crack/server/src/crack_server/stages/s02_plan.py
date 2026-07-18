@@ -24,8 +24,11 @@ from crack_server.stages.base import (
     collect_answers,
     format_qa_for_prompt,
     parse_questions,
+    render_error_msg,
     render_qa_history,
     render_questions_form,
+    render_retry_button,
+    render_spinner,
     render_turns_trajectory,
 )
 from crack_server import app as _ui
@@ -262,6 +265,8 @@ class S02Plan(Stage):
             state = paths.read_plan_state(task_id)
             state["phase"] = "error"
             state["error"] = str(e)
+            state["error_detail"] = getattr(e, "detail", "")
+            state["error_step"] = "draft" if initial else "resume"
             state["finished_at"] = time.time()
             paths.write_plan_state(task_id, state)
 
@@ -311,8 +316,27 @@ class S02Plan(Stage):
             state = paths.read_plan_state(task_id)
             state["phase"] = "error"
             state["error"] = str(e)
+            state["error_detail"] = getattr(e, "detail", "")
+            state["error_step"] = "final"
             state["finished_at"] = time.time()
             paths.write_plan_state(task_id, state)
+
+    def retry_from_error(self, task_id: str) -> None:
+        """Resume the failed draft/resume/final step, continuing the pi session."""
+        state = paths.read_plan_state(task_id)
+        if state.get("phase") != "error":
+            return
+        step = state.get("error_step") or "draft"
+        running_phase = {
+            "draft": "draft_running",
+            "resume": "resuming",
+            "final": "final_running",
+        }.get(step, "draft_running")
+        state["phase"] = running_phase
+        state["error"] = ""
+        state["error_detail"] = ""
+        paths.write_plan_state(task_id, state)
+        self.enqueue_step(task_id, step)
 
     # -- rendering --------------------------------------------------------------
 
@@ -336,27 +360,24 @@ class S02Plan(Stage):
         parts: list[str] = []
         trajectory = render_turns_trajectory(state.get("turns", []))
 
-        if phase == "draft_running":
-            parts.append('<div class="stage-msg"><p aria-busy="true">Drafting plan… round 1</p></div>')
-            parts.append(trajectory)
-        elif phase == "resuming":
-            parts.append(
-                f'<div class="stage-msg"><p aria-busy="true">Drafting plan… round {rnd}</p></div>'
-            )
-            parts.append(trajectory)
-        elif phase == "final_running":
-            parts.append(trajectory)
-            parts.append(
-                '<div class="stage-msg"><p aria-busy="true">Writing final plan…</p></div>'
-            )
-        elif phase == "error":
-            parts.append(
-                f'<div class="stage-msg"><p style="color: #c44;">Error: {_esc(state.get("error", ""))}</p></div>'
-            )
-            parts.append(trajectory)
-        elif phase == "awaiting_answers":
-            parts.append(trajectory)
+        if phase == "done":
+            finished_at = state.get("finished_at")
+            meta = f"planned {_ui._format_ago(finished_at)}" if finished_at else "planned"
+            rounds = len(state.get("rounds", []))
+            meta += f" · {rounds} Q&A round{'s' if rounds != 1 else ''}"
+            final_elapsed = state.get("final_elapsed")
+            if final_elapsed is not None:
+                meta += f" · final {final_elapsed:.1f}s"
+            parts.append(f'<div class="stage-msg plan-meta"><small>{meta}</small></div>')
+
+        # Trajectory first, then any Q&A form / final plan / error / spinner below it,
+        # so the spinner (and error) always sit under the last added item.
+        parts.append(trajectory)
+
+        if phase in ("awaiting_answers", "done"):
             parts.append(render_qa_history(state.get("rounds", [])))
+
+        if phase == "awaiting_answers":
             questions = state.get("rounds", [{}])[-1].get("questions", [])
             parts.append(
                 render_questions_form(
@@ -369,16 +390,6 @@ class S02Plan(Stage):
                 )
             )
         elif phase == "done":
-            finished_at = state.get("finished_at")
-            meta = f"planned {_ui._format_ago(finished_at)}" if finished_at else "planned"
-            rounds = len(state.get("rounds", []))
-            meta += f" · {rounds} Q&A round{'s' if rounds != 1 else ''}"
-            final_elapsed = state.get("final_elapsed")
-            if final_elapsed is not None:
-                meta += f" · final {final_elapsed:.1f}s"
-            parts.append(f'<div class="stage-msg plan-meta"><small>{meta}</small></div>')
-            parts.append(trajectory)
-            parts.append(render_qa_history(state.get("rounds", [])))
             final_md = state.get("final_md", "")
             if final_md:
                 parts.append(
@@ -389,12 +400,28 @@ class S02Plan(Stage):
                 f"<code>tasks/{safe_id}/plan/final_plan.md</code></small></div>"
             )
 
+        if phase == "error":
+            parts.append(
+                render_error_msg(state.get("error", ""), state.get("error_detail", ""))
+            )
+
         if phase in ("idle", "done", "error"):
             label = "Re-plan" if phase in ("done", "error") else "Plan"
-            parts.append(
-                f'<div class="stage-msg"><button hx-post="{self.start_url(task_id)}" '
-                f'hx-target="#{content_id}" hx-swap="outerHTML">{label}</button></div>'
+            buttons = (
+                f'<button hx-post="{self.start_url(task_id)}" '
+                f'hx-target="#{content_id}" hx-swap="outerHTML">{label}</button>'
             )
+            if phase == "error":
+                buttons += render_retry_button(self, task_id, state.get("error_step"))
+            parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
+
+        if phase in RUNNING_PHASES:
+            label = {
+                "draft_running": "Drafting plan… round 1",
+                "resuming": f"Drafting plan… round {rnd}",
+                "final_running": "Writing final plan…",
+            }.get(phase, "Working…")
+            parts.append(render_spinner(label))
 
         msg_count = self._count_msgs(state, phase)
         return self.wrap_status(

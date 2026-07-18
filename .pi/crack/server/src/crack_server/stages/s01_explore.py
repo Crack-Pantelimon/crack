@@ -17,7 +17,14 @@ import subprocess
 import time
 
 from crack_server import paths, pi_runner
-from crack_server.stages.base import Part, Stage, render_actions_table
+from crack_server.stages.base import (
+    Part,
+    Stage,
+    render_actions_table,
+    render_error_msg,
+    render_retry_button,
+    render_spinner,
+)
 from crack_server import app as _ui
 
 logger = logging.getLogger("uvicorn.error")
@@ -397,8 +404,18 @@ class S01Explore(Stage):
             state = paths.read_explore_state(task_id)
             state["status"] = "error"
             state["error"] = str(e)
+            state["error_detail"] = getattr(e, "detail", "")
+            state["error_step"] = "run"
             state["finished_at"] = time.time()
             paths.write_explore_state(task_id, state)
+
+    def retry_from_error(self, task_id: str) -> None:
+        """Explore is monolithic (not step-resumable), so a retry re-runs the whole
+        job from a clean slate — the hop-level retries already covered transient
+        crashes, so a stage-level error means the run should start over."""
+        if paths.read_explore_state(task_id).get("status") != "error":
+            return
+        self.start(task_id)
 
     # -- rendering --------------------------------------------------------------
 
@@ -421,17 +438,7 @@ class S01Explore(Stage):
 
         parts: list[str] = []
 
-        if status == "running":
-            parts.append(
-                '<div class="stage-msg">'
-                f'<p aria-busy="true">Exploring… hop {state.get("hops_completed", 0) + 1}/{EXPLORE_MAX_HOPS}'
-                f" · turns {len(turns)}/{PI_EXPLORE_MAX_TURNS}</p></div>"
-            )
-        elif status == "error":
-            parts.append(
-                f'<div class="stage-msg"><p style="color: #c44;">Error: {_esc(error)}</p></div>'
-            )
-        elif status == "done" and explored_at:
+        if status == "done" and explored_at:
             found = state.get("found_files", len(path_refs))
             meta = f"explored {_ui._format_ago(explored_at)} · {len(turns)} turns · {found} files"
             if stop_reason:
@@ -464,11 +471,28 @@ class S01Explore(Stage):
             refs.append("</section>")
             parts.append("".join(refs))
 
+        # Error is a natural event of a run: show it inline, after the trajectory.
+        if status == "error":
+            parts.append(render_error_msg(error, state.get("error_detail", "")))
+
         if status != "running":
             label = "Re-explore" if (turns or summary_md) else "Explore"
+            buttons = (
+                f'<button hx-post="{self.start_url(task_id)}" '
+                f'hx-target="#{content_id}" hx-swap="outerHTML">{label}</button>'
+            )
+            if status == "error":
+                buttons += render_retry_button(self, task_id, state.get("error_step"))
+            parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
+
+        # The spinner always sits at the bottom, under the last added item, and
+        # disappears the moment the stage leaves the running phase.
+        if status == "running":
             parts.append(
-                f'<div class="stage-msg"><button hx-post="{self.start_url(task_id)}" '
-                f'hx-target="#{content_id}" hx-swap="outerHTML">{label}</button></div>'
+                render_spinner(
+                    f'Exploring… hop {state.get("hops_completed", 0) + 1}/{EXPLORE_MAX_HOPS}'
+                    f" · turns {len(turns)}/{PI_EXPLORE_MAX_TURNS}"
+                )
             )
 
         msg_count = max(len(parts), len(turns), 1)

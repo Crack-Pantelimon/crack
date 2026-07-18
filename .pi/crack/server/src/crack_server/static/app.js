@@ -1,42 +1,12 @@
 /**
- * Stage tabs, live tab colors, auto-jump/scroll/highlight, and "Other" toggle.
+ * Task page behaviour. Tabs are now real links (each tab is its own page), and
+ * the server force-navigates the user forward via the auto-follow poller's
+ * HX-Redirect — so there is no client-side tab switching here anymore. What's
+ * left: live tab colours, scroll-to-latest on new content, and the Q&A "Other"
+ * toggle.
  */
 
 (function () {
-  const lastCount = {};
-
-  function initTabs() {
-    const panelsRoot = document.getElementById('stage-panels');
-    if (!panelsRoot) return;
-
-    const activeSlug = panelsRoot.getAttribute('data-active');
-    document.querySelectorAll('.stage-panel').forEach(function (panel) {
-      panel.classList.toggle('active', panel.getAttribute('data-slug') === activeSlug);
-    });
-    document.querySelectorAll('#stage-tabs .tab').forEach(function (tab) {
-      tab.classList.toggle('selected', tab.getAttribute('data-slug') === activeSlug);
-    });
-
-    document.getElementById('stage-tabs')?.addEventListener('click', function (evt) {
-      const tab = evt.target.closest('.tab');
-      if (!tab || tab.disabled) return;
-      const slug = tab.getAttribute('data-slug');
-      const target = tab.getAttribute('data-target');
-      if (!slug || !target) return;
-
-      document.querySelectorAll('.stage-panel').forEach(function (p) {
-        p.classList.remove('active');
-      });
-      document.querySelectorAll('#stage-tabs .tab').forEach(function (t) {
-        t.classList.remove('selected');
-      });
-
-      const panel = document.querySelector(target);
-      if (panel) panel.classList.add('active');
-      tab.classList.add('selected');
-    });
-  }
-
   function refreshTabColors() {
     document.querySelectorAll('[data-stage-status]').forEach(function (wrapper) {
       const slug = wrapper.getAttribute('data-stage-slug');
@@ -57,50 +27,21 @@
     });
   }
 
-  function onAfterSwap(evt) {
-    const editor = evt.target.querySelector?.('textarea[name="content"]:not([readonly])');
-    if (editor) editor.focus();
-
-    refreshTabColors();
-
+  function scrollToLatest(evt) {
     const wrapper = evt.target.closest?.('[data-stage-status]') ||
       (evt.target.matches?.('[data-stage-status]') ? evt.target : null);
     if (!wrapper) return;
+    // Keep the newest item (a fresh turn, or the bottom spinner) in view.
+    const msgs = wrapper.querySelectorAll('.stage-msg');
+    const last = msgs[msgs.length - 1];
+    if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 
-    const panel = wrapper.closest('.stage-panel');
-    if (!panel) return;
-
-    const slug = wrapper.getAttribute('data-stage-slug');
-    const status = wrapper.getAttribute('data-stage-status');
-    const count = parseInt(wrapper.getAttribute('data-msg-count') || '0', 10);
-    const prev = lastCount[slug] || 0;
-    lastCount[slug] = count;
-
-    if ((status === 'running' || status === 'awaiting') && count > prev) {
-      const isActive = panel.classList.contains('active');
-      if (!isActive && slug) {
-        const tab = document.querySelector('#stage-tabs .tab[data-slug="' + slug + '"]');
-        if (tab && !tab.disabled) tab.click();
-      }
-      const msgs = wrapper.querySelectorAll('.stage-msg');
-      const last = msgs[msgs.length - 1];
-      if (last) {
-        last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        last.classList.add('msg-highlight');
-        setTimeout(function () {
-          last.classList.remove('msg-highlight');
-        }, 2000);
-      }
-    }
-
-    if (status === 'done' && slug === 'plan_review') {
-      const implTab = document.querySelector('#stage-tabs .tab[data-slug="implementation"]');
-      if (implTab) {
-        implTab.disabled = false;
-        implTab.classList.remove('tab--disabled');
-        implTab.click();
-      }
-    }
+  function onAfterSwap(evt) {
+    const editor = evt.target.querySelector?.('textarea[name="content"]:not([readonly])');
+    if (editor) editor.focus();
+    refreshTabColors();
+    scrollToLatest(evt);
   }
 
   function initOtherToggle() {
@@ -128,16 +69,7 @@
     });
   }
 
-  function seedCounts() {
-    document.querySelectorAll('[data-stage-slug][data-msg-count]').forEach(function (w) {
-      lastCount[w.getAttribute('data-stage-slug')] =
-        parseInt(w.getAttribute('data-msg-count') || '0', 10);
-    });
-  }
-
   document.addEventListener('DOMContentLoaded', function () {
-    initTabs();
-    seedCounts();
     refreshTabColors();
     initOtherToggle();
   });

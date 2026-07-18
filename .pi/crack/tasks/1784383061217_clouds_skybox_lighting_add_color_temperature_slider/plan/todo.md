@@ -1,0 +1,31 @@
+- [ ] Add `sun_temperature` field to `CloudSkySettings` struct in `plugins/cloud_sky/settings.rs`
+- [ ] Add `auto_temperature` field to `CloudSkySettings` struct in `plugins/cloud_sky/settings.rs`
+- [ ] Update `Default` impl for `CloudSkySettings` with `sun_temperature: 4000.0` and `auto_temperature: true`
+- [ ] Add "Sun Temperature (K)" slider (1500–6000) at top of "Sky" section in `plugins/cloud_sky/ui.rs`
+- [ ] Add "Auto Temperature (Time of Day)" checkbox in `plugins/cloud_sky/ui.rs`
+- [ ] Add `sun_temperature` field to `SkyParamsUniform` struct in `plugins/cloud_sky/materials.rs`
+- [ ] Update `sync_sky_uniforms()` to push `sun_temperature` to uniform in `plugins/cloud_sky/systems.rs`
+- [ ] Add `kelvin_to_rgb()` helper function (CPU) in `plugins/cloud_sky/systems.rs`
+- [ ] Update `sync_sun_light()` to apply temperature color to `DirectionalLight.color` in `plugins/cloud_sky/systems.rs`
+- [ ] Add `auto_sun_temperature()` system that maps `time_of_day` to temperature curve in `plugins/cloud_sky/systems.rs`
+- [ ] Register `auto_sun_temperature` system to run before `sync_sky_uniforms` and `sync_sun_light`
+- [ ] Add `kelvin_to_rgb()` function in WGSL in `plugins/cloud_sky/skybox_clouds.wgsl`
+- [ ] Replace hardcoded sun disc color with temperature-based color in `sky_color()` function in `plugins/cloud_sky/skybox_clouds.wgsl`
+- [ ] Replace hardcoded glow color with temperature-based color in `sky_color()` function in `plugins/cloud_sky/skybox_clouds.wgsl`
+- [ ] Run `cargo check --release` and verify clean compilation
+- [ ] Run `cargo test` and verify tests pass
+- [ ] Run `cargo clippy --release` and verify no new warnings
+- [ ] Run `cargo fmt --check` and verify formatting
+- [ ] Manual: Launch game and verify new controls appear in Sky UI panel
+- [ ] Manual: Test manual mode - slider at 2000K shows deep orange/red sun disc and warm world light
+- [ ] Manual: Test manual mode - slider at 6000K shows pale blue-white sun disc and cool world light
+- [ ] Manual: Test manual mode - intermediate values show smooth transitions
+- [ ] Manual: Test auto mode - dawn (06:00) shows ~2000-2500K
+- [ ] Manual: Test auto mode - morning (09:00) shows ~4000-4500K
+- [ ] Manual: Test auto mode - noon (12:00) shows ~5500-6000K
+- [ ] Manual: Test auto mode - dusk (18:00) shows ~2500-3000K
+- [ ] Manual: Test auto mode - night (00:00) shows ~4000K
+- [ ] Manual: Verify slider updates automatically when time-of-day changes in auto mode
+- [ ] Manual: Verify world lighting matches sky (object lit color matches sun disc hue)
+- [ ] Manual: Verify shadows receive same color temperature tint
+- [ ] Manual: Verify settings persistence after restart (if applicable)

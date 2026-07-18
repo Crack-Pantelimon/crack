@@ -9,7 +9,13 @@ import logging
 import time
 
 from crack_server import paths, pi_runner
-from crack_server.stages.base import Part, Stage, render_turns_trajectory
+from crack_server.stages.base import (
+    Part,
+    Stage,
+    render_error_msg,
+    render_spinner,
+    render_turns_trajectory,
+)
 from crack_server import app as _ui
 
 logger = logging.getLogger("uvicorn.error")
@@ -133,6 +139,7 @@ class S06Finished(Stage):
             state = paths.read_finished_state(task_id)
             state["phase"] = "idle"
             state["error"] = str(e)
+            state["error_detail"] = getattr(e, "detail", "")
             paths.write_finished_state(task_id, state)
 
     # -- rendering ------------------------------------------------------------
@@ -190,10 +197,11 @@ class S06Finished(Stage):
             if turns:
                 parts.append(render_turns_trajectory(turns))
 
+        if phase != "chatting" and state.get("error"):
+            parts.append(render_error_msg(state.get("error", ""), state.get("error_detail", "")))
+
         if phase == "chatting":
-            parts.append(
-                '<div class="stage-msg"><p aria-busy="true">Thinking…</p></div>'
-            )
+            parts.append(render_spinner("Thinking…"))
         else:
             parts.append(f"""
             <form class="stage-msg finished-chat" hx-post="{self.action_url(task_id, "chat")}"

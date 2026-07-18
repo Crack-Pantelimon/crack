@@ -16,7 +16,14 @@ import shutil
 import time
 
 from crack_server import git_utils, paths, pi_runner
-from crack_server.stages.base import Part, Stage, render_turns_trajectory
+from crack_server.stages.base import (
+    Part,
+    Stage,
+    render_error_msg,
+    render_retry_button,
+    render_spinner,
+    render_turns_trajectory,
+)
 from crack_server import app as _ui
 
 logger = logging.getLogger("uvicorn.error")
@@ -289,8 +296,22 @@ class S04Implementation(Stage):
             state = paths.read_implementation_state(task_id)
             state["phase"] = "error"
             state["error"] = str(e)
+            state["error_detail"] = getattr(e, "detail", "")
+            state["error_step"] = "run"
             state["finished_at"] = time.time()
             paths.write_implementation_state(task_id, state)
+
+    def retry_from_error(self, task_id: str) -> None:
+        """Resume implementation: the run loop reads existing turns and resumes the
+        agent's pi session, so it continues from where it crashed."""
+        state = paths.read_implementation_state(task_id)
+        if state.get("phase") != "error":
+            return
+        state["phase"] = "running"
+        state["error"] = ""
+        state["error_detail"] = ""
+        paths.write_implementation_state(task_id, state)
+        self.enqueue_step(task_id, state.get("error_step") or "run")
 
     # -- rendering ------------------------------------------------------------
 
@@ -321,17 +342,7 @@ class S04Implementation(Stage):
             )
 
         model = state.get("current_model", "")
-        if phase == "running":
-            parts.append(
-                '<div class="stage-msg"><p aria-busy="true">Implementing… '
-                f'{len(turns)}/{IMPL_MAX_TURNS} turns · model <code>{_esc(model)}</code></p></div>'
-            )
-        elif phase == "error":
-            parts.append(
-                f'<div class="stage-msg"><p style="color: #c44;">Error: '
-                f'{_esc(state.get("error", ""))}</p></div>'
-            )
-        elif phase == "done":
+        if phase == "done":
             finished_at = state.get("finished_at")
             meta = f"implemented {_ui._format_ago(finished_at)}" if finished_at else "implemented"
             meta += f" · {len(turns)} turns"
@@ -348,10 +359,25 @@ class S04Implementation(Stage):
                 f"{_ui._render_markdown(walkthrough)}</div>"
             )
 
-        if phase in ("done", "error"):
+        if phase == "error":
             parts.append(
-                f'<div class="stage-msg"><button hx-post="{self.start_url(task_id)}" '
-                f'hx-target="#{content_id}" hx-swap="outerHTML">Re-run implementation</button></div>'
+                render_error_msg(state.get("error", ""), state.get("error_detail", ""))
+            )
+
+        if phase in ("done", "error"):
+            buttons = (
+                f'<button hx-post="{self.start_url(task_id)}" '
+                f'hx-target="#{content_id}" hx-swap="outerHTML">Re-run implementation</button>'
+            )
+            if phase == "error":
+                buttons += render_retry_button(self, task_id, state.get("error_step"))
+            parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
+
+        if phase == "running":
+            parts.append(
+                render_spinner(
+                    f"Implementing… {len(turns)}/{IMPL_MAX_TURNS} turns · model {model}"
+                )
             )
 
         msg_count = max(len(turns) + len(parts), 1)

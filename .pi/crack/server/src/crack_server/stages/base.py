@@ -136,8 +136,23 @@ class Stage:
         raise NotImplementedError(f"{self.slug}: no run_step handler for {step!r}")
 
     def handle_action(self, action: str, task_id: str, form) -> None:
-        """Handle a stage-specific POST action (answers, approve, …)."""
+        """Handle a stage-specific POST action (answers, approve, …).
+
+        The generic ``retry_error`` action is handled here for every stage so the
+        "retry from last error" button works without per-stage routing."""
+        if action == "retry_error":
+            self.retry_from_error(task_id)
+            return
         raise HTTPException(status_code=404, detail=f"unknown action: {action}")
+
+    def retry_from_error(self, task_id: str) -> None:
+        """Resume the stage's failed step for another round of retries.
+
+        Overridden by stages that can fail: they flip their error state back to a
+        running phase (clearing ``error``/``error_detail``) and re-enqueue the
+        recorded ``error_step`` so the agent continues from where it crashed
+        (the pi session dir is preserved, so work is not replayed). Default no-op."""
+        return None
 
     def render_section(self, task_id: str) -> str:
         return self.render_status(task_id)
@@ -597,3 +612,53 @@ def render_turns_trajectory(turns: list[dict]) -> str:
     if not table:
         return ""
     return f'<div class="stage-msg">{table}</div>'
+
+
+def render_error_msg(error: str, detail: str = "") -> str:
+    """One `.stage-msg` error card, rendered *inline* as the last turn event.
+
+    An error is a natural event of running an agent, so it belongs at the bottom
+    of the trajectory (after the turns), not as a banner at the top. The captured
+    stdout+stderr tail (last few lines) is tucked into an expandable <details> so
+    the failure is diagnosable without leaving the page."""
+    esc = _ui._esc
+    html = (
+        '<div class="stage-msg stage-error">'
+        f'<p class="error-line">⚠ {esc(error or "error")}</p>'
+    )
+    if detail:
+        html += (
+            '<details class="error-detail"><summary>last output (stdout+stderr)</summary>'
+            f'<pre class="error-log">{esc(detail)}</pre></details>'
+        )
+    return html + "</div>"
+
+
+def render_spinner(label: str) -> str:
+    """A busy spinner rendered as the last `.stage-msg` on the page.
+
+    Always emitted *after* the trajectory so it sits under the last added item;
+    it vanishes as soon as the stage leaves a running phase (and the user is
+    jumped to the next stage's page)."""
+    esc = _ui._esc
+    return (
+        '<div class="stage-msg stage-spinner">'
+        f'<p aria-busy="true">{esc(label)}</p></div>'
+    )
+
+
+def render_retry_button(stage: "Stage", task_id: str, error_step: str | None) -> str:
+    """The "retry from last error" button shown next to a stage's re-run button.
+
+    It POSTs the generic ``retry_error`` action, which re-enqueues the failed step
+    so the agent continues from where it crashed (resuming its pi session) for
+    another full round of retries. Omitted when there is no recorded failed step."""
+    if not error_step:
+        return ""
+    esc = _ui._esc
+    content_id = stage.stage_content_id()
+    return (
+        f'<button hx-post="{esc(stage.action_url(task_id, "retry_error"))}" '
+        f'hx-target="#{content_id}" hx-swap="outerHTML" class="secondary retry-error-btn">'
+        "Retry from last error</button>"
+    )

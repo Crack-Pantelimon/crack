@@ -32,6 +32,50 @@ NVIDIA_CALLS_PER_MINUTE = 40
 TITLE_CALLS_PER_MINUTE = 30
 TITLE_MAX_INPUT_CHARS = 10_000
 
+# Every pi invocation is retried on a transient process failure (nonzero exit,
+# SIGKILL/-9 OOM, timeout, missing binary). We make at least PI_RETRY_ATTEMPTS
+# attempts spaced by exponential backoff, anchored so the final attempt begins
+# exactly PI_RETRY_WINDOW_SECONDS after the first attempt started.
+PI_RETRY_ATTEMPTS = 4
+PI_RETRY_WINDOW_SECONDS = 61.0
+
+# Rolling raw-output buffer size: the last N lines of pi's stdout+stderr are kept
+# and surfaced in the error so a failure is diagnosable from the UI, not just logs.
+OUTPUT_TAIL_LINES = 10
+
+
+class PiError(RuntimeError):
+    """A pi subprocess failure carrying a short message plus a ``detail`` blob
+    (the last few lines of captured stdout+stderr) for inline UI display."""
+
+    def __init__(self, message: str, detail: str = "") -> None:
+        super().__init__(message)
+        self.detail = detail
+
+
+def _retry_offsets(n: int, total: float) -> list[float]:
+    """Offsets (seconds, from the first attempt) at which each attempt starts.
+
+    Exponentially spaced (each gap doubles) and anchored so ``offsets[0] == 0``
+    and ``offsets[-1] == total``. For n=4, total=61 → [0, 8.71, 26.14, 61.0]."""
+    if n <= 1:
+        return [0.0]
+    denom = (2 ** (n - 1)) - 1
+    return [total * ((2 ** k) - 1) / denom for k in range(n)]
+
+
+def _retry_backoff_sleep(next_attempt: int, first_attempt_at: float) -> None:
+    """Sleep until attempt ``next_attempt`` (0-based) is due per the schedule."""
+    offsets = _retry_offsets(PI_RETRY_ATTEMPTS, PI_RETRY_WINDOW_SECONDS)
+    idx = min(next_attempt, len(offsets) - 1)
+    delay = (first_attempt_at + offsets[idx]) - time.monotonic()
+    if delay > 0:
+        logger.info(
+            "pi-retry: sleeping %.1fs before attempt %d/%d",
+            delay, next_attempt + 1, PI_RETRY_ATTEMPTS,
+        )
+        time.sleep(delay)
+
 READ_MAX_LINES = 200
 READ_MAX_CHARS = 10_000
 
@@ -113,35 +157,59 @@ def run_pi_text(
     logger.info("%s: timeout=%ss", log_prefix, PI_TIMEOUT_SECONDS)
     logger.info("+ %s", shlex.join(cmd))
 
-    wait_for_rate_limit(model)
+    first_attempt_at = time.monotonic()
+    last_error = "pi command failed"
+    last_detail = ""
 
-    start = time.monotonic()
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=PI_TIMEOUT_SECONDS,
+    for attempt in range(PI_RETRY_ATTEMPTS):
+        if attempt > 0:
+            _retry_backoff_sleep(attempt, first_attempt_at)
+
+        wait_for_rate_limit(model)
+        start = time.monotonic()
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=PI_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as e:
+            elapsed = time.monotonic() - start
+            logger.error("%s: pi timed out after %.2fs (attempt %d)", log_prefix, elapsed, attempt + 1)
+            last_error = "pi command timed out"
+            last_detail = _tail_text((e.stdout or "") + (e.stderr or ""))
+            continue
+        except FileNotFoundError:
+            elapsed = time.monotonic() - start
+            logger.error("%s: pi command not found on PATH (after %.2fs)", log_prefix, elapsed)
+            last_error = "pi command not found"
+            last_detail = ""
+            continue
+
+        elapsed = time.monotonic() - start
+        logger.info(
+            "%s: pi exited %d in %.2fs (attempt %d/%d)",
+            log_prefix, result.returncode, elapsed, attempt + 1, PI_RETRY_ATTEMPTS,
         )
-    except subprocess.TimeoutExpired:
-        elapsed = time.monotonic() - start
-        logger.error("%s: pi timed out after %.2fs", log_prefix, elapsed)
-        raise RuntimeError("pi command timed out")
-    except FileNotFoundError:
-        elapsed = time.monotonic() - start
-        logger.error("%s: pi command not found on PATH (after %.2fs)", log_prefix, elapsed)
-        raise RuntimeError("pi command not found")
 
-    elapsed = time.monotonic() - start
-    logger.info("%s: pi exited %d in %.2fs", log_prefix, result.returncode, elapsed)
+        if result.returncode == 0:
+            text = result.stdout.strip()
+            logger.info("%s: output summary: %r", log_prefix, text[:200])
+            return text, elapsed
 
-    if result.returncode != 0:
-        logger.error("%s: pi stderr:\n%s", log_prefix, result.stderr)
-        raise RuntimeError(f"pi command failed: {result.stderr}")
+        detail = _tail_text((result.stdout or "") + (result.stderr or ""))
+        logger.error("%s: pi exited %d; last output:\n%s", log_prefix, result.returncode, detail)
+        last_error = f"pi exited {result.returncode}"
+        last_detail = detail
 
-    text = result.stdout.strip()
-    logger.info("%s: output summary: %r", log_prefix, text[:200])
-    return text, elapsed
+    raise PiError(f"{last_error} after {PI_RETRY_ATTEMPTS} attempts", detail=last_detail)
+
+
+def _tail_text(text: str, n: int = OUTPUT_TAIL_LINES) -> str:
+    """Keep the last ``n`` non-empty lines of a captured output blob."""
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    return "\n".join(lines[-n:])
 
 
 def text_from_content(content) -> str:
@@ -417,126 +485,169 @@ def run_agent_hop(
     logger.info("%s hop %d: full prompt:\n%s", log_prefix, hop, message)
     logger.info("+ %s", shlex.join(cmd))
 
-    wait_for_rate_limit(model)
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    current_turn: dict = {}
-    hop_turns = 0
-    reason = "agent_end"
-    terminated_by_us = False
-    stderr_tail: list[str] = []
-    # Timing (stamped here in the loop, not in the pure apply_event_to_turn):
-    # monotonic start of the current turn and of each in-flight toolCall id, so
-    # turn_end / toolResult events can attach elapsed seconds to the turn dict.
-    turn_started_at: float | None = None
-    tool_starts: dict = {}
+    def _attempt(attempt_idx: int) -> dict:
+        """Run one pi subprocess: stream, persist completed turns, and report how
+        it ended. ``persisted`` counts turns committed to disk this attempt, so the
+        retry loop only retries a *transient* failure that made no forward progress
+        (a partial-progress crash is kept, not silently replayed)."""
+        wait_for_rate_limit(model)
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        current_turn: dict = {}
+        hop_turns = 0
+        total = total_turns
+        reason = "agent_end"
+        terminated_by_us = False
+        persisted = 0
+        output_tail: list[str] = []
+        # Timing (stamped here in the loop, not in the pure apply_event_to_turn):
+        # monotonic start of the current turn and of each in-flight toolCall id, so
+        # turn_end / toolResult events can attach elapsed seconds to the turn dict.
+        turn_started_at: float | None = None
+        tool_starts: dict = {}
 
-    try:
-        for line in proc.stdout or []:
-            line = line.strip()
-            if not line:
-                continue
+        def _persist(turn: dict, h: int) -> None:
+            nonlocal persisted
+            persisted += 1
+            persist_turn(turn, h)
 
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                logger.warning("%s hop %d: non-JSON line: %s", log_prefix, hop, line[:200])
-                stderr_tail.append(line[:200])
-                stderr_tail = stderr_tail[-10:]
-                continue
-
-            apply_event_to_turn(event, current_turn)
-            etype = event.get("type")
-
-            now = time.monotonic()
-            if etype == "turn_start":
-                turn_started_at = now
-            elif etype == "turn_end" and turn_started_at is not None:
-                current_turn["elapsed"] = round(now - turn_started_at, 3)
-            elif etype == "message_end":
-                # Local name (not `message`) so we don't clobber the prompt param.
-                msg = event.get("message")
-                if isinstance(msg, dict):
-                    role = msg.get("role")
-                    if role == "toolResult":
-                        started = tool_starts.pop(msg.get("toolCallId"), None)
-                        if started is not None:
-                            for block in current_turn.get("tool_blocks", []):
-                                if block.get("id") == msg.get("toolCallId"):
-                                    block["elapsed"] = round(now - started, 3)
-                                    break
-                    elif role != "user":
-                        content = msg.get("content")
-                        if isinstance(content, list):
-                            for block in content:
-                                if (
-                                    isinstance(block, dict)
-                                    and block.get("type") == "toolCall"
-                                    and block.get("id") is not None
-                                ):
-                                    tool_starts[block["id"]] = now
-
-            if (
-                sentinel is not None
-                and etype == "message_end"
-                and sentinel in current_turn.get("text", "")
-            ):
-                if turn_has_content(current_turn):
-                    persist_turn(current_turn, hop)
-                logger.info("%s hop %d: sentinel %s received", log_prefix, hop, sentinel)
-                reason = "sentinel"
-                terminated_by_us = True
-                proc.terminate()
-                break
-
-            if etype == "turn_end":
-                hop_turns += 1
-                total_turns += 1
-                persist_turn(current_turn, hop)
-                logger.info(
-                    "%s hop %d: completed turn %d/%d (hop), %d/%d (total)",
-                    log_prefix, hop, hop_turns, turns_per_hop, total_turns, max_turns,
-                )
-                if total_turns >= max_turns:
-                    reason = "turn_cap"
-                    terminated_by_us = True
-                    proc.terminate()
-                    break
-                if hop_turns >= turns_per_hop:
-                    reason = "hop_cap"
-                    terminated_by_us = True
-                    proc.terminate()
-                    break
-
-            if time.monotonic() - start > timeout_seconds:
-                if turn_has_content(current_turn) and etype != "turn_end":
-                    persist_turn(current_turn, hop)
-                reason = "time_cap"
-                terminated_by_us = True
-                proc.terminate()
-                break
-
-            if etype in ("agent_end", "agent_settled"):
-                break
-    finally:
         try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+            for line in proc.stdout or []:
+                line = line.strip()
+                if not line:
+                    continue
+                # Keep a rolling tail of the raw output (JSON or not) so a crash is
+                # diagnosable inline in the UI, not just from server logs.
+                output_tail.append(line[:500])
+                del output_tail[:-OUTPUT_TAIL_LINES]
 
-    elapsed = time.monotonic() - start
-    logger.info(
-        "%s hop %d: finished reason=%s hop_turns=%d total_elapsed=%.2fs",
-        log_prefix, hop, reason, hop_turns, elapsed,
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("%s hop %d: non-JSON line: %s", log_prefix, hop, line[:200])
+                    continue
+
+                apply_event_to_turn(event, current_turn)
+                etype = event.get("type")
+
+                now = time.monotonic()
+                if etype == "turn_start":
+                    turn_started_at = now
+                elif etype == "turn_end" and turn_started_at is not None:
+                    current_turn["elapsed"] = round(now - turn_started_at, 3)
+                elif etype == "message_end":
+                    # Local name (not `message`) so we don't clobber the prompt param.
+                    msg = event.get("message")
+                    if isinstance(msg, dict):
+                        role = msg.get("role")
+                        if role == "toolResult":
+                            started = tool_starts.pop(msg.get("toolCallId"), None)
+                            if started is not None:
+                                for block in current_turn.get("tool_blocks", []):
+                                    if block.get("id") == msg.get("toolCallId"):
+                                        block["elapsed"] = round(now - started, 3)
+                                        break
+                        elif role != "user":
+                            content = msg.get("content")
+                            if isinstance(content, list):
+                                for block in content:
+                                    if (
+                                        isinstance(block, dict)
+                                        and block.get("type") == "toolCall"
+                                        and block.get("id") is not None
+                                    ):
+                                        tool_starts[block["id"]] = now
+
+                if (
+                    sentinel is not None
+                    and etype == "message_end"
+                    and sentinel in current_turn.get("text", "")
+                ):
+                    if turn_has_content(current_turn):
+                        _persist(current_turn, hop)
+                    logger.info("%s hop %d: sentinel %s received", log_prefix, hop, sentinel)
+                    reason = "sentinel"
+                    terminated_by_us = True
+                    proc.terminate()
+                    break
+
+                if etype == "turn_end":
+                    hop_turns += 1
+                    total += 1
+                    _persist(current_turn, hop)
+                    logger.info(
+                        "%s hop %d: completed turn %d/%d (hop), %d/%d (total)",
+                        log_prefix, hop, hop_turns, turns_per_hop, total, max_turns,
+                    )
+                    if total >= max_turns:
+                        reason = "turn_cap"
+                        terminated_by_us = True
+                        proc.terminate()
+                        break
+                    if hop_turns >= turns_per_hop:
+                        reason = "hop_cap"
+                        terminated_by_us = True
+                        proc.terminate()
+                        break
+
+                if time.monotonic() - start > timeout_seconds:
+                    if turn_has_content(current_turn) and etype != "turn_end":
+                        _persist(current_turn, hop)
+                    reason = "time_cap"
+                    terminated_by_us = True
+                    proc.terminate()
+                    break
+
+                if etype in ("agent_end", "agent_settled"):
+                    break
+        finally:
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+        elapsed = time.monotonic() - start
+        logger.info(
+            "%s hop %d: attempt %d finished reason=%s hop_turns=%d persisted=%d total_elapsed=%.2fs rc=%s",
+            log_prefix, hop, attempt_idx + 1, reason, hop_turns, persisted, elapsed, proc.returncode,
+        )
+        return {
+            "reason": reason,
+            "terminated_by_us": terminated_by_us,
+            "returncode": proc.returncode,
+            "persisted": persisted,
+            "detail": "\n".join(output_tail),
+        }
+
+    first_attempt_at = time.monotonic()
+    last_detail = ""
+    last_rc: int | None = None
+
+    for attempt in range(PI_RETRY_ATTEMPTS):
+        if attempt > 0:
+            _retry_backoff_sleep(attempt, first_attempt_at)
+        res = _attempt(attempt)
+
+        failed = not res["terminated_by_us"] and res["returncode"] not in (0, None)
+        if not failed:
+            return res["reason"]
+
+        last_detail = res["detail"]
+        last_rc = res["returncode"]
+        # Partial progress (turns already committed to disk) is real work: don't
+        # replay it. Only retry a clean transient failure that produced nothing.
+        if res["persisted"] > 0:
+            logger.info(
+                "%s hop %d: pi exited %s after %d persisted turn(s); not retrying",
+                log_prefix, hop, last_rc, res["persisted"],
+            )
+            break
+
+    raise PiError(
+        f"pi exited {last_rc} after {PI_RETRY_ATTEMPTS} attempts", detail=last_detail
     )
-
-    if not terminated_by_us and proc.returncode not in (0, None):
-        tail = "\n".join(stderr_tail)[:500]
-        raise RuntimeError(f"pi exited {proc.returncode}: {tail}")
-
-    return reason
