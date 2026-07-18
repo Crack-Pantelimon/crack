@@ -11,6 +11,8 @@ from pathlib import Path
 TASK_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 PROMPT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.md$")
 INFO_FILENAME = "info.json"
+TITLE_REGEN_FILENAME = "title_regen.json"
+EXPLORE_FILENAME = "explore.json"
 
 
 def project_root() -> Path:
@@ -108,6 +110,87 @@ def write_info(task_id: str, info: dict, root: Path | None = None) -> None:
     info.setdefault("created_at", time.time())
     info["modified_at"] = time.time()
     path.write_text(json.dumps(info, indent=2), encoding="utf-8")
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    directory = path.parent
+    directory.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def title_regen_path(task_id: str, root: Path | None = None) -> Path:
+    return task_dir(task_id, root) / TITLE_REGEN_FILENAME
+
+
+def read_title_regen_state(task_id: str, root: Path | None = None) -> dict:
+    path = title_regen_path(task_id, root)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_title_regen_state(task_id: str, state: dict, root: Path | None = None) -> None:
+    _atomic_write_json(title_regen_path(task_id, root), state)
+
+
+def explore_path(task_id: str, root: Path | None = None) -> Path:
+    return task_dir(task_id, root) / EXPLORE_FILENAME
+
+
+def read_explore_state(task_id: str, root: Path | None = None) -> dict:
+    path = explore_path(task_id, root)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_explore_state(task_id: str, state: dict, root: Path | None = None) -> None:
+    _atomic_write_json(explore_path(task_id, root), state)
+
+
+def explore_dir(task_id: str, root: Path | None = None) -> Path:
+    """Per-task directory for Explore artefacts: …/<task>/explore/."""
+    return task_dir(task_id, root) / "explore"
+
+
+def explore_sessions_dir(task_id: str, root: Path | None = None) -> Path:
+    """Isolated pi session dir used to chain Explore hops: …/<task>/explore/sessions/."""
+    return explore_dir(task_id, root) / "sessions"
+
+
+def write_explore_artefact(task_id: str, name: str, text: str, root: Path | None = None) -> None:
+    """Write an Explore artefact as …/<task>/explore/{name}.md (name is sanitized)."""
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", name).strip("_") or "artefact"
+    directory = explore_dir(task_id, root)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"{safe}.md").write_text(text, encoding="utf-8")
+
+
+def prompts_last_modified(task_id: str, root: Path | None = None) -> float:
+    """Newest mtime (epoch seconds) across the task's prompt files; 0.0 when none."""
+    latest = 0.0
+    for p in list_prompt_files(task_id, root):
+        latest = max(latest, float(p["mtime"]))
+    return latest
+
+
+def read_all_prompts_joined(task_id: str, root: Path | None = None) -> str:
+    """Read all prompt markdown files in a task and join them with `\n\n---\n\n`."""
+    contents = []
+    for p in list_prompt_files(task_id, root):
+        try:
+            contents.append(read_prompt(task_id, str(p["name"]), root))
+        except FileNotFoundError:
+            continue  # deleted between listing and reading
+    return "\n\n---\n\n".join(contents)
 
 
 def slugify_title(title: str) -> str:

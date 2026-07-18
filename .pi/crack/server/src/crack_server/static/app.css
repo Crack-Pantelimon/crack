@@ -78,3 +78,90 @@ main {
   opacity: 0;
   transform: translateX(-20px);
 }
+
+/* Title slot: stable container for the title input — swaps only ever replace its
+   innerHTML, never the h1 or the buttons beside it. */
+.title-slot {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title-slot .title-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Explore: compact actions table */
+.explore-actions {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin: 0.75rem 0;
+}
+
+.explore-actions th,
+.explore-actions td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.explore-actions th {
+  color: #666;
+  font-weight: 600;
+}
+
+.explore-actions td:first-child {
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
+  color: #555;
+}
+
+.explore-actions td:last-child {
+  white-space: nowrap;
+  text-align: right;
+  color: #888;
+  font-size: 0.78rem;
+}
+
+.explore-actions pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8rem;
+}
+
+.explore-actions code {
+  word-break: break-all;
+}
+
+.trunc-marker {
+  color: #a80;
+}
+
+.explore-meta {
+  color: #666;
+  margin: 0.25rem 0;
+}
+
+.explore-stale {
+  background: #fff3cd;
+  border: 1px solid #e0c878;
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.explore-summary {
+  border-left: 3px solid #7ab;
+  padding-left: 0.75rem;
+  margin: 1rem 0;
+}
+
+.explore-questions ul {
+  margin: 0.25rem 0 0.5rem;
+}

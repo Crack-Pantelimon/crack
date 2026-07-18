@@ -31,12 +31,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     htop \
     tmux \
     vim \
+    ripgrep \
+    fzf \
+    bat \
+    eza \
+    fd-find \
+    zoxide \
+    jq \
     openssh-server \
     python3 \
     python3-pip \
     python3-venv \
      lld mold clang \
     && rm -rf /var/lib/apt/lists/*
+
+RUN (command -v bat >/dev/null || ln -sf /usr/bin/batcat /usr/local/bin/bat) ; \
+    (command -v fd  >/dev/null || ln -sf /usr/bin/fdfind /usr/local/bin/fd) ; true
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal \
     && rustup component add rustfmt clippy \

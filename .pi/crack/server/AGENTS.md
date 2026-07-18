@@ -26,9 +26,18 @@ curl -s -X POST http://localhost:9847/api/tasks/<task_id>/prompts -d "content=he
 curl -s -X POST http://localhost:9847/api/tasks/<task_id>/prompts -d "name=notes.md&content=hello"
 
 # edit / delete
+# (note: add/change/delete of prompt files now triggers a background title regeneration)
 curl -s -X PUT http://localhost:9847/api/tasks/<task_id>/prompts/prompt.md -d "content=updated"
 curl -s -X DELETE http://localhost:9847/api/tasks/<task_id>/prompts/prompt.md
 curl -s -X DELETE http://localhost:9847/api/tasks/<task_id>
+
+# background title regeneration (returns a polling placeholder)
+curl -s -X POST http://localhost:9847/api/tasks/<task_id>/regenerate-title
+curl -s http://localhost:9847/tasks/<task_id>/title-regen-status
+
+# explore the prompt content against the repository (polling)
+curl -s -X POST http://localhost:9847/api/tasks/<task_id>/explore
+curl -s http://localhost:9847/tasks/<task_id>/explore-status
 ```
 
 Clean up any task directories you create while testing (`DELETE /api/tasks/<id>`
@@ -37,24 +46,25 @@ or `rm -rf .pi/crack/tasks/<id>`) — don't leave scratch tasks behind in
 
 ### Testing the `pi` CLI itself
 
-The "Regenerate Title" button shells out to the `pi` CLI
-(`_run_pi_title_generation` in `app.py`), which is only installed *inside*
-`crack-dev` — it won't be on the host `PATH`. Before debugging a
-regenerate-title failure in the app, confirm `pi` itself works by running it
-directly in the container:
+The "Regenerate Title" button and the Explore feature shell out to the `pi` CLI
+(`_run_pi_text` and `_run_explore_job` in `app.py`), which is only installed *inside*
+`crack-dev` — it won't be on the host `PATH`. Explore also depends on the new tools
+installed in the container (`rg`, `fd`/`fdfind`, `fzf`, `bat`/`batcat`, `eza`, `zoxide`,
+`jq`). Before debugging a failure, confirm the binaries are available:
 
 ```bash
 docker exec crack-dev /bin/bash -exc "pi --version"
+docker exec crack-dev /bin/bash -exc "rg --version; fd --version; fzf --version; bat --version; eza --version; zoxide --version; jq --version"
 
-# same non-interactive form the endpoint uses (model, no session/tools, print+exit)
-docker exec crack-dev /bin/bash -exc "pi --model google/gemma-4-31b-it -p --no-session --no-tools 'Say hello in 3 words'"
+# same non-interactive form the title endpoint uses (model, no session/tools, print+exit)
+docker exec crack-dev /bin/bash -exc "pi --model nvidia/nemotron-3-nano-30b-a3b -p --no-session --no-tools 'Say hello in 3 words'"
 ```
 
 Note `pi` has no `run` subcommand and no `--prompt-file` flag — that mismatch
 was the cause of the original "regenerate title does nothing" bug. The prompt
 text goes in as a plain positional argument, not a file. Since the app's own
-server process already runs inside `crack-dev` (see above), `_run_pi_title_generation`
-calls `pi` with a plain `subprocess.run(...)`, no `docker exec` wrapper needed —
+server process already runs inside `crack-dev` (see above), `_run_pi_text`
+calls `pi` with a plain `subprocess.run(...)` (via `_run_pi_text`), no `docker exec` wrapper needed —
 `docker exec` is only for you, testing from the host shell.
 
 The endpoint logs everything needed to diagnose a failure without re-running
@@ -73,9 +83,23 @@ crack-dev`.
 - `.pi/crack/tasks/<task_id>/info.json` — `{created_at, modified_at, title}`.
   There is exactly one title per task (shown in the page header); prompt rows
   do **not** have their own titles. "Regenerate Title"
-  (`POST /api/tasks/<id>/regenerate-title`) fills a draft into the title
-  input from the combined content of all prompt files — it does not save
-  until the Save button is clicked.
+  (`POST /api/tasks/<id>/regenerate-title`) now starts a background job: the
+  title is generated from the combined prompt content, then auto-saved to
+  `info.json` the first time `GET /tasks/<id>/title-regen-status` observes the
+  `"done"` state. There is no more "draft until Save" behavior.
+- `.pi/crack/tasks/<task_id>/title_regen.json` — transient background job state
+  for title regeneration (`running`/`done`/`saved`/`error`).
+- `.pi/crack/tasks/<task_id>/explore.json` — full persisted state of the last
+  Explore run: `status, started_at, finished_at, explored_at,
+  prompt_last_modified_at, stop_reason, hops_completed, turns_completed,
+  found_files, questions, turns[] (each tagged with hop), path_refs[]
+  (valid-only: {rel_path, start, end}), summary_md, error`. The task page
+  renders the Explore section from this file, so a reload restores the whole
+  run with zero new `pi` traffic.
+- `.pi/crack/tasks/<task_id>/explore/` — Explore artefact dir:
+  `turn_zero.md` and `explore_summary.md` (raw model outputs), plus
+  `sessions/` holding the per-task pi session (`explore-<task_id>`) used to
+  chain hops. `_start_explore_job` wipes `sessions/` before each fresh run.
 - **Task id format is fixed**: `<ms_epoch_timestamp>_<slugified_title>`,
   generated once in `paths.generate_task_id()` at creation time and never
   changed afterward (renaming a task only updates `info.json["title"]`, not
@@ -111,6 +135,139 @@ the single easiest way to silently break a button:
 When adding a new interactive element, grep `app.py` for an existing
 `hx-target`/`hx-swap` pair that matches what you want and copy its endpoint's
 shape (Form in, matching-fragment out) rather than inventing a new pattern.
+
+## Background jobs and htmx polling
+
+Both "Regenerate Title" and "Explore" run `pi` in a background
+`threading.Thread` because every route in this app is a sync `def` (FastAPI
+runs them in a threadpool). State is persisted to per-task JSON files
+(`title_regen.json`, `explore.json`), so the browser polls for progress rather
+than blocking the request.
+
+The polling pattern is standard htmx: the server returns a wrapper element
+that carries `hx-trigger="every 1.5s" hx-get=".../status" hx-swap="outerHTML"`
+targeting itself. While the job is `"running"` the response still contains
+those attributes, so polling continues. Once the response omits them (done or
+error), htmx stops automatically. No custom JavaScript is required.
+
+Important implementation details:
+
+- **Title swaps never touch the h1 or buttons.** The header layout is
+  `#title-h1-{id}`, `#title-slot-{id}` (a stable `<span>`), and the
+  Regenerate/Save buttons as siblings inside `.title-row`. Every dynamic title
+  update (input auto-save on blur/change, the Save form, regenerate
+  pending/done/error) targets `#title-slot-{id}` with `hx-swap="innerHTML"`
+  and updates the h1 via an out-of-band swap (`_render_title_h1(...,
+  oob=True)`). Prompt CRUD routes emit an OOB placeholder carrying the slot id
+  + `hx-swap-oob="innerHTML"`. Never reintroduce `hx-target="closest header"`
+  or outerHTML swaps of elements whose tag changes — that combination was the
+  bug that could clobber the whole title row down to a lone input.
+- Explore runs in **hops**: up to `EXPLORE_MAX_HOPS` (3) pi invocations of at
+  most `EXPLORE_TURNS_PER_HOP` (5) `turn_end` events each, chained through one
+  pi session (`--session-id explore-<task> --session-dir …/explore/sessions`).
+  The worker counts `turn_end`s and terminates the subprocess at the cap
+  because `pi --mode json` has no `--max-turns` flag; the session file is
+  written incrementally, so a SIGTERM'd session still resumes cleanly.
+  - **`--session-id` alone resumes an existing session** — do NOT add
+    `--continue`, pi rejects the combination (`Error: --session-id cannot be
+    combined with --continue`).
+  - Early stop: the explorer is told to emit `EXPLORATION_COMPLETE` on its own
+    line when confident (the worker strips the sentinel from displayed text);
+    between hops a nano **gate** call (`gate.md`) replies `DONE` or a short
+    follow-up list that becomes the next hop's message.
+  - The nano gate sometimes mimics the transcript and emits fake tool calls or
+    bare commands instead of DONE/bullets — `_gate_reply_is_junk` detects that
+    and treats it as DONE (bias toward stopping) rather than feeding garbage
+    into the next hop.
+  - Stop reasons recorded in `explore.json`: `sentinel`, `gate`, `hop_cap`,
+    `turn_cap`, `time_cap`.
+- Turn zero, gate, and summary all use the cheap nano model
+  (`EXPLORE_GATE_MODEL`/`EXPLORE_SUMMARY_MODEL`) with the ~10k-char input
+  limit — `_fit_nano_transcript` tail-truncates transcripts to fit (recent
+  turns matter most; the blind hard cut in `_run_pi_text` would chop them).
+- Explore's summary is rendered as HTML via markdown-it-py
+  (`MarkdownIt("commonmark", {"html": False})` — raw HTML escaped).
+- Title regen auto-saves on the first status poll that sees `"done"`.
+- Prompt create/update/delete all kick off a title regen, but update only
+  does so when the new content differs from the old.
+- **Gotcha that caused "Regenerate Title runs but the page never updates":**
+  the pending/polling fragment (`_render_title_regen_pending`) must itself
+  carry `hx-trigger="every 1.5s" hx-get=".../title-regen-status"` (targeting
+  the slot) — it's easy to write a pending span that just *looks* busy
+  (spinner, disabled input) without actually being a self-polling wrapper, in
+  which case the background job completes correctly (visible in `docker logs
+  crack-dev`) but the browser never asks for the result. Any new polling
+  fragment (Explore included) needs the polling attributes on the wrapper
+  element itself, not just on the button that started the job.
+
+### Models, providers, and rate limits
+
+Every model currently in use is hosted behind the **nvidia** provider
+(`--model nvidia/<id>`, no separate `--provider` flag needed — pi parses the
+`provider/id` prefix from `--model` directly):
+
+- `TITLE_MODEL` / `EXPLORE_SUMMARY_MODEL` / `EXPLORE_GATE_MODEL` =
+  `nvidia/nemotron-3-nano-30b-a3b` (small/cheap model for the title,
+  Explore-summary, Explore turn-zero, and Explore gate calls — all single-shot
+  tool-less `_run_pi_text` calls)
+- `EXPLORE_MODEL` = `nvidia/nemotron-3-ultra-550b-a55b` (the Explore agent's
+  multi-turn tool-using model)
+
+`google/diffusiongemma-26b-a4b-it` was requested at one point but does not
+exist in `pi --list-models` under any provider (confirmed after `pi update`)
+— `nvidia/nemotron-3-nano-30b-a3b` was chosen instead as the nvidia-hosted
+replacement for the title/summary role.
+
+Rate limiting (`_RateLimiter` in `app.py`) is a simple thread-safe
+minimum-interval gate, applied via `_wait_for_rate_limit(model)` right before
+every `pi` subprocess is launched (`_run_pi_text` and the Explore streaming
+`Popen` both call it):
+
+- `_nvidia_limiter` — 40 calls/minute, shared across *all* models above,
+  since they're all nvidia-hosted.
+- `_model_limiters[TITLE_MODEL]` — an additional 30 calls/minute budget
+  specific to that model (also used for Explore's summary call, since it's
+  the same model id).
+- `TITLE_MAX_INPUT_CHARS` (10,000, a ~4k-token approximation) truncates the
+  prompt text before it's sent, applied to both the title call and the
+  Explore-summary call.
+
+These limiters only govern the individual `pi` subprocesses this server
+launches directly (title regen, Explore's initial launch, Explore's summary
+call) — they cannot throttle API calls made *inside* a single already-running
+multi-turn Explore process, since `pi` manages that loop internally.
+
+## Explore feature
+
+The Explore section on each task page runs a **hopped, early-stopping** exploration
+agent and persists everything to disk:
+
+1. **Turn zero** (nano, tool-less): reads the concatenated prompts and writes 2–10
+   `Q:` questions plus speculative example answers (`turn_zero.md` template; raw
+   output stored in `…/explore/turn_zero.md`).
+2. **sigmap pre-run** (local, not rate-limited): `sigmap ask '<q>'` for up to 6
+   questions, collecting `.context/query-context.md` headers into a context blob
+   injected into the hop-1 prompt. The explorer may also run `sigmap ask` itself.
+3. **Hops** (`EXPLORE_MODEL`, `bash,read` tools): up to 3 hops × 5 turns, chained
+   through a per-task pi session. Between hops the nano **gate** decides
+   DONE/continue; the explorer can also end the run itself with the
+   `EXPLORATION_COMPLETE` sentinel. Hard ceilings: 15 turns total, 300 s wall.
+4. **Summary** (nano, `explore_summary.md`): markdown overview + trailing
+   `path:start-end` bullet list, rendered to HTML (raw HTML escaped) and stored in
+   `…/explore/explore_summary.md` + `explore.json["summary_md"]`.
+
+UI: the turns render as one compact **actions table** (one row per
+think/text/read/bash/sigmap action; paths middle-truncated with the filename kept,
+bash commands in full multiline `<pre>`, outputs truncated at 200 lines/10 000 chars,
+honest in/out **character** counts — pi JSON exposes no token counts). **Referenced
+files** lists only paths that resolve to real files under the project root
+(`workspace/…` and `/workspace/…` forms are normalized in `_resolve_path_ref`;
+unresolvable candidates are dropped). When prompts are newer than
+`explored_at`, a "Prompts changed since last exploration — Re-explore?" banner is
+shown above the kept old results; nothing ever auto-runs on page load.
+
+If the Explore run fails (e.g., `pi` rate-limit), the error is surfaced in
+`#explore-content` and the turns/references gathered so far are still shown.
 
 ## Misc gotchas
 
