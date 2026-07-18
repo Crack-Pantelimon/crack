@@ -15,10 +15,9 @@ import json
 import logging
 import re
 import shutil
-import threading
 import time
 
-from crack_server import paths, pi_runner
+from crack_server import git_utils, paths, pi_runner
 from crack_server.stages.base import (
     Part,
     Stage,
@@ -120,7 +119,17 @@ class S02Plan(Stage):
                 "finished_at": None,
             },
         )
-        threading.Thread(target=self._run_draft_step, args=(task_id, True), daemon=True).start()
+        self.enqueue_step(task_id, "draft")
+
+    def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+        if step == "draft":
+            self._run_draft_step(task_id, initial=True)
+        elif step == "resume":
+            self._run_draft_step(task_id, initial=False)
+        elif step == "final":
+            self._run_final(task_id)
+        else:
+            super().run_step(task_id, step, form)
 
     def handle_action(self, action: str, task_id: str, form) -> None:
         if action == "answers":
@@ -144,7 +153,7 @@ class S02Plan(Stage):
         state["round"] = rnd + 1
         state["phase"] = "resuming"
         paths.write_plan_state(task_id, state)
-        threading.Thread(target=self._run_draft_step, args=(task_id, False), daemon=True).start()
+        self.enqueue_step(task_id, "resume")
 
     # -- background steps -------------------------------------------------------
 
@@ -179,6 +188,7 @@ class S02Plan(Stage):
                         "text": current_turn.get("text", ""),
                         "thinking": current_turn.get("thinking", ""),
                         "tool_blocks": list(current_turn.get("tool_blocks", [])),
+                        "elapsed": current_turn.get("elapsed"),
                     }
                 )
                 st = paths.read_plan_state(task_id)
@@ -237,7 +247,7 @@ class S02Plan(Stage):
                     )
                 state["phase"] = "final_running"
                 paths.write_plan_state(task_id, state)
-                self._run_final(task_id)
+                self.enqueue_step(task_id, "final")
                 return
 
             state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
@@ -272,7 +282,7 @@ class S02Plan(Stage):
                 .replace("{lay_of_the_land}", state.get("lay_of_the_land") or "(none)")
                 .replace("{qa}", qa_all or "(no clarifying Q&A — the draft agent had enough)")
             )
-            final_md = pi_runner.run_pi_text(
+            final_md, final_elapsed = pi_runner.run_pi_text(
                 prompt,
                 log_prefix="plan-final",
                 model=self.model_for("final"),
@@ -283,10 +293,12 @@ class S02Plan(Stage):
 
             state = paths.read_plan_state(task_id)
             state["final_md"] = final_md
+            state["final_elapsed"] = final_elapsed
             state["phase"] = "done"
             state["finished_at"] = time.time()
             paths.write_plan_state(task_id, state)
             logger.info("plan: done for %s (%d chars)", task_id, len(final_md))
+            git_utils.commit(paths.task_dir(task_id), f"plan complete {task_id}")
 
             from crack_server import stages
 
@@ -313,7 +325,7 @@ class S02Plan(Stage):
             n += 1
         return max(n, 1)
 
-    def render_status(self, task_id: str) -> str:
+    def render_status(self, task_id: str, oob: bool = False) -> str:
         safe_id = _esc(task_id)
         state = paths.read_plan_state(task_id)
         phase = state.get("phase", "idle")
@@ -361,6 +373,9 @@ class S02Plan(Stage):
             meta = f"planned {_ui._format_ago(finished_at)}" if finished_at else "planned"
             rounds = len(state.get("rounds", []))
             meta += f" · {rounds} Q&A round{'s' if rounds != 1 else ''}"
+            final_elapsed = state.get("final_elapsed")
+            if final_elapsed is not None:
+                meta += f" · final {final_elapsed:.1f}s"
             parts.append(f'<div class="stage-msg plan-meta"><small>{meta}</small></div>')
             parts.append(trajectory)
             parts.append(render_qa_history(state.get("rounds", [])))
@@ -388,6 +403,7 @@ class S02Plan(Stage):
             msg_count=msg_count,
             polling=phase in RUNNING_PHASES,
             extra_class="plan-content",
+            oob=oob,
         )
 
 

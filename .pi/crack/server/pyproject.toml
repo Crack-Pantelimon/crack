@@ -9,10 +9,12 @@ dependencies = [
     "markdown-it-py>=4.2.0",
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.32.0",
+    "watchfiles>=0.24.0",
 ]
 
 [project.scripts]
 crack-server = "crack_server.main:main"
+crack-worker = "crack_server.worker:main"
 
 [build-system]
 requires = ["hatchling"]

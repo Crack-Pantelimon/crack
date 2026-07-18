@@ -58,8 +58,15 @@ class RateLimiter:
             now = time.monotonic()
             sleep_for = self._min_interval - (now - self._last_call)
             if sleep_for > 0:
-                logger.info("rate-limit(%s): waiting %.2fs", self._name, sleep_for)
                 time.sleep(sleep_for)
+                logger.info("rate-limit(%s): slept %.2fs", self._name, sleep_for)
+            else:
+                logger.info(
+                    "rate-limit(%s): no wait needed (last call %.2fs ago, min interval %.2fs)",
+                    self._name,
+                    now - self._last_call,
+                    self._min_interval,
+                )
             self._last_call = time.monotonic()
 
 
@@ -73,6 +80,10 @@ _model_limiters: dict[str, RateLimiter] = {
 
 
 def wait_for_rate_limit(model: str) -> None:
+    # Both limiters are deficit-only: each tracks its own last_call and sleeps
+    # just the remainder of its own interval, so running them sequentially does
+    # not double-count — time spent waiting on the shared nvidia budget also
+    # counts toward the per-model interval.
     _nvidia_limiter.wait()
     limiter = _model_limiters.get(model)
     if limiter is not None:
@@ -81,13 +92,14 @@ def wait_for_rate_limit(model: str) -> None:
 
 def run_pi_text(
     prompt: str, log_prefix: str, model: str, max_input_chars: int | None = None
-) -> str:
+) -> tuple[str, float]:
     """Run `pi` non-interactively with a single text prompt.
 
-    Logs the full prompt, exact command line, timeout, elapsed time, and an output
-    summary so failures are diagnosable from server logs alone. Raises RuntimeError
-    because this helper is only used from background threads, where HTTPException
-    has no request context to turn into.
+    Returns ``(text, elapsed_seconds)``. Logs the full prompt, exact command
+    line, timeout, elapsed time, and an output summary so failures are
+    diagnosable from server logs alone. Raises RuntimeError because this helper
+    is only used from background threads, where HTTPException has no request
+    context to turn into.
     """
     if max_input_chars is not None and len(prompt) > max_input_chars:
         logger.info(
@@ -129,7 +141,7 @@ def run_pi_text(
 
     text = result.stdout.strip()
     logger.info("%s: output summary: %r", log_prefix, text[:200])
-    return text
+    return text, elapsed
 
 
 def text_from_content(content) -> str:
@@ -417,6 +429,11 @@ def run_agent_hop(
     reason = "agent_end"
     terminated_by_us = False
     stderr_tail: list[str] = []
+    # Timing (stamped here in the loop, not in the pure apply_event_to_turn):
+    # monotonic start of the current turn and of each in-flight toolCall id, so
+    # turn_end / toolResult events can attach elapsed seconds to the turn dict.
+    turn_started_at: float | None = None
+    tool_starts: dict = {}
 
     try:
         for line in proc.stdout or []:
@@ -434,6 +451,34 @@ def run_agent_hop(
 
             apply_event_to_turn(event, current_turn)
             etype = event.get("type")
+
+            now = time.monotonic()
+            if etype == "turn_start":
+                turn_started_at = now
+            elif etype == "turn_end" and turn_started_at is not None:
+                current_turn["elapsed"] = round(now - turn_started_at, 3)
+            elif etype == "message_end":
+                # Local name (not `message`) so we don't clobber the prompt param.
+                msg = event.get("message")
+                if isinstance(msg, dict):
+                    role = msg.get("role")
+                    if role == "toolResult":
+                        started = tool_starts.pop(msg.get("toolCallId"), None)
+                        if started is not None:
+                            for block in current_turn.get("tool_blocks", []):
+                                if block.get("id") == msg.get("toolCallId"):
+                                    block["elapsed"] = round(now - started, 3)
+                                    break
+                    elif role != "user":
+                        content = msg.get("content")
+                        if isinstance(content, list):
+                            for block in content:
+                                if (
+                                    isinstance(block, dict)
+                                    and block.get("type") == "toolCall"
+                                    and block.get("id") is not None
+                                ):
+                                    tool_starts[block["id"]] = now
 
             if (
                 sentinel is not None

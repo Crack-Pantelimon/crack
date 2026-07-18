@@ -112,7 +112,28 @@ class Stage:
         return True
 
     def start(self, task_id: str) -> None:
-        raise NotImplementedError
+        """Kick the stage's work. Default: enqueue a ``"start"`` step for the
+        worker. Stages that need a fast state write before the slow work runs
+        override this to write state then ``enqueue_step``."""
+        self.enqueue_step(task_id, "start")
+
+    # -- worker command queue -------------------------------------------------
+
+    def enqueue_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+        """Enqueue a unit of slow work for the out-of-process worker to run.
+
+        The web process only ever writes fast state + enqueues; all ``pi``
+        execution happens in the worker via :meth:`run_step`."""
+        from crack_server import queue
+
+        queue.enqueue(task_id, self.slug, step, form)
+
+    def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+        """Worker dispatch entrypoint: run one enqueued step synchronously.
+
+        Each stage maps ``step`` → its internal ``_run_*`` method. The default
+        raises so a misrouted job surfaces loudly in the worker log."""
+        raise NotImplementedError(f"{self.slug}: no run_step handler for {step!r}")
 
     def handle_action(self, action: str, task_id: str, form) -> None:
         """Handle a stage-specific POST action (answers, approve, …)."""
@@ -121,7 +142,7 @@ class Stage:
     def render_section(self, task_id: str) -> str:
         return self.render_status(task_id)
 
-    def render_status(self, task_id: str) -> str:
+    def render_status(self, task_id: str, oob: bool = False) -> str:
         raise NotImplementedError
 
     def stage_content_id(self) -> str:
@@ -144,8 +165,12 @@ class Stage:
         msg_count: int,
         polling: bool = False,
         extra_class: str = "",
+        oob: bool = False,
     ) -> str:
-        """Outer polling wrapper carrying data-stage-status and data-msg-count."""
+        """Outer polling wrapper carrying data-stage-status and data-msg-count.
+
+        With ``oob=True`` the content div carries hx-swap-oob so htmx replaces
+        the live panel (same id) out-of-band as part of another swap."""
         esc = _ui._esc
         safe_id = esc(task_id)
         status = self.status(task_id)
@@ -155,11 +180,12 @@ class Stage:
             if polling
             else ""
         )
+        oob_attr = ' hx-swap-oob="true"' if oob else ""
         cls = f"stage-content {extra_class}".strip()
         return (
             f'<div id="{esc(self.stage_content_id())}" class="{cls}"'
             f' data-stage-status="{esc(status)}" data-msg-count="{msg_count}"'
-            f' data-stage-slug="{esc(self.slug)}"{poll_attrs}>'
+            f' data-stage-slug="{esc(self.slug)}"{poll_attrs}{oob_attr}>'
             f"{inner}</div>"
         )
 
@@ -482,7 +508,7 @@ def _parse_tool_args(input_raw) -> dict:
     return {}
 
 
-def _render_text_action_row(kind: str, text: str) -> str:
+def _render_text_action_row(kind: str, text: str, elapsed: float | None = None) -> str:
     """Table row for an assistant text/thinking block: first-line snippet, expandable."""
     esc = _ui._esc
     stripped = text.strip()
@@ -496,6 +522,8 @@ def _render_text_action_row(kind: str, text: str) -> str:
             f'<div class="turn-text">{esc(text)}</div></details>'
         )
     size = f"out {_fmt_chars(len(text))}"
+    if elapsed is not None:
+        size += f" · {elapsed:.1f}s"
     return f"<tr><td>{kind}</td><td>{middle}</td><td>{size}</td></tr>"
 
 
@@ -532,6 +560,9 @@ def _render_tool_action_row(block: dict) -> str:
         middle += f"<details><summary>output</summary>{body}</details>"
 
     size = f"in {_fmt_chars(len(str(input_raw)))} / out {_fmt_chars(len(output))}"
+    elapsed = block.get("elapsed")
+    if elapsed is not None:
+        size += f" · {elapsed:.1f}s"
     return f"<tr><td>{action_type}</td><td>{middle}</td><td>{size}</td></tr>"
 
 
@@ -544,10 +575,11 @@ def render_actions_table(turns: list[dict]) -> str:
     for turn in turns:
         thinking = turn.get("thinking", "")
         text = _clean_turn_text(turn.get("text", ""))
+        elapsed = turn.get("elapsed")
         if thinking:
-            rows.append(_render_text_action_row("think", thinking))
+            rows.append(_render_text_action_row("think", thinking, elapsed))
         if text:
-            rows.append(_render_text_action_row("text", text))
+            rows.append(_render_text_action_row("text", text, elapsed))
         for block in turn.get("tool_blocks", []):
             rows.append(_render_tool_action_row(block))
     if not rows:

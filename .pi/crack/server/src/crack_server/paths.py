@@ -257,6 +257,29 @@ def models_cache_path(root: Path | None = None) -> Path:
     return harness_dir(root) / "models_list.json"
 
 
+# ---------------------------------------------------------------------------
+# Worker command queue (filesystem job queue under harness/queue/)
+# ---------------------------------------------------------------------------
+
+
+def queue_dir(root: Path | None = None) -> Path:
+    """Root of the on-disk worker command queue: .pi/crack/harness/queue/."""
+    return harness_dir(root) / "queue"
+
+
+def queue_pending_dir(root: Path | None = None) -> Path:
+    return queue_dir(root) / "pending"
+
+
+def queue_processing_dir(root: Path | None = None) -> Path:
+    return queue_dir(root) / "processing"
+
+
+def worker_lock_path(root: Path | None = None) -> Path:
+    """Single-instance flock file for the worker process."""
+    return harness_dir(root) / "worker.lock"
+
+
 def read_models_cache(root: Path | None = None) -> dict:
     path = models_cache_path(root)
     if not path.is_file():
@@ -410,3 +433,101 @@ def write_plan_review_state(task_id: str, state: dict, root: Path | None = None)
 def plan_review_sessions_dir(task_id: str, root: Path | None = None) -> Path:
     """Pi session dir for plan-review critic hops: …/<task>/plan/review_sessions/."""
     return plan_dir(task_id, root) / "review_sessions"
+
+
+def walkthrough_path(task_id: str, root: Path | None = None) -> Path:
+    """The implementation/review retrospective: …/<task>/plan/walkthrough.md."""
+    return plan_dir(task_id, root) / "walkthrough.md"
+
+
+def read_walkthrough(task_id: str, root: Path | None = None) -> str:
+    path = walkthrough_path(task_id, root)
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Implementation stage: per-task state and pi session dir
+# ---------------------------------------------------------------------------
+
+IMPLEMENTATION_FILENAME = "implementation.json"
+IMPL_REVIEW_FILENAME = "impl_review.json"
+FINISHED_FILENAME = "finished.json"
+
+
+def implementation_path(task_id: str, root: Path | None = None) -> Path:
+    return task_dir(task_id, root) / IMPLEMENTATION_FILENAME
+
+
+def read_implementation_state(task_id: str, root: Path | None = None) -> dict:
+    path = implementation_path(task_id, root)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_implementation_state(task_id: str, state: dict, root: Path | None = None) -> None:
+    _atomic_write_json(implementation_path(task_id, root), state)
+
+
+def implementation_sessions_dir(task_id: str, root: Path | None = None) -> Path:
+    """Pi session dir for implementation agent hops: …/<task>/implementation/sessions/."""
+    return task_dir(task_id, root) / "implementation" / "sessions"
+
+
+# ---------------------------------------------------------------------------
+# Implementation Review stage: per-task state and pi session dir
+# ---------------------------------------------------------------------------
+
+
+def impl_review_path(task_id: str, root: Path | None = None) -> Path:
+    return task_dir(task_id, root) / IMPL_REVIEW_FILENAME
+
+
+def read_impl_review_state(task_id: str, root: Path | None = None) -> dict:
+    path = impl_review_path(task_id, root)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_impl_review_state(task_id: str, state: dict, root: Path | None = None) -> None:
+    _atomic_write_json(impl_review_path(task_id, root), state)
+
+
+def impl_review_sessions_dir(task_id: str, root: Path | None = None) -> Path:
+    """Pi session dir for the review agent: …/<task>/implementation/review_sessions/."""
+    return task_dir(task_id, root) / "implementation" / "review_sessions"
+
+
+# ---------------------------------------------------------------------------
+# Finished stage: per-task chat state (resumes the review session)
+# ---------------------------------------------------------------------------
+
+
+def finished_path(task_id: str, root: Path | None = None) -> Path:
+    return task_dir(task_id, root) / FINISHED_FILENAME
+
+
+def read_finished_state(task_id: str, root: Path | None = None) -> dict:
+    path = finished_path(task_id, root)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_finished_state(task_id: str, state: dict, root: Path | None = None) -> None:
+    _atomic_write_json(finished_path(task_id, root), state)

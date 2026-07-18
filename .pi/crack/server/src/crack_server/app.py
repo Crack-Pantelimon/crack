@@ -12,7 +12,6 @@ from __future__ import annotations
 import html
 import logging
 import shutil
-import threading
 import time
 from pathlib import Path
 
@@ -21,9 +20,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from markdown_it import MarkdownIt
 
+from crack_server import git_utils
 from crack_server import models as models_mod
-from crack_server import paths, pi_runner, stages
+from crack_server import paths, pi_runner, queue, stages
 from crack_server.stages.base import STATUS_COLORS
+
+# Pseudo-stage slug for the non-stage background title-regen job on the queue.
+TITLE_JOB_SLUG = "__title__"
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -394,15 +397,17 @@ def _start_title_regen_job(task_id: str) -> None:
         return
 
     paths.write_title_regen_state(task_id, {"status": "running", "started_at": time.time()})
-    threading.Thread(
-        target=_run_title_regen_worker, args=(task_id, content), daemon=True
-    ).start()
+    # Runs in the out-of-process worker (see worker.py's TITLE_JOB_SLUG handler).
+    queue.enqueue(task_id, TITLE_JOB_SLUG, "title")
 
 
-def _run_title_regen_worker(task_id: str, content: str) -> None:
+def _run_title_regen_worker(task_id: str) -> None:
+    """Worker entrypoint for the title-regen job: re-reads prompts, runs the
+    title model, and records the result in title_regen.json."""
     try:
+        content = paths.read_all_prompts_joined(task_id)
         prompt = _load_template("title").replace("{content}", content)
-        title = pi_runner.run_pi_text(
+        title, _ = pi_runner.run_pi_text(
             prompt,
             log_prefix="regenerate-title",
             model=pi_runner.TITLE_MODEL,
@@ -586,6 +591,7 @@ def api_create_prompt(task_id: str, name: str = Form(default=""), content: str =
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    git_utils.commit(paths.task_dir(task_id) / filename, f"change prompt file {filename}")
     _start_title_regen_job(task_id)
     return HTMLResponse(
         _render_prompts_section(task_id) + _render_title_regen_pending(task_id, oob=True)
@@ -607,6 +613,7 @@ def api_update_prompt(task_id: str, filename: str, content: str = Form(...)) -> 
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     if content != old_content:
+        git_utils.commit(paths.task_dir(task_id) / filename, f"change prompt file {filename}")
         _start_title_regen_job(task_id)
         return HTMLResponse(
             _render_prompt_row(task_id, filename, editing=False)
@@ -626,6 +633,7 @@ def api_delete_prompt(task_id: str, filename: str) -> HTMLResponse:
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="not found")
 
+    git_utils.commit(paths.task_dir(task_id), f"change prompt file {filename}")
     _start_title_regen_job(task_id)
     return HTMLResponse("" + _render_title_regen_pending(task_id, oob=True))
 
@@ -744,6 +752,9 @@ async def api_stage_action(task_id: str, slug: str, action: str, request: Reques
     fragment = stage.render_status(task_id)
     if slug == "plan_review" and action == "approve":
         fragment += _render_task_glyph(task_id, oob=True)
+        impl = stages.get("implementation")
+        if impl is not None:
+            fragment += impl.render_status(task_id, oob=True)
     return HTMLResponse(fragment)
 
 

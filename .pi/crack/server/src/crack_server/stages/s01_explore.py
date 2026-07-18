@@ -14,7 +14,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import threading
 import time
 
 from crack_server import paths, pi_runner
@@ -81,6 +80,7 @@ def _persist_explore_turn(task_id: str, current_turn: dict, hop: int) -> None:
         "text": text,
         "thinking": current_turn.get("thinking", "").strip(),
         "tool_blocks": list(current_turn.get("tool_blocks", [])),
+        "elapsed": current_turn.get("elapsed"),
     }
     state.setdefault("turns", []).append(turn)
     state["turns_completed"] = len(state["turns"])
@@ -220,7 +220,13 @@ class S01Explore(Stage):
                 "error": "",
             },
         )
-        threading.Thread(target=self._run_job, args=(task_id,), daemon=True).start()
+        self.enqueue_step(task_id, "run")
+
+    def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+        if step == "run":
+            self._run_job(task_id)
+            return
+        super().run_step(task_id, step, form)
 
     def _run_hop(self, task_id: str, hop: int, message: str, start: float) -> str:
         """One hop via the shared runner, persisting turns into explore.json."""
@@ -257,7 +263,7 @@ class S01Explore(Stage):
 
             # --- Turn zero (nano): questions + hallucinated example answers.
             turn_zero_prompt = self.load_template("turn_zero.md").replace("{content}", content)
-            turn_zero_text = pi_runner.run_pi_text(
+            turn_zero_text, _ = pi_runner.run_pi_text(
                 turn_zero_prompt,
                 log_prefix="explore-turn-zero",
                 model=self.model_for("turn_zero"),
@@ -314,7 +320,7 @@ class S01Explore(Stage):
                 gate_prompt = gate_template.replace("{questions}", turn_zero_text).replace(
                     "{transcript}", transcript
                 )
-                gate_reply = pi_runner.run_pi_text(
+                gate_reply, _ = pi_runner.run_pi_text(
                     gate_prompt,
                     log_prefix=f"explore-gate-hop{hop}",
                     model=self.model_for("gate"),
@@ -359,7 +365,7 @@ class S01Explore(Stage):
             summary_prompt = summary_template.replace("{content}", content).replace(
                 "{transcript}", transcript
             )
-            summary_md = pi_runner.run_pi_text(
+            summary_md, _ = pi_runner.run_pi_text(
                 summary_prompt,
                 log_prefix="explore-summary",
                 model=self.model_for("summary"),
@@ -399,7 +405,7 @@ class S01Explore(Stage):
     def render_section(self, task_id: str) -> str:
         return self.render_status(task_id)
 
-    def render_status(self, task_id: str) -> str:
+    def render_status(self, task_id: str, oob: bool = False) -> str:
         """Render Explore content from stored explore.json."""
         safe_id = _esc(task_id)
         state = paths.read_explore_state(task_id)
@@ -472,6 +478,7 @@ class S01Explore(Stage):
             msg_count=msg_count,
             polling=status == "running",
             extra_class="explore-content",
+            oob=oob,
         )
 
 

@@ -1,7 +1,0 @@
-{
-  "q1": "Task page only (modify `task_page` body)",
-  "q2": "A configurable value (env var / config file)",
-  "q3": "No \u2014 proceed with the plan's sketched structure as-is",
-  "q4": "Inline now, extract to CSS class in same change",
-  "q5": "Inside `<main>` after the body content (scrolls with page)"
-}

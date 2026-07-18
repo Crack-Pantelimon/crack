@@ -1,0 +1,19 @@
+- when under "plan review" and that's done and we click to accept the plan and we start the implementation, the view bugs out and displays the implementation table header with white text and the content is still saying that we need to accept ; the user will need to refresh the page to continue. fix this bug.
+
+- the progression of our agents are dependant on the browser to go to the next step. we should be holding all of our chat progresses under reentrant server-side workers instead. let's change the container start function here _docker/_cont_start.sh to start some uv worker in parallel before starting the script ; this should also use auto-refresh watching for the worker too so let's add some packages to the server with "uv add" inside the container.  the worker process we watch will be a different top level script that uses flock to ensure only one copy of it is executing, else exit 0. then, we handle all of the progression of all of the stages, so that even if the ui is closed, the worker will still progress at the tasks. This will be the engine that runs all of the pi commands from its command queue and return the results. 
+
+- each step in all our ui progressions shows in/out byte count but doesn't show the seconds it took to get those - so add those as well when we have them.
+
+- review the logic around the code for speed ; nvidia provider allows for 40 rpm but we don't need to statically sleep between any two requests - we only need  to sleep if the last request took less than 40/60 seconds. Let's double check we don't have any extra waits that might aggravate our wait times. 
+
+
+- before we implement the "implementation step" we must now handle git :
+ - when changing the prompts, run subprocess commands : "git add <prompt_file> ; git commit -m 'slopmaster3000: change prompt file <prompt_file>'"; "
+ - when the first plan ends, run another commit with the changed plan files (run git add on the whole task folder)
+ - each round of work preview, add a commit also, with the same slopmaster3000 prefix
+ - if implementation is accepted, run the same commit in the same way
+ - if the git operation fails, just print the log error and continue, ignoring the error any further .
+
+then, the implementation step we will accept the prompt in a new session chat for this stage. the implementation will be started by model nvidia/moonshotai/kimi-k2.6 for a maximum of 10 turns, after which we switch. If we have 2 turns of exactly repetivie errors/retries, or when we go past 10 steps, we switch model to better fallback model nvidia/z-ai/glm-5.2 or whatever it's called exactly. Each 5 turns the model is reminded to update its todo file and give its full todo file path. 
+
+After the implementation stage we will add an implementation review stage. Use a fresh chat, load it with all the context for the plan and tell it to run 'git diff' to review the already-written code against the plan. Instruct this implementation review agent to validate and test every single possible thing related to the plan - both the automatic checks like building code or running tests or demos, and be critical while respecting the original plan. The model used here is also configurable. Both the implementation and the implementation review agent are instructed to change the wrong code at will and maintain a retrospective file next to the plan file called "walkthrough.md" which will list what was done, what problems were encountered on the way, and how they were fixed. The review agent is also invited to mark any compiler warnings, any test errors, and loop through those to fix them, editing the walkthrough folder and the todo files on the fly. Finally, when the Implementation review is thought to be finished, move into the last step, "Finished", which will show the walk-through and retrospective, as well as a chat box at the bottom to continue conversation if the user wishes to ask further questions about the chat above. 
