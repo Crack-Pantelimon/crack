@@ -253,3 +253,116 @@ main {
   padding: 0.75rem;
   white-space: pre;
 }
+
+/* Stage tabs (sticky tab bar on task page) */
+.stage-tabs {
+  position: sticky;
+  top: 0;
+  background: var(--pico-background-color, #fff);
+  z-index: 5;
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0;
+  margin: 1.5rem 0 0.75rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.stage-tabs .tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.4rem 0.75rem;
+  margin: 0;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: border-color 0.15s;
+}
+
+.stage-tabs .tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.stage-tabs .tab.selected {
+  border-bottom-color: currentColor;
+}
+
+.stage-tabs .tab.tab--running { color: #28be5a; }
+.stage-tabs .tab.tab--done { color: #2a7fd4; }
+.stage-tabs .tab.tab--idle { color: #888; }
+.stage-tabs .tab.tab--disabled { color: #bbb; }
+.stage-tabs .tab.tab--error { color: #c44; }
+
+.stage-panel {
+  display: none;
+  padding: 0.5rem 0 1.5rem;
+}
+
+.stage-panel.active {
+  display: block;
+}
+
+.stage-msg {
+  padding: 0.4rem 0;
+}
+
+.msg-highlight {
+  border: 1px dotted rgba(40, 190, 90, 0.30);
+  transition: border-color 0.8s;
+  border-radius: 4px;
+}
+
+.other-input {
+  display: none;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.other-input.show {
+  display: block;
+}
+
+.approval-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+}
+
+.approval-controls form {
+  margin: 0;
+}
+
+.approval-controls textarea {
+  width: 100%;
+}
+
+.handoff-raw {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.plan-todo {
+  border-left: 3px solid #8b8;
+  padding-left: 0.75rem;
+  margin: 1rem 0;
+}
+
+.qa-round .qa-q {
+  margin: 0 0 0.15rem;
+}
+
+.qa-round .qa-a {
+  margin: 0 0 0.5rem;
+  color: #444;
+}
+
+.task-glyph {
+  font-weight: bold;
+}

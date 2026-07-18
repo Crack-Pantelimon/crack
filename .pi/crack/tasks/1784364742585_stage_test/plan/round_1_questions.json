@@ -1,35 +1,21 @@
 [
   {
     "id": "q1",
-    "text": "Where should the footer appear in the HTML structure?",
+    "text": "Should the footer appear on all pages (index, task, stage config) via the shared _render_base(), or only on the task page (/tasks/<id>)?",
     "type": "single",
     "options": [
-      "Inside <main> (part of page content)",
-      "Outside <main> but before </body> (site-wide footer)"
+      "All pages (add to _render_base)",
+      "Task page only (add in task_page body)"
     ]
   },
   {
     "id": "q2",
-    "text": "Should the footer appear on all pages (index, task page, stage config) or only on the task page?",
+    "text": "What text should the footer display?",
     "type": "single",
     "options": [
-      "All pages",
-      "Task page only"
-    ]
-  },
-  {
-    "id": "q3",
-    "text": "What exact text should the footer contain?",
-    "type": "open"
-  },
-  {
-    "id": "q4",
-    "text": "Should the footer have any specific styling (e.g., small, muted, centered)?",
-    "type": "single",
-    "options": [
-      "Use existing Pico.css small/muted styles",
-      "Add custom CSS class in app.css",
-      "Inline styles only"
+      "crack-pi-server v0.1.0 (from pyproject.toml)",
+      "crack-pi-server (static)",
+      "Custom text (I'll specify)"
     ]
   }
 ]

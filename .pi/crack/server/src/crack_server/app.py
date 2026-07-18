@@ -23,6 +23,7 @@ from markdown_it import MarkdownIt
 
 from crack_server import models as models_mod
 from crack_server import paths, pi_runner, stages
+from crack_server.stages.base import STATUS_COLORS
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -110,11 +111,15 @@ def _render_task_card(task_id: str, info: dict) -> str:
     title = _esc(info.get("title", task_id))
     created = _format_time(info.get("created_at", 0))
     modified = _format_time(info.get("modified_at", 0))
+    glyph_char, glyph_color = task_status_glyph(task_id)
     return f"""
     <article class="task-card" style="border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
         <div>
-          <h3 style="margin: 0 0 0.5rem 0;"><a href="/tasks/{safe_id}" style="text-decoration: none;">{title}</a></h3>
+          <h3 style="margin: 0 0 0.5rem 0;">
+            <span class="task-glyph" style="color: {glyph_color}; margin-right: 0.35rem;">{glyph_char}</span>
+            <a href="/tasks/{safe_id}" style="text-decoration: none;">{title}</a>
+          </h3>
           <small style="color: #666;">ID: {safe_id} • Created: {created} • Modified: {modified}</small>
         </div>
         <form hx-delete="/api/tasks/{safe_id}" hx-confirm="Delete task '{title}'?" hx-target="closest article" hx-swap="outerHTML swap:1s">
@@ -182,6 +187,93 @@ def _render_title_regen_error(task_id: str, error: str) -> str:
     )
 
 
+def task_status_glyph(task_id: str) -> tuple[str, str]:
+    """Furthest-stage status glyph: (char, css color)."""
+    review = stages.get("plan_review")
+    if review is not None and review.status(task_id) == "done":
+        return "✓", "#2a7fd4"
+
+    furthest_status = "idle"
+    for stage in stages.REGISTRY:
+        st = stage.status(task_id)
+        if st not in ("idle", "disabled"):
+            furthest_status = st
+
+    if furthest_status == "idle":
+        return "○", "#999"
+    if furthest_status == "error":
+        return "●", "#c44"
+    if furthest_status in ("running", "awaiting"):
+        return "●", "#28be5a"
+    if furthest_status == "done":
+        return "●", "#2a7fd4"
+    return "○", "#999"
+
+
+def _render_task_glyph(task_id: str, oob: bool = False) -> str:
+    char, color = task_status_glyph(task_id)
+    safe_id = _esc(task_id)
+    oob_attr = ' hx-swap-oob="innerHTML"' if oob else ""
+    return (
+        f'<span id="task-glyph-{safe_id}" class="task-glyph" '
+        f'style="color: {color}; font-size: 1.2rem; margin-right: 0.35rem;"{oob_attr}>'
+        f"{char}</span>"
+    )
+
+
+def furthest_active_slug(task_id: str) -> str:
+    """Last running/awaiting stage, else last done, else first stage."""
+    if not stages.REGISTRY:
+        return ""
+    last_running: str | None = None
+    last_done: str | None = None
+    for stage in stages.REGISTRY:
+        st = stage.status(task_id)
+        if st in ("running", "awaiting"):
+            last_running = stage.slug
+        elif st == "done":
+            last_done = stage.slug
+    if last_running:
+        return last_running
+    if last_done:
+        return last_done
+    return stages.REGISTRY[0].slug
+
+
+def _render_stage_tabs(task_id: str) -> tuple[str, str, str]:
+    """Return (tab nav HTML, panels HTML, active slug)."""
+    active = furthest_active_slug(task_id)
+    tabs: list[str] = []
+    panels: list[str] = []
+
+    for stage in stages.REGISTRY:
+        st = stage.status(task_id)
+        enabled = stage.is_enabled(task_id)
+        color_cls = STATUS_COLORS.get(st, "tab--idle")
+        if not enabled and st in ("idle", "disabled"):
+            color_cls = "tab--disabled"
+        disabled_attr = "" if enabled or st not in ("idle", "disabled") else " disabled"
+        selected = " selected" if stage.slug == active else ""
+        panel_active = " active" if stage.slug == active else ""
+        safe_slug = _esc(stage.slug)
+        safe_name = _esc(stage.name)
+        tabs.append(
+            f'<button type="button" class="tab {color_cls}{selected}"'
+            f' data-slug="{safe_slug}" data-target="#panel-{safe_slug}"{disabled_attr}>'
+            f'{safe_name} <span class="tab-dot"></span></button>'
+        )
+        panels.append(
+            f'<section class="stage-panel{panel_active}" id="panel-{safe_slug}"'
+            f' data-slug="{safe_slug}">{stage.render_section(task_id)}</section>'
+        )
+
+    nav = f'<nav id="stage-tabs" class="stage-tabs">{"".join(tabs)}</nav>'
+    panel_html = (
+        f'<div id="stage-panels" data-active="{_esc(active)}">{"".join(panels)}</div>'
+    )
+    return nav, panel_html, active
+
+
 def _render_task_header(task_id: str, info: dict) -> str:
     """Render the task page header, including the editable title form. This is the only
     title in the UI — prompt rows no longer have their own titles.
@@ -195,9 +287,11 @@ def _render_task_header(task_id: str, info: dict) -> str:
     modified = _format_time(info.get("modified_at", 0))
     title_h1 = _render_title_h1(task_id, info.get("title", task_id))
     title_input = _render_title_input(task_id, info.get("title", task_id))
+    glyph = _render_task_glyph(task_id)
     return f"""
     <header style="margin-bottom: 1.5rem;">
       <div class="title-row" style="margin-bottom: 1rem;">
+        {glyph}
         {title_h1}
         <form hx-put="/api/tasks/{safe_id}/info" hx-target="#title-slot-{safe_id}" hx-swap="innerHTML" style="flex: 1; display: flex; gap: 0.5rem; align-items: center;">
           <span id="title-slot-{safe_id}" class="title-slot">{title_input}</span>
@@ -614,15 +708,43 @@ def plan_status(task_id: str) -> HTMLResponse:
 
 @app.post("/api/tasks/{task_id}/plan/answers")
 async def api_plan_answers(task_id: str, request: Request) -> HTMLResponse:
-    """Record one round of Q&A answers and resume the draft agent.
-
-    Question ids are dynamic form field names, so this route reads the raw
-    urlencoded form (still the htmx contract: form in, HTML fragment out)."""
+    """Record one round of Q&A answers and resume the draft agent (alias)."""
     _check_task_id(task_id)
     stage = _get_stage_or_404("plan")
     form = await request.form()
-    stage.submit_answers(task_id, form)
+    stage.handle_action("answers", task_id, form)
     return HTMLResponse(stage.render_status(task_id))
+
+
+# ---------------------------------------------------------------------------
+# Generic stage routes (extensible — new stages need no app.py change)
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/tasks/{task_id}/stages/{slug}/start")
+def api_stage_start(task_id: str, slug: str) -> HTMLResponse:
+    _check_task_id(task_id)
+    stage = _get_stage_or_404(slug)
+    stage.start(task_id)
+    return HTMLResponse(stage.render_status(task_id))
+
+
+@app.get("/tasks/{task_id}/stages/{slug}/status", response_class=HTMLResponse)
+def stage_status(task_id: str, slug: str) -> HTMLResponse:
+    _check_task_id(task_id)
+    return HTMLResponse(_get_stage_or_404(slug).render_status(task_id))
+
+
+@app.post("/api/tasks/{task_id}/stages/{slug}/actions/{action}")
+async def api_stage_action(task_id: str, slug: str, action: str, request: Request) -> HTMLResponse:
+    _check_task_id(task_id)
+    stage = _get_stage_or_404(slug)
+    form = await request.form()
+    stage.handle_action(action, task_id, form)
+    fragment = stage.render_status(task_id)
+    if slug == "plan_review" and action == "approve":
+        fragment += _render_task_glyph(task_id, oob=True)
+    return HTMLResponse(fragment)
 
 
 # ---------------------------------------------------------------------------
@@ -694,8 +816,7 @@ def task_page(task_id: str) -> HTMLResponse:
     safe_title = _esc(info.get("title", task_id))
     header = _render_task_header(task_id, info)
     next_name = paths.next_prompt_filename(task_id) or "prompt.md"
-
-    stage_sections = "\n".join(s.render_section(task_id) for s in stages.REGISTRY)
+    tabs_nav, tabs_panels, _ = _render_stage_tabs(task_id)
 
     body = f"""
     {header}
@@ -712,7 +833,8 @@ def task_page(task_id: str) -> HTMLResponse:
       </form>
     </details>
 
-    {stage_sections}
+    {tabs_nav}
+    {tabs_panels}
     """
     return HTMLResponse(_render_base(f"Crack Task: {safe_title}", body, task_id))
 

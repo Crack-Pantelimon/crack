@@ -16,6 +16,7 @@ INFO_FILENAME = "info.json"
 TITLE_REGEN_FILENAME = "title_regen.json"
 EXPLORE_FILENAME = "explore.json"
 PLAN_FILENAME = "plan.json"
+PLAN_REVIEW_FILENAME = "plan_review.json"
 
 
 def project_root() -> Path:
@@ -370,3 +371,42 @@ def write_plan_artefact(task_id: str, name: str, text: str, root: Path | None = 
     directory = plan_dir(task_id, root)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / base).write_text(text, encoding="utf-8")
+
+
+def read_plan_artefact(task_id: str, name: str, root: Path | None = None) -> str:
+    """Read a Plan artefact from …/<task>/plan/{name} (basename, .md/.json/.txt only)."""
+    base = Path(name).name
+    if not PLAN_ARTEFACT_NAME_RE.fullmatch(base):
+        raise ValueError("invalid plan artefact name")
+    path = plan_dir(task_id, root) / base
+    if not path.is_file():
+        raise FileNotFoundError(base)
+    return path.read_text(encoding="utf-8")
+
+
+def plan_todo_path(task_id: str, root: Path | None = None) -> Path:
+    """Path to the generated implementation checklist: …/<task>/plan/todo.md."""
+    return plan_dir(task_id, root) / "todo.md"
+
+
+def plan_review_path(task_id: str, root: Path | None = None) -> Path:
+    return task_dir(task_id, root) / PLAN_REVIEW_FILENAME
+
+
+def read_plan_review_state(task_id: str, root: Path | None = None) -> dict:
+    path = plan_review_path(task_id, root)
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_plan_review_state(task_id: str, state: dict, root: Path | None = None) -> None:
+    _atomic_write_json(plan_review_path(task_id, root), state)
+
+
+def plan_review_sessions_dir(task_id: str, root: Path | None = None) -> Path:
+    """Pi session dir for plan-review critic hops: …/<task>/plan/review_sessions/."""
+    return plan_dir(task_id, root) / "review_sessions"

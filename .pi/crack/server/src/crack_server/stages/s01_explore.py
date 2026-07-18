@@ -9,7 +9,6 @@ the Plan stage.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import shlex
@@ -19,7 +18,7 @@ import threading
 import time
 
 from crack_server import paths, pi_runner
-from crack_server.stages.base import Part, Stage
+from crack_server.stages.base import Part, Stage, render_actions_table
 from crack_server import app as _ui
 
 logger = logging.getLogger("uvicorn.error")
@@ -41,103 +40,9 @@ def _esc(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Explore-specific render helpers (moved from app.py)
+# Explore-specific render helpers. The compact actions table is shared with the
+# other stages (base.render_actions_table); only path-ref rendering is local.
 # ---------------------------------------------------------------------------
-
-
-def _fmt_chars(n: int) -> str:
-    """Compact character count: 240, 1.2k, 12.3k."""
-    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
-
-
-def _truncate_middle(s: str, max_len: int = 60) -> str:
-    """Middle-truncate a path, keeping the head and a whole-segment tail (filename)."""
-    if len(s) <= max_len:
-        return s
-    head_len = max_len // 3
-    tail = s[-(max_len - head_len - 1):]
-    # Drop any partial leading segment so the tail starts at a path boundary.
-    if "/" in tail:
-        tail = tail[tail.index("/"):]
-    return s[:head_len] + "…" + tail
-
-
-def _parse_tool_args(input_raw) -> dict:
-    """Tool-call arguments arrive as a dict in pi JSON mode; tolerate JSON strings."""
-    if isinstance(input_raw, dict):
-        return input_raw
-    if isinstance(input_raw, str):
-        try:
-            parsed = json.loads(input_raw)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
-
-
-def _render_text_action_row(kind: str, text: str) -> str:
-    """Table row for an assistant text/thinking block: first-line snippet, expandable."""
-    stripped = text.strip()
-    first_line = stripped.splitlines()[0] if stripped else ""
-    snippet = first_line if len(first_line) <= 80 else first_line[:77] + "…"
-    if stripped == first_line and len(first_line) <= 80:
-        middle = _esc(snippet)
-    else:
-        middle = (
-            f"<details><summary>{_esc(snippet)}</summary>"
-            f'<div class="turn-text">{_esc(text)}</div></details>'
-        )
-    size = f"out {_fmt_chars(len(text))}"
-    return f"<tr><td>{kind}</td><td>{middle}</td><td>{size}</td></tr>"
-
-
-def _render_tool_action_row(block: dict) -> str:
-    """Table row for one tool call: type, path/command, in/out char counts, output."""
-    name = str(block.get("name", "tool"))
-    input_raw = block.get("input", "")
-    output = str(block.get("output", ""))
-    args = _parse_tool_args(input_raw)
-
-    if name == "read":
-        action_type = "read"
-        path = str(args.get("path") or input_raw)
-        middle = f'<code title="{_esc(path)}">{_esc(_truncate_middle(path))}</code>'
-    elif name == "bash":
-        command = str(args.get("command") or input_raw)
-        action_type = "sigmap" if command.strip().startswith("sigmap") else "bash"
-        middle = f'<pre class="cmd">{_esc(command)}</pre>'
-    else:
-        action_type = _esc(name)
-        middle = f'<pre class="cmd">{_esc(str(input_raw))}</pre>'
-
-    if output:
-        truncated, marker = pi_runner.truncate_output(output)
-        body = f"<pre>{_esc(truncated)}</pre>"
-        if marker:
-            body += f'<small class="trunc-marker">{_esc(marker)}</small>'
-        middle += f"<details><summary>output</summary>{body}</details>"
-
-    size = f"in {_fmt_chars(len(str(input_raw)))} / out {_fmt_chars(len(output))}"
-    return f"<tr><td>{action_type}</td><td>{middle}</td><td>{size}</td></tr>"
-
-
-def _render_explore_actions(turns: list[dict]) -> str:
-    """Render all explore turns as one compact table — one row per action."""
-    rows: list[str] = []
-    for turn in turns:
-        thinking = turn.get("thinking", "")
-        text = turn.get("text", "")
-        if thinking:
-            rows.append(_render_text_action_row("think", thinking))
-        if text:
-            rows.append(_render_text_action_row("text", text))
-        for block in turn.get("tool_blocks", []):
-            rows.append(_render_tool_action_row(block))
-    return (
-        '<table class="explore-actions"><thead><tr>'
-        "<th>Type</th><th>Path / command</th><th>Size</th>"
-        f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    )
 
 
 def _render_path_ref(ref: dict) -> str:
@@ -271,6 +176,19 @@ class S01Explore(Stage):
         Part("gate", "Between-hop gate", "gate.md", NANO_MODEL),
         Part("summary", "Summary", "explore_summary.md", NANO_MODEL),
     ]
+
+    def status(self, task_id: str) -> str:
+        s = paths.read_explore_state(task_id).get("status", "idle")
+        if s == "running":
+            return "running"
+        if s == "done":
+            return "done"
+        if s == "error":
+            return "error"
+        return "idle"
+
+    def is_enabled(self, task_id: str) -> bool:
+        return True
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -479,19 +397,10 @@ class S01Explore(Stage):
     # -- rendering --------------------------------------------------------------
 
     def render_section(self, task_id: str) -> str:
-        return (
-            '<section class="explore" id="explore-section">\n'
-            "  <h2>Explore</h2>\n"
-            f"  {self.render_status(task_id)}\n"
-            "</section>"
-        )
+        return self.render_status(task_id)
 
     def render_status(self, task_id: str) -> str:
-        """Render the Explore section content (the polling wrapper is `#explore-content`).
-
-        Rendered entirely from the stored explore.json, so a page reload restores the last
-        run (turns table, summary, refs) without any new pi traffic. When prompts changed
-        after the last completed run, a stale banner is shown above the old results."""
+        """Render Explore content from stored explore.json."""
         safe_id = _esc(task_id)
         state = paths.read_explore_state(task_id)
         status = state.get("status", "idle")
@@ -502,67 +411,68 @@ class S01Explore(Stage):
         questions = state.get("questions", [])
         explored_at = state.get("explored_at")
         stop_reason = state.get("stop_reason")
+        content_id = self.stage_content_id()
 
-        polling_attrs = (
-            ' hx-trigger="every 1.5s" hx-get="/tasks/{id}/explore-status" hx-swap="outerHTML"'.format(
-                id=safe_id
-            )
-            if status == "running"
-            else ""
-        )
-
-        parts = [
-            f'<div id="explore-content" class="explore-content"{polling_attrs}>'
-        ]
+        parts: list[str] = []
 
         if status == "running":
             parts.append(
+                '<div class="stage-msg">'
                 f'<p aria-busy="true">Exploring… hop {state.get("hops_completed", 0) + 1}/{EXPLORE_MAX_HOPS}'
-                f" · turns {len(turns)}/{PI_EXPLORE_MAX_TURNS}</p>"
+                f" · turns {len(turns)}/{PI_EXPLORE_MAX_TURNS}</p></div>"
             )
         elif status == "error":
-            parts.append(f'<p style="color: #c44;">Error: {_esc(error)}</p>')
+            parts.append(
+                f'<div class="stage-msg"><p style="color: #c44;">Error: {_esc(error)}</p></div>'
+            )
         elif status == "done" and explored_at:
             found = state.get("found_files", len(path_refs))
             meta = f"explored {_ui._format_ago(explored_at)} · {len(turns)} turns · {found} files"
             if stop_reason:
                 meta += f" · stop: {_esc(str(stop_reason))}"
-            parts.append(f'<p class="explore-meta"><small>{meta}</small></p>')
+            parts.append(f'<div class="stage-msg explore-meta"><small>{meta}</small></div>')
             if paths.prompts_last_modified(task_id) > explored_at:
                 parts.append(
-                    '<p class="explore-stale">Prompts changed since last exploration — Re-explore?</p>'
+                    '<div class="stage-msg explore-stale">Prompts changed since last exploration — Re-explore?</div>'
                 )
 
         if questions:
             items = "".join(f"<li>{_esc(q)}</li>" for q in questions)
             parts.append(
-                f'<details class="explore-questions"><summary>Questions ({len(questions)})</summary>'
+                f'<details class="stage-msg explore-questions"><summary>Questions ({len(questions)})</summary>'
                 f"<ul>{items}</ul></details>"
             )
 
         if turns:
-            parts.append(_render_explore_actions(turns))
+            parts.append(f'<div class="stage-msg">{render_actions_table(turns)}</div>')
 
         if status == "done" and summary_md:
-            parts.append(f'<div class="explore-summary">{_ui._render_markdown(summary_md)}</div>')
+            parts.append(
+                f'<div class="stage-msg explore-summary">{_ui._render_markdown(summary_md)}</div>'
+            )
 
         if path_refs:
-            parts.append('<section class="explore-refs">')
-            parts.append("<h3>Referenced files</h3>")
+            refs = ['<section class="stage-msg explore-refs"><h3>Referenced files</h3>']
             for ref in path_refs:
-                parts.append(_render_path_ref(ref))
-            parts.append("</section>")
+                refs.append(_render_path_ref(ref))
+            refs.append("</section>")
+            parts.append("".join(refs))
 
-        # Allow a new run whenever not already running.
         if status != "running":
             label = "Re-explore" if (turns or summary_md) else "Explore"
             parts.append(
-                f'<button hx-post="/api/tasks/{safe_id}/explore" '
-                f'hx-target="#explore-content" hx-swap="outerHTML">{label}</button>'
+                f'<div class="stage-msg"><button hx-post="{self.start_url(task_id)}" '
+                f'hx-target="#{content_id}" hx-swap="outerHTML">{label}</button></div>'
             )
 
-        parts.append("</div>")
-        return "".join(parts)
+        msg_count = max(len(parts), len(turns), 1)
+        return self.wrap_status(
+            task_id,
+            "".join(parts),
+            msg_count=msg_count,
+            polling=status == "running",
+            extra_class="explore-content",
+        )
 
 
 STAGE = S01Explore()

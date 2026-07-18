@@ -1,138 +1,198 @@
 # Plan
 
 ## Initial build/check instructions
-
-The server runs live in a Docker container at `http://localhost:9847` with auto-reload. No build step is needed — just edit Python files under `src/crack_server/` and changes are picked up in ~1 second.
-
 ```bash
-# Verify server is responding
+# Verify server is running and accessible
 curl -s http://localhost:9847/ | head -20
 
-# Verify task page renders
-curl -s http://localhost:9847/api/tasks | jq -r '.[0].id' | xargs -I{} curl -s "http://localhost:9847/tasks/{}" | head -30
+# Check Python syntax / imports
+docker exec crack-dev python -m py_compile src/crack_server/app.py
+docker exec crack-dev python -m py_compile src/crack_server/paths.py
 ```
 
 ## Problem statement
-
-The crack-pi-server task page (and other pages) currently lack a footer identifying the server. The HTML for all pages is assembled in `src/crack_server/app.py` — the `index()` function (home page), `task_page()` function (task page), and stage config pages all route through a shared `_render_base()` helper that wraps content in a common layout. Static assets (CSS/JS) are served from `src/crack_server/static/`. The goal is to add a small, muted footer note reading "crack-pi-server" at the bottom of every page, inside the `<main>` element, using existing Pico.css small/muted styling patterns already present in the codebase (`<small style="color: #666;">`).
+The task page (`/tasks/{task_id}`) currently has no footer identification. Users need a subtle server-name note at the bottom of the main content area to confirm which server instance they're interacting with. The HTML for the task page is assembled in `task_page()` (src/crack_server/app.py:451-482), which builds a body fragment and passes it to `_render_base()` (src/crack_server/app.py:130-190). The base template wraps the body in `<main>` and includes the static JS. Static assets (CSS/JS) live in `src/crack_server/static/`. The footer should appear on task pages only, inside `<main>` after all dynamic content (prompt list, stage tabs) but before `</main>`.
 
 ## Changes
 
-### 1. `src/crack_server/app.py` — `_render_base()` function (lines ~752-784)
+### 1. `src/crack_server/app.py` — `_render_base()` (lines 130-190)
+Add an optional `footer` parameter and inject it inside `<main>` after the body content.
 
-Add a footer element inside the `<main>` tag, after the content block but before `</main>`.
-
-**Current structure (sketched from signatures):**
+**Before (excerpt):**
 ```python
-def _render_base(title: str, content: str, ...) -> str:
-    return f"""
-    <!DOCTYPE html>
-    <html>
-      <head>...</head>
-      <body>
-        <main class="container">
-          {content}
-        </main>
-      </body>
-    </html>
-    """
+def _render_base(
+    title: str,
+    body: str,
+    *,
+    task_id: str | None = None,
+    extra_head: str = "",
+) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/app.css">
+    {extra_head}
+  </head>
+  <body data-task-id="{task_id or ''}">
+    <main>
+      {body}
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>"""
 ```
 
-**After change:**
+**After:**
 ```python
-def _render_base(title: str, content: str, ...) -> str:
-    footer = '<footer style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #eee;"><small style="color: #666;">crack-pi-server</small></footer>'
-    return f"""
-    <!DOCTYPE html>
-    <html>
-      <head>...</head>
-      <body>
-        <main class="container">
-          {content}
-          {footer}
-        </main>
-      </body>
-    </html>
-    """
+def _render_base(
+    title: str,
+    body: str,
+    *,
+    task_id: str | None = None,
+    extra_head: str = "",
+    footer: str = "",
+) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/app.css">
+    {extra_head}
+  </head>
+  <body data-task-id="{task_id or ''}">
+    <main>
+      {body}
+      {footer}
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>"""
 ```
 
-**Motivation:** `_render_base` is the single layout wrapper used by `index()`, `task_page()`, and stage config pages. Adding the footer here ensures it appears on all pages consistently, inside `<main>` as requested, using the existing muted small-text pattern.
+**Motivation:** Makes footer injection opt-in and reusable; only callers that pass `footer=` will render one.
 
 ---
 
-### 2. `src/crack_server/static/app.css` — optional enhancement
+### 2. `src/crack_server/app.py` — `task_page()` (lines 451-482)
+Add a small helper to render the footer fragment and pass it to `_render_base`.
 
-No CSS change is strictly required since the inline style uses the existing pattern. However, if a reusable class is preferred, add:
+**Before (excerpt):**
+```python
+@app.get("/tasks/{task_id}", response_class=HTMLResponse)
+def task_page(task_id: str) -> HTMLResponse:
+    info = read_info(task_id)
+    title = info.get("title") or task_id
+    body = f"""
+      {_render_task_header(task_id, info)}
+      {_render_prompts_section(task_id)}
+      {_render_stage_tabs(task_id)}
+    """
+    return HTMLResponse(_render_base(f"{title} · crack-pi-server", body, task_id=task_id))
+```
 
+**After:**
+```python
+def _render_server_footer() -> str:
+    """Small footer note shown at bottom of task pages."""
+    return '<footer class="server-footer">crack-pi-server</footer>'
+
+@app.get("/tasks/{task_id}", response_class=HTMLResponse)
+def task_page(task_id: str) -> HTMLResponse:
+    info = read_info(task_id)
+    title = info.get("title") or task_id
+    body = f"""
+      {_render_task_header(task_id, info)}
+      {_render_prompts_section(task_id)}
+      {_render_stage_tabs(task_id)}
+    """
+    return HTMLResponse(_render_base(
+        f"{title} · crack-pi-server",
+        body,
+        task_id=task_id,
+        footer=_render_server_footer(),
+    ))
+```
+
+**Motivation:** Scopes footer to task pages only; keeps HTML fragment small and styleable via CSS class.
+
+---
+
+### 3. `src/crack_server/static/app.css` — Add footer styles
+Append styles for the new footer class.
+
+**Add at end of file:**
 ```css
-/* Add near line 8 */
-.page-footer {
+/* Server footer at bottom of task page main content */
+main > footer.server-footer {
   margin-top: 2rem;
   padding-top: 1rem;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--border-color, #e5e5e5);
   text-align: center;
-}
-.page-footer small {
-  color: #666;
+  font-size: 0.75rem;
+  color: var(--muted-color, #888);
 }
 ```
 
-Then update `_render_base` to use `<footer class="page-footer"><small>crack-pi-server</small></footer>`.
-
-**Motivation:** Keeps styling maintainable and consistent with the existing `.prompt-row`, `.title-row` pattern in the same file.
+**Motivation:** Pico.css uses CSS variables for colors; this matches the muted/small aesthetic used elsewhere (e.g., `.htmx-indicator`). The top margin separates footer from stage tabs; border-top provides a subtle visual break.
 
 ---
 
 ## What NOT to change
-
-- `src/crack_server/main.py` — server entry point, unrelated
-- `src/crack_server/paths.py` — filesystem utilities, unrelated
-- Any API route handlers (`api_create_task`, `api_delete_prompt`, etc.) — they return JSON/HTML fragments, not the base layout
-- The `task_page()` function itself — it only provides the *content* portion; the footer belongs in the shared wrapper
-- Static asset serving configuration — already works from `static/`
+- **`_render_base` signature for other callers** — `index()` and any future routes must continue to work without passing `footer=` (default `""` handles this).
+- **Homepage (`/`)** — must not show the server footer.
+- **Static asset mounting** — `app.mount("/static", ...)` already configured; no changes needed.
+- **Task ID format, prompt CRUD, stage pipeline** — completely unrelated.
+- **`app.js`** — no JS needed for a static footer.
 
 ---
 
 ## Automatic verification
-
 ```bash
-# 1. Home page has footer
-curl -s http://localhost:9847/ | grep -c 'crack-pi-server'
+# 1. Syntax check
+docker exec crack-dev python -m py_compile src/crack_server/app.py
 
-# 2. Task page has footer (create a test task first)
-TASK_ID=$(curl -s -X POST http://localhost:9847/api/tasks -d "title=Test Footer" | jq -r .id)
-curl -s "http://localhost:9847/tasks/$TASK_ID" | grep -c 'crack-pi-server'
+# 2. Verify task page HTML contains footer (create a test task first)
+TASK_ID=$(curl -s -X POST http://localhost:9847/api/tasks -d "title=Footer Test" | jq -r .id)
+curl -s "http://localhost:9847/tasks/$TASK_ID" | grep -c 'class="server-footer"'
+# Expected: 1
 
-# 3. Stage config page has footer
-curl -s http://localhost:9847/stages/plan | grep -c 'crack-pi-server'
+# 3. Verify homepage does NOT contain footer
+curl -s http://localhost:9847/ | grep -c 'class="server-footer"'
+# Expected: 0
 
-# 4. Footer is inside <main> (not outside)
-curl -s http://localhost:9847/ | grep -A5 '<main class="container">' | grep -c 'crack-pi-server'
-
-# Cleanup
+# 4. Clean up test task
 curl -s -X DELETE "http://localhost:9847/api/tasks/$TASK_ID"
 ```
-
-All commands should return `1` (found exactly once per page).
 
 ---
 
 ## Manual verification
-
-1. Open `http://localhost:9847/` in a browser — verify "crack-pi-server" appears at bottom of page, small and muted
-2. Open any task page (e.g., `http://localhost:9847/tasks/<id>`) — verify same footer
-3. Open stage config page (`http://localhost:9847/stages/plan`) — verify same footer
-4. Inspect element — confirm footer is inside `<main class="container">`, not after `</main>`
-5. Verify styling matches existing muted text (gray `#666`, small font)
+1. Open `http://localhost:9847/tasks/<any_task_id>` in browser
+2. Scroll to bottom of main content (below stage tabs)
+3. Verify small centered text "crack-pi-server" appears with muted color, subtle top border, and ~2rem spacing above it
+4. Open homepage `http://localhost:9847/` — confirm no footer appears
+5. Open any stage config page (`/stages/explore`, `/stages/plan`) — confirm no footer appears
+6. Inspect element: footer should be `<footer class="server-footer">crack-pi-server</footer>` inside `<main>`
 
 ---
 
 ## Overview / Summary
+**Goal:** Add a subtle server-name footer ("crack-pi-server") at the bottom of every task page only.
 
-**Goal:** Add a consistent "crack-pi-server" footer note to all pages (home, task, stage config).
+**Solution shape:** 
+- Extend `_render_base()` with optional `footer` parameter (backward compatible)
+- `task_page()` passes a small footer fragment via new helper `_render_server_footer()`
+- CSS styles the footer as muted, centered, small text with top border/margin
 
-**Solution:** Modify the shared `_render_base()` function in `src/crack_server/app.py` to inject a `<footer>` element inside `<main>`, using the existing inline `<small style="color: #666;">` pattern. Optionally extract to a CSS class in `src/crack_server/static/app.css`.
-
-**Main risks:** None — this is a pure presentational change to a single layout function. Auto-reload makes iteration instant. No API contracts, data models, or background jobs are affected.
+**Main risks:** 
+- Low — change is additive, default parameter preserves all existing callers
+- Hot reload picks up Python changes in ~1s; CSS changes may need hard refresh (Ctrl+F5)
 
 Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.
