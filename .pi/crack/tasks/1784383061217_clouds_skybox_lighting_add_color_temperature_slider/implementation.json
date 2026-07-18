@@ -1,5 +1,5 @@
 {
-  "phase": "running",
+  "phase": "done",
   "turns": [
     {
       "hop": 1,
@@ -747,8 +747,8 @@
   ],
   "current_model": "moonshotai/kimi-k2.7-code",
   "total_turns": 60,
-  "stop_reason": null,
+  "stop_reason": "turn_cap",
   "error": "",
   "started_at": 1784387965.5787866,
-  "finished_at": null
+  "finished_at": 1784388379.7995253
 }
