@@ -79,6 +79,9 @@ RUN curl -fsSL https://pi.dev/install.sh | sh
 
 RUN echo "set -g extended-keys on" > /root/.tmux.conf
 RUN echo "set -g extended-keys-format csi-u" >> /root/.tmux.conf
+RUN npm install -g sigmap
+RUN pi install npm:pi-cursor-sdk
+
 
 env CRACK_PI_PROJECT_ROOT=/workspace
 

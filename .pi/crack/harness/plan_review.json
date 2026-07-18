@@ -1,0 +1,5 @@
+{
+  "models": {
+    "critic": "moonshotai/kimi-k3"
+  }
+}

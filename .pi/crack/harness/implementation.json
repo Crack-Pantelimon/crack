@@ -1,0 +1,6 @@
+{
+  "models": {
+    "primary": "cursor/composer-2.5",
+    "fallback": "moonshotai/kimi-k2.7-code"
+  }
+}

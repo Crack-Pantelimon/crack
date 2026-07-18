@@ -1,5 +1,6 @@
 {
   "models": {
-    "draft": "nvidia/nemotron-3-ultra-550b-a55b"
+    "draft": "nvidia/nemotron-3-ultra-550b-a55b",
+    "final": "moonshotai/kimi-k3"
   }
 }

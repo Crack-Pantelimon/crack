@@ -1,0 +1,5 @@
+{
+  "models": {
+    "chat": "cursor/composer-2.5"
+  }
+}

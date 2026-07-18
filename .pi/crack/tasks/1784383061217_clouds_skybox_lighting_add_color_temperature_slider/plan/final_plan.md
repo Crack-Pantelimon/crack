@@ -6,81 +6,138 @@
 # From repository root
 cd crack_demo/demo_resolution_selector_web_bevy
 
-# Build the project (checks for compilation errors)
-cargo check --release 2>&1 | head -50
+# Build the project (checks for compilation errors). Use the wasm target
+# the demo actually ships, but `cargo check` with the default target is a
+# fast first signal — it exercises the host-only wgpu paths.
+cargo check 2>&1 | tail -30
 
-# Run any existing tests
-cargo test 2>&1 | head -50
-
-# Verify the project runs (if needed for manual testing later)
-# cargo run --release
+# Also check the wasm build target if it is configured (web demo):
+# cargo check --target wasm32-unknown-unknown 2>&1 | tail -30
 ```
 
 ## Problem statement
 
-The sky/sun rendering system in `plugins/cloud_sky/` currently uses **hardcoded warm colors** for the sun disc and glow in the shader (`skybox_clouds.wgsl`), and the world `DirectionalLight` color is always pure white (only intensity changes with time of day). There is no user control over sunlight color temperature, nor does the system automatically adjust color temperature based on the time of day.
+The sky/sun rendering system lives in `plugins/cloud_sky/`. In the sky shader
+(`skybox_clouds.wgsl`), `sky_color()` paints the sun disc and the warm
+atmospheric glow with **hardcoded** colors:
+
+```wgsl
+let warm = mix(vec3<f32>(1.0, 0.9, 0.7), vec3<f32>(1.0, 0.55, 0.25), low_sun);
+col += warm * pow(sundot, 8.0)  * 0.30 * day;
+col += warm * pow(sundot, 64.0) * 0.45 * day;
+col += vec3<f32>(1.0, 0.95, 0.85) * pow(sundot, 1800.0) * 8.0 * day; // disc
+```
+
+In `systems.rs`, `sync_sun_light()` drives the world `DirectionalLight` but
+only touches `illuminance` (intensity) and the light's `Transform` — the
+`color` is left at its default white. So the world never takes on the warm
+golden-hour or cool noon tint the sky shows.
+
+There is no user control over sunlight color temperature, and nothing adjusts
+temperature from the time-of-day slider.
 
 The task requires:
-1. **Manual control**: Add a sunlight temperature slider (1500K–6000K) at the top of the "Sky" UI section
-2. **Shader integration**: Use this temperature to color the sun disc and atmospheric glow in the sky shader
-3. **World lighting integration**: Apply the temperature to the `DirectionalLight` color in `sync_sun_light()`
-4. **Time-of-day automation**: Override the manual temperature based on `time_of_day` — warm at morning/dusk (~2000–3000K), neutral/cool at noon (~5000–6000K), appropriate night values
+1. **Manual control**: Add a sunlight temperature slider (1500K–6000K) at the
+   top of the "Sky" UI section in `ui.rs`, with an "Auto (time of day)"
+   toggle next to it.
+2. **Shader integration**: Use the temperature to color the sun disc **and**
+   the atmospheric glow in `skybox_clouds.wgsl`.
+3. **World lighting integration**: Convert the temperature to RGB and apply
+   it to `DirectionalLight.color` in `sync_sun_light()`.
+4. **Time-of-day automation**: When auto-mode is on, overwrite the temperature
+   from `time_of_day` — warm at morning/dusk (~2000–3000K), neutral/cool at
+   noon (~5000–6000K), and an appropriate night value.
 
-The relevant files are all in `plugins/cloud_sky/`:
-- `settings.rs` — `CloudSkySettings` resource (holds `time_of_day`, needs new `sun_temperature`)
-- `materials.rs` — `SkyParamsUniform` struct (passes data to shader)
-- `systems.rs` — `sync_sky_uniforms()` and `sync_sun_light()` (push settings to GPU and world lighting)
-- `skybox_clouds.wgsl` — Sky shader with `sky_color()` computing sun disc/glow
-- `ui.rs` — Egui window with collapsible sections
+Relevant files (all in `plugins/cloud_sky/`):
+- `settings.rs` — `CloudSkySettings` resource. Real fields: `time_of_day`,
+  `wind_speed`, `wind_direction_deg`, `cloud_scale`, `cumulus_amount/detail`,
+  `cirrus_amount/detail`, `storm_amount/detail`, `rain_intensity`,
+  `snow_intensity`, `cloud_shadow_intensity`. Derives
+  `Resource, Clone, Debug, PartialEq` (note: **not** `Copy`).
+- `materials.rs` — `SkyParamsUniform` (a `#[derive(ShaderType)]` struct of
+  four `Vec4`s: `sun_dir` / `amounts` / `detail` / `wind`). Shared by the sky
+  dome material **and** the precip-overlay material.
+- `systems.rs` — `make_sky_params()` (builds the uniform), `sync_sky_uniforms()`
+  (pushes into the material assets when `settings.is_changed()`), and
+  `sync_sun_light()` (`Query<(&mut Transform, &mut DirectionalLight)>` —
+  there is **no** `SunLight` marker component).
+- `skybox_clouds.wgsl` — defines its own `struct SkyParams { ... }` that must
+  mirror `SkyParamsUniform` byte-for-byte; `sky_color(rd, sun_dir, day,
+  overcast)` paints the gradient + sun. The overcast factor is `u.amounts.w`.
+- `precip_overlay.wgsl` — duplicates the same `struct SkyParams` and binds
+  the same uniform; it **must** be kept in lockstep or the bind-group layout
+  mismatches and the app panics at draw time.
+- `ui.rs` — `cloud_sky_window()` with a `ui.collapsing("Sky", …)` header whose
+  first row is the `time_of_day` slider.
 
 ---
 
 ## Changes
 
-### 1. `plugins/cloud_sky/settings.rs` — Add `sun_temperature` field to `CloudSkySettings`
+### 1. `plugins/cloud_sky/settings.rs` — Add `sun_temperature` + `auto_temperature` to `CloudSkySettings`
 
-**Lines ~5-45** — Current struct has `time_of_day`, `cloud_*`, `star_*` fields. Add temperature with default ~4000K (neutral noon).
+The real struct derives `#[derive(Resource, Clone, Debug, PartialEq)]` (NOT
+`Copy`), and the default `time_of_day` is `14.5`. Insert the new fields right
+after `time_of_day` (keeps the time-of-day cluster together and matches the
+UI ordering we want).
 
 ```rust
-// BEFORE (approx lines 5-25)
-#[derive(Resource, Clone, Copy, Debug)]
+// BEFORE (real current shape, abridged)
+#[derive(Resource, Clone, Debug, PartialEq)]
 pub struct CloudSkySettings {
-    pub time_of_day: f32,           // 0.0 - 24.0
-    pub cloud_coverage: f32,
-    pub cloud_density: f32,
-    pub cloud_speed: f32,
-    pub star_brightness: f32,
-    // ... other fields
+    pub time_of_day: f32,
+    pub wind_speed: f32,
+    pub wind_direction_deg: f32,
+    pub cloud_scale: f32,
+    pub cumulus_amount: f32,
+    pub cumulus_detail: f32,
+    pub cirrus_amount: f32,
+    pub cirrus_detail: f32,
+    pub storm_amount: f32,
+    pub storm_detail: f32,
+    pub rain_intensity: f32,
+    pub snow_intensity: f32,
+    pub cloud_shadow_intensity: f32,
 }
 
-// AFTER
-#[derive(Resource, Clone, Copy, Debug)]
+// AFTER — two new fields inserted after `time_of_day`
+#[derive(Resource, Clone, Debug, PartialEq)]
 pub struct CloudSkySettings {
-    pub time_of_day: f32,           // 0.0 - 24.0
-    pub sun_temperature: f32,       // 1500.0 - 6000.0 (Kelvin)
-    pub cloud_coverage: f32,
-    pub cloud_density: f32,
-    pub cloud_speed: f32,
-    pub star_brightness: f32,
-    // ... other fields
+    pub time_of_day: f32,
+    /// Sunlight color temperature in Kelvin (1500..6000). In auto mode this is
+    /// overwritten every frame from `time_of_day`.
+    pub sun_temperature: f32,
+    /// When true, `auto_sun_temperature()` drives `sun_temperature` from
+    /// `time_of_day` and the manual slider is disabled.
+    pub auto_temperature: bool,
+    pub wind_speed: f32,
+    pub wind_direction_deg: f32,
+    // ... rest unchanged
 }
 
 impl Default for CloudSkySettings {
     fn default() -> Self {
         Self {
-            time_of_day: 12.0,
-            sun_temperature: 4000.0,  // NEW: neutral default
-            cloud_coverage: 0.5,
-            cloud_density: 0.5,
-            cloud_speed: 1.0,
-            star_brightness: 1.0,
-            // ...
+            time_of_day: 14.5,
+            sun_temperature: 5250.0,   // matches the 14:30 default below
+            auto_temperature: true,
+            wind_speed: 0.02,
+            // ... rest unchanged
         }
     }
 }
 ```
 
-**Motivation**: Central settings resource; adding the field here makes it available to UI, systems, and shader uniformly. Default 4000K is a neutral "late morning" value.
+**Motivation**: One place for the value the UI, the CPU light, the GPU
+uniform, and the auto system all read from. Default `sun_temperature` ~5250K
+so it matches the auto system's output at the existing `time_of_day` of 14.5
+(no visible pop on first frame). `auto_temperature` defaults **on** because
+the task explicitly wants time-of-day to drive the temperature; the toggle
+keeps the manual slider usable for artists.
+
+**Note on `Copy`**: the struct is not `Copy`, so systems that mutate it must
+use `ResMut<CloudSkySettings>` and `settings.sun_temperature = …;` in place —
+no `let s = *settings;` value copies. `make_sky_params` already takes `&CloudSkySettings`, which is unaffected.
 
 ---
 

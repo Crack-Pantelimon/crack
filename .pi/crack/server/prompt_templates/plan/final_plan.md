@@ -37,4 +37,3 @@ Step-by-step human checks (UI flows, outputs to eyeball) for anything automation
 ## Overview / Summary
 A short recap: the goal, the shape of the solution, and the main risks.
 
-Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.
