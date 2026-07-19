@@ -1,0 +1,26 @@
+{
+  "status": "running",
+  "started_at": 1784466848.5582194,
+  "finished_at": null,
+  "explored_at": null,
+  "prompt_last_modified_at": 1784466847.0,
+  "stop_reason": null,
+  "hops_completed": 0,
+  "turns_completed": 0,
+  "found_files": 0,
+  "questions": [],
+  "turns": [
+    {
+      "kind": "user_prompt",
+      "compiled": "You are planning a code exploration of this repository. A user described a task below, and an explorer agent will search the codebase to gather everything needed for it.\n\nTask description:\nhello split v2\n\nWrite 2-10 concrete questions about what code we need to find and understand for this task \u2014 which files, modules, patterns, entry points, and existing implementations matter.\n\nThen, for each question, write a plausible example answer based on your best guess about this repository. The answers are allowed to be speculative hallucinations \u2014 the explorer will verify them against the real code.\n\nReply in exactly this format, one question/answer pair per block:\n\nQ: <question>\nA: <plausible example answer>\nQ: <question>\nA: <plausible example answer>\n",
+      "at": 1784466848.7706842,
+      "label": "turn_zero",
+      "template": "turn_zero.md"
+    }
+  ],
+  "path_refs": [],
+  "summary_md": "",
+  "error": "",
+  "stop_requested": false,
+  "started_token": "51aae611e1f141189af09b50da562368"
+}
