@@ -152,6 +152,79 @@ def render_chat_form(chat_id: str, info: dict) -> str:
     """
 
 
+def render_run_tree(chat_id: str) -> str:
+    """Live fragment listing sub-agent runs for this chat (statuses, planner forms)."""
+    from crack_server.stages.qa import render_questions_form
+
+    esc = _ui._esc
+    run_ids = paths.list_run_ids(chat_id)
+    if not run_ids:
+        return (
+            f'<div id="subagent-run-tree" class="subagent-run-tree" '
+            f'data-chat-id="{esc(chat_id)}"></div>'
+        )
+
+    rows: list[str] = []
+    active = False
+    for run_id in sorted(run_ids, reverse=True):
+        state = paths.run_state(chat_id, run_id).read()
+        phase = state.get("phase") or "?"
+        if phase not in ("done", "error", "stopped"):
+            active = True
+        persona = state.get("persona", "?")
+        depth = state.get("depth", "?")
+        safe_run = esc(run_id)
+        link = f'<a href="/sub_agents/runs/{safe_run}">{safe_run}</a>'
+        actions = ""
+        if phase not in ("done", "error", "stopped"):
+            actions += (
+                f' <button hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/stop" '
+                f'hx-target="#subagent-run-tree" hx-swap="outerHTML" '
+                f'style="padding:0.1rem 0.4rem;font-size:0.8rem;">Stop</button>'
+            )
+        if phase in ("error", "stopped"):
+            actions += (
+                f' <button hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/retry" '
+                f'hx-target="#subagent-run-tree" hx-swap="outerHTML" '
+                f'style="padding:0.1rem 0.4rem;font-size:0.8rem;">Retry</button>'
+            )
+        error = ""
+        if phase == "error" and state.get("error"):
+            error = f'<br><small class="error">{esc(str(state["error"]))}</small>'
+        form_html = ""
+        if phase == "awaiting_answers" and state.get("pending_questions"):
+            form_html = render_questions_form(
+                f"/api/chats/{chat_id}/sub_agents/runs/{run_id}/answers",
+                "#subagent-run-tree",
+                int(state.get("round", 1)),
+                None,
+                state["pending_questions"],
+                meta=f"Planner round {state.get('round', 1)} — answer to continue:",
+            )
+            form_html += (
+                f'<form hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/continue" '
+                f'hx-target="#subagent-run-tree" hx-swap="outerHTML" style="margin-top:0.5rem;">'
+                f'<button type="submit">Continue to plan (skip more questions)</button></form>'
+            )
+        rows.append(
+            f'<li class="subagent-run phase-{esc(phase)}">'
+            f'<strong>{esc(persona)}</strong> depth {esc(str(depth))} · '
+            f'<code>{esc(phase)}</code> · {link}{actions}{error}{form_html}</li>'
+        )
+
+    poll_attrs = ""
+    if active:
+        poll_attrs = (
+            f' hx-get="/chats/{esc(chat_id)}/run-tree" hx-trigger="every 2s" '
+            f'hx-swap="outerHTML"'
+        )
+    return (
+        f'<div id="subagent-run-tree" class="subagent-run-tree" '
+        f'data-chat-id="{esc(chat_id)}"{poll_attrs}>'
+        f'<h3>Sub-agent runs</h3><ul>{"".join(rows)}</ul></div>'
+    )
+
+
 def _tag_chat_msg(index: int, html: str) -> str:
     esc = _ui._esc
     msg_id = f"{CHAT_SLUG}-msg-{index}"
@@ -177,6 +250,12 @@ def render_chat_tail(chat_id: str) -> str:
     state = paths.chat_state(chat_id).read()
     phase = state.get("phase")
     parts: list[str] = []
+
+    pending_n = len(state.get("pending") or [])
+    if pending_n:
+        parts.append(
+            f'<p class="chat-pending"><small>{pending_n} message(s) queued…</small></p>'
+        )
 
     if phase != "chatting" and state.get("error"):
         parts.append(render.render_error_msg(state.get("error", ""), state.get("error_detail", "")))
@@ -241,10 +320,11 @@ def render_chat_page_body(chat_id: str) -> str:
     title = info.get("title") or f"Chat {chat_id}"
     return f"""
     <header style="margin-bottom: 1rem;">
-      <p><a href="/">← Home</a></p>
+      <p><a href="/">← Home</a> · <a href="/sub_agents">Sub-agents</a></p>
       <h1>{_ui._esc(title)}</h1>
       <p><small style="color: #666;">id {_ui._esc(chat_id)} · all tools enabled</small></p>
     </header>
+    {render_run_tree(chat_id)}
     {render_chat_content(chat_id)}
     """
 
@@ -261,7 +341,11 @@ def create_chat() -> RedirectResponse:
 
 
 def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
-    """POST /api/chats/{id}/messages: queue the agent for a new user message."""
+    """POST /api/chats/{id}/messages: queue the agent for a new user message.
+
+    Always appends to ``pending`` and enqueues; human messages and child-report
+    resumes serialize via the exclusive chat job (no B2 refuse-while-chatting).
+    """
     check_chat_id(chat_id)
     if model:
         def _set_model(info: dict) -> dict:
@@ -271,36 +355,34 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
         paths.chat_info_state(chat_id).update(_set_model)
     msg = msg.strip()
     if msg:
-        busy = False
-
         def _begin(state: dict) -> dict:
-            nonlocal busy
-            if state.get("phase") == "chatting":
-                busy = True
-                return state
-            state.setdefault("exchanges", []).append({"user": msg, "turns": []})
+            state.setdefault("pending", []).append({"user": msg, "source": "human"})
             state["phase"] = "chatting"
-            # Clear any stale stop from a previous exchange so this run isn't halted.
             state["stop_requested"] = False
             state.pop("error", None)
             state.pop("error_detail", None)
             return state
 
         paths.chat_state(chat_id).update(_begin)
-        if busy:
-            # B2: one agent at a time — refuse a concurrent send outright.
-            logger.info("chats: rejecting concurrent message for %s", chat_id)
-            return HTMLResponse(render_chat_content(chat_id))
-        queue.enqueue(chat_id, CHAT_JOB_SLUG, "chat")
+        queue.enqueue_exclusive(chat_id, CHAT_JOB_SLUG, "chat")
     return HTMLResponse(render_chat_content(chat_id))
 
 
-def stop_chat(chat_id: str) -> HTMLResponse:
-    """POST /api/chats/{id}/stop: halt the running agent regardless of state.
+def _stop_all_runs(chat_id: str, *, cascade_finish: bool = False) -> None:
+    """Stop every sub-agent run under this chat (kill pid, phase stopped)."""
+    from crack_server.sub_agents import registry
 
-    Sets the stop flag (so the worker classifies the kill as intentional and
-    won't start another hop), kills the pi process group, and flips the phase to
-    idle for immediate UI feedback."""
+    for run_id in paths.list_run_ids(chat_id):
+        state = paths.run_state(chat_id, run_id).read()
+        persona = registry.get(state.get("persona", ""))
+        if persona is None:
+            continue
+        # Cascade skips parent resume — chat-wide stop should not re-enqueue drains.
+        persona.request_stop(run_id, cascade=True)
+
+
+def stop_chat(chat_id: str) -> HTMLResponse:
+    """POST /api/chats/{id}/stop: halt the chat agent and all sub-agent runs."""
     check_chat_id(chat_id)
     chat = paths.chat_state(chat_id)
 
@@ -311,11 +393,12 @@ def stop_chat(chat_id: str) -> HTMLResponse:
     chat.update(_flag_stop)
     killed = pi_runner.kill_pid_file(_agent_pid_file(chat_id))
     logger.info("chats: stop requested for %s (killed=%s)", chat_id, killed)
+    _stop_all_runs(chat_id)
 
-    # Reflect the halt right away; the worker also finalizes when its hop ends.
     def _halt(state: dict) -> dict:
         if state.get("phase") == "chatting":
             state["phase"] = "idle"
+        state["pending"] = []
         return state
 
     chat.update(_halt)
@@ -323,11 +406,10 @@ def stop_chat(chat_id: str) -> HTMLResponse:
 
 
 def delete_chat(chat_id: str) -> HTMLResponse:
-    """DELETE /api/chats/{id}: kill any running agent, then remove the chat dir.
-
-    Returns an empty fragment so htmx's outerHTML swap drops the list item."""
+    """DELETE /api/chats/{id}: kill agents (incl. sub-runs), then remove the dir."""
     check_chat_id(chat_id)
     pi_runner.kill_pid_file(_agent_pid_file(chat_id))
+    _stop_all_runs(chat_id)
     try:
         shutil.rmtree(paths.chat_dir(chat_id))
     except OSError as e:
@@ -375,39 +457,128 @@ def _maybe_generate_title(chat_id: str, first_message: str) -> None:
         logger.exception("chats: title generation failed for %s", chat_id)
 
 
-def run_chat(chat_id: str) -> None:
-    """Worker side of a CHAT_JOB_SLUG job: run the agent for the latest message.
+def _merge_child_inbox(chat_id: str) -> int:
+    """Move chat.json child_inbox entries into pending as child_report messages."""
+    from crack_server.sub_agents import runner
 
-    Thin adapter over chat_engine.run_exchange with the chat's own pi session
-    and ``tools=None`` (every built-in + extension tool, including MCP)."""
+    entries: list[dict] = []
+
+    def _take(state: dict) -> dict:
+        entries.extend(state.get("child_inbox") or [])
+        state["child_inbox"] = []
+        return state
+
+    paths.chat_state(chat_id).update(_take)
+    if not entries:
+        return 0
+
+    def _enqueue(state: dict) -> dict:
+        pending = list(state.get("pending") or [])
+        for entry in entries:
+            pending.append({
+                "user": (
+                    "Your spawned sub-agent(s) have reported back:\n\n"
+                    + runner.format_child_result(entry)
+                ),
+                "source": "child_report",
+                "run_id": entry.get("run_id"),
+            })
+        state["pending"] = pending
+        state["phase"] = "chatting"
+        state["stop_requested"] = False
+        return state
+
+    paths.chat_state(chat_id).update(_enqueue)
+    return len(entries)
+
+
+def _pop_pending(chat_id: str) -> dict | None:
+    """Pop the next pending message, or None if the queue is empty / stop flagged."""
+    taken: dict | None = None
+
+    def _pop(state: dict) -> dict:
+        nonlocal taken
+        if state.get("stop_requested"):
+            state["pending"] = []
+            return state
+        pending = list(state.get("pending") or [])
+        if not pending:
+            return state
+        taken = pending.pop(0)
+        state["pending"] = pending
+        state.setdefault("exchanges", []).append({
+            "user": taken.get("user", ""),
+            "turns": [],
+            "source": taken.get("source", "human"),
+            **({"run_id": taken["run_id"]} if taken.get("run_id") else {}),
+        })
+        state["phase"] = "chatting"
+        return state
+
+    paths.chat_state(chat_id).update(_pop)
+    return taken
+
+
+def run_chat(chat_id: str) -> None:
+    """Worker side of a CHAT_JOB_SLUG job: drain child reports, then process
+    pending exchanges FIFO until the queue is empty."""
     chat = paths.chat_state(chat_id)
 
     def stop_check() -> bool:
         return bool(chat.read().get("stop_requested"))
 
-    def on_no_exchanges() -> None:
-        def _idle(state: dict) -> dict:
-            state["phase"] = "idle"
-            return state
+    while True:
+        _merge_child_inbox(chat_id)
+        item = _pop_pending(chat_id)
+        if item is None:
+            def _idle(state: dict) -> dict:
+                # Only idle if nothing new arrived while we were checking.
+                if state.get("pending") or state.get("child_inbox"):
+                    return state
+                state["phase"] = "idle"
+                return state
 
-        chat.update(_idle)
+            chat.update(_idle)
+            # Re-check once: a finish() may have raced the idle write.
+            _merge_child_inbox(chat_id)
+            if chat.read().get("pending"):
+                continue
+            return
 
-    model = paths.chat_info_state(chat_id).read().get("model") or DEFAULT_CHAT_MODEL
-    chat_engine.run_exchange(
-        state=chat,
-        ident=chat_id,
-        message_builder=lambda user_msg: user_msg,
-        record_template="",  # ad-hoc: the raw user message is the prompt
-        log_prefix="unscripted-chat",
-        model=model,
-        session_id=f"unscripted-{chat_id}",
-        sessions_dir=paths.chat_sessions_dir(chat_id),
-        tools=None,
-        timeout_seconds=CHAT_TIMEOUT_SECONDS,
-        hop_kwargs={"pid_file": _agent_pid_file(chat_id), "stop_check": stop_check},
-        pre_stop_check=stop_check,
-        # The very first user message names the chat (nano summary), so the home
-        # page shows something better than "(untitled chat)".
-        on_first_exchange=lambda user_msg: _maybe_generate_title(chat_id, user_msg),
-        on_no_exchanges=on_no_exchanges,
-    )
+        model = paths.chat_info_state(chat_id).read().get("model") or DEFAULT_CHAT_MODEL
+        is_first = len(chat.read().get("exchanges", [])) == 1
+        chat_engine.run_exchange(
+            state=chat,
+            ident=chat_id,
+            message_builder=lambda user_msg: user_msg,
+            record_template="",
+            log_prefix="unscripted-chat",
+            model=model,
+            session_id=f"unscripted-{chat_id}",
+            sessions_dir=paths.chat_sessions_dir(chat_id),
+            tools=None,
+            timeout_seconds=CHAT_TIMEOUT_SECONDS,
+            hop_kwargs={"pid_file": _agent_pid_file(chat_id), "stop_check": stop_check},
+            pre_stop_check=stop_check,
+            on_first_exchange=(
+                (lambda user_msg: _maybe_generate_title(chat_id, user_msg))
+                if is_first and item.get("source") == "human"
+                else None
+            ),
+            env_extra={
+                "CRACK_SUBAGENT_CTX": "1",
+                "CRACK_SUBAGENT_DEPTH": "0",
+                "CRACK_CHAT_ID": chat_id,
+                "CRACK_PARENT_KIND": "chat",
+                "CRACK_PARENT_ID": chat_id,
+            },
+        )
+        if stop_check():
+            def _halt(state: dict) -> dict:
+                state["phase"] = "idle"
+                state["pending"] = []
+                return state
+
+            chat.update(_halt)
+            return
+

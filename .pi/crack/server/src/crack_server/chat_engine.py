@@ -45,6 +45,7 @@ def run_exchange(
     on_first_exchange: Callable[[str], None] | None = None,
     on_no_exchanges: Callable[[], None] | None = None,
     stopped_phase: str = "idle",
+    env_extra: dict[str, str] | None = None,
 ) -> None:
     """Run the agent for the latest entry in ``state["exchanges"]``.
 
@@ -91,6 +92,7 @@ def run_exchange(
                 persist_turn=persister.persist,
                 hop=1,
                 record_prompt=record,
+                env_extra=env_extra,
                 **(hop_kwargs or {}),
             )
 

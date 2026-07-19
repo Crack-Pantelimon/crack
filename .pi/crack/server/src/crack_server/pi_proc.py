@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from crack_server import ratelimit
+from crack_server.paths import project_root
 from crack_server.ratelimit import (
     PI_RETRY_ATTEMPTS, PI_TIMEOUT_SECONDS, RESUME_MESSAGE, _retry_backoff_sleep,
     _transient_backoff_sleep, is_transient, wait_for_rate_limit,
@@ -37,6 +38,12 @@ OUTPUT_TAIL_LINES = 10
 # JSON-event output_tail usually holds only well-formed events, not the stderr
 # that explains a crash, so PiError.detail prefers this tail when it's nonempty.
 STDERR_TAIL_LINES = 10
+
+# pi auto-discovers `.pi/extensions/` relative to its launch cwd, so we pass our
+# extension explicitly with `-e` (existence-checked in _build_cmd, so tests and
+# partial checkouts don't break) and pin the subprocess cwd to the project root
+# (pi dedupes `-e` against auto-discovery — no double registration).
+CRACK_EXT = project_root() / ".pi" / "extensions" / "crack" / "index.ts"
 
 
 class PiError(RuntimeError):
@@ -178,7 +185,8 @@ def _run_text_attempt(
     published to ``pid_file`` for the whole call (kill_pid_file kills the
     group). Mirrors ``subprocess.run(capture_output=True, timeout=...)``."""
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, start_new_session=True)
+                            text=True, start_new_session=True,
+                            cwd=str(project_root()))
     if pid_file is not None:
         try:
             pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -369,10 +377,13 @@ class _HopParams(NamedTuple):
     hop: int
     pid_file: Path | None
     stop_check: Callable[[], bool] | None
+    env_extra: dict[str, str] | None
 
 
 def _build_cmd(p: _HopParams, msg: str) -> list[str]:
     cmd = ["pi", "--mode", "json", "-p", "--model", p.model]
+    if CRACK_EXT.exists():
+        cmd += ["-e", str(CRACK_EXT)]
     if p.tools is not None:
         cmd += ["--tools", p.tools]
     cmd += ["--session-id", p.session_id, "--session-dir", str(p.sessions_dir), msg]
@@ -392,7 +403,9 @@ def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -> dict
     # STOP can kill pi *and* any children it spawned (npx MCP servers) via
     # the group leader's pid, which we publish to pid_file.
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, start_new_session=True)
+                            text=True, start_new_session=True,
+                            cwd=str(project_root()),
+                            env={**os.environ, **(p.env_extra or {})})
     # Hard watchdog: a pi that hangs without emitting output would wedge the
     # stream loop forever; kill it well past the stage time cap.
     watchdog = threading.Timer(p.timeout_seconds + 60, proc.kill)
@@ -524,6 +537,7 @@ def run_agent_hop(
     pid_file: Path | None = None,
     stop_check=None,
     record_prompt=None,
+    env_extra: dict[str, str] | None = None,
 ) -> str:
     """Run one hop of a tool-using agent and stream its JSON events.
 
@@ -558,7 +572,7 @@ def run_agent_hop(
     p = _HopParams(log_prefix=log_prefix, model=model, session_id=session_id,
                    sessions_dir=sessions_dir, tools=tools, start=start, sentinel=sentinel,
                    timeout_seconds=timeout_seconds, persist_turn=persist_turn, hop=hop,
-                   pid_file=pid_file, stop_check=stop_check)
+                   pid_file=pid_file, stop_check=stop_check, env_extra=env_extra)
     p.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     if record_prompt is not None:

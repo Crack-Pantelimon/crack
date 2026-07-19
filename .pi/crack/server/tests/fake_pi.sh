@@ -100,6 +100,37 @@ $arg"
     emit_turn "wrote the artifact (invocation $n)"
     printf '{"type":"agent_end"}\n'
     ;;
+  write_report)
+    # Extract an absolute …/report.md path from the prompt and write a stub report.
+    report_path=$(python3 -c '
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"(/[^\s\"\047]+/report\.md)", text)
+if not m:
+    m = re.search(r"([A-Za-z]:\\\\[^\s\"\047]+\\\\report\.md)", text)
+print(m.group(1) if m else "")
+' "$FAKE_PI_DIR/prompt.$n")
+    if [ -n "$report_path" ]; then
+      mkdir -p "$(dirname "$report_path")"
+      printf '# Report\n\nFake report from invocation %s.\n' "$n" > "$report_path"
+      emit_turn "wrote report to $report_path"
+    else
+      emit_turn "no report path found in prompt (invocation $n)"
+    fi
+    printf '{"type":"agent_end"}\n'
+    ;;
+  questions)
+    # Emit a valid ```questions block for planner grill tests.
+    emit_turn "Here are clarifying questions:
+
+\`\`\`questions
+[
+  {\"id\": \"q1\", \"text\": \"Which approach?\", \"type\": \"single\", \"options\": [\"A\", \"B\"]}
+]
+\`\`\`
+"
+    printf '{"type":"agent_end"}\n'
+    ;;
   *)
     echo "fake_pi: unknown behavior '$line'" >&2
     exit 2

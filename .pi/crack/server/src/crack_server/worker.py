@@ -22,7 +22,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("uvicorn.error")
 
-MAX_WORKERS = 4
+MAX_WORKERS = 24
 POLL_INTERVAL_SECONDS = 0.5
 
 
@@ -35,11 +35,15 @@ def _dispatch(job: dict) -> None:
     the stage's state lands in ``error`` so the UI never spins forever (B6).
     """
     from crack_server import app, chats, models as models_mod, paths, queue, stages
+    from crack_server.sub_agents import constants as sub_constants
+    from crack_server.sub_agents import registry as sub_agents_registry
 
     slug = job.get("slug")
     step = job.get("step")
     task_id = job.get("task_id")
     form = job.get("form")
+    run_id = job.get("run_id") or (form or {}).get("run_id")
+    persona = None
     try:
         stage = None
         successor: tuple | None = None
@@ -49,6 +53,19 @@ def _dispatch(job: dict) -> None:
             models_mod.refresh_models()
         elif slug == chats.CHAT_JOB_SLUG:
             chats.run_chat(task_id)
+        elif slug == sub_constants.SUBAGENT_JOB_SLUG:
+            if not run_id:
+                logger.error("worker: sub-agent job %s missing run_id", job.get("id"))
+            else:
+                run_state = paths.run_state_by_id(run_id).read()
+                persona_slug = run_state.get("persona", "")
+                persona = sub_agents_registry.get(persona_slug)
+                if persona is None:
+                    logger.error(
+                        "worker: unknown persona %r for run %s", persona_slug, run_id
+                    )
+                else:
+                    successor = persona.dispatch_step(run_id, step, form)
         else:
             stage = stages.get(slug)
             if stage is None:
@@ -60,7 +77,22 @@ def _dispatch(job: dict) -> None:
         # for a double-run (RC1). A crash in this gap loses the successor; the
         # orphan-phase watchdog turns that into a visible error, not a spinner.
         queue.complete(job)
-        if stage is not None and successor is not None:
+        if slug == chats.CHAT_JOB_SLUG:
+            # Race guard: a child finish may have appended to child_inbox while
+            # this job was still in processing (exclusive enqueue dropped). With
+            # the processing file gone, re-enqueue if work remains.
+            chat_state = paths.chat_state(task_id).read()
+            if chat_state.get("pending") or chat_state.get("child_inbox"):
+                def _reopen(s: dict) -> dict:
+                    s["phase"] = "chatting"
+                    return s
+
+                paths.chat_state(task_id).update(_reopen)
+                queue.enqueue_exclusive(task_id, chats.CHAT_JOB_SLUG, "chat")
+        if persona is not None and successor is not None:
+            next_step, next_form = successor
+            persona.enqueue_step(run_id, next_step, next_form, ignore_job_id=job.get("id"))
+        elif stage is not None and successor is not None:
             next_step, next_form = successor
             stage.enqueue_step(task_id, next_step, next_form, ignore_job_id=job.get("id"))
     except Exception as exc:
@@ -78,6 +110,15 @@ def _dispatch(job: dict) -> None:
                     return state
 
                 paths.chat_state(task_id).update(_fail)
+            elif slug == sub_constants.SUBAGENT_JOB_SLUG and run_id:
+                persona_slug = paths.run_state_by_id(run_id).read().get("persona", "")
+                persona = sub_agents_registry.get(persona_slug)
+                if persona is not None:
+                    persona.record_dispatch_error(run_id, str(exc))
+                else:
+                    from crack_server.sub_agents import runner
+
+                    runner.finish(run_id, "error")
             else:
                 stage = stages.get(slug)
                 if stage is not None:
@@ -99,6 +140,7 @@ def _kill_orphaned_agents() -> None:
     chats_dir = paths.unscripted_chats_dir()
     if chats_dir.is_dir():
         pid_files += list(chats_dir.glob("*/agent.pid"))
+        pid_files += list(chats_dir.glob("*/sub_agent_runs/*/agent.pid"))
     for pid_file in pid_files:
         killed = pi_runner.kill_pid_file(pid_file)
         logger.info("crack-worker: orphaned agent pid file %s (killed=%s)", pid_file, killed)
@@ -167,6 +209,9 @@ def _prune_old_session_dirs() -> None:
         for sessions_dir in chats_dir.glob("*/sessions"):
             if sessions_dir.is_dir():
                 candidates.append((sessions_dir, sessions_dir.parent))
+        for sessions_dir in chats_dir.glob("*/sub_agent_runs/*/sessions"):
+            if sessions_dir.is_dir():
+                candidates.append((sessions_dir, sessions_dir.parent))
 
     for sessions_dir, owner_dir in candidates:
         if _owner_is_active(owner_dir):
@@ -185,15 +230,16 @@ ORPHAN_SWEEP_INTERVAL_SECONDS = 30.0
 
 
 def _sweep_orphaned_phases() -> None:
-    """RC6 reconciliation: flag any stage stuck in a running phase with no
-    pending/processing job (see Stage.check_orphaned), so a lost job surfaces
-    as an error even when nobody is watching the task page."""
+    """RC6 reconciliation: flag stuck running phases with no queued job."""
     from crack_server import paths, stages
+    from crack_server.sub_agents import registry as sub_agents_registry
+
+    _RUN_TERMINAL = {"done", "error", "stopped", "awaiting_answers"}
 
     try:
         task_ids = paths.list_task_ids()
     except OSError:
-        return
+        task_ids = []
     for task_id in task_ids:
         for stage in stages.REGISTRY:
             try:
@@ -202,6 +248,26 @@ def _sweep_orphaned_phases() -> None:
                 logger.exception(
                     "crack-worker: orphan check failed for %s/%s", task_id, stage.slug
                 )
+
+    try:
+        chat_ids = paths.list_chat_ids()
+    except OSError:
+        chat_ids = []
+    for chat_id in chat_ids:
+        for run_id in paths.list_run_ids(chat_id):
+            try:
+                state = paths.run_state(chat_id, run_id).read()
+            except OSError:
+                continue
+            if state.get("phase") in _RUN_TERMINAL:
+                continue
+            persona = sub_agents_registry.get(state.get("persona", ""))
+            if persona is None:
+                continue
+            try:
+                persona.check_orphaned(run_id)
+            except Exception:
+                logger.exception("crack-worker: orphan check failed for run %s", run_id)
 
 
 def _loop() -> None:

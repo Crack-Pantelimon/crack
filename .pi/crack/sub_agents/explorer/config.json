@@ -1,0 +1,5 @@
+{
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "tool_description": "Spawn an Explorer sub-agent to investigate the codebase and return a structured exploration report.",
+  "tool_label": "Explorer"
+}

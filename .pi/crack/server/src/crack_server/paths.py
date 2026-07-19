@@ -22,6 +22,7 @@ from crack_server.state import (
     INFO_FILENAME,
     PLAN_FILENAME,
     PLAN_REVIEW_FILENAME,
+    RUN_STATE_FILENAME,
     TITLE_REGEN_FILENAME,
     JsonState,
 )
@@ -31,6 +32,8 @@ PROMPT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.md$")
 STAGE_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
 PLAN_ARTEFACT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.(md|json|txt)$")
 CHAT_ID_RE = re.compile(r"^\d{13,}(_\d+)?$")
+PERSONA_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
+RUN_ID_RE = re.compile(r"^\d{13,}_[0-9a-f]{8}$")
 
 
 def project_root() -> Path:
@@ -479,5 +482,91 @@ def create_chat(chat_id: str, model: str, root: Path | None = None) -> dict:
     directory.mkdir(parents=True, exist_ok=False)
     info = {"id": chat_id, "title": "", "model": model, "created_at": time.time()}
     chat_info_state(chat_id, root).write(info)
-    chat_state(chat_id, root).write({"phase": "idle", "exchanges": [], "error": "", "error_detail": ""})
+    chat_state(chat_id, root).write({
+        "phase": "idle",
+        "exchanges": [],
+        "pending": [],
+        "child_inbox": [],
+        "error": "",
+        "error_detail": "",
+    })
     return info
+
+
+# ---------------------------------------------------------------------------
+# Sub-agents: persona definitions and per-run working dirs
+# ---------------------------------------------------------------------------
+
+
+def sub_agents_dir(root: Path | None = None) -> Path:
+    """Checked-in persona definitions: .pi/crack/sub_agents/."""
+    return (root or project_root()) / ".pi" / "crack" / "sub_agents"
+
+
+def _validate_persona_slug(slug: str) -> str:
+    if not PERSONA_SLUG_RE.fullmatch(slug):
+        raise ValueError("invalid persona slug")
+    return slug
+
+
+def sub_agent_persona_dir(slug: str, root: Path | None = None) -> Path:
+    return sub_agents_dir(root) / _validate_persona_slug(slug)
+
+
+def chat_sub_agent_runs_dir(chat_id: str, root: Path | None = None) -> Path:
+    return chat_dir(chat_id, root) / "sub_agent_runs"
+
+
+def generate_run_id() -> str:
+    """Run id format: <ms_epoch>_<uuid8>."""
+    import uuid
+
+    return f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+
+
+def run_dir(chat_id: str, run_id: str, root: Path | None = None) -> Path:
+    if not RUN_ID_RE.fullmatch(run_id):
+        raise ValueError("invalid run_id")
+    return chat_sub_agent_runs_dir(chat_id, root) / run_id
+
+
+def find_run_dir(run_id: str, root: Path | None = None) -> Path:
+    """Locate a run directory by id; raises if zero or multiple matches."""
+    if not RUN_ID_RE.fullmatch(run_id):
+        raise ValueError("invalid run_id")
+    base = unscripted_chats_dir(root)
+    matches = sorted(base.glob(f"*/sub_agent_runs/{run_id}"))
+    if len(matches) != 1:
+        raise FileNotFoundError(f"expected exactly one run dir for {run_id!r}, found {len(matches)}")
+    return matches[0]
+
+
+def list_run_ids(chat_id: str, root: Path | None = None) -> list[str]:
+    """Run ids under a chat, sorted newest first."""
+    directory = chat_sub_agent_runs_dir(chat_id, root)
+    if not directory.is_dir():
+        return []
+    return sorted(
+        (p.name for p in directory.iterdir() if p.is_dir() and RUN_ID_RE.fullmatch(p.name)),
+        reverse=True,
+    )
+
+
+def run_state(chat_id: str, run_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(run_dir(chat_id, run_id, root) / RUN_STATE_FILENAME)
+
+
+def run_state_by_id(run_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(find_run_dir(run_id, root) / RUN_STATE_FILENAME)
+
+
+def run_sessions_dir(chat_id: str, run_id: str, root: Path | None = None) -> Path:
+    return run_dir(chat_id, run_id, root) / "sessions"
+
+
+def run_pid_file(chat_id: str, run_id: str, root: Path | None = None) -> Path:
+    return run_dir(chat_id, run_id, root) / "agent.pid"
+
+
+def run_report_path(chat_id: str, run_id: str, root: Path | None = None) -> Path:
+    return run_dir(chat_id, run_id, root) / "report.md"

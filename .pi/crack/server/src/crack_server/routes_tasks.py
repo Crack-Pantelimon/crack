@@ -185,6 +185,8 @@ def index() -> HTMLResponse:
       <h2># Harness Stages</h2>
       <ul>
         {stage_items}
+        <li><a href="/sub_agents">Sub-agents</a>
+          <small style="color: #666;">(personas &amp; models)</small></li>
       </ul>
     </section>
 

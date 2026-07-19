@@ -1,0 +1,5 @@
+{
+  "model": "nvidia/z-ai/glm-5.2",
+  "tool_description": "Spawn a Tester sub-agent to run verification and return a structured test report.",
+  "tool_label": "Tester"
+}

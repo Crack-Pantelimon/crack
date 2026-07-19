@@ -40,6 +40,13 @@ def chat_status(
     return HTMLResponse(chats.render_chat_content(chat_id, after=after))
 
 
+@router.get("/chats/{chat_id}/run-tree", response_class=HTMLResponse)
+def chat_run_tree(chat_id: str) -> HTMLResponse:
+    """Sub-agent run-tree fragment for the chat page."""
+    chats.check_chat_id(chat_id)
+    return HTMLResponse(chats.render_run_tree(chat_id))
+
+
 @router.get("/chats/{chat_id}/wait")
 async def chat_wait(
     chat_id: str,

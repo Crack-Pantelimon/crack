@@ -36,6 +36,7 @@ PLAN_REVIEW_FILENAME = "plan_review.json"
 IMPLEMENTATION_FILENAME = "implementation.json"
 IMPL_REVIEW_FILENAME = "impl_review.json"
 FINISHED_FILENAME = "finished.json"
+RUN_STATE_FILENAME = "run.json"
 
 
 class JsonState:
@@ -131,11 +132,28 @@ def task_state_mtimes(task_id: str, root: Path | None = None) -> float:
 
 
 def chat_state_mtime(chat_id: str, root: Path | None = None) -> float:
-    """Mtime of the chat's state file (0.0 if missing)."""
+    """Max mtime of the chat state file and any sub-agent run.json files.
+
+    Including run.json lets the chat long-poll wake when a run-tree fragment
+    needs a live refresh even if chat.json itself is unchanged.
+    """
     from crack_server import paths  # lazy: paths imports this module
 
+    latest = 0.0
     try:
-        return paths.chat_state_path(chat_id, root).stat().st_mtime
+        latest = max(latest, paths.chat_state_path(chat_id, root).stat().st_mtime)
     except OSError:
-        return 0.0
+        pass
+    try:
+        runs_dir = paths.chat_sub_agent_runs_dir(chat_id, root)
+    except (ValueError, OSError):
+        return latest
+    if not runs_dir.is_dir():
+        return latest
+    for run_json in runs_dir.glob("*/run.json"):
+        try:
+            latest = max(latest, run_json.stat().st_mtime)
+        except OSError:
+            continue
+    return latest
 

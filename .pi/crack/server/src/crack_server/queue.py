@@ -13,10 +13,14 @@ never both win the same file — the loser gets ``FileNotFoundError`` and moves 
 
 Job spec (dict, persisted as the file body)::
 
-    {"id", "task_id", "slug", "step", "form": {...} | None, "enqueued_at"}
+    {"id", "task_id", "slug", "step", "form": {...} | None, "enqueued_at", "run_id"?}
 
 The in-memory job dict additionally carries ``_path`` (the processing-file path)
 so ``complete`` / ``fail`` can remove the right file.
+
+Dedupe key for exclusive enqueue is ``(task_id, slug, run_id)`` where a missing
+``run_id`` matches only other jobs with no ``run_id`` (backward compatible with
+stage and chat jobs).
 """
 
 from __future__ import annotations
@@ -45,7 +49,13 @@ def _ensure_dirs() -> tuple[Path, Path]:
     return pending, processing
 
 
-def enqueue(task_id: str, slug: str, step: str, form: dict | None = None) -> str:
+def enqueue(
+    task_id: str,
+    slug: str,
+    step: str,
+    form: dict | None = None,
+    run_id: str | None = None,
+) -> str:
     """Write a job into pending/ atomically. Returns the job id."""
     pending, _ = _ensure_dirs()
     job_id = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
@@ -57,6 +67,8 @@ def enqueue(task_id: str, slug: str, step: str, form: dict | None = None) -> str
         "form": form,
         "enqueued_at": time.time(),
     }
+    if run_id is not None:
+        job["run_id"] = run_id
     path = pending / f"{job_id}.json"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(job, indent=2), encoding="utf-8")
@@ -65,10 +77,23 @@ def enqueue(task_id: str, slug: str, step: str, form: dict | None = None) -> str
     return job_id
 
 
-def _find_job(task_id: str, slug: str, ignore_job_id: str | None = None) -> tuple[dict, str] | None:
-    """Scan pending/ + processing/ for a job matching (task_id, slug), skipping
-    ``ignore_job_id``. Returns (job, directory name) or None. Scanning two small
-    directories is fine at this scale."""
+def _job_matches(job: dict, task_id: str, slug: str, run_id: str | None) -> bool:
+    if job.get("task_id") != task_id or job.get("slug") != slug:
+        return False
+    job_run_id = job.get("run_id")
+    if run_id is None:
+        return job_run_id is None
+    return job_run_id == run_id
+
+
+def _find_job(
+    task_id: str,
+    slug: str,
+    run_id: str | None = None,
+    ignore_job_id: str | None = None,
+) -> tuple[dict, str] | None:
+    """Scan pending/ + processing/ for a job matching (task_id, slug, run_id),
+    skipping ``ignore_job_id``. Returns (job, directory name) or None."""
     pending, processing = _ensure_dirs()
     for directory in (pending, processing):
         for path in directory.glob("*.json"):
@@ -76,7 +101,7 @@ def _find_job(task_id: str, slug: str, ignore_job_id: str | None = None) -> tupl
                 job = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 continue
-            if job.get("task_id") != task_id or job.get("slug") != slug:
+            if not _job_matches(job, task_id, slug, run_id):
                 continue
             if ignore_job_id is not None and job.get("id") == ignore_job_id:
                 continue
@@ -84,10 +109,9 @@ def _find_job(task_id: str, slug: str, ignore_job_id: str | None = None) -> tupl
     return None
 
 
-def has_job(task_id: str, slug: str) -> bool:
-    """True when any job for (task_id, slug) is pending or in flight — the
-    orphan-phase watchdog's ground truth."""
-    return _find_job(task_id, slug) is not None
+def has_job(task_id: str, slug: str, run_id: str | None = None) -> bool:
+    """True when any job for (task_id, slug, run_id) is pending or in flight."""
+    return _find_job(task_id, slug, run_id) is not None
 
 
 def enqueue_exclusive(
@@ -96,13 +120,12 @@ def enqueue_exclusive(
     step: str,
     form: dict | None = None,
     ignore_job_id: str | None = None,
+    run_id: str | None = None,
 ) -> str | None:
-    """Enqueue unless a job for the same (task_id, slug) is already pending or
-    in flight — the double-run guard (B1). Returns the job id, or None when the
-    duplicate was dropped. ``ignore_job_id`` exempts the caller's own in-flight
-    job, so a running step can enqueue its stage's successor without colliding
-    with its own processing file."""
-    existing = _find_job(task_id, slug, ignore_job_id)
+    """Enqueue unless a job for the same (task_id, slug, run_id) is already
+    pending or in flight — the double-run guard (B1). Returns the job id, or
+    None when the duplicate was dropped."""
+    existing = _find_job(task_id, slug, run_id, ignore_job_id)
     if existing is not None:
         job, dirname = existing
         logger.info(
@@ -110,7 +133,7 @@ def enqueue_exclusive(
             slug, step, task_id, job.get("id"), dirname,
         )
         return None
-    return enqueue(task_id, slug, step, form)
+    return enqueue(task_id, slug, step, form, run_id=run_id)
 
 
 def claim_next() -> dict | None:

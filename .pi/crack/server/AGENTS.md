@@ -402,10 +402,19 @@ on-disk verification is what gates completion.
   request (`_render_prompts_section` / `_render_prompt_row` in `app.py`) —
   there's no in-memory state to go stale, but it also means don't assume a
   row exists just because you saw it in an earlier response.
-- The `.pi/extensions/crack_pi/index.ts` pi-agent extension (`/crack ...`
-  commands) only *lists/opens* tasks in a browser — it never creates or
-  writes task data, so task creation only ever happens through the web UI's
-  `POST /api/tasks`.
+- The single pi-agent extension lives at `.pi/extensions/crack/index.ts`
+  (tools-only, no slash commands): it registers one `spawn_<slug>` tool per
+  persona dir under `.pi/crack/sub_agents/`, read synchronously from disk at
+  load time (no env gating, no HTTP on the registration path). Spawn calls go
+  to `POST /api/chats/<id>/sub_agents/spawn`; chat context comes from
+  `CRACK_CHAT_ID`/`CRACK_PARENT_*`/`CRACK_SUBAGENT_DEPTH` env vars checked in
+  `execute`, and rigid stages stay isolated via their `--tools` allowlists.
+- `pi_proc.py` pins every pi subprocess to `cwd=project_root()` and passes
+  `-e <root>/.pi/extensions/crack/index.ts` explicitly (existence-checked), so
+  the extension loads no matter where the server itself was launched from —
+  pi's own `.pi/extensions/` auto-discovery is cwd-relative, which is what hid
+  the spawn tools when the server ran from `.pi/crack/server`. Task creation
+  only ever happens through the web UI's `POST /api/tasks`.
 
 
 ## Auto-generated signatures
