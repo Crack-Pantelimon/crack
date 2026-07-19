@@ -15,8 +15,10 @@ from crack_server.stages.base import (
     Part,
     Stage,
     render_error_msg,
+    render_message_form,
     render_retry_button,
     render_spinner,
+    render_stop_button,
     render_turns_trajectory,
 )
 from crack_server import app as _ui
@@ -26,8 +28,6 @@ logger = logging.getLogger("uvicorn.error")
 GLM_MODEL = "nvidia/z-ai/glm-5.2"
 
 REVIEW_SENTINEL = "REVIEW_COMPLETE"
-REVIEW_TURNS_PER_HOP = 3
-REVIEW_MAX_TURNS = 60
 REVIEW_TIMEOUT_SECONDS = 3600
 
 
@@ -42,15 +42,14 @@ class S05ImplReview(Stage):
         Part("reviewer", "Reviewer agent", "review.md", GLM_MODEL),
     ]
 
+    phase_key = "phase"
+    message_phase = "running"
+
     def status(self, task_id: str) -> str:
         state = paths.read_impl_review_state(task_id)
         phase = state.get("phase")
-        if phase == "running":
-            return "running"
-        if phase == "done":
-            return "done"
-        if phase == "error":
-            return "error"
+        if phase in ("running", "done", "error", "stopped"):
+            return phase
         from crack_server import stages
 
         impl = stages.get("implementation")
@@ -66,30 +65,39 @@ class S05ImplReview(Stage):
 
     # -- lifecycle ------------------------------------------------------------
 
+    def state_read(self, task_id: str) -> dict:
+        return paths.read_impl_review_state(task_id)
+
+    def state_write(self, task_id: str, state: dict) -> None:
+        paths.write_impl_review_state(task_id, state)
+
     def start(self, task_id: str) -> None:
         state = paths.read_impl_review_state(task_id)
         if state.get("phase") == "running":
             return
         shutil.rmtree(paths.impl_review_sessions_dir(task_id), ignore_errors=True)
-        paths.write_impl_review_state(
-            task_id,
-            {
-                "phase": "running",
-                "turns": [],
-                "total_turns": 0,
-                "stop_reason": None,
-                "error": "",
-                "started_at": time.time(),
-                "finished_at": None,
-            },
-        )
-        self.enqueue_step(task_id, "run")
+        fresh = {
+            "phase": "running",
+            "turns": [],
+            "total_turns": 0,
+            "stop_reason": None,
+            "error": "",
+            "started_at": time.time(),
+            "finished_at": None,
+            "stop_requested": False,
+        }
+        form = self.prepare_start_token(fresh)
+        paths.write_impl_review_state(task_id, fresh)
+        self.enqueue_step(task_id, "run", form)
 
     def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
         if step == "run":
             self._run_review(task_id)
-            return
-        super().run_step(task_id, step, form)
+        elif step == "user_message":
+            msg = str((form or {}).get("msg", "")).strip()
+            self._run_review(task_id, initial_message=msg or pi_runner.RESUME_MESSAGE)
+        else:
+            super().run_step(task_id, step, form)
 
     # -- message assembly -----------------------------------------------------
 
@@ -129,19 +137,18 @@ class S05ImplReview(Stage):
 
     # -- worker step ----------------------------------------------------------
 
-    def _run_review(self, task_id: str) -> None:
+    def _run_review(self, task_id: str, initial_message: str | None = None) -> None:
         start = time.monotonic()
         try:
-            message = self._assemble_message(task_id)
+            if initial_message is not None:
+                message, template = initial_message, ""
+            else:
+                message, template = self._assemble_message(task_id), "review.md"
             stop_reason = None
             round_n = 0
             while True:
                 state = paths.read_impl_review_state(task_id)
                 existing_turns = list(state.get("turns", []))
-                total = pi_runner.count_turn_groups(existing_turns)
-                if total >= REVIEW_MAX_TURNS:
-                    stop_reason = "turn_cap"
-                    break
                 if time.monotonic() - start > REVIEW_TIMEOUT_SECONDS:
                     stop_reason = "time_cap"
                     break
@@ -149,8 +156,15 @@ class S05ImplReview(Stage):
                 round_n += 1
                 new_turns: list[dict] = []
 
+                def append_entry(entry: dict) -> None:
+                    new_turns.append(entry)
+                    st = paths.read_impl_review_state(task_id)
+                    st["turns"] = existing_turns + new_turns
+                    st["total_turns"] = len(st["turns"])
+                    paths.write_impl_review_state(task_id, st)
+
                 def persist(current_turn: dict, hop: int) -> None:
-                    new_turns.append(
+                    append_entry(
                         {
                             "hop": hop,
                             "text": current_turn.get("text", ""),
@@ -159,10 +173,13 @@ class S05ImplReview(Stage):
                             "elapsed": current_turn.get("elapsed"),
                         }
                     )
-                    st = paths.read_impl_review_state(task_id)
-                    st["turns"] = existing_turns + new_turns
-                    st["total_turns"] = len(st["turns"])
-                    paths.write_impl_review_state(task_id, st)
+
+                tmpl = template
+
+                def record(entry: dict) -> None:
+                    entry.setdefault("label", f"round {round_n}")
+                    entry["template"] = tmpl
+                    append_entry(entry)
 
                 reason = pi_runner.run_agent_hop(
                     log_prefix="impl-review",
@@ -173,23 +190,28 @@ class S05ImplReview(Stage):
                     message=message,
                     start=start,
                     sentinel=REVIEW_SENTINEL,
-                    turns_per_hop=REVIEW_TURNS_PER_HOP,
-                    max_turns=REVIEW_MAX_TURNS,
                     timeout_seconds=REVIEW_TIMEOUT_SECONDS,
-                    total_turns=total,
                     persist_turn=persist,
                     hop=round_n,
+                    record_prompt=record,
+                    **self.agent_hop_kwargs(task_id),
                 )
 
                 if reason == "empty":
                     raise RuntimeError("pi returned empty responses (no content in any turn)")
+                if reason == "stopped":
+                    st = paths.read_impl_review_state(task_id)
+                    st["phase"] = "stopped"
+                    st["stop_reason"] = "stopped"
+                    paths.write_impl_review_state(task_id, st)
+                    return
                 if reason == "sentinel":
                     stop_reason = "sentinel"
                     break
-                if reason in ("turn_cap", "time_cap"):
-                    stop_reason = reason
+                if reason == "time_cap":
+                    stop_reason = "time_cap"
                     break
-                message = self._continue_message(task_id)
+                message, template = self._continue_message(task_id), ""
 
             state = paths.read_impl_review_state(task_id)
             state["phase"] = "done"
@@ -273,7 +295,7 @@ class S05ImplReview(Stage):
                 render_error_msg(state.get("error", ""), state.get("error_detail", ""))
             )
 
-        if phase in ("done", "error"):
+        if phase in ("done", "error", "stopped"):
             buttons = (
                 f'<button hx-post="{self.start_url(task_id)}" '
                 f'hx-target="#{content_id}" hx-swap="outerHTML">Re-run review</button>'
@@ -282,8 +304,12 @@ class S05ImplReview(Stage):
                 buttons += render_retry_button(self, task_id, state.get("error_step"))
             parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
 
+        if phase in ("error", "stopped"):
+            parts.append(render_message_form(self, task_id))
+
         if phase == "running":
-            parts.append(render_spinner(f"Reviewing… {pi_runner.count_turn_groups(turns)}/{REVIEW_MAX_TURNS} turns"))
+            parts.append(render_spinner(f"Reviewing… turn {pi_runner.count_turn_groups(turns)}"))
+            parts.append(render_stop_button(self, task_id))
 
         msg_count = max(len(turns) + len(parts), 1)
         return self.wrap_status(

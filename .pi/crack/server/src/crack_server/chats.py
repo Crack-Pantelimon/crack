@@ -33,9 +33,6 @@ CHAT_JOB_SLUG = "__chat__"
 
 DEFAULT_CHAT_MODEL = "nvidia/z-ai/glm-5.2"
 
-CHAT_TURNS_PER_HOP = 10
-CHAT_MAX_HOPS = 3
-CHAT_MAX_TURNS = 30
 CHAT_TIMEOUT_SECONDS = 1800
 
 RECENT_CHATS = 5
@@ -237,6 +234,10 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
     msg = msg.strip()
     if msg:
         state = paths.read_chat_state(chat_id)
+        if state.get("phase") == "chatting":
+            # B2: one agent at a time — refuse a concurrent send outright.
+            logger.info("chats: rejecting concurrent message for %s", chat_id)
+            return HTMLResponse(render_chat_content(chat_id))
         state.setdefault("exchanges", []).append({"user": msg, "turns": []})
         state["phase"] = "chatting"
         # Clear any stale stop from a previous exchange so this run isn't halted.
@@ -352,8 +353,14 @@ def run_chat(chat_id: str) -> None:
         def stop_check() -> bool:
             return bool(paths.read_chat_state(chat_id).get("stop_requested"))
 
+        def append_entry(entry: dict) -> None:
+            new_turns.append(entry)
+            st = paths.read_chat_state(chat_id)
+            st["exchanges"][idx]["turns"] = existing + new_turns
+            paths.write_chat_state(chat_id, st)
+
         def persist(current_turn: dict, hop: int) -> None:
-            new_turns.append(
+            append_entry(
                 {
                     "hop": hop,
                     "text": current_turn.get("text", ""),
@@ -362,17 +369,16 @@ def run_chat(chat_id: str) -> None:
                     "elapsed": current_turn.get("elapsed"),
                 }
             )
-            st = paths.read_chat_state(chat_id)
-            st["exchanges"][idx]["turns"] = existing + new_turns
-            paths.write_chat_state(chat_id, st)
 
-        reason = "hop_cap"
-        hop = 0
-        while reason == "hop_cap" and hop < CHAT_MAX_HOPS:
-            if stop_check():
-                reason = "stopped"
-                break
-            hop += 1
+        def record(entry: dict) -> None:
+            entry["label"] = "chat"
+            entry["template"] = ""  # ad-hoc: the raw user message is the prompt
+            entry["original"] = message
+            append_entry(entry)
+
+        if stop_check():
+            reason = "stopped"
+        else:
             reason = pi_runner.run_agent_hop(
                 log_prefix="unscripted-chat",
                 model=model,
@@ -382,18 +388,13 @@ def run_chat(chat_id: str) -> None:
                 message=message,
                 start=start,
                 sentinel=None,
-                turns_per_hop=CHAT_TURNS_PER_HOP,
-                max_turns=CHAT_MAX_TURNS,
                 timeout_seconds=CHAT_TIMEOUT_SECONDS,
-                total_turns=pi_runner.count_turn_groups(existing + new_turns),
                 persist_turn=persist,
-                hop=hop,
+                hop=1,
                 pid_file=pid_file,
                 stop_check=stop_check,
+                record_prompt=record,
             )
-            if reason != "hop_cap":
-                break
-            message = "Continue your response."
 
         state = paths.read_chat_state(chat_id)
         state["phase"] = "idle"

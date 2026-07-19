@@ -17,10 +17,12 @@ from crack_server.stages.base import (
     format_qa_for_prompt,
     parse_questions,
     render_error_msg,
+    render_message_form,
     render_qa_history,
     render_questions_form,
     render_retry_button,
     render_spinner,
+    render_stop_button,
     render_turns_trajectory,
 )
 from crack_server import app as _ui
@@ -34,10 +36,14 @@ MAX_AUTO_ROUNDS = 2
 PLAN_REVISED_SENTINEL = "PLAN_REVISED"
 READY_TO_REVISE = "READY_TO_REVISE"
 RUNNING_PHASES = ("review_running", "resuming", "revising")
-CRITIC_TURNS_PER_STEP = 10
-CRITIC_MAX_HOPS = 3
-CRITIC_MAX_TURNS = 20
 CRITIC_TIMEOUT_SECONDS = 300
+
+# Flow-control nudge (not a cap): sent once when the critic ended its turn
+# without emitting either a questions block or a sentinel.
+CRITIC_NUDGE = (
+    "Stop calling tools now. Complete your response — emit either a "
+    "```questions JSON block or PLAN_REVISED on its own line."
+)
 
 
 def _esc(text: str) -> str:
@@ -52,17 +58,24 @@ class S03PlanReview(Stage):
         Part("todo", "Todo generator (single-shot)", "todo.md", ULTRA_MODEL),
     ]
 
+    phase_key = "phase"
+    message_phase = "resuming"
+
     def status(self, task_id: str) -> str:
         phase = paths.read_plan_review_state(task_id).get("phase", "idle")
         if phase in RUNNING_PHASES:
             return "running"
         if phase in ("awaiting_answers", "awaiting_approval"):
             return "awaiting"
-        if phase == "done":
-            return "done"
-        if phase == "error":
-            return "error"
+        if phase in ("done", "error", "stopped"):
+            return phase
         return "idle"
+
+    def state_read(self, task_id: str) -> dict:
+        return paths.read_plan_review_state(task_id)
+
+    def state_write(self, task_id: str, state: dict) -> None:
+        paths.write_plan_review_state(task_id, state)
 
     def is_enabled(self, task_id: str) -> bool:
         from crack_server import stages
@@ -87,25 +100,25 @@ class S03PlanReview(Stage):
 
         shutil.rmtree(paths.plan_review_sessions_dir(task_id), ignore_errors=True)
 
-        paths.write_plan_review_state(
-            task_id,
-            {
-                "phase": "review_running",
-                "round": 1,
-                "rounds": [],
-                "turns": [],
-                "plan_md": plan_md,
-                "iterations": 0,
-                "error": "",
-                "started_at": time.time(),
-                "finished_at": None,
-            },
-        )
-        self.enqueue_step(task_id, "critique")
+        fresh = {
+            "phase": "review_running",
+            "round": 1,
+            "rounds": [],
+            "turns": [],
+            "plan_md": plan_md,
+            "iterations": 0,
+            "error": "",
+            "started_at": time.time(),
+            "finished_at": None,
+            "stop_requested": False,
+        }
+        form = self.prepare_start_token(fresh)
+        paths.write_plan_review_state(task_id, fresh)
+        self.enqueue_step(task_id, "critique", form)
 
     def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
-        if step in ("critique", "followup", "grill", "revise", "reject"):
-            self._run_review_step(task_id, step)
+        if step in ("critique", "followup", "grill", "revise", "reject", "user_message"):
+            self._run_review_step(task_id, step, form)
             return
         super().run_step(task_id, step, form)
 
@@ -133,10 +146,19 @@ class S03PlanReview(Stage):
             logger.warning("plan_review: no final_plan.md for todo regen on %s", task_id)
             return
         prompt = self.load_template("todo.md").replace("{plan}", plan)
+
+        def record(entry: dict) -> None:
+            entry["label"] = "todo"
+            entry["template"] = "todo.md"
+            state = paths.read_plan_review_state(task_id)
+            state.setdefault("turns", []).append(entry)
+            paths.write_plan_review_state(task_id, state)
+
         todo_md, _ = pi_runner.run_pi_text(
             prompt,
             log_prefix="plan-review-todo",
             model=self.model_for("todo"),
+            record_prompt=record,
         )
         paths.write_plan_artefact(task_id, "todo.md", todo_md)
         logger.info("plan_review: regenerated todo.md for %s (%d chars)", task_id, len(todo_md))
@@ -201,15 +223,23 @@ class S03PlanReview(Stage):
         *,
         tools: str,
         log_suffix: str,
-    ) -> tuple[str, list[dict]]:
-        """Run one critic step via pi session; return combined text and new turns."""
+        template: str = "",
+    ) -> tuple[str, list[dict], str]:
+        """Run one critic step via pi session; return combined text, new turns,
+        and the hop's stop reason (callers must handle "stopped")."""
         start = time.monotonic()
         state = paths.read_plan_review_state(task_id)
         existing_turns = list(state.get("turns", []))
         new_turns: list[dict] = []
 
+        def append_entry(entry: dict) -> None:
+            new_turns.append(entry)
+            st = paths.read_plan_review_state(task_id)
+            st["turns"] = existing_turns + new_turns
+            paths.write_plan_review_state(task_id, st)
+
         def persist(current_turn: dict, hop: int) -> None:
-            new_turns.append(
+            append_entry(
                 {
                     "hop": hop,
                     "text": current_turn.get("text", ""),
@@ -218,44 +248,50 @@ class S03PlanReview(Stage):
                     "elapsed": current_turn.get("elapsed"),
                 }
             )
-            state = paths.read_plan_review_state(task_id)
-            state["turns"] = existing_turns + new_turns
-            paths.write_plan_review_state(task_id, state)
 
-        reason = "hop_cap"
-        hop = 0
-        while reason == "hop_cap" and hop < CRITIC_MAX_HOPS:
-            hop += 1
-            reason = pi_runner.run_agent_hop(
+        def hop_once(msg: str, tmpl: str, hop: int) -> str:
+            def record(entry: dict) -> None:
+                entry.setdefault("label", log_suffix)
+                entry["template"] = tmpl
+                append_entry(entry)
+
+            return pi_runner.run_agent_hop(
                 log_prefix=f"plan-review-{log_suffix}",
                 model=self.model_for("critic"),
                 session_id=f"plan-review-{task_id}",
                 sessions_dir=paths.plan_review_sessions_dir(task_id),
                 tools=tools,
-                message=message,
+                message=msg,
                 start=start,
                 sentinel=None,
-                turns_per_hop=CRITIC_TURNS_PER_STEP,
-                max_turns=CRITIC_MAX_TURNS,
                 timeout_seconds=CRITIC_TIMEOUT_SECONDS,
-                total_turns=pi_runner.count_turn_groups(existing_turns + new_turns),
                 persist_turn=persist,
                 hop=hop,
-            )
-            if reason != "hop_cap":
-                break
-            message = (
-                "Stop calling tools now. Complete your response — emit either a "
-                "```questions JSON block or PLAN_REVISED on its own line."
+                record_prompt=record,
+                **self.agent_hop_kwargs(task_id),
             )
 
+        reason = hop_once(message, template, 1)
         if reason == "empty":
             raise RuntimeError("pi returned empty responses (no content in any turn)")
-
         text = "\n\n".join(t["text"] for t in new_turns if t.get("text")).strip()
-        return text, new_turns
 
-    def _run_review_step(self, task_id: str, step: str) -> None:
+        # One flow-control nudge (not a cap) when the critic ended without a
+        # questions block or a sentinel.
+        if (
+            reason == "agent_end"
+            and not parse_questions(text)
+            and PLAN_REVISED_SENTINEL not in text
+            and READY_TO_REVISE not in text
+        ):
+            reason = hop_once(CRITIC_NUDGE, "", 2)
+            if reason == "empty":
+                raise RuntimeError("pi returned empty responses (no content in any turn)")
+            text = "\n\n".join(t["text"] for t in new_turns if t.get("text")).strip()
+
+        return text, new_turns, reason
+
+    def _run_review_step(self, task_id: str, step: str, form: dict | None = None) -> None:
         try:
             state = paths.read_plan_review_state(task_id)
 
@@ -271,7 +307,13 @@ class S03PlanReview(Stage):
                     )
                     .replace("{plan}", plan_md)
                 )
-                text, _ = self._run_critic_hop(task_id, message, tools="bash,read,mcp", log_suffix="critique")
+                text, _, reason = self._run_critic_hop(
+                    task_id, message, tools="bash,read,mcp", log_suffix="critique",
+                    template="critique.md",
+                )
+                if reason == "stopped":
+                    self.mark_stopped(task_id)
+                    return
                 questions = parse_questions(text)
                 if not questions:
                     questions = [
@@ -300,9 +342,13 @@ class S03PlanReview(Stage):
                     for i, r in enumerate(state.get("rounds", []), 1)
                 )
                 message = self.load_template("grill_followup.md").replace("{qa}", qa_all)
-                text, _ = self._run_critic_hop(
-                    task_id, message, tools="bash,read,mcp", log_suffix="followup"
+                text, _, reason = self._run_critic_hop(
+                    task_id, message, tools="bash,read,mcp", log_suffix="followup",
+                    template="grill_followup.md",
                 )
+                if reason == "stopped":
+                    self.mark_stopped(task_id)
+                    return
                 questions = parse_questions(text)
                 if questions and rnd < MAX_AUTO_ROUNDS and READY_TO_REVISE not in text:
                     state = paths.read_plan_review_state(task_id)
@@ -327,9 +373,12 @@ class S03PlanReview(Stage):
                     f"The user wants to grill the plan further on this topic:\n{topic}\n\n"
                     "Emit a ```questions JSON block with at most 5 clarifying questions."
                 )
-                text, _ = self._run_critic_hop(
+                text, _, reason = self._run_critic_hop(
                     task_id, message, tools="bash,read,mcp", log_suffix="grill"
                 )
+                if reason == "stopped":
+                    self.mark_stopped(task_id)
+                    return
                 questions = parse_questions(text)
                 if not questions:
                     questions = [
@@ -366,9 +415,13 @@ class S03PlanReview(Stage):
                     message = self.load_template("revise.md").replace(
                         "{plan_path}", str(plan_path)
                     )
-                text, _ = self._run_critic_hop(
-                    task_id, message, tools="bash,read,edit,write,mcp", log_suffix=step
+                text, _, reason = self._run_critic_hop(
+                    task_id, message, tools="bash,read,edit,write,mcp", log_suffix=step,
+                    template=f"{step}.md",
                 )
+                if reason == "stopped":
+                    self.mark_stopped(task_id)
+                    return
                 if PLAN_REVISED_SENTINEL not in text:
                     logger.warning("plan_review: critic did not emit PLAN_REVISED; continuing")
 
@@ -381,6 +434,28 @@ class S03PlanReview(Stage):
 
                 state = paths.read_plan_review_state(task_id)
                 state["phase"] = "awaiting_approval"
+                paths.write_plan_review_state(task_id, state)
+                return
+
+            if step == "user_message":
+                msg = str((form or {}).get("msg", "")).strip() or pi_runner.RESUME_MESSAGE
+                text, _, reason = self._run_critic_hop(
+                    task_id, msg, tools="bash,read,edit,write,mcp", log_suffix="user"
+                )
+                if reason == "stopped":
+                    self.mark_stopped(task_id)
+                    return
+                questions = parse_questions(text)
+                state = paths.read_plan_review_state(task_id)
+                if questions:
+                    rnd = int(state.get("round", 1)) + 1
+                    state["round"] = rnd
+                    state.setdefault("rounds", []).append(
+                        {"questions": questions, "answers": {}}
+                    )
+                    state["phase"] = "awaiting_answers"
+                else:
+                    state["phase"] = "awaiting_approval"
                 paths.write_plan_review_state(task_id, state)
                 return
 
@@ -508,9 +583,9 @@ class S03PlanReview(Stage):
                 render_error_msg(state.get("error", ""), state.get("error_detail", ""))
             )
 
-        if phase in ("idle", "done", "error"):
-            label = "Re-review" if phase in ("done", "error") else "Start review"
-            if self.is_enabled(task_id) or phase in ("done", "error"):
+        if phase in ("idle", "done", "error", "stopped"):
+            label = "Re-review" if phase in ("done", "error", "stopped") else "Start review"
+            if self.is_enabled(task_id) or phase in ("done", "error", "stopped"):
                 buttons = (
                     f'<button hx-post="{self.start_url(task_id)}" '
                     f'hx-target="#{content_id}" hx-swap="outerHTML">{label}</button>'
@@ -519,6 +594,9 @@ class S03PlanReview(Stage):
                     buttons += render_retry_button(self, task_id, state.get("error_step"))
                 parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
 
+        if phase in ("error", "stopped"):
+            parts.append(render_message_form(self, task_id))
+
         if phase in RUNNING_PHASES:
             label = {
                 "review_running": "Reviewing plan…",
@@ -526,6 +604,7 @@ class S03PlanReview(Stage):
                 "revising": "Revising plan…",
             }.get(phase, "Working…")
             parts.append(render_spinner(label))
+            parts.append(render_stop_button(self, task_id))
 
         msg_count = len(state.get("turns", [])) + len(
             [r for r in state.get("rounds", []) if r.get("answers")]

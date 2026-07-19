@@ -16,6 +16,9 @@ dependencies = [
 crack-server = "crack_server.main:main"
 crack-worker = "crack_server.worker:main"
 
+[dependency-groups]
+dev = ["pytest>=8"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -1,5 +1,5 @@
 {
   "models": {
-    "reviewer": "moonshotai/kimi-k2.7-code"
+    "reviewer": "cursor/grok-4.5:slow"
   }
 }

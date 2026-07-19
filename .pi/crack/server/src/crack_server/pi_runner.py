@@ -34,12 +34,55 @@ NVIDIA_CALLS_PER_MINUTE = 40
 TITLE_CALLS_PER_MINUTE = 30
 TITLE_MAX_INPUT_CHARS = 10_000
 
-# Every pi invocation is retried on a transient process failure (nonzero exit,
+# Every pi invocation is retried on a hard process failure (nonzero exit,
 # SIGKILL/-9 OOM, timeout, missing binary). We make at least PI_RETRY_ATTEMPTS
 # attempts spaced by exponential backoff, anchored so the final attempt begins
 # exactly PI_RETRY_WINDOW_SECONDS after the first attempt started.
 PI_RETRY_ATTEMPTS = 4
 PI_RETRY_WINDOW_SECONDS = 61.0
+
+# Transient upstream failures (rate limits, 5xx, connection resets) get their
+# own longer, flatter backoff that crosses the provider's per-minute window
+# before giving up: one sleep per reattempt, in order.
+TRANSIENT_RETRY_DELAYS = [20.0, 45.0, 75.0]
+
+_TRANSIENT_MARKERS = (
+    "resourceexhausted",
+    "429",
+    "rate limit",
+    "overloaded",
+    "temporarily",
+    "503",
+    "502",
+    "504",
+    "connection reset",
+    "connection refused",
+    "etimedout",
+)
+
+# Continuation message used when a failure interrupted a hop that had already
+# persisted turns: the pi session dir is preserved, so the next attempt resumes
+# the session instead of replaying the original message.
+RESUME_MESSAGE = "Continue where you left off."
+
+
+def is_transient(text: str) -> bool:
+    """True when a pi failure's captured stdout/stderr tail looks like a
+    transient upstream error (rate limit / overload / connectivity) that is
+    worth resuming rather than surfacing."""
+    low = (text or "").lower()
+    return any(marker in low for marker in _TRANSIENT_MARKERS)
+
+
+def _transient_backoff_sleep(reattempt: int) -> None:
+    """Sleep before transient reattempt ``reattempt`` (0-based)."""
+    delay = TRANSIENT_RETRY_DELAYS[min(reattempt, len(TRANSIENT_RETRY_DELAYS) - 1)]
+    if delay > 0:
+        logger.info(
+            "pi-retry: transient failure; sleeping %.1fs before reattempt %d",
+            delay, reattempt + 1,
+        )
+        time.sleep(delay)
 
 # Rolling raw-output buffer size: the last N lines of pi's stdout+stderr are kept
 # and surfaced in the error so a failure is diagnosable from the UI, not just logs.
@@ -87,57 +130,71 @@ _PATH_REF_RE = re.compile(
 
 
 class RateLimiter:
-    """Thread-safe minimum-interval limiter: converts a calls/minute budget into a
-    minimum spacing between calls, and blocks the caller until that spacing has
-    elapsed. Holding the lock across the sleep is intentional — it serializes callers
-    so the configured spacing is always respected regardless of which thread arrives
-    first, which is all a local dev tool needs."""
+    """Thread-safe minimum-interval limiter: converts a calls/minute budget into
+    a minimum spacing between calls. Waiting reserves the next free slot under
+    the lock and sleeps *outside* it, so concurrent callers queue up their slots
+    instantly instead of serializing on the lock across sleeps."""
 
     def __init__(self, name: str, calls_per_minute: float) -> None:
         self._name = name
         self._min_interval = 60.0 / calls_per_minute
         self._lock = threading.Lock()
-        self._last_call = 0.0
+        self._next_free = 0.0
 
     def wait(self) -> None:
         with self._lock:
             now = time.monotonic()
-            sleep_for = self._min_interval - (now - self._last_call)
-            if sleep_for > 0:
-                time.sleep(sleep_for)
-                logger.info("rate-limit(%s): slept %.2fs", self._name, sleep_for)
-            else:
-                logger.info(
-                    "rate-limit(%s): no wait needed (last call %.2fs ago, min interval %.2fs)",
-                    self._name,
-                    now - self._last_call,
-                    self._min_interval,
-                )
-            self._last_call = time.monotonic()
+            slot = max(now, self._next_free)
+            self._next_free = slot + self._min_interval
+        delay = slot - now
+        if delay > 0:
+            logger.info("rate-limit(%s): sleeping %.2fs for reserved slot", self._name, delay)
+            time.sleep(delay)
 
 
-# One limiter for the shared nvidia-provider budget (applies to every pi call below,
-# since every model in use is nvidia-hosted), plus a tighter limiter keyed by model id
-# for models with their own additional per-model budget.
-_nvidia_limiter = RateLimiter("nvidia-provider", NVIDIA_CALLS_PER_MINUTE)
+# Limiters are keyed by provider (the shared per-provider budget) and by model id
+# (a tighter per-model budget on top). Only nvidia-hosted models are rate-limited;
+# other providers make back-to-back calls.
+_limiters_lock = threading.Lock()
+_provider_limiters: dict[str, RateLimiter] = {}
 _model_limiters: dict[str, RateLimiter] = {
     TITLE_MODEL: RateLimiter(f"model:{TITLE_MODEL}", TITLE_CALLS_PER_MINUTE),
 }
 
 
+def limiter_for(model: str) -> RateLimiter | None:
+    """The shared provider limiter for ``model``, or None when its provider has
+    no known budget (created lazily so future providers slot in trivially)."""
+    provider = model.split("/", 1)[0]
+    if provider != "nvidia":
+        return None
+    with _limiters_lock:
+        limiter = _provider_limiters.get(provider)
+        if limiter is None:
+            limiter = RateLimiter(f"provider:{provider}", NVIDIA_CALLS_PER_MINUTE)
+            _provider_limiters[provider] = limiter
+    return limiter
+
+
 def wait_for_rate_limit(model: str) -> None:
-    # Both limiters are deficit-only: each tracks its own last_call and sleeps
+    # Both limiters are deficit-only: each tracks its own schedule and sleeps
     # just the remainder of its own interval, so running them sequentially does
-    # not double-count — time spent waiting on the shared nvidia budget also
+    # not double-count — time spent waiting on the shared provider budget also
     # counts toward the per-model interval.
-    _nvidia_limiter.wait()
-    limiter = _model_limiters.get(model)
+    limiter = limiter_for(model)
     if limiter is not None:
         limiter.wait()
+    model_limiter = _model_limiters.get(model)
+    if model_limiter is not None:
+        model_limiter.wait()
 
 
 def run_pi_text(
-    prompt: str, log_prefix: str, model: str, max_input_chars: int | None = None
+    prompt: str,
+    log_prefix: str,
+    model: str,
+    max_input_chars: int | None = None,
+    record_prompt=None,
 ) -> tuple[str, float]:
     """Run `pi` non-interactively with a single text prompt.
 
@@ -146,6 +203,10 @@ def run_pi_text(
     diagnosable from server logs alone. Raises RuntimeError because this helper
     is only used from background threads, where HTTPException has no request
     context to turn into.
+
+    ``record_prompt`` (optional, called once per logical call, not per retry)
+    receives ``{"kind": "user_prompt", "compiled": prompt, "at": ...}`` so
+    callers can persist the exact compiled prompt into their trajectory.
     """
     if max_input_chars is not None and len(prompt) > max_input_chars:
         logger.info(
@@ -159,13 +220,25 @@ def run_pi_text(
     logger.info("%s: timeout=%ss", log_prefix, PI_TIMEOUT_SECONDS)
     logger.info("+ %s", shlex.join(cmd))
 
+    if record_prompt is not None:
+        try:
+            record_prompt({"kind": "user_prompt", "compiled": prompt, "at": time.time()})
+        except Exception:
+            logger.exception("%s: record_prompt raised", log_prefix)
+
     first_attempt_at = time.monotonic()
     last_error = "pi command failed"
     last_detail = ""
+    last_transient = False
+    transient_reattempts = 0
 
     for attempt in range(PI_RETRY_ATTEMPTS):
         if attempt > 0:
-            _retry_backoff_sleep(attempt, first_attempt_at)
+            if last_transient:
+                _transient_backoff_sleep(transient_reattempts)
+                transient_reattempts += 1
+            else:
+                _retry_backoff_sleep(attempt, first_attempt_at)
 
         wait_for_rate_limit(model)
         start = time.monotonic()
@@ -181,12 +254,14 @@ def run_pi_text(
             logger.error("%s: pi timed out after %.2fs (attempt %d)", log_prefix, elapsed, attempt + 1)
             last_error = "pi command timed out"
             last_detail = _tail_text((e.stdout or "") + (e.stderr or ""))
+            last_transient = is_transient(last_detail)
             continue
         except FileNotFoundError:
             elapsed = time.monotonic() - start
             logger.error("%s: pi command not found on PATH (after %.2fs)", log_prefix, elapsed)
             last_error = "pi command not found"
             last_detail = ""
+            last_transient = False
             continue
 
         elapsed = time.monotonic() - start
@@ -204,6 +279,7 @@ def run_pi_text(
         logger.error("%s: pi exited %d; last output:\n%s", log_prefix, result.returncode, detail)
         last_error = f"pi exited {result.returncode}"
         last_detail = detail
+        last_transient = is_transient(detail)
 
     raise PiError(f"{last_error} after {PI_RETRY_ATTEMPTS} attempts", detail=last_detail)
 
@@ -306,15 +382,15 @@ def turn_has_content(current_turn: dict) -> bool:
 
 
 def count_turn_groups(turns: list[dict]) -> int:
-    """Count turn *groups*: a consecutive streak of tool-calling turns counts once.
-
-    Turn caps budget model reasoning, not file reads, so a run of turns that only
-    exist to drive tools is one group. This is the same rule run_agent_hop
-    applies incrementally, so stage loops can derive the counted total from the
-    persisted turn list."""
+    """Count turn *groups* for display: a consecutive streak of tool-calling
+    turns counts once, since a run of turns that only exist to drive tools is
+    one unit of model reasoning. Prompt entries (dicts carrying a ``kind`` key,
+    e.g. recorded user prompts) are skipped — they are not turns."""
     count = 0
     prev_had_tools = False
     for turn in turns:
+        if turn.get("kind"):
+            continue
         had_tools = bool(turn.get("tool_blocks"))
         if not (had_tools and prev_had_tools):
             count += 1
@@ -355,9 +431,16 @@ def fit_nano_transcript(template: str, transcript: str, *other_parts: str) -> st
 
 
 def render_transcript_plaintext(turns: list[dict]) -> str:
-    """Render a plaintext transcript of agent turns for gate/summary prompts."""
+    """Render a plaintext transcript of agent turns for gate/summary prompts.
+
+    Prompt entries (``kind`` key) are skipped — the transcript shows the
+    agent's work, not the harness's own prompts."""
     parts = []
-    for i, turn in enumerate(turns, 1):
+    i = 0
+    for turn in turns:
+        if turn.get("kind"):
+            continue
+        i += 1
         parts.append(f"--- Turn {i} (hop {turn.get('hop', 1)}) ---")
         if turn.get("text"):
             parts.append(turn["text"])
@@ -496,66 +579,71 @@ def run_agent_hop(
     message: str,
     start: float,
     sentinel: str | None,
-    turns_per_hop: int,
-    max_turns: int,
     timeout_seconds: int,
-    total_turns: int,
     persist_turn,
     hop: int = 1,
     pid_file: Path | None = None,
     stop_check=None,
+    record_prompt=None,
 ) -> str:
     """Run one hop of a tool-using agent and stream its JSON events.
 
-    Generic form of the old `_run_explore_hop`, parameterized on model / session /
-    tools / caps so multiple stages can share it. ``tools=None`` omits ``--tools``
-    so pi runs with every tool it has (built-in + extension, e.g. MCP). A hop is
-    capped at ``turns_per_hop`` *counted* turns; the pi session is persisted under
-    ``sessions_dir`` so the next hop/step resumes it via the same --session-id.
-    ``persist_turn(current_turn, hop)`` is called for every completed non-empty
-    turn. Turn counting follows ``count_turn_groups``: a consecutive streak of
-    tool-calling turns increments the counter only once, and turns with no
-    content at all are neither persisted nor counted. ``sentinel`` (optional)
-    ends the hop early when it appears in assistant text. Returns the stop
-    reason: "sentinel", "hop_cap", "turn_cap", "time_cap", "agent_end" (pi
-    finished on its own), "empty" (pi repeatedly returned content-less turns),
-    or "stopped" (an external caller killed the subprocess — see ``pid_file`` /
-    ``stop_check``).
+    Parameterized on model / session / tools so multiple stages can share it.
+    ``tools=None`` omits ``--tools`` so pi runs with every tool it has
+    (built-in + extension, e.g. MCP). A hop has no turn cap: it ends only when
+    the model stops on its own, on the sentinel, on the time cap, on an
+    external stop, or on an unrecoverable error. The pi session is persisted
+    under ``sessions_dir`` so the next hop/step resumes it via the same
+    --session-id. ``persist_turn(current_turn, hop)`` is called for every
+    completed non-empty turn. ``sentinel`` (optional) ends the hop early when
+    it appears *on its own line* in assistant text. Returns the stop reason:
+    "sentinel", "time_cap", "agent_end" (pi finished on its own), "empty" (pi
+    repeatedly returned content-less turns), or "stopped" (an external caller
+    killed the subprocess — see ``pid_file`` / ``stop_check``).
 
     ``pid_file`` (optional): the pi subprocess is started in its own session and
     its PID written here so another process (e.g. a web STOP handler) can kill
     the whole process group. ``stop_check`` (optional, called with no args): when
     it returns truthy after the subprocess ends, the hop is classified as
     "stopped" (a clean, intentional halt) rather than a crash to retry.
+
+    ``record_prompt`` (optional, called once per hop call, not per retry
+    attempt) receives ``{"kind": "user_prompt", "compiled": message, "hop": hop,
+    "at": ...}`` so callers can persist the exact compiled prompt into their
+    trajectory alongside the turns it produced.
+
+    Retries: hard process failures with no persisted turns follow the standard
+    4-attempt/61s schedule, replaying ``message``. *Transient* upstream
+    failures (see ``is_transient``) follow their own longer backoff and retry
+    even after turns were persisted — the preserved session is resumed with
+    ``RESUME_MESSAGE`` instead of replaying, so no work is duplicated. A hard
+    failure after persisted turns raises immediately.
     """
     sessions_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        "pi",
-        "--mode",
-        "json",
-        "-p",
-        "--model",
-        model,
-    ]
-    if tools is not None:
-        cmd += ["--tools", tools]
-    cmd += [
-        "--session-id",
-        session_id,
-        "--session-dir",
-        str(sessions_dir),
-        message,
-    ]
+    def _build_cmd(msg: str) -> list[str]:
+        cmd = ["pi", "--mode", "json", "-p", "--model", model]
+        if tools is not None:
+            cmd += ["--tools", tools]
+        cmd += ["--session-id", session_id, "--session-dir", str(sessions_dir), msg]
+        return cmd
 
-    logger.info("%s hop %d: full prompt:\n%s", log_prefix, hop, message)
-    logger.info("+ %s", shlex.join(cmd))
+    if record_prompt is not None:
+        try:
+            record_prompt(
+                {"kind": "user_prompt", "compiled": message, "hop": hop, "at": time.time()}
+            )
+        except Exception:
+            logger.exception("%s hop %d: record_prompt raised", log_prefix, hop)
 
-    def _attempt(attempt_idx: int) -> dict:
+    def _attempt(attempt_idx: int, attempt_message: str) -> dict:
         """Run one pi subprocess: stream, persist completed turns, and report how
-        it ended. ``persisted`` counts turns committed to disk this attempt, so the
-        retry loop only retries a *transient* failure that made no forward progress
-        (a partial-progress crash is kept, not silently replayed)."""
+        it ended. ``persisted`` counts turns committed to disk this attempt so the
+        retry loop can distinguish resuming from replaying."""
+        cmd = _build_cmd(attempt_message)
+        logger.info("%s hop %d: full prompt:\n%s", log_prefix, hop, attempt_message)
+        logger.info("+ %s", shlex.join(cmd))
+
         wait_for_rate_limit(model)
         # start_new_session=True puts pi in its own process group so an external
         # STOP can kill pi *and* any children it spawned (npx MCP servers) via
@@ -567,6 +655,11 @@ def run_agent_hop(
             text=True,
             start_new_session=True,
         )
+        # Hard watchdog: a pi that hangs without emitting output would wedge the
+        # stream loop forever; kill it well past the stage time cap.
+        watchdog = threading.Timer(timeout_seconds + 60, proc.kill)
+        watchdog.daemon = True
+        watchdog.start()
         if pid_file is not None:
             try:
                 pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -575,8 +668,6 @@ def run_agent_hop(
                 logger.warning("%s hop %d: could not write pid_file %s: %s",
                                log_prefix, hop, pid_file, e)
         current_turn: dict = {}
-        hop_turns = 0
-        total = total_turns
         reason = "agent_end"
         terminated_by_us = False
         persisted = 0
@@ -586,9 +677,6 @@ def run_agent_hop(
         # turn_end / toolResult events can attach elapsed seconds to the turn dict.
         turn_started_at: float | None = None
         tool_starts: dict = {}
-        # Group counting (see count_turn_groups): a streak of consecutive
-        # tool-calling turns increments the turn counter only once.
-        prev_had_tools = False
 
         def _persist(turn: dict, h: int) -> None:
             nonlocal persisted
@@ -645,7 +733,10 @@ def run_agent_hop(
                 if (
                     sentinel is not None
                     and etype == "message_end"
-                    and sentinel in current_turn.get("text", "")
+                    and any(
+                        l.strip() == sentinel
+                        for l in current_turn.get("text", "").splitlines()
+                    )
                 ):
                     if turn_has_content(current_turn):
                         _persist(current_turn, hop)
@@ -658,35 +749,17 @@ def run_agent_hop(
                 if etype == "turn_end":
                     if not turn_has_content(current_turn):
                         # Content-less turns (empty model responses) are noise:
-                        # never persist them and never spend turn budget on them.
+                        # never persist them.
                         logger.warning(
                             "%s hop %d: empty turn (no text/thinking/tool blocks); skipped",
                             log_prefix, hop,
                         )
-                        prev_had_tools = False
                         continue
-                    had_tools = bool(current_turn.get("tool_blocks"))
-                    counted = not (had_tools and prev_had_tools)
-                    prev_had_tools = had_tools
-                    if counted:
-                        hop_turns += 1
-                        total += 1
                     _persist(current_turn, hop)
                     logger.info(
-                        "%s hop %d: completed turn %d/%d (hop), %d/%d (total)%s",
-                        log_prefix, hop, hop_turns, turns_per_hop, total, max_turns,
-                        "" if counted else " (tool-group continuation, not counted)",
+                        "%s hop %d: completed turn (persisted %d this attempt)",
+                        log_prefix, hop, persisted,
                     )
-                    if total >= max_turns:
-                        reason = "turn_cap"
-                        terminated_by_us = True
-                        proc.terminate()
-                        break
-                    if hop_turns >= turns_per_hop:
-                        reason = "hop_cap"
-                        terminated_by_us = True
-                        proc.terminate()
-                        break
 
                 if time.monotonic() - start > timeout_seconds:
                     if turn_has_content(current_turn) and etype != "turn_end":
@@ -699,6 +772,7 @@ def run_agent_hop(
                 if etype in ("agent_end", "agent_settled"):
                     break
         finally:
+            watchdog.cancel()
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
@@ -723,8 +797,8 @@ def run_agent_hop(
 
         elapsed = time.monotonic() - start
         logger.info(
-            "%s hop %d: attempt %d finished reason=%s hop_turns=%d persisted=%d total_elapsed=%.2fs rc=%s",
-            log_prefix, hop, attempt_idx + 1, reason, hop_turns, persisted, elapsed, proc.returncode,
+            "%s hop %d: attempt %d finished reason=%s persisted=%d total_elapsed=%.2fs rc=%s",
+            log_prefix, hop, attempt_idx + 1, reason, persisted, elapsed, proc.returncode,
         )
         return {
             "reason": reason,
@@ -735,13 +809,16 @@ def run_agent_hop(
         }
 
     first_attempt_at = time.monotonic()
+    attempt_message = message
     last_detail = ""
     last_rc: int | None = None
+    hard_attempts = 0       # hard failures + empty runs, on the 4/61s schedule
+    transient_reattempts = 0  # transient failures, on the TRANSIENT_RETRY_DELAYS schedule
+    total_attempts = 0
 
-    for attempt in range(PI_RETRY_ATTEMPTS):
-        if attempt > 0:
-            _retry_backoff_sleep(attempt, first_attempt_at)
-        res = _attempt(attempt)
+    while True:
+        res = _attempt(total_attempts, attempt_message)
+        total_attempts += 1
 
         failed = not res["terminated_by_us"] and res["returncode"] not in (0, None)
         if not failed:
@@ -750,28 +827,52 @@ def run_agent_hop(
             # fail the stage instead of treating silence as success.
             if res["persisted"] > 0 or res["reason"] != "agent_end":
                 return res["reason"]
-            if attempt == PI_RETRY_ATTEMPTS - 1:
+            hard_attempts += 1
+            if hard_attempts >= PI_RETRY_ATTEMPTS:
                 logger.error(
                     "%s hop %d: pi returned only empty turns after %d attempts",
-                    log_prefix, hop, PI_RETRY_ATTEMPTS,
+                    log_prefix, hop, total_attempts,
                 )
                 return "empty"
             logger.warning(
                 "%s hop %d: pi returned only empty turns; retrying", log_prefix, hop
             )
+            _retry_backoff_sleep(hard_attempts, first_attempt_at)
             continue
 
         last_detail = res["detail"]
         last_rc = res["returncode"]
-        # Partial progress (turns already committed to disk) is real work: don't
-        # replay it. Only retry a clean transient failure that produced nothing.
+        if res["persisted"] > 0:
+            # Turns are already committed and the session dir kept them: every
+            # further attempt must resume the session, never replay the prompt.
+            attempt_message = RESUME_MESSAGE
+
+        if is_transient(last_detail):
+            if transient_reattempts < len(TRANSIENT_RETRY_DELAYS):
+                logger.warning(
+                    "%s hop %d: transient failure (rc=%s); will resume (reattempt %d/%d)",
+                    log_prefix, hop, last_rc,
+                    transient_reattempts + 1, len(TRANSIENT_RETRY_DELAYS),
+                )
+                _transient_backoff_sleep(transient_reattempts)
+                transient_reattempts += 1
+                continue
+            break
+
+        # Hard failure. Partial progress (turns already committed to disk) is
+        # real work: don't replay it — raise so the stage records the error and
+        # a later retry/resume continues the session.
         if res["persisted"] > 0:
             logger.info(
                 "%s hop %d: pi exited %s after %d persisted turn(s); not retrying",
                 log_prefix, hop, last_rc, res["persisted"],
             )
             break
+        hard_attempts += 1
+        if hard_attempts >= PI_RETRY_ATTEMPTS:
+            break
+        _retry_backoff_sleep(hard_attempts, first_attempt_at)
 
     raise PiError(
-        f"pi exited {last_rc} after {PI_RETRY_ATTEMPTS} attempts", detail=last_detail
+        f"pi exited {last_rc} after {total_attempts} attempts", detail=last_detail
     )

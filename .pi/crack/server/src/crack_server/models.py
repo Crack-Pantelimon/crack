@@ -28,14 +28,25 @@ def _fetch_models() -> list[str]:
 
     Rows look like `nvidia  nvidia/nemotron-3-nano-30b-a3b  131.1K ...` — the model
     column may or may not already carry the provider prefix (nvidia's does,
-    google's doesn't), so only prepend the provider when missing."""
-    result = subprocess.run(
-        ["pi", "--list-models"],
-        capture_output=True,
-        text=True,
-        timeout=FETCH_TIMEOUT_SECONDS,
-    )
-    if result.returncode != 0:
+    google's doesn't), so only prepend the provider when missing.
+
+    Retried twice quickly on failure (transient network / provider hiccups)."""
+    result = None
+    for attempt in range(3):
+        if attempt > 0:
+            time.sleep(2)
+        result = subprocess.run(
+            ["pi", "--list-models"],
+            capture_output=True,
+            text=True,
+            timeout=FETCH_TIMEOUT_SECONDS,
+        )
+        if result.returncode == 0:
+            break
+        logger.warning(
+            "models: pi --list-models exited %d (attempt %d/3)", result.returncode, attempt + 1
+        )
+    if result is None or result.returncode != 0:
         raise RuntimeError(f"pi --list-models exited {result.returncode}: {result.stderr[:200]}")
 
     models: set[str] = set()

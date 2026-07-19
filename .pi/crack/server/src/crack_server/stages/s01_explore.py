@@ -22,8 +22,10 @@ from crack_server.stages.base import (
     Stage,
     render_actions_table,
     render_error_msg,
+    render_message_form,
     render_retry_button,
     render_spinner,
+    render_stop_button,
 )
 from crack_server import app as _ui
 
@@ -32,13 +34,11 @@ logger = logging.getLogger("uvicorn.error")
 NANO_MODEL = "nvidia/nemotron-3-nano-30b-a3b"
 ULTRA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
 
-PI_EXPLORE_MAX_TURNS = 15
-PI_EXPLORE_TIMEOUT_SECONDS = 300
-EXPLORE_MAX_HOPS = 3
-EXPLORE_TURNS_PER_HOP = 5
+PI_EXPLORE_TIMEOUT_SECONDS = 1800
 EXPLORE_SENTINEL = "EXPLORATION_COMPLETE"
 EXPLORE_SIGMAP_MAX_QUERIES = 6
 EXPLORE_SIGMAP_MAX_CHARS = 20_000
+EXPLORE_RESUME_MESSAGE = "Continue exploring where you left off."
 
 
 def _esc(text: str) -> str:
@@ -136,7 +136,9 @@ def _run_sigmap_pre_queries(task_id: str, questions: list[str]) -> str:
     """Run `sigmap ask '<q>'` for the first few turn-zero questions and collect the
     generated `.context/query-context.md` headers into one blob for the hop-1 prompt.
 
-    sigmap is a local CLI (not rate-limited); failures are logged and skipped."""
+    sigmap is a local CLI (not rate-limited, no upstream to be transient about),
+    so it is exempt from the pi transient-retry treatment; failures are logged
+    and skipped."""
     root = paths.project_root()
     ctx_path = root / ".context" / "query-context.md"
     blobs: list[str] = []
@@ -184,18 +186,23 @@ class S01Explore(Stage):
         Part("summary", "Summary", "explore_summary.md", NANO_MODEL),
     ]
 
+    phase_key = "status"
+    message_phase = "running"
+
     def status(self, task_id: str) -> str:
         s = paths.read_explore_state(task_id).get("status", "idle")
-        if s == "running":
-            return "running"
-        if s == "done":
-            return "done"
-        if s == "error":
-            return "error"
+        if s in ("running", "done", "error", "stopped"):
+            return s
         return "idle"
 
     def is_enabled(self, task_id: str) -> bool:
         return True
+
+    def state_read(self, task_id: str) -> dict:
+        return paths.read_explore_state(task_id)
+
+    def state_write(self, task_id: str, state: dict) -> None:
+        paths.write_explore_state(task_id, state)
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -208,36 +215,48 @@ class S01Explore(Stage):
         # Clear stale hop sessions so a fresh run always chains from a clean slate.
         shutil.rmtree(paths.explore_sessions_dir(task_id), ignore_errors=True)
 
-        paths.write_explore_state(
-            task_id,
-            {
-                "status": "running",
-                "started_at": time.time(),
-                "finished_at": None,
-                "explored_at": None,
-                "prompt_last_modified_at": paths.prompts_last_modified(task_id),
-                "stop_reason": None,
-                "hops_completed": 0,
-                "turns_completed": 0,
-                "found_files": 0,
-                "questions": [],
-                "turns": [],
-                "path_refs": [],
-                "summary_md": "",
-                "error": "",
-            },
-        )
-        self.enqueue_step(task_id, "run")
+        fresh = {
+            "status": "running",
+            "started_at": time.time(),
+            "finished_at": None,
+            "explored_at": None,
+            "prompt_last_modified_at": paths.prompts_last_modified(task_id),
+            "stop_reason": None,
+            "hops_completed": 0,
+            "turns_completed": 0,
+            "found_files": 0,
+            "questions": [],
+            "turns": [],
+            "path_refs": [],
+            "summary_md": "",
+            "error": "",
+            "stop_requested": False,
+        }
+        form = self.prepare_start_token(fresh)
+        paths.write_explore_state(task_id, fresh)
+        self.enqueue_step(task_id, "run", form)
 
     def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
         if step == "run":
             self._run_job(task_id)
-            return
-        super().run_step(task_id, step, form)
+        elif step == "resume":
+            self._run_job(task_id, resume_message=EXPLORE_RESUME_MESSAGE)
+        elif step == "user_message":
+            msg = str((form or {}).get("msg", "")).strip()
+            self._run_job(task_id, resume_message=msg or EXPLORE_RESUME_MESSAGE)
+        else:
+            super().run_step(task_id, step, form)
 
-    def _run_hop(self, task_id: str, hop: int, message: str, start: float) -> str:
-        """One hop via the shared runner, persisting turns into explore.json."""
+    def _record_prompt_entry(self, task_id: str, entry: dict, label: str, template: str) -> None:
+        """Append a compiled-prompt entry into explore.json's turns, in order."""
+        entry.setdefault("label", label)
+        entry["template"] = template
         state = paths.read_explore_state(task_id)
+        state.setdefault("turns", []).append(entry)
+        paths.write_explore_state(task_id, state)
+
+    def _run_hop(self, task_id: str, hop: int, message: str, start: float, template: str) -> str:
+        """One hop via the shared runner, persisting turns into explore.json."""
         return pi_runner.run_agent_hop(
             log_prefix="explore",
             model=self.model_for("agent"),
@@ -247,75 +266,105 @@ class S01Explore(Stage):
             message=message,
             start=start,
             sentinel=EXPLORE_SENTINEL,
-            turns_per_hop=EXPLORE_TURNS_PER_HOP,
-            max_turns=PI_EXPLORE_MAX_TURNS,
             timeout_seconds=PI_EXPLORE_TIMEOUT_SECONDS,
-            total_turns=state.get("turns_completed", 0),
             persist_turn=lambda turn, h: _persist_explore_turn(task_id, turn, h),
             hop=hop,
+            record_prompt=lambda entry: self._record_prompt_entry(
+                task_id, entry, f"hop {hop}", template
+            ),
+            **self.agent_hop_kwargs(task_id),
         )
 
-    def _run_job(self, task_id: str) -> None:
-        """Hopped Explore run: turn-zero questions → sigmap pre-run → ≤3 gated hops → summary.
+    def _read_turn_zero(self, task_id: str) -> str:
+        """The persisted turn-zero artefact (questions + example answers), used
+        by the gate prompt when a run resumes past the turn-zero step."""
+        try:
+            return (paths.explore_dir(task_id) / "turn_zero.md").read_text(encoding="utf-8")
+        except OSError:
+            return ""
 
-        State is persisted to explore.json after every step, so polling and page reloads
-        see live progress; the final summary and turn-zero text are also written as
-        markdown artefacts under …/<task>/explore/. A successful run auto-starts Plan."""
+    def _run_job(self, task_id: str, resume_message: str | None = None) -> None:
+        """Explore run: turn-zero questions → sigmap pre-run → gated hops → summary.
+
+        With ``resume_message`` set (retry-from-error, user message, or a
+        requeued job whose turn zero already ran — B5), turn zero and sigmap are
+        skipped and the hop loop re-enters on the preserved pi session.
+
+        State is persisted to explore.json after every step, so polling and page
+        reloads see live progress; the final summary and turn-zero text are also
+        written as markdown artefacts under …/<task>/explore/. A successful run
+        auto-starts Plan."""
         start = time.monotonic()
+        step_name = "run" if resume_message is None else "resume"
         try:
             content = paths.read_all_prompts_joined(task_id)
             state = paths.read_explore_state(task_id)
             state["prompt_last_modified_at"] = paths.prompts_last_modified(task_id)
             paths.write_explore_state(task_id, state)
 
-            # --- Turn zero (nano): questions + hallucinated example answers.
-            turn_zero_prompt = self.load_template("turn_zero.md").replace("{content}", content)
-            turn_zero_text, _ = pi_runner.run_pi_text(
-                turn_zero_prompt,
-                log_prefix="explore-turn-zero",
-                model=self.model_for("turn_zero"),
-                max_input_chars=pi_runner.TITLE_MAX_INPUT_CHARS,
-            )
-            paths.write_explore_artefact(task_id, "turn_zero", turn_zero_text)
-            questions = _parse_turn_zero_questions(turn_zero_text)
-            logger.info("explore: turn zero produced %d questions", len(questions))
-            state = paths.read_explore_state(task_id)
-            state["questions"] = questions
-            paths.write_explore_state(task_id, state)
+            if resume_message is None and state.get("questions"):
+                # Re-entrant "run" (requeued after a crash): turn zero already
+                # happened, so jump straight back into the hop loop (B5).
+                resume_message = EXPLORE_RESUME_MESSAGE
 
-            # --- sigmap pre-run (local): ranked file-signature headers for hop 1.
-            sigmap_context = _run_sigmap_pre_queries(task_id, questions)
-
-            # --- Hops.
-            message = (
-                self.load_template("explore.md")
-                .replace("{content}", content)
-                .replace("{questions}", turn_zero_text)
-                .replace("{sigmap_context}", sigmap_context or "(no sigmap context available)")
-            )
-            stop_reason = None
-            hop = 0
-            while hop < EXPLORE_MAX_HOPS:
+            if resume_message is None:
+                # --- Turn zero (nano): questions + hallucinated example answers.
+                turn_zero_prompt = self.load_template("turn_zero.md").replace("{content}", content)
+                turn_zero_text, _ = pi_runner.run_pi_text(
+                    turn_zero_prompt,
+                    log_prefix="explore-turn-zero",
+                    model=self.model_for("turn_zero"),
+                    max_input_chars=pi_runner.TITLE_MAX_INPUT_CHARS,
+                    record_prompt=lambda entry: self._record_prompt_entry(
+                        task_id, entry, "turn_zero", "turn_zero.md"
+                    ),
+                )
+                paths.write_explore_artefact(task_id, "turn_zero", turn_zero_text)
+                questions = _parse_turn_zero_questions(turn_zero_text)
+                logger.info("explore: turn zero produced %d questions", len(questions))
                 state = paths.read_explore_state(task_id)
-                if state.get("turns_completed", 0) >= PI_EXPLORE_MAX_TURNS:
-                    stop_reason = "turn_cap"
-                    break
+                state["questions"] = questions
+                paths.write_explore_state(task_id, state)
+
+                # --- sigmap pre-run (local): ranked file-signature headers for hop 1.
+                sigmap_context = _run_sigmap_pre_queries(task_id, questions)
+
+                message = (
+                    self.load_template("explore.md")
+                    .replace("{content}", content)
+                    .replace("{questions}", turn_zero_text)
+                    .replace("{sigmap_context}", sigmap_context or "(no sigmap context available)")
+                )
+                template = "explore.md"
+            else:
+                turn_zero_text = self._read_turn_zero(task_id) or "\n".join(
+                    state.get("questions", [])
+                )
+                message = resume_message
+                template = ""
+
+            # --- Hops: unlimited; the between-hop gate is the only hop terminator
+            # besides the sentinel, the stage time cap, and an external stop.
+            stop_reason = None
+            hop = int(paths.read_explore_state(task_id).get("hops_completed", 0))
+            while True:
                 if time.monotonic() - start > PI_EXPLORE_TIMEOUT_SECONDS:
                     stop_reason = "time_cap"
                     break
 
                 hop += 1
-                reason = self._run_hop(task_id, hop, message, start)
+                reason = self._run_hop(task_id, hop, message, start, template)
+                template = ""
                 if reason == "empty":
                     raise RuntimeError("pi returned empty responses (no content in any turn)")
+                if reason == "stopped":
+                    self.mark_stopped(task_id)
+                    return
                 if reason == "sentinel":
                     stop_reason = "sentinel"
                     break
-                if reason in ("turn_cap", "time_cap"):
-                    stop_reason = reason
-                    break
-                if hop >= EXPLORE_MAX_HOPS:
-                    stop_reason = "hop_cap"
+                if reason == "time_cap":
+                    stop_reason = "time_cap"
                     break
 
                 # --- Gate (nano): decide whether another hop is warranted.
@@ -334,6 +383,9 @@ class S01Explore(Stage):
                     log_prefix=f"explore-gate-hop{hop}",
                     model=self.model_for("gate"),
                     max_input_chars=pi_runner.TITLE_MAX_INPUT_CHARS,
+                    record_prompt=lambda entry: self._record_prompt_entry(
+                        task_id, entry, "gate", "gate.md"
+                    ),
                 )
                 logger.info("explore: gate after hop %d replied: %r", hop, gate_reply[:200])
                 if gate_reply.strip().upper().startswith("DONE"):
@@ -348,11 +400,9 @@ class S01Explore(Stage):
                 message = (
                     "Continue exploring. Still worth checking:\n"
                     f"{gate_reply}\n\n"
-                    f"Remember: at most {EXPLORE_TURNS_PER_HOP} tool turns this hop, and emit "
-                    f"{EXPLORE_SENTINEL} on its own line once you have enough."
+                    f"Emit {EXPLORE_SENTINEL} on its own line once you have enough."
                 )
 
-            stop_reason = stop_reason or "hop_cap"
             state = paths.read_explore_state(task_id)
             state["stop_reason"] = stop_reason
             paths.write_explore_state(task_id, state)
@@ -379,6 +429,9 @@ class S01Explore(Stage):
                 log_prefix="explore-summary",
                 model=self.model_for("summary"),
                 max_input_chars=pi_runner.TITLE_MAX_INPUT_CHARS,
+                record_prompt=lambda entry: self._record_prompt_entry(
+                    task_id, entry, "summary", "explore_summary.md"
+                ),
             )
             paths.write_explore_artefact(task_id, "explore_summary", summary_md)
 
@@ -407,17 +460,22 @@ class S01Explore(Stage):
             state["status"] = "error"
             state["error"] = str(e)
             state["error_detail"] = getattr(e, "detail", "")
-            state["error_step"] = "run"
+            state["error_step"] = step_name
             state["finished_at"] = time.time()
             paths.write_explore_state(task_id, state)
 
     def retry_from_error(self, task_id: str) -> None:
-        """Explore is monolithic (not step-resumable), so a retry re-runs the whole
-        job from a clean slate — the hop-level retries already covered transient
-        crashes, so a stage-level error means the run should start over."""
-        if paths.read_explore_state(task_id).get("status") != "error":
+        """Resume the failed run in place: the preserved pi session under
+        explore/sessions/ supplies the context, so nothing is replayed — the
+        agent continues exploring where it left off."""
+        state = paths.read_explore_state(task_id)
+        if state.get("status") != "error":
             return
-        self.start(task_id)
+        state["status"] = "running"
+        state["error"] = ""
+        state["error_detail"] = ""
+        paths.write_explore_state(task_id, state)
+        self.enqueue_step(task_id, "resume")
 
     # -- rendering --------------------------------------------------------------
 
@@ -487,15 +545,18 @@ class S01Explore(Stage):
                 buttons += render_retry_button(self, task_id, state.get("error_step"))
             parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
 
+        if status in ("stopped", "error"):
+            parts.append(render_message_form(self, task_id))
+
         # The spinner always sits at the bottom, under the last added item, and
         # disappears the moment the stage leaves the running phase.
         if status == "running":
             parts.append(
                 render_spinner(
-                    f'Exploring… hop {state.get("hops_completed", 0) + 1}/{EXPLORE_MAX_HOPS}'
-                    f" · turns {len(turns)}/{PI_EXPLORE_MAX_TURNS}"
+                    f'Exploring… turn {state.get("turns_completed", len(turns))}'
                 )
             )
+            parts.append(render_stop_button(self, task_id))
 
         msg_count = max(len(parts), len(turns), 1)
         return self.wrap_status(

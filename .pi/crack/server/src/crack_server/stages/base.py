@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +39,7 @@ STATUS_COLORS = {
     "idle": "tab--idle",
     "disabled": "tab--disabled",
     "error": "tab--error",
+    "stopped": "tab--error",
 }
 
 MAX_QUESTIONS_PER_ROUND = 5
@@ -57,6 +60,11 @@ class Stage:
     name: str = ""
     order: int = 0      # parsed from the sNN_ filename by the registry
     parts: list[Part] = []
+    # Key in the stage's state dict that carries its lifecycle value ("phase"
+    # everywhere except Explore, which predates the phase naming).
+    phase_key: str = "phase"
+    # Phase written when a user message resumes a stopped/errored stage.
+    message_phase: str = "running"
 
     # -- config (harness/<slug>.json = {"models": {part_key: model_id}}) ------
 
@@ -97,8 +105,24 @@ class Stage:
     # -- task-page interface (implemented by subclasses) ----------------------
 
     def status(self, task_id: str) -> str:
-        """Tab/glyph status: disabled|idle|running|awaiting|done|error."""
+        """Tab/glyph status: disabled|idle|running|awaiting|done|error|stopped."""
         return "idle"
+
+    # -- generic state access (implemented by subclasses) ---------------------
+
+    def state_read(self, task_id: str) -> dict:
+        """Read the stage's per-task state dict (thin wrapper over paths.read_*)."""
+        raise NotImplementedError(f"{self.slug}: state_read not implemented")
+
+    def state_write(self, task_id: str, state: dict) -> None:
+        """Write the stage's per-task state dict (thin wrapper over paths.write_*)."""
+        raise NotImplementedError(f"{self.slug}: state_write not implemented")
+
+    def mark_stopped(self, task_id: str) -> None:
+        """Persist the stage as cleanly stopped (run_agent_hop returned "stopped")."""
+        state = self.state_read(task_id)
+        state[self.phase_key] = "stopped"
+        self.state_write(task_id, state)
 
     def is_enabled(self, task_id: str) -> bool:
         """Default gating: previous stage in REGISTRY must be done; first always on."""
@@ -123,10 +147,38 @@ class Stage:
         """Enqueue a unit of slow work for the out-of-process worker to run.
 
         The web process only ever writes fast state + enqueues; all ``pi``
-        execution happens in the worker via :meth:`run_step`."""
+        execution happens in the worker via :meth:`run_step`. Enqueueing is
+        exclusive per (task, stage): a duplicate while one is pending or in
+        flight is dropped (B1 double-run guard)."""
         from crack_server import queue
 
-        queue.enqueue(task_id, self.slug, step, form)
+        queue.enqueue_exclusive(task_id, self.slug, step, form)
+
+    def prepare_start_token(self, state: dict) -> dict:
+        """Stamp a fresh ``started_token`` into ``state`` (caller persists it) and
+        return the form to pass to :meth:`enqueue_step`, so a stale duplicate
+        start job — enqueued before a newer start overwrote the state — exits
+        immediately when the worker picks it up (B1)."""
+        token = uuid.uuid4().hex
+        state["started_token"] = token
+        return {"started_token": token}
+
+    def dispatch_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+        """Worker-side entrypoint: verify the start token (when the job carries
+        one) then run the step. Stale start jobs are dropped silently."""
+        token = (form or {}).get("started_token")
+        if token is not None:
+            try:
+                current = self.state_read(task_id).get("started_token")
+            except NotImplementedError:
+                current = token
+            if current != token:
+                logger.info(
+                    "%s: dropping stale start job for %s (token mismatch)",
+                    self.slug, task_id,
+                )
+                return
+        self.run_step(task_id, step, form)
 
     def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
         """Worker dispatch entrypoint: run one enqueued step synchronously.
@@ -135,15 +187,75 @@ class Stage:
         raises so a misrouted job surfaces loudly in the worker log."""
         raise NotImplementedError(f"{self.slug}: no run_step handler for {step!r}")
 
+    def record_dispatch_error(self, task_id: str, message: str) -> None:
+        """Best-effort: land the stage in ``error`` when the worker's dispatch of
+        one of its jobs raised outside the stage's own error handling, so the UI
+        never spins forever on a silently failed job (B6)."""
+        try:
+            state = self.state_read(task_id)
+            state[self.phase_key] = "error"
+            state["error"] = f"worker dispatch failed: {message}"
+            state.setdefault("error_detail", "")
+            state["finished_at"] = time.time()
+            self.state_write(task_id, state)
+        except Exception:
+            logger.exception("%s: could not record dispatch error for %s", self.slug, task_id)
+
     def handle_action(self, action: str, task_id: str, form) -> None:
         """Handle a stage-specific POST action (answers, approve, …).
 
-        The generic ``retry_error`` action is handled here for every stage so the
-        "retry from last error" button works without per-stage routing."""
+        The generic ``retry_error``, ``stop``, and ``message`` actions are
+        handled here for every stage so their buttons/forms work without
+        per-stage routing."""
         if action == "retry_error":
             self.retry_from_error(task_id)
             return
+        if action == "stop":
+            self.request_stop(task_id)
+            return
+        if action == "message":
+            self.post_user_message(task_id, form)
+            return
         raise HTTPException(status_code=404, detail=f"unknown action: {action}")
+
+    def request_stop(self, task_id: str) -> None:
+        """Generic STOP: flag the stop (so the worker classifies the kill as
+        intentional), kill the pi process group, and show ``stopped`` at once."""
+        if self.status(task_id) != "running":
+            return
+        state = self.state_read(task_id)
+        state["stop_requested"] = True
+        self.state_write(task_id, state)
+        killed = pi_runner.kill_pid_file(paths.stage_pid_file(task_id, self.slug))
+        logger.info("%s: stop requested for %s (killed=%s)", self.slug, task_id, killed)
+        state = self.state_read(task_id)
+        state[self.phase_key] = "stopped"
+        self.state_write(task_id, state)
+
+    def post_user_message(self, task_id: str, form) -> None:
+        """Generic continue-with-a-message: allowed from ``stopped`` or ``error``;
+        clears the stale error/stop flags (B14) and enqueues a ``user_message``
+        step that resumes the stage's pi session with the user's text."""
+        msg = str(form.get("msg", "")).strip()
+        if not msg:
+            return
+        state = self.state_read(task_id)
+        if state.get(self.phase_key) not in ("stopped", "error"):
+            return
+        state["error"] = ""
+        state["error_detail"] = ""
+        state["stop_requested"] = False
+        state[self.phase_key] = self.message_phase
+        self.state_write(task_id, state)
+        self.enqueue_step(task_id, "user_message", {"msg": msg})
+
+    def agent_hop_kwargs(self, task_id: str) -> dict:
+        """The ``pid_file`` / ``stop_check`` kwargs every stage passes to
+        :func:`pi_runner.run_agent_hop` so the generic STOP action works."""
+        return {
+            "pid_file": paths.stage_pid_file(task_id, self.slug),
+            "stop_check": lambda: bool(self.state_read(task_id).get("stop_requested")),
+        }
 
     def retry_from_error(self, task_id: str) -> None:
         """Resume the stage's failed step for another round of retries.
@@ -590,6 +702,10 @@ def render_actions_table(turns: list[dict], include_text: bool = True) -> str:
     chat surface, which renders those answers as markdown alongside the table."""
     rows: list[str] = []
     for turn in turns:
+        # Entries that are not assistant turns (recorded user prompts and any
+        # future `kind`-tagged entries) are skipped — plan 4.2 owns their look.
+        if turn.get("kind"):
+            continue
         # Content-less turns (empty model responses) have nothing to show.
         if not (
             turn.get("text", "").strip()
@@ -660,7 +776,7 @@ def render_spinner(label: str) -> str:
 
 
 def render_retry_button(stage: "Stage", task_id: str, error_step: str | None) -> str:
-    """The "retry from last error" button shown next to a stage's re-run button.
+    """The "continue from last error" button shown next to a stage's re-run button.
 
     It POSTs the generic ``retry_error`` action, which re-enqueues the failed step
     so the agent continues from where it crashed (resuming its pi session) for
@@ -672,5 +788,33 @@ def render_retry_button(stage: "Stage", task_id: str, error_step: str | None) ->
     return (
         f'<button hx-post="{esc(stage.action_url(task_id, "retry_error"))}" '
         f'hx-target="#{content_id}" hx-swap="outerHTML" class="secondary retry-error-btn">'
-        "Retry from last error</button>"
+        "Continue from last error</button>"
     )
+
+
+def render_stop_button(stage: "Stage", task_id: str) -> str:
+    """A STOP button shown while a stage's agent is running: kills the pi
+    process group and lands the stage in ``stopped`` (plain — plan 4.2 restyles)."""
+    esc = _ui._esc
+    return (
+        '<div class="stage-msg stage-stop">'
+        f'<button hx-post="{esc(stage.action_url(task_id, "stop"))}" '
+        f'hx-target="#{stage.stage_content_id()}" hx-swap="outerHTML" '
+        'class="secondary stop-btn">STOP</button></div>'
+    )
+
+
+def render_message_form(stage: "Stage", task_id: str) -> str:
+    """One-textarea form posting the generic ``message`` action, shown when a
+    stage is ``stopped`` or ``error`` so the user can resume the agent's session
+    with new instructions (plain — plan 4.2 restyles)."""
+    esc = _ui._esc
+    return f"""
+    <form class="stage-msg stage-message" hx-post="{esc(stage.action_url(task_id, "message"))}"
+          hx-target="#{stage.stage_content_id()}" hx-swap="outerHTML">
+      <label>Send a message to resume the agent
+        <textarea name="msg" rows="3" required placeholder="Type a message…"></textarea>
+      </label>
+      <button type="submit">Send</button>
+    </form>
+    """

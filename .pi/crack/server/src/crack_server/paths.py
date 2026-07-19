@@ -240,6 +240,12 @@ def next_prompt_filename(task_id: str, root: Path | None = None) -> str | None:
     return None
 
 
+def stage_pid_file(task_id: str, slug: str, root: Path | None = None) -> Path:
+    """Where a stage's worker publishes the running pi subprocess's pid so the
+    web STOP handler can kill it: tasks/<id>/<slug>.agent.pid."""
+    return task_dir(task_id, root) / f"{_validate_stage_slug(slug)}.agent.pid"
+
+
 # ---------------------------------------------------------------------------
 # Harness: models cache, per-stage config, stage prompt templates
 # ---------------------------------------------------------------------------

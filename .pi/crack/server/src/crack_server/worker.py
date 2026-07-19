@@ -29,10 +29,12 @@ POLL_INTERVAL_SECONDS = 0.5
 def _dispatch(job: dict) -> None:
     """Run one claimed job, then remove its processing file (complete/fail).
 
-    Stage ``_run_*`` methods record their own detailed error state; here we only
-    guarantee the job is logged and dequeued so a failure never wedges the queue.
+    Stage ``_run_*`` methods record their own detailed error state; here we
+    guarantee the job is logged and dequeued so a failure never wedges the
+    queue, and — for exceptions that escaped the stage's own handling — that
+    the stage's state lands in ``error`` so the UI never spins forever (B6).
     """
-    from crack_server import app, chats, queue, stages
+    from crack_server import app, chats, paths, queue, stages
 
     slug = job.get("slug")
     step = job.get("step")
@@ -48,11 +50,49 @@ def _dispatch(job: dict) -> None:
             if stage is None:
                 logger.error("worker: unknown stage slug %r for job %s", slug, job.get("id"))
             else:
-                stage.run_step(task_id, step, form)
+                stage.dispatch_step(task_id, step, form)
         queue.complete(job)
-    except Exception:
+    except Exception as exc:
         logger.exception("worker: job %s (%s/%s) failed", job.get("id"), slug, step)
         queue.fail(job)
+        try:
+            detail = f"worker dispatch failed: {exc}"
+            if slug == app.TITLE_JOB_SLUG:
+                paths.write_title_regen_state(task_id, {"status": "error", "error": detail})
+            elif slug == chats.CHAT_JOB_SLUG:
+                state = paths.read_chat_state(task_id)
+                state["phase"] = "idle"
+                state["error"] = detail
+                state["error_detail"] = ""
+                paths.write_chat_state(task_id, state)
+            else:
+                stage = stages.get(slug)
+                if stage is not None:
+                    stage.record_dispatch_error(task_id, str(exc))
+        except Exception:
+            logger.exception("worker: could not record dispatch error for job %s", job.get("id"))
+
+
+def _kill_orphaned_agents() -> None:
+    """Kill pi process groups left behind by a crashed/killed worker (B4): any
+    surviving *.agent.pid under tasks/ or unscripted_chats/ names an agent whose
+    owning job is gone, so it must die before its job is reclaimed and re-run."""
+    from crack_server import paths, pi_runner
+
+    pid_files: list[Path] = []
+    tasks = paths.tasks_dir()
+    if tasks.is_dir():
+        pid_files += list(tasks.glob("*/*.agent.pid"))
+    chats_dir = paths.unscripted_chats_dir()
+    if chats_dir.is_dir():
+        pid_files += list(chats_dir.glob("*/agent.pid"))
+    for pid_file in pid_files:
+        killed = pi_runner.kill_pid_file(pid_file)
+        logger.info("crack-worker: orphaned agent pid file %s (killed=%s)", pid_file, killed)
+        try:
+            pid_file.unlink()
+        except OSError:
+            pass
 
 
 def _loop() -> None:
@@ -60,6 +100,7 @@ def _loop() -> None:
     from crack_server import queue
 
     logger.info("crack-worker: starting (max_workers=%d)", MAX_WORKERS)
+    _kill_orphaned_agents()
     queue.reclaim_orphans()
 
     executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
