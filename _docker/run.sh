@@ -21,4 +21,8 @@ docker run -d \
   -v "crack-dev-target-dir:/workspace/target" \
   -p "127.0.0.1:9847:9847" \
   -p "127.0.0.1:21122:22" \
+  -p "127.0.0.1:9930:9930" \
+  -p "127.0.0.1:9931:9931" \
+  -p "127.0.0.1:9932:9932" \
+  --init \
   $IMG_NAME /bin/bash _docker/_cont_start.sh

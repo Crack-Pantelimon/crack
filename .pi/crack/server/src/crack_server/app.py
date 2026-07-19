@@ -958,3 +958,15 @@ def api_chat_message(
 def api_chat_model(chat_id: str, model: str = Form(...)) -> HTMLResponse:
     """Persist the chat's model selection (dropdown saves on change)."""
     return chats.set_model(chat_id, model)
+
+
+@app.post("/api/chats/{chat_id}/stop", response_class=HTMLResponse)
+def api_chat_stop(chat_id: str) -> HTMLResponse:
+    """Stop the running agent for this chat and return the updated fragment."""
+    return chats.stop_chat(chat_id)
+
+
+@app.delete("/api/chats/{chat_id}", response_class=HTMLResponse)
+def api_chat_delete(chat_id: str) -> HTMLResponse:
+    """Delete a chat directory; empty fragment removes its home-page list item."""
+    return chats.delete_chat(chat_id)

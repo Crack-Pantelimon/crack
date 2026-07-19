@@ -10,6 +10,7 @@ own pi session across messages.
 from __future__ import annotations
 
 import logging
+import shutil
 import time
 
 from fastapi import HTTPException
@@ -50,6 +51,12 @@ def check_chat_id(chat_id: str) -> None:
         raise HTTPException(status_code=404, detail="chat not found")
 
 
+def _agent_pid_file(chat_id: str):
+    """Where the worker publishes the running pi subprocess's pid so the web
+    STOP handler can kill it (see pi_runner.run_agent_hop / kill_pid_file)."""
+    return paths.chat_dir(chat_id) / "agent.pid"
+
+
 # -- home-page section --------------------------------------------------------
 
 
@@ -62,9 +69,18 @@ def _render_chat_list(ids: list[str]) -> str:
         title = info.get("title") or "(untitled chat)"
         created = info.get("created_at")
         when = _ui._format_time(created) if created else ""
+        delete_btn = (
+            f'<button hx-delete="/api/chats/{_ui._esc(cid)}" '
+            'hx-target="closest li" hx-swap="outerHTML" '
+            'hx-confirm="Delete this chat permanently?" '
+            'style="background:#c0392b;border-color:#c0392b;color:#fff;'
+            'padding:0.1rem 0.5rem;font-size:0.8rem;margin-left:0.5rem;">Delete</button>'
+        )
         items.append(
-            f'<li><a href="/chats/{_ui._esc(cid)}">{_ui._esc(title)}</a> '
-            f'<small style="color: #666;">({_ui._esc(cid)}{" · " + when if when else ""})</small></li>'
+            f'<li style="display:flex;align-items:center;gap:0.25rem;">'
+            f'<a href="/chats/{_ui._esc(cid)}">{_ui._esc(title)}</a> '
+            f'<small style="color: #666;">({_ui._esc(cid)}{" · " + when if when else ""})</small>'
+            f"{delete_btn}</li>"
         )
     return "<ul>" + "".join(items) + "</ul>"
 
@@ -165,7 +181,16 @@ def render_chat_content(chat_id: str) -> str:
         parts.append(render_error_msg(state.get("error", ""), state.get("error_detail", "")))
 
     if phase == "chatting":
-        parts.append(render_spinner("Thinking…"))
+        safe_id = _ui._esc(chat_id)
+        parts.append(
+            '<div class="stage-msg chat-thinking" '
+            'style="display:flex;align-items:center;gap:0.75rem;">'
+            f"{render_spinner('Thinking…')}"
+            f'<button class="chat-stop" hx-post="/api/chats/{safe_id}/stop" '
+            'hx-target="#chat-content" hx-swap="outerHTML" '
+            'style="background:#c0392b;border-color:#c0392b;color:#fff;'
+            'padding:0.2rem 0.75rem;">Stop</button></div>'
+        )
 
     parts.append(render_chat_form(chat_id, info))
 
@@ -214,9 +239,47 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
         state = paths.read_chat_state(chat_id)
         state.setdefault("exchanges", []).append({"user": msg, "turns": []})
         state["phase"] = "chatting"
+        # Clear any stale stop from a previous exchange so this run isn't halted.
+        state["stop_requested"] = False
+        state.pop("error", None)
+        state.pop("error_detail", None)
         paths.write_chat_state(chat_id, state)
         queue.enqueue(chat_id, CHAT_JOB_SLUG, "chat")
     return HTMLResponse(render_chat_content(chat_id))
+
+
+def stop_chat(chat_id: str) -> HTMLResponse:
+    """POST /api/chats/{id}/stop: halt the running agent regardless of state.
+
+    Sets the stop flag (so the worker classifies the kill as intentional and
+    won't start another hop), kills the pi process group, and flips the phase to
+    idle for immediate UI feedback."""
+    check_chat_id(chat_id)
+    state = paths.read_chat_state(chat_id)
+    state["stop_requested"] = True
+    paths.write_chat_state(chat_id, state)
+    killed = pi_runner.kill_pid_file(_agent_pid_file(chat_id))
+    logger.info("chats: stop requested for %s (killed=%s)", chat_id, killed)
+    # Reflect the halt right away; the worker also finalizes when its hop ends.
+    state = paths.read_chat_state(chat_id)
+    if state.get("phase") == "chatting":
+        state["phase"] = "idle"
+        paths.write_chat_state(chat_id, state)
+    return HTMLResponse(render_chat_content(chat_id))
+
+
+def delete_chat(chat_id: str) -> HTMLResponse:
+    """DELETE /api/chats/{id}: kill any running agent, then remove the chat dir.
+
+    Returns an empty fragment so htmx's outerHTML swap drops the list item."""
+    check_chat_id(chat_id)
+    pi_runner.kill_pid_file(_agent_pid_file(chat_id))
+    try:
+        shutil.rmtree(paths.chat_dir(chat_id))
+    except OSError as e:
+        logger.warning("chats: failed to delete %s: %s", chat_id, e)
+    logger.info("chats: deleted %s", chat_id)
+    return HTMLResponse("")
 
 
 def set_model(chat_id: str, model: str) -> HTMLResponse:
@@ -229,6 +292,35 @@ def set_model(chat_id: str, model: str) -> HTMLResponse:
 
 
 # -- worker entry point ---------------------------------------------------------
+
+
+def _maybe_generate_title(chat_id: str, first_message: str) -> None:
+    """Summarize the first user message into a short chat title via the nano
+    title model (the same one used for task-prompt titles). Best-effort: a
+    failure leaves the title empty ("(untitled chat)") rather than breaking the
+    chat run."""
+    info = paths.read_chat_info(chat_id)
+    if info.get("title"):
+        return
+    message = (first_message or "").strip()
+    if not message:
+        return
+    try:
+        prompt = _ui._load_template("title").replace("{content}", message)
+        title, _ = pi_runner.run_pi_text(
+            prompt,
+            log_prefix="chat-title",
+            model=pi_runner.TITLE_MODEL,
+            max_input_chars=pi_runner.TITLE_MAX_INPUT_CHARS,
+        )
+        title = title.strip().strip('"').strip()
+        if title:
+            info = paths.read_chat_info(chat_id)
+            info["title"] = title[:80]
+            paths.write_chat_info(chat_id, info)
+            logger.info("chats: titled %s -> %r", chat_id, title[:80])
+    except Exception:
+        logger.exception("chats: title generation failed for %s", chat_id)
 
 
 def run_chat(chat_id: str) -> None:
@@ -248,8 +340,17 @@ def run_chat(chat_id: str) -> None:
         message = exchanges[idx].get("user", "")
         model = paths.read_chat_info(chat_id).get("model") or DEFAULT_CHAT_MODEL
 
+        # The very first user message names the chat (nano summary), so the home
+        # page shows something better than "(untitled chat)".
+        if idx == 0:
+            _maybe_generate_title(chat_id, message)
+
         existing = list(exchanges[idx].get("turns", []))
         new_turns: list[dict] = []
+        pid_file = _agent_pid_file(chat_id)
+
+        def stop_check() -> bool:
+            return bool(paths.read_chat_state(chat_id).get("stop_requested"))
 
         def persist(current_turn: dict, hop: int) -> None:
             new_turns.append(
@@ -268,6 +369,9 @@ def run_chat(chat_id: str) -> None:
         reason = "hop_cap"
         hop = 0
         while reason == "hop_cap" and hop < CHAT_MAX_HOPS:
+            if stop_check():
+                reason = "stopped"
+                break
             hop += 1
             reason = pi_runner.run_agent_hop(
                 log_prefix="unscripted-chat",
@@ -284,6 +388,8 @@ def run_chat(chat_id: str) -> None:
                 total_turns=pi_runner.count_turn_groups(existing + new_turns),
                 persist_turn=persist,
                 hop=hop,
+                pid_file=pid_file,
+                stop_check=stop_check,
             )
             if reason != "hop_cap":
                 break
@@ -291,6 +397,7 @@ def run_chat(chat_id: str) -> None:
 
         state = paths.read_chat_state(chat_id)
         state["phase"] = "idle"
+        state["stop_requested"] = False
         if reason == "empty":
             state["error"] = "model returned empty responses"
             state["error_detail"] = ""
@@ -300,6 +407,10 @@ def run_chat(chat_id: str) -> None:
         logger.exception("unscripted chat failed for %s", chat_id)
         state = paths.read_chat_state(chat_id)
         state["phase"] = "idle"
-        state["error"] = str(e)
-        state["error_detail"] = getattr(e, "detail", "")
+        # A kill triggered by STOP surfaces as an exception on some paths; don't
+        # dress an intentional halt up as an error.
+        if not state.get("stop_requested"):
+            state["error"] = str(e)
+            state["error_detail"] = getattr(e, "detail", "")
+        state["stop_requested"] = False
         paths.write_chat_state(chat_id, state)

@@ -18,7 +18,8 @@
         "/usr/bin/chromium",
         "--chromeArg=--no-sandbox",
         "--chromeArg=--disable-gpu",
-        "--no-usage-statistics"
+        "--no-usage-statistics",
+        "--allow-unrestricted-paths"
       ]
     },
     "firefox": {
@@ -29,7 +30,10 @@
         "--browser",
         "firefox",
         "--headless",
-        "--isolated"
+        "--isolated",
+        "--allow-unrestricted-file-access",
+        "--output-dir",
+        "/workspace/.playwright-mcp"
       ]
     }
   }

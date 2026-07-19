@@ -76,12 +76,14 @@ The MCP servers are declared in the repo at `/workspace/.mcp.json`
       "args": ["-y", "chrome-devtools-mcp@1.6.0", "--headless", "--isolated",
                "--executablePath", "/usr/bin/chromium",
                "--chromeArg=--no-sandbox", "--chromeArg=--disable-gpu",
-               "--no-usage-statistics"]
+               "--no-usage-statistics", "--allow-unrestricted-paths"]
     },
     "firefox": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp@0.0.78", "--browser", "firefox",
-               "--headless", "--isolated"]
+               "--headless", "--isolated",
+               "--allow-unrestricted-file-access",
+               "--output-dir", "/workspace/.playwright-mcp"]
     }
   }
 }
@@ -118,6 +120,67 @@ per-server "direct tools" if configured — not used here). Usage inside an agen
 `mcp({ search: "navigate" })` search, `mcp({ describe: "tool" })`,
 `mcp({ tool: "chromium_navigate_page", args: "{\"url\":\"...\"}" })` call.
 Tool names are prefixed `<server>_<tool>` and fuzzy-matched on hyphens/underscores.
+
+### File-access flags (why screenshots to /workspace work)
+
+Both browser servers confine file-writing tools (screenshots, PDF, traces) to
+their **workspace roots**. A server learns those roots by calling `roots/list`
+on the MCP *client* — but pi-mcp-adapter never negotiates the `roots`
+capability (`buildClientCapabilities()` only ever emits `sampling`/
+`elicitation`), so neither server learns any root. chrome-devtools-mcp then
+falls back to *temp-dir-only* and @playwright/mcp to *cwd-only*
+(`/workspace/.pi/crack/server`), and any write to `/workspace/...` or `/root/...`
+is rejected with `Access denied: … is not within any of the configured
+workspace roots`.
+
+Because the adapter leaves the servers' roots **undefined**, the per-server
+escape hatch applies cleanly:
+
+- **chromium** → `--allow-unrestricted-paths` (skips path validation when the
+  client never negotiated roots).
+- **firefox** → `--allow-unrestricted-file-access` (same effect for playwright),
+  plus `--output-dir /workspace/.playwright-mcp` so its outputs land in the
+  (git-ignored) workspace rather than a scratch temp dir.
+
+Verified by driving chrome-devtools-mcp over raw JSON-RPC with a client that
+advertises no `roots`: `take_screenshot { filePath: "/workspace/test_shot.png" }`
+returned `Saved screenshot to /workspace/test_shot.png` and wrote a valid PNG.
+
+### Network-reachable MCP endpoints (host access)
+
+The stdio `.mcp.json` is only usable by the in-container `pi` agents. To let a
+host user reach the *same* MCP servers over `localhost`, `_cont_start.sh` also
+serves each one over HTTP (ports published in `run.sh`):
+
+| Server | Host URL | Transport |
+|--------|----------|-----------|
+| firefox (playwright) | `http://localhost:9930/mcp` | Streamable HTTP (native `--host 0.0.0.0 --port`) |
+| chromium (chrome-devtools) | `http://localhost:9931/sse` | SSE via `supergateway` |
+| web-search | `http://localhost:9932/sse` | SSE via `supergateway` |
+
+Notes / gotchas discovered while wiring this:
+- **playwright/mcp** serves HTTP natively but its default `--allowed-hosts`
+  rejects the Docker-proxied `Host` header with **403**; pass `--allowed-hosts "*"`.
+- **chrome-devtools-mcp** and **web-search** are stdio-only, so `supergateway`
+  bridges them to SSE. supergateway calls `listen(port)` with no host and binds
+  IPv6 `::` only, which Docker's IPv4 userland proxy cannot reach. So each
+  supergateway runs on an internal loopback port (`+10000`) and is exposed on
+  `0.0.0.0` by `_docker/tcp_forward.py` (a tiny stdlib asyncio TCP forwarder,
+  `TCP_NODELAY` set so the first SSE event isn't held by Nagle).
+- Everything runs under a `respawn` loop in `_cont_start.sh`, so a crashed
+  bridge self-heals. Logs: `/workspace/.pi/crack/harness/mcp-http/*.log`.
+
+Host client config example (points at the container over localhost):
+
+```json
+{
+  "mcpServers": {
+    "firefox":    { "url": "http://localhost:9930/mcp" },
+    "chromium":   { "url": "http://localhost:9931/sse" },
+    "web-search": { "url": "http://localhost:9932/sse" }
+  }
+}
+```
 
 ## Browser MCP server choices
 

@@ -23,3 +23,6 @@ gain.ndjson
 # Browser-MCP (playwright / chrome-devtools) scratch output — generated during
 # agent tool runs, never source.
 .playwright-mcp/
+
+# Runtime logs from the network-reachable MCP HTTP bridges (see _cont_start.sh).
+.pi/crack/harness/mcp-http/

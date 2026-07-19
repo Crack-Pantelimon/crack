@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shlex
+import signal
 import subprocess
 import threading
 import time
@@ -454,6 +456,36 @@ def read_file_lines(root: Path, rel_path: str, start: int | None, end: int | Non
     return text, start, end, marker
 
 
+def kill_pid_file(pid_file: Path) -> bool:
+    """Kill the process group named in ``pid_file`` (written by run_agent_hop).
+
+    Sends SIGTERM to the whole group (pi + any children it spawned), then
+    SIGKILL as a fallback. Returns True if a signal was delivered. Safe to call
+    when the file is missing or the process is already gone."""
+    try:
+        pid = int(pid_file.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return False
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except ProcessLookupError:
+            return True
+        # Give SIGTERM a brief moment before escalating to SIGKILL.
+        if sig == signal.SIGTERM:
+            for _ in range(20):
+                try:
+                    os.killpg(pgid, 0)
+                except ProcessLookupError:
+                    return True
+                time.sleep(0.1)
+    return True
+
+
 def run_agent_hop(
     *,
     log_prefix: str,
@@ -470,6 +502,8 @@ def run_agent_hop(
     total_turns: int,
     persist_turn,
     hop: int = 1,
+    pid_file: Path | None = None,
+    stop_check=None,
 ) -> str:
     """Run one hop of a tool-using agent and stream its JSON events.
 
@@ -484,7 +518,15 @@ def run_agent_hop(
     content at all are neither persisted nor counted. ``sentinel`` (optional)
     ends the hop early when it appears in assistant text. Returns the stop
     reason: "sentinel", "hop_cap", "turn_cap", "time_cap", "agent_end" (pi
-    finished on its own), or "empty" (pi repeatedly returned content-less turns).
+    finished on its own), "empty" (pi repeatedly returned content-less turns),
+    or "stopped" (an external caller killed the subprocess — see ``pid_file`` /
+    ``stop_check``).
+
+    ``pid_file`` (optional): the pi subprocess is started in its own session and
+    its PID written here so another process (e.g. a web STOP handler) can kill
+    the whole process group. ``stop_check`` (optional, called with no args): when
+    it returns truthy after the subprocess ends, the hop is classified as
+    "stopped" (a clean, intentional halt) rather than a crash to retry.
     """
     sessions_dir.mkdir(parents=True, exist_ok=True)
 
@@ -515,12 +557,23 @@ def run_agent_hop(
         retry loop only retries a *transient* failure that made no forward progress
         (a partial-progress crash is kept, not silently replayed)."""
         wait_for_rate_limit(model)
+        # start_new_session=True puts pi in its own process group so an external
+        # STOP can kill pi *and* any children it spawned (npx MCP servers) via
+        # the group leader's pid, which we publish to pid_file.
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            start_new_session=True,
         )
+        if pid_file is not None:
+            try:
+                pid_file.parent.mkdir(parents=True, exist_ok=True)
+                pid_file.write_text(str(proc.pid), encoding="utf-8")
+            except OSError as e:
+                logger.warning("%s hop %d: could not write pid_file %s: %s",
+                               log_prefix, hop, pid_file, e)
         current_turn: dict = {}
         hop_turns = 0
         total = total_turns
@@ -651,6 +704,22 @@ def run_agent_hop(
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
+            if pid_file is not None:
+                try:
+                    pid_file.unlink()
+                except OSError:
+                    pass
+
+        # An external STOP kills the subprocess out from under the stream loop,
+        # which looks like a crash (non-zero rc). If the caller confirms a stop
+        # was requested, classify it as an intentional, clean halt.
+        if not terminated_by_us and stop_check is not None:
+            try:
+                if stop_check():
+                    reason = "stopped"
+                    terminated_by_us = True
+            except Exception:
+                logger.exception("%s hop %d: stop_check raised", log_prefix, hop)
 
         elapsed = time.monotonic() - start
         logger.info(
