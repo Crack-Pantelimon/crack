@@ -18,6 +18,8 @@
 #   midfail:N      emit N turns, then print "connection reset" and exit 1
 #   hard           print a non-transient error to stderr and exit 1
 #   ok             (print mode) echo "text-response" and exit 0
+#   copy:SRC>DST   copy file SRC to DST (an "agent wrote the artifact" stand-in),
+#                  emit one turn, then agent_end
 set -u
 
 n_file="$FAKE_PI_DIR/count"
@@ -89,6 +91,14 @@ $arg"
     ;;
   ok)
     echo "text-response"
+    ;;
+  copy)
+    src="${arg%%>*}"
+    dst="${arg#*>}"
+    mkdir -p "$(dirname "$dst")"
+    cp "$src" "$dst"
+    emit_turn "wrote the artifact (invocation $n)"
+    printf '{"type":"agent_end"}\n'
     ;;
   *)
     echo "fake_pi: unknown behavior '$line'" >&2

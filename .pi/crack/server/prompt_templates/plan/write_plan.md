@@ -1,4 +1,11 @@
-You are writing the final implementation plan for a coding task. You have NO tools — everything you need is below. Do not invent file paths or code that is not supported by the exploration summary and the lay-of-the-land notes.
+You now have everything you need. Write the final implementation plan as a file on disk.
+
+Write the plan to this exact path:
+{plan_path}
+
+Use the `write` tool to create (or overwrite) the file, and the `edit` tool to revise sections as you refine it. You may keep using `bash`/`read` to double-check code details while writing. Take as many turns as you need — the plan file on disk is the deliverable, not your chat messages.
+
+For reference, the task and what you have established so far:
 
 Original task description:
 {content}
@@ -6,13 +13,13 @@ Original task description:
 Exploration summary of the repository:
 {explore_summary}
 
-Lay of the land (draft notes from the planning agent, grounded in the actual code):
-{lay_of_the_land}
+Draft plan (your notes from the planning step, grounded in the actual code):
+{draft_plan}
 
 Clarifying Q&A with the user:
 {qa}
 
-Write the final plan as markdown with EXACTLY this structure:
+The plan file MUST be markdown with EXACTLY this structure (these headings are verified mechanically — the step fails if any is missing):
 
 # Plan
 
@@ -37,3 +44,6 @@ Step-by-step human checks (UI flows, outputs to eyeball) for anything automation
 ## Overview / Summary
 A short recap: the goal, the shape of the solution, and the main risks.
 
+Do not invent file paths or code that is not supported by the exploration and your notes. Do not modify any file other than the plan file at {plan_path}.
+
+When the plan file is complete on disk, reply with a short summary of the plan and make no further tool calls.

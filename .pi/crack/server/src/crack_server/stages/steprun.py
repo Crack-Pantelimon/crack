@@ -19,9 +19,12 @@ Everything builds on :class:`state.JsonState` — persistence goes through
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Callable, Iterator
 
 from crack_server.state import JsonState
@@ -228,6 +231,101 @@ def hop_with_nudge(
             on_stopped()
         text = text_so_far()
     return text, reason
+
+
+def file_content_hash(path: Path) -> str | None:
+    """sha256 of a file's bytes, or None when it is missing/unreadable — the
+    before-step snapshot for :func:`verify_artifact_file`'s freshness check."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def verify_artifact_file(
+    path: Path,
+    before_hash: str | None,
+    required_headings: tuple[str, ...] = (),
+    require_change: bool = True,
+) -> str | None:
+    """Objective completion check for an agent-written artifact: None when the
+    file passes, else a deficiency sentence ready to embed in a corrective
+    message. Checks, in order: the file exists; its content changed during this
+    step (hash vs the before-step snapshot, when ``require_change``); every
+    required heading starts a line."""
+    if not path.is_file():
+        return f"the file {path} does not exist"
+    if require_change and before_hash is not None and file_content_hash(path) == before_hash:
+        return f"the file {path} was not modified during this step"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        return f"the file {path} could not be read ({e})"
+    missing = [
+        h for h in required_headings if re.search(rf"(?m)^{re.escape(h)}\b", text) is None
+    ]
+    if missing:
+        return (
+            f"the file {path} is missing required section heading(s): "
+            + ", ".join(f"'{h}'" for h in missing)
+        )
+    return None
+
+
+def run_until_verified(
+    *,
+    start: float,
+    timeout_seconds: int,
+    message: str,
+    run_hop: Callable[[str, int], str],
+    verify: Callable[[], str | None],
+    corrective: Callable[[str], str],
+    max_corrective: int = 2,
+    on_stopped: Callable[[], None],
+) -> str:
+    """Settle → verify → corrective-retry loop for artifact-writing steps
+    (s02 write, s03 revise/reject): completion is *verified* on disk, never
+    declared by model text.
+
+    ``run_hop(message, hop_n)`` runs one agent hop and returns its stop reason.
+    Whenever the agent settles (``agent_end``), ``verify()`` runs: None means
+    the artifact passes and the loop returns ``"verified"``; a deficiency
+    string is fed to ``corrective(deficiency)`` to build the next hop's
+    message, at most ``max_corrective`` times before raising. On the wall-clock
+    cap the artifact is still verified once — work finished just before the cap
+    counts. Returns ``"verified"`` or (after ``on_stopped()``) ``"stopped"``;
+    raises RuntimeError on an "empty" hop or a verification that never passed.
+    """
+    correctives_used = 0
+    hop_n = 0
+    deficiency: str | None = None
+    while True:
+        timed_out = time.monotonic() - start > timeout_seconds
+        if not timed_out:
+            hop_n += 1
+            reason = run_hop(message, hop_n)
+            if reason == "empty":
+                raise RuntimeError(EMPTY_TURNS_MESSAGE)
+            if reason == "stopped":
+                on_stopped()
+                return "stopped"
+            timed_out = reason == "time_cap"
+        deficiency = verify()
+        if deficiency is None:
+            return "verified"
+        if timed_out:
+            raise RuntimeError(f"step hit its time cap and {deficiency}")
+        if correctives_used >= max_corrective:
+            raise RuntimeError(
+                f"artifact verification failed after {correctives_used} corrective "
+                f"attempt(s): {deficiency}"
+            )
+        correctives_used += 1
+        logger.warning(
+            "run_until_verified: %s — sending corrective %d/%d",
+            deficiency, correctives_used, max_corrective,
+        )
+        message = corrective(deficiency)
 
 
 @contextmanager

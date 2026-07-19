@@ -154,9 +154,11 @@ def stage_status(
     after: int | None = Query(default=None),
 ) -> HTMLResponse:
     _check_task_id(task_id)
-    return HTMLResponse(
-        _get_stage_or_404(slug).render_status(task_id, after=after)
-    )
+    stage = _get_stage_or_404(slug)
+    # RC6 watchdog at poll time: a running phase with no queued job behind it
+    # renders as an error immediately instead of an infinite spinner.
+    stage.check_orphaned(task_id)
+    return HTMLResponse(stage.render_status(task_id, after=after))
 
 
 @router.get("/tasks/{task_id}/fileref", response_class=HTMLResponse)

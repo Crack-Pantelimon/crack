@@ -1,12 +1,16 @@
-"""Stage s02: Plan — agent-driven clarifying Q&A, then a structured final plan.
+"""Stage s02: Plan — agent-driven clarifying Q&A, then an agent-written plan file.
 
 Step-driven state machine persisted to tasks/<id>/plan.json (no long-lived
 blocking threads): each "Submit answers" POST kicks the next background step.
 
 Phases: draft_running → awaiting_answers → resuming → (more rounds) →
-final_running → done | error. Rounds are agent-driven, hard-capped at
+write_running → done | error. Rounds are agent-driven, hard-capped at
 MAX_ROUNDS: after each answered round the draft agent emits either ≤5 more
-questions (a fenced ```questions JSON block) or the READY_TO_PLAN sentinel.
+questions (a fenced ```questions JSON block) or the READY_TO_PLAN signal.
+The write step then continues the same pi session with write/edit tools and
+writes plan/final_plan.md itself; completion is *verified* on disk (file
+exists, changed this step, required headings present — see
+steprun.run_until_verified), never declared by model text.
 """
 
 from __future__ import annotations
@@ -37,10 +41,13 @@ from crack_server.stages.render import (
 from crack_server import ui as _ui
 from crack_server.ui import _esc
 from crack_server.stages.steprun import (
+    file_content_hash,
     hop_with_nudge,
     prompt_recorder,
     record_errors,
+    run_until_verified,
     turn_persister,
+    verify_artifact_file,
 )
 
 logger = logging.getLogger("uvicorn.error")
@@ -49,22 +56,44 @@ ULTRA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
 
 MAX_ROUNDS = 3
 READY_SENTINEL = "READY_TO_PLAN"
-READ_ONLY_REMINDER = (
-    "Remember: DO NOT write or edit any files yet. "
-    "This is a read-only exploration and planning phase."
-)
 DRAFT_TIMEOUT_SECONDS = 300
+WRITE_TIMEOUT_SECONDS = 1800
+WRITE_MAX_CORRECTIVE = 2
 
 # Flow-control nudge (not a cap): sent once when the agent ended its turn
 # without emitting either a questions block or the sentinel.
 DRAFT_NUDGE = (
     "Stop calling tools now. Based on what you have gathered so far, "
-    "write your Lay of the land, then emit either the ```questions "
+    "write your Draft plan, then emit either the ```questions "
     "JSON block (at most 5 questions) or "
     f"{READY_SENTINEL} on its own line."
 )
 
-RUNNING_PHASES = ("draft_running", "resuming", "final_running")
+# Headings the write step's on-disk verification requires in final_plan.md
+# (prefix-matched at line start, so e.g. "## Overview / Summary" satisfies
+# "## Overview"). Must mirror the structure mandated by write_plan.md.
+REQUIRED_PLAN_HEADINGS = (
+    "# Plan",
+    "## Initial build/check instructions",
+    "## Problem statement",
+    "## Changes",
+    "## What NOT to change",
+    "## Automatic verification",
+    "## Manual verification",
+    "## Overview",
+)
+
+# Corrective message sent when the write step settled but the plan file failed
+# verification; names the exact deficiency (max WRITE_MAX_CORRECTIVE times).
+WRITE_CORRECTIVE = (
+    "Verification failed: {deficiency}.\n"
+    "Write the complete implementation plan to the file at {plan_path} now — "
+    "use the write tool to create/overwrite it or the edit tool to fix it, "
+    "following the required structure. When the file is complete, reply with "
+    "a short summary and make no further tool calls."
+)
+
+RUNNING_PHASES = ("draft_running", "resuming", "write_running")
 
 
 def _strip_control_blocks(text: str) -> str:
@@ -79,7 +108,7 @@ class S02Plan(Stage):
     name = "Plan"
     parts = [
         Part("draft", "Draft agent (Q&A rounds)", "draft.md", ULTRA_MODEL),
-        Part("final", "Final plan (single-shot)", "final_plan.md", ULTRA_MODEL),
+        Part("write", "Plan writer (agentic)", "write_plan.md", ULTRA_MODEL),
     ]
 
     phase_key = "phase"
@@ -87,7 +116,7 @@ class S02Plan(Stage):
 
     def status(self, task_id: str) -> str:
         phase = paths.plan_state(task_id).read().get("phase", "idle")
-        if phase in ("draft_running", "resuming", "final_running"):
+        if phase in RUNNING_PHASES:
             return "running"
         if phase == "awaiting_answers":
             return "awaiting"
@@ -120,12 +149,13 @@ class S02Plan(Stage):
         explore_summary = paths.explore_state(task_id).read().get("summary_md", "")
 
         shutil.rmtree(paths.plan_sessions_dir(task_id), ignore_errors=True)
+        self._clear_stale_artefacts(task_id)
 
         fresh = {
             "phase": "draft_running",
             "round": 1,
             "rounds": [],
-            "lay_of_the_land": "",
+            "draft_plan": "",
             "final_md": "",
             "error": "",
             "explore_summary": explore_summary,
@@ -137,20 +167,36 @@ class S02Plan(Stage):
         plan.write(fresh)
         self.enqueue_step(task_id, "draft", form)
 
-    def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+    def _clear_stale_artefacts(self, task_id: str) -> None:
+        """Delete a previous run's plan artefacts so the write step's freshness
+        check can never be satisfied by an old file."""
+        plan_dir = paths.plan_dir(task_id)
+        if not plan_dir.is_dir():
+            return
+        stale = ["draft.md", "final_plan.md", "todo.md"]
+        stale += [p.name for p in plan_dir.glob("round_*_questions.json")]
+        stale += [p.name for p in plan_dir.glob("round_*_answers.json")]
+        for name in stale:
+            try:
+                (plan_dir / name).unlink(missing_ok=True)
+            except OSError as e:
+                logger.warning("plan: could not clear stale artefact %s: %s", name, e)
+
+    def run_step(
+        self, task_id: str, step: str, form: dict | None = None
+    ) -> tuple[str, dict | None] | None:
         if step == "draft":
-            self._run_draft_step(task_id, initial=True)
-        elif step == "resume":
-            self._run_draft_step(task_id, initial=False)
-        elif step == "user_message":
+            return self._run_draft_step(task_id, initial=True)
+        if step == "resume":
+            return self._run_draft_step(task_id, initial=False)
+        if step == "user_message":
             msg = str((form or {}).get("msg", "")).strip()
-            self._run_draft_step(
+            return self._run_draft_step(
                 task_id, initial=False, message_override=msg or pi_runner.RESUME_MESSAGE
             )
-        elif step == "final":
-            self._run_final(task_id)
-        else:
-            super().run_step(task_id, step, form)
+        if step == "write":
+            return self._run_write_step(task_id)
+        return super().run_step(task_id, step, form)
 
     def handle_action(self, action: str, task_id: str, form) -> None:
         if action == "answers":
@@ -191,7 +237,7 @@ class S02Plan(Stage):
 
     def _run_draft_step(
         self, task_id: str, initial: bool, message_override: str | None = None
-    ) -> None:
+    ) -> tuple[str, dict | None] | None:
         start = time.monotonic()
         plan = paths.plan_state(task_id)
         step_name = "draft" if initial else "resume"
@@ -258,36 +304,40 @@ class S02Plan(Stage):
             )
             logger.info("plan: draft step round=%d finished reason=%s", rnd, reason)
             if reason == "stopped":
-                return
+                return None
             if not text:
                 raise RuntimeError("plan draft step produced no text")
 
             questions = parse_questions(text)
-            lay = _strip_control_blocks(text)
+            draft_plan = _strip_control_blocks(text)
 
-            if lay:
-                paths.write_plan_artefact(task_id, "draft.md", lay)
+            if draft_plan:
+                paths.write_plan_artefact(task_id, "draft.md", draft_plan)
 
             if READY_SENTINEL in text or rnd >= MAX_ROUNDS or not questions:
                 if not questions and READY_SENTINEL not in text and rnd < MAX_ROUNDS:
+                    # Questions are recommended-but-optional: a model that emits
+                    # neither signal still advances — the write step's on-disk
+                    # verification is what makes advancing safe.
                     logger.warning(
-                        "plan: no questions block and no sentinel in round %d; going to final",
-                        rnd,
+                        "plan: no questions block and no %s in round %d; advancing to write",
+                        READY_SENTINEL, rnd,
                     )
 
-                def _to_final(state: dict) -> dict:
-                    if lay:
-                        state["lay_of_the_land"] = lay
-                    state["phase"] = "final_running"
+                def _to_write(state: dict) -> dict:
+                    if draft_plan:
+                        state["draft_plan"] = draft_plan
+                    state["phase"] = "write_running"
                     return state
 
-                plan.update(_to_final)
-                self.enqueue_step(task_id, "final")
-                return
+                plan.update(_to_write)
+                # Successor is enqueued by the worker after this job completes,
+                # so it can't collide with our own in-flight job (RC1).
+                return ("write", None)
 
             def _await_answers(state: dict) -> dict:
-                if lay:
-                    state["lay_of_the_land"] = lay
+                if draft_plan:
+                    state["draft_plan"] = draft_plan
                 state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
                 state["phase"] = "awaiting_answers"
                 return state
@@ -297,48 +347,89 @@ class S02Plan(Stage):
                 task_id, f"round_{rnd}_questions.json", json.dumps(questions, indent=2)
             )
             logger.info("plan: round %d produced %d questions", rnd, len(questions))
+        return None
 
-    def _run_final(self, task_id: str) -> None:
+    def _run_write_step(self, task_id: str) -> None:
+        """Continue the draft session with write/edit tools until the agent has
+        written a verified plan/final_plan.md (see run_until_verified)."""
+        start = time.monotonic()
         plan = paths.plan_state(task_id)
-        with record_errors(plan, "final", log_message=f"plan final failed for {task_id}"):
+        plan_path = paths.plan_dir(task_id) / "final_plan.md"
+        with record_errors(plan, "write", log_message=f"plan write step failed for {task_id}"):
             state = plan.read()
-            qa_all = "\n\n".join(
-                f"Round {i}:\n{format_qa_for_prompt(r)}"
-                for i, r in enumerate(state.get("rounds", []), 1)
-            )
-            prompt = (
-                self.load_template("final_plan.md")
-                .replace("{content}", paths.read_all_prompts_joined(task_id))
-                .replace(
-                    "{explore_summary}",
-                    state.get("explore_summary") or "(no exploration summary available)",
+            before_hash = file_content_hash(plan_path)
+            # A retry/resume after an errored write attempt must resume the
+            # session, never replay the template — and a file the errored
+            # attempt already completed may pass verification unchanged.
+            resumed = bool(state.get("write_prompted"))
+            if resumed:
+                message, template = pi_runner.RESUME_MESSAGE, ""
+            else:
+                qa_all = "\n\n".join(
+                    f"Round {i}:\n{format_qa_for_prompt(r)}"
+                    for i, r in enumerate(state.get("rounds", []), 1)
                 )
-                .replace("{lay_of_the_land}", state.get("lay_of_the_land") or "(none)")
-                .replace("{qa}", qa_all or "(no clarifying Q&A — the draft agent had enough)")
+                message = (
+                    self.load_template("write_plan.md")
+                    .replace("{plan_path}", str(plan_path))
+                    .replace("{content}", paths.read_all_prompts_joined(task_id))
+                    .replace(
+                        "{explore_summary}",
+                        state.get("explore_summary") or "(no exploration summary available)",
+                    )
+                    .replace("{draft_plan}", state.get("draft_plan") or "(none)")
+                    .replace("{qa}", qa_all or "(no clarifying Q&A — the planner had enough)")
+                )
+                template = "write_plan.md"
+
+                def _mark_prompted(s: dict) -> dict:
+                    s["write_prompted"] = True
+                    return s
+
+                plan.update(_mark_prompted)
+
+            persister = turn_persister(plan)
+
+            def run_hop(msg: str, hop: int) -> str:
+                tmpl = template if hop == 1 else ""
+                return pi_runner.run_agent_hop(
+                    log_prefix="plan-write",
+                    model=self.model_for("write"),
+                    session_id=f"plan-{task_id}",
+                    sessions_dir=paths.plan_sessions_dir(task_id),
+                    tools="bash,read,edit,write,mcp",
+                    message=msg,
+                    start=start,
+                    sentinel=None,
+                    timeout_seconds=WRITE_TIMEOUT_SECONDS,
+                    persist_turn=persister.persist,
+                    hop=hop,
+                    record_prompt=prompt_recorder(persister, "write", tmpl),
+                    **self.agent_hop_kwargs(task_id),
+                )
+
+            outcome = run_until_verified(
+                start=start,
+                timeout_seconds=WRITE_TIMEOUT_SECONDS,
+                message=message,
+                run_hop=run_hop,
+                verify=lambda: verify_artifact_file(
+                    plan_path, before_hash, REQUIRED_PLAN_HEADINGS,
+                    require_change=not resumed,
+                ),
+                corrective=lambda deficiency: WRITE_CORRECTIVE.format(
+                    deficiency=deficiency, plan_path=plan_path
+                ),
+                max_corrective=WRITE_MAX_CORRECTIVE,
+                on_stopped=lambda: self.mark_stopped(task_id),
             )
-            def record(entry: dict) -> None:
-                entry["label"] = "final"
-                entry["template"] = "final_plan.md"
+            if outcome == "stopped":
+                return
 
-                def _append(state: dict) -> dict:
-                    state.setdefault("turns", []).append(entry)
-                    return state
-
-                plan.update(_append)
-
-            final_md, final_elapsed = pi_runner.run_pi_text(
-                prompt,
-                log_prefix="plan-final",
-                model=self.model_for("final"),
-                record_prompt=record,
-            )
-            if "DO NOT write or edit any files" not in final_md:
-                final_md = final_md.rstrip() + "\n\n" + READ_ONLY_REMINDER + "\n"
-            paths.write_plan_artefact(task_id, "final_plan.md", final_md)
+            final_md = paths.read_plan_artefact(task_id, "final_plan.md")
 
             def _finish(state: dict) -> dict:
                 state["final_md"] = final_md
-                state["final_elapsed"] = final_elapsed
                 state["phase"] = "done"
                 state["finished_at"] = time.time()
                 return state
@@ -351,11 +442,16 @@ class S02Plan(Stage):
 
             review = stages.get("plan_review")
             if review is not None:
-                review.regenerate_todo(task_id)
+                try:
+                    review.regenerate_todo(task_id)
+                except Exception:
+                    # A failed/stopped todo regen must not error a completed
+                    # plan — the review's revise flow regenerates it anyway.
+                    logger.exception("plan: todo regeneration failed for %s", task_id)
                 review.start(task_id)
 
     def retry_from_error(self, task_id: str) -> None:
-        """Resume the failed draft/resume/final step, continuing the pi session."""
+        """Resume the failed draft/resume/write step, continuing the pi session."""
         retry = False
         step = "draft"
 
@@ -365,11 +461,13 @@ class S02Plan(Stage):
                 return state
             retry = True
             step = state.get("error_step") or "draft"
+            if step not in ("draft", "resume", "write"):
+                step = "draft"  # legacy/unknown step names (e.g. old "final")
             running_phase = {
                 "draft": "draft_running",
                 "resume": "resuming",
-                "final": "final_running",
-            }.get(step, "draft_running")
+                "write": "write_running",
+            }[step]
             state["phase"] = running_phase
             state["error"] = ""
             state["error_detail"] = ""
@@ -391,9 +489,6 @@ class S02Plan(Stage):
             meta = f"planned {_ui._format_ago(finished_at)}" if finished_at else "planned"
             rounds = len(state.get("rounds", []))
             meta += f" · {rounds} Q&A round{'s' if rounds != 1 else ''}"
-            final_elapsed = state.get("final_elapsed")
-            if final_elapsed is not None:
-                meta += f" · final {final_elapsed:.1f}s"
             msgs.append(f'<div class="stage-msg plan-meta"><small>{meta}</small></div>')
 
         msgs.extend(render_turn_msgs(state.get("turns", [])))
@@ -458,7 +553,7 @@ class S02Plan(Stage):
             label = {
                 "draft_running": "Drafting plan… round 1",
                 "resuming": f"Drafting plan… round {rnd}",
-                "final_running": "Writing final plan…",
+                "write_running": "Writing plan file…",
             }.get(phase, "Working…")
             parts.append(render_running_tail(self, task_id, label))
 

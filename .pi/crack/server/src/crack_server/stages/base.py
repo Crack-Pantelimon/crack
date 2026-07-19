@@ -34,6 +34,10 @@ from crack_server.state import JsonState, task_state_mtimes
 
 logger = logging.getLogger("uvicorn.error")
 
+# A running phase whose state file is younger than this is never flagged as
+# orphaned — covers write-state-then-enqueue and complete-then-chain gaps.
+ORPHAN_PHASE_GRACE_SECONDS = 10.0
+
 STATUS_COLORS = {
     "running": "tab--running",
     "awaiting": "tab--running",
@@ -150,16 +154,25 @@ class Stage:
 
     # -- worker command queue -------------------------------------------------
 
-    def enqueue_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+    def enqueue_step(
+        self,
+        task_id: str,
+        step: str,
+        form: dict | None = None,
+        ignore_job_id: str | None = None,
+    ) -> None:
         """Enqueue a unit of slow work for the out-of-process worker to run.
 
         The web process only ever writes fast state + enqueues; all ``pi``
         execution happens in the worker via :meth:`run_step`. Enqueueing is
         exclusive per (task, stage): a duplicate while one is pending or in
-        flight is dropped (B1 double-run guard)."""
+        flight is dropped (B1 double-run guard). ``ignore_job_id`` exempts the
+        caller's own in-flight job from that guard. Steps that need a successor
+        step should prefer *returning* ``(step, form)`` from :meth:`run_step`
+        — the worker enqueues it after completing the current job."""
         from crack_server import queue
 
-        queue.enqueue_exclusive(task_id, self.slug, step, form)
+        queue.enqueue_exclusive(task_id, self.slug, step, form, ignore_job_id=ignore_job_id)
 
     def prepare_start_token(self, state: dict) -> dict:
         """Stamp a fresh ``started_token`` into ``state`` (caller persists it) and
@@ -170,9 +183,16 @@ class Stage:
         state["started_token"] = token
         return {"started_token": token}
 
-    def dispatch_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+    def dispatch_step(
+        self, task_id: str, step: str, form: dict | None = None
+    ) -> tuple[str, dict | None] | None:
         """Worker-side entrypoint: verify the start token (when the job carries
-        one) then run the step. Stale start jobs are dropped silently."""
+        one) then run the step. Stale start jobs are dropped silently.
+
+        Passes through :meth:`run_step`'s optional successor ``(step, form)``:
+        the worker enqueues it only after completing the current job, so a
+        stage's own next step never collides with its in-flight processing file
+        under the B1 exclusive-enqueue guard."""
         token = (form or {}).get("started_token")
         if token is not None:
             try:
@@ -184,15 +204,70 @@ class Stage:
                     "%s: dropping stale start job for %s (token mismatch)",
                     self.slug, task_id,
                 )
-                return
-        self.run_step(task_id, step, form)
+                return None
+        return self.run_step(task_id, step, form)
 
-    def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+    def run_step(
+        self, task_id: str, step: str, form: dict | None = None
+    ) -> tuple[str, dict | None] | None:
         """Worker dispatch entrypoint: run one enqueued step synchronously.
 
-        Each stage maps ``step`` → its internal ``_run_*`` method. The default
-        raises so a misrouted job surfaces loudly in the worker log."""
+        Each stage maps ``step`` → its internal ``_run_*`` method. May return a
+        successor ``(step, form)`` for the worker to enqueue after the current
+        job completes (the only safe way for a step to chain to its own stage's
+        next step). The default raises so a misrouted job surfaces loudly in
+        the worker log."""
         raise NotImplementedError(f"{self.slug}: no run_step handler for {step!r}")
+
+    def check_orphaned(self, task_id: str) -> bool:
+        """RC6 watchdog: detect a stage stuck in a running phase with no queued
+        job behind it (e.g. a dropped or lost enqueue) and land it in ``error``
+        instead of an infinite spinner. Returns True when the stage was flipped.
+
+        The grace window covers the write-state-then-enqueue gap and the gap
+        between ``queue.complete`` and the deferred successor enqueue: a state
+        file younger than the window is never flagged."""
+        from crack_server import queue
+
+        try:
+            state = self.state(task_id)
+        except NotImplementedError:
+            return False
+        observed = state.read().get(self.phase_key)
+        if self.status(task_id) != "running":
+            return False
+        if queue.has_job(task_id, self.slug):
+            return False
+        try:
+            age = time.time() - state.path.stat().st_mtime
+        except OSError:
+            return False
+        if age < ORPHAN_PHASE_GRACE_SECONDS:
+            return False
+
+        flipped = False
+
+        def _fail(s: dict) -> dict:
+            nonlocal flipped
+            if s.get(self.phase_key) != observed:
+                return s  # phase moved on while we were checking — not orphaned
+            flipped = True
+            s[self.phase_key] = "error"
+            s["error"] = (
+                "stage was in a running phase with no queued job — "
+                "the job was likely dropped or lost; use Retry or restart the stage"
+            )
+            s.setdefault("error_detail", "")
+            s["finished_at"] = time.time()
+            return s
+
+        state.update(_fail)
+        if flipped:
+            logger.error(
+                "%s: orphaned running phase %r for %s — no pending/processing job; marked error",
+                self.slug, observed, task_id,
+            )
+        return flipped
 
     def record_dispatch_error(self, task_id: str, message: str) -> None:
         """Best-effort: land the stage in ``error`` when the worker's dispatch of

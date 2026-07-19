@@ -49,6 +49,11 @@ class PiError(RuntimeError):
         self.detail = detail
 
 
+class PiStopped(RuntimeError):
+    """The pi subprocess died because of an intentional external STOP
+    (``stop_check`` confirmed it) — a clean halt, never an error to record."""
+
+
 def _tail_text(text: str, n: int = OUTPUT_TAIL_LINES) -> str:
     """Keep the last ``n`` non-empty lines of a captured output blob."""
     lines = [ln for ln in (text or "").splitlines() if ln.strip()]
@@ -72,6 +77,8 @@ def run_pi_text(
     model: str,
     max_input_chars: int | None = None,
     record_prompt=None,
+    pid_file: Path | None = None,
+    stop_check: Callable[[], bool] | None = None,
 ) -> tuple[str, float]:
     """Run `pi` non-interactively with a single text prompt.
 
@@ -84,6 +91,12 @@ def run_pi_text(
     ``record_prompt`` (optional, called once per logical call, not per retry)
     receives ``{"kind": "user_prompt", "compiled": prompt, "at": ...}`` so
     callers can persist the exact compiled prompt into their trajectory.
+
+    ``pid_file`` / ``stop_check`` (optional, RC5): the subprocess runs in its
+    own session with its group-leader pid published to ``pid_file`` so an
+    external STOP can kill it, exactly like ``run_agent_hop``. When a failed
+    attempt coincides with ``stop_check()`` being truthy, :class:`PiStopped`
+    is raised instead of retrying — callers treat it as a clean halt.
     """
     if max_input_chars is not None and len(prompt) > max_input_chars:
         logger.info("%s: truncating prompt from %d to %d chars", log_prefix, len(prompt), max_input_chars)
@@ -118,7 +131,7 @@ def run_pi_text(
         wait_for_rate_limit(model)
         start = time.monotonic()
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=PI_TIMEOUT_SECONDS)
+            result = _run_text_attempt(cmd, log_prefix, pid_file)
         except subprocess.TimeoutExpired as e:
             elapsed = time.monotonic() - start
             logger.error("%s: pi timed out after %.2fs (attempt %d)", log_prefix, elapsed, attempt + 1)
@@ -143,6 +156,12 @@ def run_pi_text(
             logger.info("%s: output summary: %r", log_prefix, text[:200])
             return text, elapsed
 
+        # A STOP kills the process group out from under us and looks like a
+        # crash; when the caller confirms a stop was requested, halt cleanly
+        # instead of retrying (RC5).
+        if stop_check is not None and stop_check():
+            raise PiStopped(f"pi run stopped by user (rc={result.returncode})")
+
         detail = _compose_detail(_tail_text(result.stdout or ""), _tail_text(result.stderr or ""))
         logger.error("%s: pi exited %d; last output:\n%s", log_prefix, result.returncode, detail)
         last_error = f"pi exited {result.returncode}"
@@ -150,6 +169,35 @@ def run_pi_text(
         last_transient = is_transient(detail)
 
     raise PiError(f"{last_error} after {PI_RETRY_ATTEMPTS} attempts", detail=last_detail)
+
+
+def _run_text_attempt(
+    cmd: list[str], log_prefix: str, pid_file: Path | None
+) -> subprocess.CompletedProcess:
+    """One run_pi_text attempt via Popen so the group-leader pid can be
+    published to ``pid_file`` for the whole call (kill_pid_file kills the
+    group). Mirrors ``subprocess.run(capture_output=True, timeout=...)``."""
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, start_new_session=True)
+    if pid_file is not None:
+        try:
+            pid_file.parent.mkdir(parents=True, exist_ok=True)
+            pid_file.write_text(str(proc.pid), encoding="utf-8")
+        except OSError as e:
+            logger.warning("%s: could not write pid_file %s: %s", log_prefix, pid_file, e)
+    try:
+        stdout, stderr = proc.communicate(timeout=PI_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        raise subprocess.TimeoutExpired(cmd, PI_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
+    finally:
+        if pid_file is not None:
+            try:
+                pid_file.unlink()
+            except OSError:
+                pass
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
 def kill_pid_file(pid_file: Path) -> bool:

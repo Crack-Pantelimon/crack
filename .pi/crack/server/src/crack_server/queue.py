@@ -65,10 +65,10 @@ def enqueue(task_id: str, slug: str, step: str, form: dict | None = None) -> str
     return job_id
 
 
-def enqueue_exclusive(task_id: str, slug: str, step: str, form: dict | None = None) -> str | None:
-    """Enqueue unless a job for the same (task_id, slug) is already pending or
-    in flight — the double-run guard (B1). Returns the job id, or None when the
-    duplicate was dropped. Scanning two small directories is fine at this scale."""
+def _find_job(task_id: str, slug: str, ignore_job_id: str | None = None) -> tuple[dict, str] | None:
+    """Scan pending/ + processing/ for a job matching (task_id, slug), skipping
+    ``ignore_job_id``. Returns (job, directory name) or None. Scanning two small
+    directories is fine at this scale."""
     pending, processing = _ensure_dirs()
     for directory in (pending, processing):
         for path in directory.glob("*.json"):
@@ -76,12 +76,40 @@ def enqueue_exclusive(task_id: str, slug: str, step: str, form: dict | None = No
                 job = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 continue
-            if job.get("task_id") == task_id and job.get("slug") == slug:
-                logger.info(
-                    "queue: dropping duplicate %s/%s for %s (job %s already %s)",
-                    slug, step, task_id, job.get("id"), directory.name,
-                )
-                return None
+            if job.get("task_id") != task_id or job.get("slug") != slug:
+                continue
+            if ignore_job_id is not None and job.get("id") == ignore_job_id:
+                continue
+            return job, directory.name
+    return None
+
+
+def has_job(task_id: str, slug: str) -> bool:
+    """True when any job for (task_id, slug) is pending or in flight — the
+    orphan-phase watchdog's ground truth."""
+    return _find_job(task_id, slug) is not None
+
+
+def enqueue_exclusive(
+    task_id: str,
+    slug: str,
+    step: str,
+    form: dict | None = None,
+    ignore_job_id: str | None = None,
+) -> str | None:
+    """Enqueue unless a job for the same (task_id, slug) is already pending or
+    in flight — the double-run guard (B1). Returns the job id, or None when the
+    duplicate was dropped. ``ignore_job_id`` exempts the caller's own in-flight
+    job, so a running step can enqueue its stage's successor without colliding
+    with its own processing file."""
+    existing = _find_job(task_id, slug, ignore_job_id)
+    if existing is not None:
+        job, dirname = existing
+        logger.info(
+            "queue: dropping duplicate %s/%s for %s (job %s already %s)",
+            slug, step, task_id, job.get("id"), dirname,
+        )
+        return None
     return enqueue(task_id, slug, step, form)
 
 

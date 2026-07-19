@@ -22,7 +22,7 @@ docker exec crack-dev /bin/bash -exc "pip show blender-mcp 2>&1 || echo 'blender
 ```
 
 ## Problem statement
-The task is to install **Blender 5.1.2** (latest 5.1.x) and the **blender-mcp** server inside the `crack-dev` Docker container, configured identically to the existing MCP servers (playwright, chrome-devtools, web-search). Blender must run headless via `xvfb-run` (the MCP addon cannot operate in `--background` mode), and the MCP server must bind to `0.0.0.0:9876` so it's reachable from the host on the next HTTP port down (9876). The setup must be persistent across container rebuilds by baking installation into `_docker/Dockerfile` and startup into `_docker/_cont_start.sh`. Finally, verify the full stack works by using the MCP `execute_blender_code` tool to create a sphere replacing the default cube and save as `/workspace/tmp/test.blend`.
+The task is to install **Blender 5.1.2** (latest 5.1.x) and the **blender-mcp** server inside the `crack-dev` Docker container, configured identically to the existing MCP servers (playwright, chrome-devtools, web-search). Blender must run headless via `xvfb-run` (the MCP addon cannot operate in `--background` mode). The Blender addon listens on TCP **9876** for its internal socket server; the MCP HTTP endpoint for external clients uses **port 9877** (next HTTP port down from 9932). The setup must be persistent across container rebuilds by baking installation into `_docker/Dockerfile` and startup into `_docker/_cont_start.sh`. Finally, verify the full stack works by using the MCP `execute_blender_code` tool to create a sphere replacing the default cube and save as `/workspace/tmp/test.blend`.
 
 Key constraints from exploration:
 - Blender 5.1.2 Linux x64 tarball: `https://download.blender.org/release/Blender5.1/blender-5.1.2-linux-x64.tar.xz` (SHA256: `aaccb355f50183979b698bcce7467103a76261b5fa59f4972295842662a285fb`)
@@ -32,6 +32,8 @@ Key constraints from exploration:
 - Existing MCP servers in `_cont_start.sh` use a `respawn` loop, bind `0.0.0.0`, and are published in `run.sh` ports 9930/9931/9932
 - `.mcp.json` at repo root is copied to `/root/.config/mcp/mcp.json` for the `pi-mcp-adapter` (stdio); HTTP exposure uses supergateway on internal port + `tcp_forward.py` to 0.0.0.0
 - blender-mcp MCP server (`uvx blender-mcp`) connects to Blender addon via `BLENDER_HOST`/`BLENDER_PORT` env vars (defaults localhost:9876)
+- Blender's `--addons` flag (available since 3.0) enables addons at startup; the addon module name must match the filename (`blendermcp.py`)
+- Blender 5.1.x config directory is `5.1` (not `5.1.2`) under `~/.config/blender/`
 
 ## Changes
 
@@ -82,35 +84,37 @@ RUN cd /opt \
     && rm blender.tar.xz
 
 # Install blender-mcp (provides MCP server CLI + addon.py)
-RUN pip install --no-cache-dir blender-mcp==1.6.4
+# Use --break-system-packages since container is isolated
+RUN pip install --no-cache-dir --break-system-packages blender-mcp==1.6.4
 
-# Install blender-mcp addon for the blender version (5.1)
-# blender-mcp addon.py is installed to site-packages; copy to Blender's addon dir
+# Install blender-mcp addon for Blender 5.1
+# The addon module must be named 'blendermcp.py' to match bl_info["name"] = "Blender MCP"
 RUN BLENDER_ADDON_DIR="/root/.config/blender/5.1/scripts/addons" \
     && mkdir -p "${BLENDER_ADDON_DIR}" \
-    && python3 -c "import blender_mcp; import os; print(os.path.dirname(blender_mcp.__file__))" | xargs -I{} cp {}/addon.py "${BLENDER_ADDON_DIR}/blender_mcp.py"
+    && python3 -c "import blender_mcp; import os; print(os.path.dirname(blender_mcp.__file__))" | xargs -I{} cp {}/addon.py "${BLENDER_ADDON_DIR}/blendermcp.py"
 
 VOLUME /root
 WORKDIR /workspace
 
-EXPOSE 22 9876
+EXPOSE 22 9876 9877
 
 CMD ["/usr/sbin/sshd", "-D"]
 ```
 
-**Motivation:** Bakes Blender, xvfb, blender-mcp, and the addon into the image. The addon is copied to Blender 5.1's config directory so it auto-loads. Port 9876 exposed for the Blender addon socket.
+**Motivation:** Bakes Blender, xvfb, blender-mcp, and the addon into the image. The addon is copied as `blendermcp.py` (matching module name) to Blender 5.1's config directory. Ports 9876 (Blender addon socket) and 9877 (MCP HTTP) exposed.
 
 ---
 
-### 2. `_docker/_cont_start.sh` — Start Blender (via xvfb) + blender-mcp MCP server (via supergateway on port 9876)
+### 2. `_docker/_cont_start.sh` — Start Blender (via xvfb) + blender-mcp MCP server (via supergateway on port 9877)
 **File:** `/workspace/_docker/_cont_start.sh` (append after web-search block, before worker/server)
 
-**Add after line ~100 (after web-search-fwd respawn):**
+**Add after the web-search-fwd respawn block (before the worker/server section):**
 ```bash
-# --- Blender MCP (port 9876) -----------------------------------------------
+# --- Blender MCP (ports 9876 addon socket, 9877 HTTP) -----------------------
 # Blender addon runs inside Blender (xvfb) on TCP 9876.
-# blender-mcp MCP server (stdio) connects to it; we bridge via supergateway to HTTP :9876.
-export MCP_BLENDER_PORT=9876
+# blender-mcp MCP server (stdio) connects to it; we bridge via supergateway to HTTP :9877.
+export BLENDER_ADDON_PORT=9876
+export MCP_BLENDER_HTTP_PORT=9877
 export BLENDER_HOST=127.0.0.1
 export BLENDER_PORT=9876
 # Force X11 backend, disable Wayland
@@ -124,41 +128,37 @@ Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +extension RANDR +extension R
 # Wait for Xvfb to be ready
 sleep 2
 
-# Start Blender with the addon (auto-starts server on port 9876 due to auto_start_server=true)
-# blender_mcp addon registers auto-start; we just launch blender headless via xvfb-run
+# Start Blender with the addon enabled via --addons flag (auto-starts server on port 9876)
+# The addon's auto_start_server defaults to True and uses blendermcp_port (default 9876)
 respawn blender \
     xvfb-run -a -s "-screen 0 1920x1080x24" \
-    blender --noaudio --python-expr "
-import bpy
-bpy.context.scene.blendermcp_port = 9876
-bpy.context.scene.blendermcp_auto_start_server = True
-bpy.ops.blendermcp.start_server()
-" &
+    blender --noaudio --addons blendermcp
 
 # Give Blender time to start the socket server
 sleep 5
 
-# Bridge blender-mcp MCP server (stdio) to HTTP on port 9876 via supergateway
+# Bridge blender-mcp MCP server (stdio) to HTTP on port 9877 via supergateway
+# supergateway runs on internal port 19877 (9877+10000), tcp_forward exposes on 0.0.0.0:9877
 respawn blender-mcp \
-    npx -y supergateway --cors --port "$((MCP_BLENDER_PORT + 10000))" \
+    npx -y supergateway --cors --port "$((MCP_BLENDER_HTTP_PORT + 10000))" \
         --stdio "uvx --python 3.11 blender-mcp"
 respawn blender-mcp-fwd \
-    python3 /workspace/_docker/tcp_forward.py "${MCP_BLENDER_PORT}" 127.0.0.1 "$((MCP_BLENDER_PORT + 10000))"
+    python3 /workspace/_docker/tcp_forward.py "${MCP_BLENDER_HTTP_PORT}" 127.0.0.1 "$((MCP_BLENDER_HTTP_PORT + 10000))"
 ```
 
-**Motivation:** Starts Xvfb, launches Blender with the addon auto-starting its socket server on 9876, then runs `uvx blender-mcp` (the MCP server) bridged via supergateway to HTTP on 9876 (published in run.sh). Uses `respawn` for crash recovery like other MCPs.
+**Motivation:** Starts Xvfb, launches Blender with `--addons blendermcp` (enables addon at startup, which auto-starts its socket server on 9876 per addon defaults). Then runs `uvx blender-mcp` (MCP server) bridged via supergateway to HTTP on 9877 (published in run.sh). Uses `respawn` for crash recovery like other MCPs. Separate ports: 9876 for Blender addon socket, 9877 for MCP HTTP endpoint.
 
 ---
 
-### 3. `_docker/run.sh` — Publish port 9876
+### 3. `_docker/run.sh` — Publish port 9877
 **File:** `/workspace/_docker/run.sh` (add port mapping)
 
 **Add to docker run command (after `-p "127.0.0.1:9932:9932"`):**
 ```bash
-  -p "127.0.0.1:9876:9876" \
+  -p "127.0.0.1:9877:9877" \
 ```
 
-**Motivation:** Exposes Blender MCP HTTP endpoint to host on port 9876 (next port down from 9932).
+**Motivation:** Exposes Blender MCP HTTP endpoint to host on port 9877 (next port down from 9932). The Blender addon socket on 9876 remains internal.
 
 ---
 
@@ -178,7 +178,7 @@ respawn blender-mcp-fwd \
     }
 ```
 
-**Motivation:** Allows `pi` agents inside the container to use the blender MCP via stdio (the adapter reads `.mcp.json` from cwd). The HTTP bridge on 9876 is for external clients.
+**Motivation:** Allows `pi` agents inside the container to use the blender MCP via stdio (the adapter reads `.mcp.json` from cwd). The HTTP bridge on 9877 is for external clients. The MCP server connects to Blender addon on localhost:9876.
 
 ---
 
@@ -193,13 +193,11 @@ import json
 import sys
 import os
 
-# Use the MCP client to call execute_blender_code
+# Use the MCP client to call execute_blender_code via HTTP endpoint
 async def main():
-    # Connect to blender-mcp MCP server via stdio (uvx blender-mcp)
-    # For verification, we can use the HTTP endpoint on localhost:9876/mcp
     import httpx
     
-    url = "http://localhost:9876/mcp"
+    url = "http://localhost:9877/mcp"
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     
     # Initialize
@@ -268,7 +266,7 @@ if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
 ```
 
-**Motivation:** Automated verification that the full stack (Blender + addon + MCP server + HTTP bridge) works end-to-end.
+**Motivation:** Automated verification that the full stack (Blender + addon + MCP server + HTTP bridge) works end-to-end. Runs inside container (docker exec) against localhost:9877/mcp.
 
 ---
 
@@ -293,16 +291,16 @@ cd /workspace
 # 2. Wait for services to stabilize (~15s)
 sleep 15
 
-# 3. Check Blender process and port
+# 3. Check Blender process and ports
 docker exec crack-dev /bin/bash -exc "ps aux | grep -E '(blender|Xvfb)' | grep -v grep"
-docker exec crack-dev /bin/bash -exc "ss -ltn | grep 9876"
+docker exec crack-dev /bin/bash -exc "ss -ltn | grep -E '9876|9877'"
 
-# 4. Test MCP HTTP endpoint
-curl -s -X POST http://localhost:9876/mcp \
+# 4. Test MCP HTTP endpoint (port 9877)
+curl -s -X POST http://localhost:9877/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}'
 
-# 5. Run verification script
+# 5. Run verification script (inside container)
 docker exec crack-dev /bin/bash -exc "cd /workspace && python3 _docker/verify_blender_mcp.py"
 
 # 6. Verify output file exists and is valid
@@ -312,7 +310,7 @@ docker exec crack-dev /bin/bash -exc "ls -la /workspace/tmp/test.blend && blende
 ---
 
 ## Manual verification
-1. **Host browser:** Open `http://localhost:9876/mcp` — should show MCP endpoint responding
+1. **Host browser:** Open `http://localhost:9877/mcp` — should show MCP endpoint responding
 2. **Container logs:** `docker logs crack-dev -f | grep -E '(blender|Xvfb|blender-mcp)'` — verify Blender starts, addon loads, server binds 9876
 3. **Blender file inspection:** `docker exec crack-dev blender -b /workspace/tmp/test.blend --python-expr "import bpy; print('Objects:', [o.name for o in bpy.data.objects]); print('Mesh:', [m.name for m in bpy.data.meshes])"` — should show `TestSphere` with UV sphere mesh
 4. **MCP tool call via pi:** In the web UI (http://localhost:9847), create a task and use the chat to ask pi to call `execute_blender_code` — verify it works through the stdio MCP path too
@@ -320,17 +318,18 @@ docker exec crack-dev /bin/bash -exc "ls -la /workspace/tmp/test.blend && blende
 ---
 
 ## Overview / Summary
-**Goal:** Add Blender 5.1.2 + blender-mcp to the `crack-dev` container as a persistent, auto-starting MCP service on port 9876, matching the pattern of existing MCP servers.
+**Goal:** Add Blender 5.1.2 + blender-mcp to the `crack-dev` container as a persistent, auto-starting MCP service. Blender addon socket on port 9876, MCP HTTP endpoint on port 9877, matching the pattern of existing MCP servers.
 
 **Solution shape:**
-1. **Dockerfile:** Install Blender 5.1.2 (official tarball, verified SHA256), xvfb, mesa GL, blender-mcp 1.6.4 (pip), copy addon to Blender 5.1 config dir
-2. **Container startup (`_cont_start.sh`):** Start Xvfb :99 → launch Blender via xvfb-run with addon auto-starting socket server on 9876 → bridge `uvx blender-mcp` via supergateway to HTTP :9876 (with tcp_forward to 0.0.0.0)
-3. **Port publishing (`run.sh`):** Add `-p 127.0.0.1:9876:9876`
-4. **MCP config (`.mcp.json`):** Add stdio config for pi-mcp-adapter
-5. **Verification:** Python script calls MCP `execute_blender_code` to replace cube with sphere, save `/workspace/tmp/test.blend`
+1. **Dockerfile:** Install Blender 5.1.2 (official tarball, verified SHA256), xvfb, mesa GL, blender-mcp 1.6.4 (pip with --break-system-packages), copy addon as `blendermcp.py` to Blender 5.1 config dir
+2. **Container startup (`_cont_start.sh`):** Start Xvfb :99 → launch Blender via xvfb-run with `--addons blendermcp` (enables addon at startup, auto-starts socket server on 9876) → bridge `uvx blender-mcp` via supergateway to HTTP :9877 (with tcp_forward to 0.0.0.0)
+3. **Port publishing (`run.sh`):** Add `-p 127.0.0.1:9877:9877`
+4. **MCP config (`.mcp.json`):** Add stdio config for pi-mcp-adapter (connects to Blender addon on localhost:9876)
+5. **Verification:** Python script calls MCP `execute_blender_code` via HTTP on localhost:9877/mcp to replace cube with sphere, save `/workspace/tmp/test.blend`
 
 **Main risks:**
 - Blender addon may fail to auto-start server (race condition) — mitigated by `sleep 5` and `respawn` loop
 - Xvfb/GL issues on headless — mitigated by `QT_QPA_PLATFORM=offscreen`, `WAYLAND_DISPLAY=""`, mesa packages
 - blender-mcp version compatibility — pinned to 1.6.4 with Python 3.11
-- Port conflicts — 9876 is free (next down from 9932)
+- Port conflicts — 9876/9877 are free (next down from 9932)
+- Addon module name must match filename (`blendermcp.py`) for `--addons` to work

@@ -293,7 +293,23 @@ def test_enqueue_exclusive_drops_duplicates(tmp_path, monkeypatch):
     assert job is not None
     # Still exclusive while the claimed job sits in processing/.
     assert queue.enqueue_exclusive(job["task_id"], job["slug"], job["step"]) is None
+    # …unless the caller exempts its own in-flight job (RC1: a running step
+    # enqueueing its stage's successor must not collide with itself).
+    chained = queue.enqueue_exclusive(
+        job["task_id"], job["slug"], "next", ignore_job_id=job["id"]
+    )
+    assert chained is not None
+    # The chained job now guards the slug again for everyone else.
+    assert queue.enqueue_exclusive(job["task_id"], job["slug"], "next") is None
     queue.complete(job)
+    drained = []
+    while (j := queue.claim_next()) is not None:
+        drained.append(j)
+        queue.complete(j)
+    assert any(
+        (j["task_id"], j["slug"], j["step"]) == (job["task_id"], job["slug"], "next")
+        for j in drained
+    )
     assert queue.enqueue_exclusive(job["task_id"], job["slug"], job["step"]) is not None
 
 

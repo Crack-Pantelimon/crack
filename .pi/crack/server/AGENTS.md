@@ -130,14 +130,15 @@ crack-dev`.
   `sessions/` holding the per-task pi session (`explore-<task_id>`) used to
   chain hops. `S01Explore.start` wipes `sessions/` before each fresh run.
 - `.pi/crack/tasks/<task_id>/plan.json` — Plan stage state machine:
-  `phase` (`draft_running`/`awaiting_answers`/`resuming`/`final_running`/
-  `done`/`error`), `round` (1-based), `rounds[]` (each `{questions, answers}`),
-  `lay_of_the_land`, `final_md`, `error`, timestamps, and the
-  `explore_summary` snapshot the plan was built from.
+  `phase` (`draft_running`/`awaiting_answers`/`resuming`/`write_running`/
+  `done`/`error`/`stopped`), `round` (1-based), `rounds[]` (each
+  `{questions, answers}`), `draft_plan`, `final_md`, `error`, timestamps, and
+  the `explore_summary` snapshot the plan was built from.
 - `.pi/crack/tasks/<task_id>/plan/` — Plan artefact dir: `draft.md`,
-  `round_N_questions.json` / `round_N_answers.json`, `final_plan.md`, plus
-  `sessions/` holding the per-task pi session (`plan-<task_id>`) resumed
-  across draft steps. `S02Plan.start` wipes `sessions/` before each fresh run.
+  `round_N_questions.json` / `round_N_answers.json`, `final_plan.md` (written
+  by the write-step agent itself), plus `sessions/` holding the per-task pi
+  session (`plan-<task_id>`) resumed across draft/write steps. `S02Plan.start`
+  wipes `sessions/` and the stale artefacts before each fresh run.
 - `.pi/crack/harness/models_list.json` — cache of `pi --list-models`
   (`{fetched_at, models[]}`), refreshed when older than 24h or via
   `GET /api/models?force=true`; on fetch failure the stale cache (or a
@@ -358,33 +359,40 @@ implementation plan through an agent-driven Q&A loop, persisted as a step state
 machine in `plan.json` (no thread ever blocks on the human):
 
 1. **draft_running** — the draft agent (`draft` part, ultra by default,
-   `bash,read` tools, pi session `plan-<task_id>` resumed across steps) reads
-   the prompts + explore summary, writes a "lay of the land", then emits either
-   ≤5 clarifying questions (a fenced ` ```questions ` JSON block of
-   `{id, text, type: single|multiple|open, options?[]}`) or the
-   `READY_TO_PLAN` sentinel. If a hop cap cuts it off mid-sweep, the session is
-   resumed with a "wrap up now" message (≤3 hops per step).
+   `bash,read,mcp` tools, pi session `plan-<task_id>` resumed across steps)
+   reads the prompts + explore summary, writes a "Draft plan", then emits
+   either ≤5 clarifying questions (a fenced ` ```questions ` JSON block of
+   `{id, text, type: single|multiple|open, options?[]}`) or `READY_TO_PLAN`.
+   Questions are recommended-but-optional: a model with nothing to ask goes
+   straight to the write step.
 2. **awaiting_answers** — the Plan section renders an inline form (radios /
    checkboxes / textareas keyed by question id) with **no polling** — it waits
-   on the human. `POST /api/tasks/<id>/plan/answers` records
-   `round_N_answers.json`, sets `resuming`, and kicks the follow-up step
-   (`draft_followup.md` template).
+   on the human. `POST …/actions/answers` records `round_N_answers.json`, sets
+   `resuming`, and kicks the follow-up step (`draft_followup.md` template).
 3. Rounds are agent-driven, **hard-capped at 3** (`MAX_ROUNDS`): reaching the
-   cap (or `READY_TO_PLAN`) moves to `final_running`.
-4. **final_running** — a fresh, tool-less single-shot call (`final` part,
-   `final_plan.md` template) whose only context is the original prompt, the
-   explore summary, the lay of the land, and all answered Q&A. The template
-   mandates the report structure (build/check instructions, problem statement,
-   per-path changes with code samples, a NOT-to-change list, automatic + manual
-   verification, overview) and the read-only-phase reminder. Output goes to
-   `…/plan/final_plan.md` + `plan.json["final_md"]`.
+   cap (or `READY_TO_PLAN`, or a no-questions reply) moves to `write_running`.
+   The successor step is *returned* from `run_step` and enqueued by the worker
+   after the current job completes — never self-enqueued from inside the step,
+   because `queue.enqueue_exclusive` would see the step's own processing file
+   and drop the enqueue as a duplicate (this exact bug stalled the Plan stage
+   forever pre-revamp). A stage stuck in a running phase with no queued job is
+   caught by the orphan-phase watchdog (`Stage.check_orphaned`, run on status
+   polls and a ~30s worker sweep) and flipped to `error`.
+4. **write_running** — the write agent (`write` part, `write_plan.md`
+   template, `bash,read,edit,write,mcp` tools, 1800s budget) continues the
+   *same* pi session and writes `…/plan/final_plan.md` itself. Completion is
+   **verified on disk** (`steprun.run_until_verified` +
+   `verify_artifact_file`): the file must exist, have changed during the step,
+   and contain the required section headings; a deficiency triggers a named
+   corrective message (max 2) before the step errors. Model text never counts
+   as completion.
 5. **done** — the section renders the final markdown plus a Re-plan button;
-   **error** shows the message plus Re-plan.
+   **error** shows the message plus Re-plan/Retry.
 
 Gotcha: if the draft agent replies with neither a valid questions block nor
-`READY_TO_PLAN`, the step goes straight to `final_running` (logged as a
-warning) rather than failing — the alternative is trapping the user in an
-unanswerable form.
+`READY_TO_PLAN` (even after one nudge), the step advances to `write_running`
+with a logged warning rather than failing — safe, because the write step's
+on-disk verification is what gates completion.
 
 ## Misc gotchas
 

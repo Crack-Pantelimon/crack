@@ -20,6 +20,7 @@ from __future__ import annotations
 from crack_server.pi_proc import (
     OUTPUT_TAIL_LINES,
     PiError,
+    PiStopped,
     kill_pid_file,
     run_agent_hop,
     run_pi_text,
@@ -69,6 +70,7 @@ __all__ = [
     "TITLE_MODEL",
     "TRANSIENT_RETRY_DELAYS",
     "PiError",
+    "PiStopped",
     "RateLimiter",
     "apply_event_to_turn",
     "count_turn_groups",

@@ -1,0 +1,47 @@
+[
+  {
+    "id": "q1",
+    "text": "Blender version pinning: Should the Dockerfile ARG be fixed to 5.1.2 (reproducible builds) or use a pattern like 5.1 that resolves to latest patch (auto-updates on rebuild, risk of breakage)?",
+    "type": "single",
+    "options": [
+      "Fixed 5.1.2 (recommended for reproducibility)",
+      "Pattern 5.1 (auto-updates)"
+    ]
+  },
+  {
+    "id": "q2",
+    "text": "Addon enable method: Use blender --addons blendermcp (requires Blender 3.0+, cleaner) or blender --python-expr \"bpy.ops.preferences.addon_enable(module='blendermcp')\" (more explicit)?",
+    "type": "single",
+    "options": [
+      "--addons blendermcp (recommended)",
+      "--python-expr addon_enable"
+    ]
+  },
+  {
+    "id": "q3",
+    "text": "Port publishing: Current services use 127.0.0.1:PORT:PORT. Should Blender MCP follow 127.0.0.1:9877:9877 (host-only, matches existing) or 0.0.0.0:9877:9877 (exposed to LAN)?",
+    "type": "single",
+    "options": [
+      "127.0.0.1:9877:9877 (matches existing pattern)",
+      "0.0.0.0:9877:9877 (LAN accessible)"
+    ]
+  },
+  {
+    "id": "q4",
+    "text": "Verification method: Run verification inside container (direct access to blender-mcp stdio via supergateway) or from host via curl to localhost:9877/mcp (validates Docker port publishing)?",
+    "type": "single",
+    "options": [
+      "Inside container (docker exec)",
+      "From host (curl to published port)"
+    ]
+  },
+  {
+    "id": "q5",
+    "text": "SHA256 handling: Compute at build time (download hash verify extract, no hardcoded hash but downloads twice) or accept a known-good value (faster but manual update per version)?",
+    "type": "single",
+    "options": [
+      "Build-time compute (recommended, no manual updates)",
+      "Known-good value (manual update per version)"
+    ]
+  }
+]

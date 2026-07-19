@@ -1,0 +1,7 @@
+{
+  "q1": "Fixed 5.1.2 (recommended for reproducibility)",
+  "q2": "--addons blendermcp (recommended)",
+  "q3": "127.0.0.1:9877:9877 (matches existing pattern)",
+  "q4": "Inside container (docker exec)",
+  "q5": "Known-good value (manual update per version)"
+}

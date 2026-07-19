@@ -1,0 +1,40 @@
+[
+  {
+    "id": "q1",
+    "text": "The plan has a port conflict: Blender addon listens on TCP 9876 for its internal socket, but the HTTP endpoint for external MCP clients is also planned for 9876. The existing MCP pattern uses separate ports (e.g., playwright-mcp HTTP on 9930, addon/internal on different port). Should the Blender MCP HTTP endpoint use a different port (e.g., 9877) while the Blender addon keeps 9876?",
+    "type": "single",
+    "options": [
+      "Use 9877 for HTTP, 9876 for addon (recommended)",
+      "Keep both on 9876 (explain how)"
+    ]
+  },
+  {
+    "id": "q2",
+    "text": "The blender-mcp addon must be *enabled* in Blender before its properties (blendermcp_port, blendermcp_auto_start_server) exist. The plan's single --python-expr assumes they're available immediately. Should we instead: (a) enable addon on first Blender launch via --python-expr, restart Blender, then configure/start server, or (b) use Blender's --addons flag or user preferences to auto-enable?",
+    "type": "single",
+    "options": [
+      "Two-phase: enable addon, restart Blender, then start server",
+      "Use Blender's --addons flag or startup script to auto-enable",
+      "Current single --python-expr is fine (explain why)"
+    ]
+  },
+  {
+    "id": "q3",
+    "text": "The addon install copies addon.py to blender_mcp.py in 5.1/scripts/addons/. Blender 5.1.2's config dir might be '5.1' or '5.1.2'. Also, the addon module name must match the filename. Does blender-mcp's addon.py expect to be imported as 'blender_mcp' or 'addon'?",
+    "type": "open"
+  },
+  {
+    "id": "q4",
+    "text": "The verification script uses httpx (not in base image) and connects to localhost:9876/mcp. If we change the HTTP port (q1), this needs updating. Also, should verification run inside the container (via docker exec) or on host? The plan shows docker exec but the script uses localhost:9876 which would be the container's localhost.",
+    "type": "single",
+    "options": [
+      "Run verification inside container (docker exec), use container's localhost",
+      "Run on host, use host's localhost:9876 (published port)"
+    ]
+  },
+  {
+    "id": "q5",
+    "text": "The plan adds `respawn blender-mcp` and `respawn blender-mcp-fwd` commands. Does _cont_start.sh already have a `respawn` function defined? If not, this will fail. Also, the supergateway port calculation (9876+10000=19876) seems arbitrary - other MCPs use 9930/9931/9932 directly.",
+    "type": "open"
+  }
+]

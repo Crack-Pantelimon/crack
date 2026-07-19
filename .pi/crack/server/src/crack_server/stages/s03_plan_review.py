@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import shutil
 import time
 
@@ -27,11 +26,15 @@ from crack_server.stages.render import (
     render_turn_msgs,
 )
 from crack_server import ui as _ui
+from crack_server.stages.s02_plan import REQUIRED_PLAN_HEADINGS
 from crack_server.stages.steprun import (
+    file_content_hash,
     hop_with_nudge,
     prompt_recorder,
     record_errors,
+    run_until_verified,
     turn_persister,
+    verify_artifact_file,
 )
 
 logger = logging.getLogger("uvicorn.error")
@@ -40,16 +43,27 @@ GLM_MODEL = "nvidia/z-ai/glm-5.2"
 ULTRA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
 
 MAX_AUTO_ROUNDS = 2
-PLAN_REVISED_SENTINEL = "PLAN_REVISED"
 READY_TO_REVISE = "READY_TO_REVISE"
 RUNNING_PHASES = ("review_running", "resuming", "revising")
 CRITIC_TIMEOUT_SECONDS = 300
+REVISE_TIMEOUT_SECONDS = 1800
+REVISE_MAX_CORRECTIVE = 2
 
 # Flow-control nudge (not a cap): sent once when the critic ended its turn
-# without emitting either a questions block or a sentinel.
+# without emitting either a questions block or the ready signal.
 CRITIC_NUDGE = (
     "Stop calling tools now. Complete your response — emit either a "
-    "```questions JSON block or PLAN_REVISED on its own line."
+    f"```questions JSON block or {READY_TO_REVISE} on its own line."
+)
+
+# Corrective message sent when a revise/reject step settled but final_plan.md
+# failed on-disk verification (max REVISE_MAX_CORRECTIVE times).
+REVISE_CORRECTIVE = (
+    "Verification failed: {deficiency}.\n"
+    "Apply the agreed changes to the plan file at {plan_path} now — use the "
+    "edit tool to modify it (or write to rewrite it), preserving its required "
+    "structure. When the file is updated, reply with a short summary and make "
+    "no further tool calls."
 )
 
 
@@ -115,11 +129,12 @@ class S03PlanReview(Stage):
         review.write(fresh)
         self.enqueue_step(task_id, "critique", form)
 
-    def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+    def run_step(
+        self, task_id: str, step: str, form: dict | None = None
+    ) -> tuple[str, dict | None] | None:
         if step in ("critique", "followup", "grill", "revise", "reject", "user_message"):
-            self._run_review_step(task_id, step, form)
-            return
-        super().run_step(task_id, step, form)
+            return self._run_review_step(task_id, step, form)
+        return super().run_step(task_id, step, form)
 
     def handle_action(self, action: str, task_id: str, form) -> None:
         if action == "answers":
@@ -138,7 +153,9 @@ class S03PlanReview(Stage):
             super().handle_action(action, task_id, form)
 
     def regenerate_todo(self, task_id: str) -> None:
-        """Tool-less single-shot: rewrite plan/todo.md from current final_plan.md."""
+        """Tool-less single-shot: rewrite plan/todo.md from current final_plan.md.
+        STOP-killable (RC5): the pi pid is published to the stage's pid file and
+        an intentional kill surfaces as PiStopped, not an error."""
         try:
             plan = paths.read_plan_artefact(task_id, "final_plan.md")
         except FileNotFoundError:
@@ -161,6 +178,8 @@ class S03PlanReview(Stage):
             log_prefix="plan-review-todo",
             model=self.model_for("todo"),
             record_prompt=record,
+            pid_file=paths.stage_pid_file(task_id, self.slug),
+            stop_check=lambda: bool(self.state_read(task_id).get("stop_requested")),
         )
         paths.write_plan_artefact(task_id, "todo.md", todo_md)
         logger.info("plan_review: regenerated todo.md for %s (%d chars)", task_id, len(todo_md))
@@ -285,18 +304,20 @@ class S03PlanReview(Stage):
             )
 
         # One flow-control nudge (not a cap) when the critic ended without a
-        # questions block or a sentinel.
+        # questions block or the ready signal.
         text, reason = hop_with_nudge(
             run_hop=hop_once,
             message=message,
             template=template,
             nudge=CRITIC_NUDGE,
             text_so_far=persister.text,
-            sentinels=(PLAN_REVISED_SENTINEL, READY_TO_REVISE),
+            sentinels=(READY_TO_REVISE,),
         )
         return text, persister.new, reason
 
-    def _run_review_step(self, task_id: str, step: str, form: dict | None = None) -> None:
+    def _run_review_step(
+        self, task_id: str, step: str, form: dict | None = None
+    ) -> tuple[str, dict | None] | None:
         review = paths.plan_review_state(task_id)
         with record_errors(
             review, step, log_message=f"plan_review step {step} failed for {task_id}"
@@ -321,17 +342,24 @@ class S03PlanReview(Stage):
                 )
                 if reason == "stopped":
                     self.mark_stopped(task_id)
-                    return
+                    return None
                 questions = parse_questions(text)
                 if not questions:
-                    questions = [
-                        {
-                            "id": "q1",
-                            "text": "Does this plan cover everything you need?",
-                            "type": "single",
-                            "options": ["Yes, proceed", "No, I have concerns"],
-                        }
-                    ]
+                    # Questions are recommended-but-optional: a critic with
+                    # nothing to ask chains straight into the revise step (the
+                    # user still gates on Approve / Reject / Grill more).
+                    logger.info(
+                        "plan_review: critique produced no questions for %s; going to revise",
+                        task_id,
+                    )
+
+                    def _to_revising_auto(state: dict) -> dict:
+                        state["phase"] = "revising"
+                        state["revise_auto"] = True
+                        return state
+
+                    review.update(_to_revising_auto)
+                    return ("revise", None)
 
                 def _await_first(state: dict) -> dict:
                     state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
@@ -344,7 +372,7 @@ class S03PlanReview(Stage):
                     task_id, f"review_round_{rnd}_questions.json",
                     json.dumps(questions, indent=2),
                 )
-                return
+                return None
 
             if step == "followup":
                 rnd = int(state.get("round", 1))
@@ -359,7 +387,7 @@ class S03PlanReview(Stage):
                 )
                 if reason == "stopped":
                     self.mark_stopped(task_id)
-                    return
+                    return None
                 questions = parse_questions(text)
                 if questions and rnd < MAX_AUTO_ROUNDS and READY_TO_REVISE not in text:
                     def _await_next(state: dict) -> dict:
@@ -373,15 +401,16 @@ class S03PlanReview(Stage):
                         task_id, f"review_round_{rnd + 1}_questions.json",
                         json.dumps(questions, indent=2),
                     )
-                    return
+                    return None
 
                 def _to_revising(state: dict) -> dict:
                     state["phase"] = "revising"
                     return state
 
                 review.update(_to_revising)
-                self.enqueue_step(task_id, "revise")
-                return
+                # Successor is enqueued by the worker after this job completes,
+                # so it can't collide with our own in-flight job (RC1).
+                return ("revise", None)
 
             if step == "grill":
                 topic = state.get("grill_topic", "")
@@ -422,27 +451,75 @@ class S03PlanReview(Stage):
                 return
 
             if step in ("revise", "reject"):
+                start = time.monotonic()
                 plan_path = paths.plan_dir(task_id) / "final_plan.md"
-                if step == "reject":
-                    reason = state.get("reject_reason", "")
+                before_hash = file_content_hash(plan_path)
+                # The auto-chained revise after a no-questions critique may
+                # legitimately find nothing to change; a retry after an errored
+                # attempt may find the change already applied. A fresh
+                # user-triggered revise/reject must actually modify the file.
+                resumed = bool(state.get("revise_prompted"))
+                require_change = not bool(state.get("revise_auto")) and not resumed
+                if resumed:
+                    # The session already holds the revise prompt: resume it
+                    # instead of replaying the template.
+                    message, template = pi_runner.RESUME_MESSAGE, ""
+                elif step == "reject":
+                    reject_reason = state.get("reject_reason", "")
                     message = (
                         self.load_template("reject.md")
-                        .replace("{reason}", reason)
+                        .replace("{reason}", reject_reason)
                         .replace("{plan_path}", str(plan_path))
                     )
+                    template = "reject.md"
                 else:
                     message = self.load_template("revise.md").replace(
                         "{plan_path}", str(plan_path)
                     )
-                text, _, reason = self._run_critic_hop(
-                    task_id, message, tools="bash,read,edit,write,mcp", log_suffix=step,
-                    template=f"{step}.md",
+                    template = "revise.md"
+                if not resumed:
+                    def _mark_prompted(s: dict) -> dict:
+                        s["revise_prompted"] = True
+                        return s
+
+                    review.update(_mark_prompted)
+                persister = turn_persister(review)
+
+                def run_hop(msg: str, hop: int) -> str:
+                    tmpl = template if hop == 1 else ""
+                    return pi_runner.run_agent_hop(
+                        log_prefix=f"plan-review-{step}",
+                        model=self.model_for("critic"),
+                        session_id=f"plan-review-{task_id}",
+                        sessions_dir=paths.plan_review_sessions_dir(task_id),
+                        tools="bash,read,edit,write,mcp",
+                        message=msg,
+                        start=start,
+                        sentinel=None,
+                        timeout_seconds=REVISE_TIMEOUT_SECONDS,
+                        persist_turn=persister.persist,
+                        hop=hop,
+                        record_prompt=prompt_recorder(persister, step, tmpl),
+                        **self.agent_hop_kwargs(task_id),
+                    )
+
+                outcome = run_until_verified(
+                    start=start,
+                    timeout_seconds=REVISE_TIMEOUT_SECONDS,
+                    message=message,
+                    run_hop=run_hop,
+                    verify=lambda: verify_artifact_file(
+                        plan_path, before_hash, REQUIRED_PLAN_HEADINGS,
+                        require_change=require_change,
+                    ),
+                    corrective=lambda deficiency: REVISE_CORRECTIVE.format(
+                        deficiency=deficiency, plan_path=plan_path
+                    ),
+                    max_corrective=REVISE_MAX_CORRECTIVE,
+                    on_stopped=lambda: self.mark_stopped(task_id),
                 )
-                if reason == "stopped":
-                    self.mark_stopped(task_id)
-                    return
-                if PLAN_REVISED_SENTINEL not in text:
-                    logger.warning("plan_review: critic did not emit PLAN_REVISED; continuing")
+                if outcome == "stopped":
+                    return None
 
                 plan_md = paths.read_plan_artefact(task_id, "final_plan.md")
 
@@ -450,17 +527,23 @@ class S03PlanReview(Stage):
                     state["plan_md"] = plan_md
                     state["iterations"] = int(state.get("iterations", 0)) + 1
                     state.pop("reject_reason", None)
+                    state.pop("revise_auto", None)
+                    state.pop("revise_prompted", None)
                     return state
 
                 review.update(_revised)
-                self.regenerate_todo(task_id)
+                try:
+                    self.regenerate_todo(task_id)
+                except pi_runner.PiStopped:
+                    self.mark_stopped(task_id)
+                    return None
 
                 def _await_approval(state: dict) -> dict:
                     state["phase"] = "awaiting_approval"
                     return state
 
                 review.update(_await_approval)
-                return
+                return None
 
             if step == "user_message":
                 msg = str((form or {}).get("msg", "")).strip() or pi_runner.RESUME_MESSAGE

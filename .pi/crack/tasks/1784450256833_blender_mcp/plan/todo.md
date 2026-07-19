@@ -1,0 +1,13 @@
+- [ ] Update `/workspace/_docker/Dockerfile` to install Blender 5.1.2, xvfb, mesa GL dependencies, blender-mcp 1.6.4, and copy addon as `blendermcp.py` to Blender 5.1 config directory
+- [ ] Update `/workspace/_docker/_cont_start.sh` to start Xvfb on :99, launch Blender via xvfb-run with `--addons blendermcp`, bridge blender-mcp via supergateway to HTTP port 9877 with tcp_forward
+- [ ] Update `/workspace/_docker/run.sh` to add port mapping `-p "127.0.0.1:9877:9877"`
+- [ ] Update `/workspace/.mcp.json` to add blender-mcp server config for pi-mcp-adapter (stdio) with BLENDER_HOST=localhost, BLENDER_PORT=9876
+- [ ] Create `/workspace/_docker/verify_blender_mcp.py` verification script that calls MCP execute_blender_code to replace cube with sphere and save `/workspace/tmp/test.blend`
+- [ ] Rebuild Docker image with `./_docker/build.sh`
+- [ ] Restart container with `./_docker/run.sh`
+- [ ] Wait for services to stabilize (~15s)
+- [ ] Check Blender and Xvfb processes running inside container
+- [ ] Verify ports 9876 and 9877 are listening inside container
+- [ ] Test MCP HTTP endpoint on localhost:9877/mcp with initialize request
+- [ ] Run verification script inside container: `docker exec crack-dev python3 _docker/verify_blender_mcp.py`
+- [ ] Verify output file `/workspace/tmp/test.blend` exists and contains TestSphere object

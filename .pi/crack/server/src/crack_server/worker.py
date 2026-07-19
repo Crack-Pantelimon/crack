@@ -41,6 +41,8 @@ def _dispatch(job: dict) -> None:
     task_id = job.get("task_id")
     form = job.get("form")
     try:
+        stage = None
+        successor: tuple | None = None
         if slug == app.TITLE_JOB_SLUG:
             app._run_title_regen_worker(task_id)
         elif slug == models_mod.MODELS_JOB_SLUG:
@@ -52,8 +54,15 @@ def _dispatch(job: dict) -> None:
             if stage is None:
                 logger.error("worker: unknown stage slug %r for job %s", slug, job.get("id"))
             else:
-                stage.dispatch_step(task_id, step, form)
+                successor = stage.dispatch_step(task_id, step, form)
+        # Complete first, then enqueue the step's successor: with the job's
+        # processing file gone, the B1 exclusive guard can't mistake the chain
+        # for a double-run (RC1). A crash in this gap loses the successor; the
+        # orphan-phase watchdog turns that into a visible error, not a spinner.
         queue.complete(job)
+        if stage is not None and successor is not None:
+            next_step, next_form = successor
+            stage.enqueue_step(task_id, next_step, next_form, ignore_job_id=job.get("id"))
     except Exception as exc:
         logger.exception("worker: job %s (%s/%s) failed", job.get("id"), slug, step)
         queue.fail(job)
@@ -172,6 +181,29 @@ def _prune_old_session_dirs() -> None:
         )
 
 
+ORPHAN_SWEEP_INTERVAL_SECONDS = 30.0
+
+
+def _sweep_orphaned_phases() -> None:
+    """RC6 reconciliation: flag any stage stuck in a running phase with no
+    pending/processing job (see Stage.check_orphaned), so a lost job surfaces
+    as an error even when nobody is watching the task page."""
+    from crack_server import paths, stages
+
+    try:
+        task_ids = paths.list_task_ids()
+    except OSError:
+        return
+    for task_id in task_ids:
+        for stage in stages.REGISTRY:
+            try:
+                stage.check_orphaned(task_id)
+            except Exception:
+                logger.exception(
+                    "crack-worker: orphan check failed for %s/%s", task_id, stage.slug
+                )
+
+
 def _loop() -> None:
     """Claim and dispatch jobs forever, up to MAX_WORKERS at a time."""
     from crack_server import queue
@@ -183,6 +215,7 @@ def _loop() -> None:
 
     executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
     in_flight: set[Future] = set()
+    last_sweep = time.monotonic()
     try:
         while True:
             in_flight = {f for f in in_flight if not f.done()}
@@ -191,6 +224,9 @@ def _loop() -> None:
                 if job is None:
                     break
                 in_flight.add(executor.submit(_dispatch, job))
+            if time.monotonic() - last_sweep > ORPHAN_SWEEP_INTERVAL_SECONDS:
+                last_sweep = time.monotonic()
+                _sweep_orphaned_phases()
             time.sleep(POLL_INTERVAL_SECONDS)
     finally:
         executor.shutdown(wait=False)
