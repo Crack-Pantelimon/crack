@@ -1,14 +1,25 @@
 # crack-pi-server — working notes
 
 Small FastAPI + htmx + pico.css app. `src/crack_server/app.py` is a thin
-routing layer (task/prompt CRUD, title regen, delegation); `paths.py` holds all
-filesystem access; `pi_runner.py` the shared `pi` subprocess machinery (rate
+routing layer (task/prompt CRUD, title regen, delegation); `paths.py` holds
+path construction and prompt/artefact file I/O; `state.py` the JSON state-file
+store (`JsonState`: tolerant read, atomic write, flocked read-modify-write —
+all state mutations go through `update(fn)`, never read+write); `pi_runner.py`
+the shared `pi` subprocess machinery (rate
 limiting, single-shot calls, the JSON-mode hop runner); `models.py` the
-`pi --list-models` cache; `chats.py` the unscripted chats (free-form pi
+`pi --list-models` cache; `chat_engine.py` the exchange runner shared by the
+two chat surfaces (`run_exchange`: latest `exchanges[]` entry → one agent hop
+→ phase finalize, with the chat-variant error write); `chats.py` the
+unscripted chats (free-form pi
 sessions outside the pipeline, state under `.pi/crack/unscripted_chats/`,
 worker jobs dispatched via the `__chat__` pseudo-slug); and `stages/` the
 pipeline stages (auto-discovered `sNN_*.py` modules with a module-level
-`STAGE = <Stage>()` — see `stages/base.py`). `static/app.css` / `static/app.js`
+`STAGE = <Stage>()` — see `stages/base.py`). Shared stage-step machinery
+lives in `stages/steprun.py` (not a stage — ignored by discovery): the
+turn-persistence closures (`turn_persister`/`prompt_recorder`), the hop-loop
+drivers (`hop_loop` for s04/s05, `hop_with_nudge` for s02/s03), and the
+canonical error-state writes (`record_errors`/`record_chat_errors`) every
+`_run_*` worker method uses. `static/app.css` / `static/app.js`
 hold the few bits of real CSS/JS (linked from `_render_base`).
 
 ## The server is always running — use it

@@ -1,5 +1,5 @@
 {
   "models": {
-    "critic": "moonshotai/kimi-k3"
+    "critic": "nvidia/nemotron-3-ultra-550b-a55b"
   }
 }

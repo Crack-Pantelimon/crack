@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 import crack_server.app  # noqa: F401  (must load before stages — app↔stages import cycle)
-from crack_server import paths, pi_runner, queue
+from crack_server import paths, queue, ratelimit
 
 SHIM = Path(__file__).parent / "fake_pi.sh"
 
@@ -37,12 +37,12 @@ def fake_pi(tmp_path, monkeypatch) -> FakePi:
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_PI_DIR", str(ctrl))
     monkeypatch.setenv("FAKE_PI_SCRIPT", str(script))
-    monkeypatch.setattr(pi_runner, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
-    monkeypatch.setattr(pi_runner, "PI_RETRY_WINDOW_SECONDS", 0.2)
+    monkeypatch.setattr(ratelimit, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
+    monkeypatch.setattr(ratelimit, "PI_RETRY_WINDOW_SECONDS", 0.2)
     # Neutralize the nvidia limiters so stage runs don't pace the test suite.
-    monkeypatch.setattr(pi_runner, "NVIDIA_CALLS_PER_MINUTE", 1_000_000.0)
-    monkeypatch.setattr(pi_runner, "_provider_limiters", {})
-    monkeypatch.setattr(pi_runner, "_model_limiters", {})
+    monkeypatch.setattr(ratelimit, "NVIDIA_CALLS_PER_MINUTE", 1_000_000.0)
+    monkeypatch.setattr(ratelimit, "_provider_limiters", {})
+    monkeypatch.setattr(ratelimit, "_model_limiters", {})
     return FakePi(ctrl, script)
 
 
@@ -69,7 +69,7 @@ def test_explore_run_records_compiled_prompts(task, fake_pi):
     fake_pi.set_script(["ok", "sentinel:EXPLORATION_COMPLETE", "ok"])
     stage._run_job(task)
 
-    state = paths.read_explore_state(task)
+    state = paths.explore_state(task).read()
     assert state["status"] == "done"
     assert state["stop_reason"] == "sentinel"
 
@@ -94,19 +94,19 @@ def test_explore_retry_resumes_session(task, fake_pi):
     fake_pi.set_script(["ok", "midhard:1", "sentinel:EXPLORATION_COMPLETE", "ok"])
     stage._run_job(task)
 
-    state = paths.read_explore_state(task)
+    state = paths.explore_state(task).read()
     assert state["status"] == "error"
     kept = [t for t in state["turns"] if not t.get("kind")]
     assert len(kept) == 1
 
     stage.retry_from_error(task)
-    assert paths.read_explore_state(task)["status"] == "running"
+    assert paths.explore_state(task).read()["status"] == "running"
     job = queue.claim_next()
     assert job is not None and job["slug"] == "explore" and job["step"] == "resume"
     stage.dispatch_step(job["task_id"], job["step"], job.get("form"))
     queue.complete(job)
 
-    state = paths.read_explore_state(task)
+    state = paths.explore_state(task).read()
     assert state["status"] == "done"
     # Prior turn kept, resume prompt sent, same pi session id on both hops.
     kept = [t for t in state["turns"] if not t.get("kind")]
@@ -119,14 +119,14 @@ def test_explore_retry_resumes_session(task, fake_pi):
 
 def test_message_action_clears_error_and_enqueues_resume(task, fake_pi):
     stage = explore_stage()
-    state = paths.read_explore_state(task)
+    state = paths.explore_state(task).read()
     state.update(
         {"status": "error", "error": "boom", "error_detail": "tail", "questions": ["q"]}
     )
-    paths.write_explore_state(task, state)
+    paths.explore_state(task).write(state)
 
     stage.post_user_message(task, {"msg": "look at the tests too"})
-    st = paths.read_explore_state(task)
+    st = paths.explore_state(task).read()
     assert st["status"] == "running"
     assert st["error"] == "" and st["error_detail"] == ""
     assert st["stop_requested"] is False
@@ -140,7 +140,7 @@ def test_message_action_clears_error_and_enqueues_resume(task, fake_pi):
     stage.dispatch_step(job["task_id"], job["step"], job.get("form"))
     queue.complete(job)
     assert fake_pi.prompt(1) == "look at the tests too"
-    assert paths.read_explore_state(task)["status"] == "done"
+    assert paths.explore_state(task).read()["status"] == "done"
 
 
 def test_stale_start_job_dropped_by_token(task, fake_pi):
@@ -151,9 +151,9 @@ def test_stale_start_job_dropped_by_token(task, fake_pi):
     assert job is not None and job["form"]["started_token"]
 
     # A newer start overwrote the token before the worker ran the stale job.
-    st = paths.read_explore_state(task)
+    st = paths.explore_state(task).read()
     st["started_token"] = "newer-token"
-    paths.write_explore_state(task, st)
+    paths.explore_state(task).write(st)
 
     stage.dispatch_step(job["task_id"], job["step"], job.get("form"))
     queue.complete(job)

@@ -10,22 +10,29 @@ import shutil
 import time
 
 from crack_server import git_utils, paths, pi_runner
-from crack_server.stages.base import (
-    Part,
-    Stage,
+from crack_server.state import JsonState
+from crack_server.stages.base import Part, Stage
+from crack_server.stages.qa import (
     collect_answers,
     format_qa_for_prompt,
     parse_questions,
-    render_error_msg,
-    render_message_form,
     render_qa_history,
     render_questions_form,
-    render_retry_button,
-    render_spinner,
-    render_stop_button,
-    render_turns_trajectory,
 )
-from crack_server import app as _ui
+from crack_server.stages.render import (
+    render_error_msg,
+    render_message_form,
+    render_retry_button,
+    render_running_tail,
+    render_turn_msgs,
+)
+from crack_server import ui as _ui
+from crack_server.stages.steprun import (
+    hop_with_nudge,
+    prompt_recorder,
+    record_errors,
+    turn_persister,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -46,9 +53,6 @@ CRITIC_NUDGE = (
 )
 
 
-def _esc(text: str) -> str:
-    return _ui._esc(text)
-
 
 class S03PlanReview(Stage):
     slug = "plan_review"
@@ -62,7 +66,7 @@ class S03PlanReview(Stage):
     message_phase = "resuming"
 
     def status(self, task_id: str) -> str:
-        phase = paths.read_plan_review_state(task_id).get("phase", "idle")
+        phase = paths.plan_review_state(task_id).read().get("phase", "idle")
         if phase in RUNNING_PHASES:
             return "running"
         if phase in ("awaiting_answers", "awaiting_approval"):
@@ -71,11 +75,8 @@ class S03PlanReview(Stage):
             return phase
         return "idle"
 
-    def state_read(self, task_id: str) -> dict:
-        return paths.read_plan_review_state(task_id)
-
-    def state_write(self, task_id: str, state: dict) -> None:
-        paths.write_plan_review_state(task_id, state)
+    def state(self, task_id: str) -> JsonState:
+        return paths.plan_review_state(task_id)
 
     def is_enabled(self, task_id: str) -> bool:
         from crack_server import stages
@@ -86,16 +87,14 @@ class S03PlanReview(Stage):
     # -- lifecycle ------------------------------------------------------------
 
     def start(self, task_id: str) -> None:
-        state = paths.read_plan_review_state(task_id)
-        if state.get("phase") in RUNNING_PHASES:
+        review = paths.plan_review_state(task_id)
+        if review.read().get("phase") in RUNNING_PHASES:
             return
 
         try:
             plan_md = paths.read_plan_artefact(task_id, "final_plan.md")
         except FileNotFoundError:
-            paths.write_plan_review_state(
-                task_id, {"phase": "error", "error": "no final_plan.md — run Plan first"}
-            )
+            review.write({"phase": "error", "error": "no final_plan.md — run Plan first"})
             return
 
         shutil.rmtree(paths.plan_review_sessions_dir(task_id), ignore_errors=True)
@@ -113,7 +112,7 @@ class S03PlanReview(Stage):
             "stop_requested": False,
         }
         form = self.prepare_start_token(fresh)
-        paths.write_plan_review_state(task_id, fresh)
+        review.write(fresh)
         self.enqueue_step(task_id, "critique", form)
 
     def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
@@ -150,9 +149,12 @@ class S03PlanReview(Stage):
         def record(entry: dict) -> None:
             entry["label"] = "todo"
             entry["template"] = "todo.md"
-            state = paths.read_plan_review_state(task_id)
-            state.setdefault("turns", []).append(entry)
-            paths.write_plan_review_state(task_id, state)
+
+            def _append(state: dict) -> dict:
+                state.setdefault("turns", []).append(entry)
+                return state
+
+            paths.plan_review_state(task_id).update(_append)
 
         todo_md, _ = pi_runner.run_pi_text(
             prompt,
@@ -166,27 +168,47 @@ class S03PlanReview(Stage):
     # -- action handlers ------------------------------------------------------
 
     def _submit_answers(self, task_id: str, form) -> None:
-        state = paths.read_plan_review_state(task_id)
-        if state.get("phase") != "awaiting_answers" or not state.get("rounds"):
+        review = paths.plan_review_state(task_id)
+        current = review.read()
+        if current.get("phase") != "awaiting_answers" or not current.get("rounds"):
             return
-        current = state["rounds"][-1]
-        current["answers"] = collect_answers(form, current.get("questions", []))
-        rnd = int(state.get("round", 1))
+        rnd = int(current.get("round", 1))
+        answers = collect_answers(form, current["rounds"][-1].get("questions", []))
         paths.write_plan_artefact(
             task_id, f"review_round_{rnd}_answers.json",
-            json.dumps(current["answers"], indent=2),
+            json.dumps(answers, indent=2),
         )
-        state["phase"] = "resuming"
-        paths.write_plan_review_state(task_id, state)
-        self.enqueue_step(task_id, "followup")
+
+        recorded = False
+
+        def _record(state: dict) -> dict:
+            nonlocal recorded
+            if state.get("phase") != "awaiting_answers" or not state.get("rounds"):
+                return state
+            recorded = True
+            state["rounds"][-1]["answers"] = answers
+            state["phase"] = "resuming"
+            return state
+
+        review.update(_record)
+        if recorded:
+            self.enqueue_step(task_id, "followup")
 
     def _approve(self, task_id: str) -> None:
-        state = paths.read_plan_review_state(task_id)
-        if state.get("phase") != "awaiting_approval":
+        approved = False
+
+        def _do(state: dict) -> dict:
+            nonlocal approved
+            if state.get("phase") != "awaiting_approval":
+                return state
+            approved = True
+            state["phase"] = "done"
+            state["finished_at"] = time.time()
+            return state
+
+        paths.plan_review_state(task_id).update(_do)
+        if not approved:
             return
-        state["phase"] = "done"
-        state["finished_at"] = time.time()
-        paths.write_plan_review_state(task_id, state)
         logger.info("plan_review: approved for %s", task_id)
 
         git_utils.commit(paths.task_dir(task_id), f"plan approved {task_id}")
@@ -197,22 +219,36 @@ class S03PlanReview(Stage):
             impl.start(task_id)
 
     def _reject(self, task_id: str, reason: str) -> None:
-        state = paths.read_plan_review_state(task_id)
-        if state.get("phase") != "awaiting_approval":
-            return
-        state["phase"] = "revising"
-        state["reject_reason"] = reason
-        paths.write_plan_review_state(task_id, state)
-        self.enqueue_step(task_id, "reject")
+        rejected = False
+
+        def _do(state: dict) -> dict:
+            nonlocal rejected
+            if state.get("phase") != "awaiting_approval":
+                return state
+            rejected = True
+            state["phase"] = "revising"
+            state["reject_reason"] = reason
+            return state
+
+        paths.plan_review_state(task_id).update(_do)
+        if rejected:
+            self.enqueue_step(task_id, "reject")
 
     def _grill_more(self, task_id: str, topic: str) -> None:
-        state = paths.read_plan_review_state(task_id)
-        if state.get("phase") != "awaiting_approval":
-            return
-        state["phase"] = "resuming"
-        state["grill_topic"] = topic
-        paths.write_plan_review_state(task_id, state)
-        self.enqueue_step(task_id, "grill")
+        accepted = False
+
+        def _do(state: dict) -> dict:
+            nonlocal accepted
+            if state.get("phase") != "awaiting_approval":
+                return state
+            accepted = True
+            state["phase"] = "resuming"
+            state["grill_topic"] = topic
+            return state
+
+        paths.plan_review_state(task_id).update(_do)
+        if accepted:
+            self.enqueue_step(task_id, "grill")
 
     # -- background steps -------------------------------------------------------
 
@@ -228,33 +264,10 @@ class S03PlanReview(Stage):
         """Run one critic step via pi session; return combined text, new turns,
         and the hop's stop reason (callers must handle "stopped")."""
         start = time.monotonic()
-        state = paths.read_plan_review_state(task_id)
-        existing_turns = list(state.get("turns", []))
-        new_turns: list[dict] = []
-
-        def append_entry(entry: dict) -> None:
-            new_turns.append(entry)
-            st = paths.read_plan_review_state(task_id)
-            st["turns"] = existing_turns + new_turns
-            paths.write_plan_review_state(task_id, st)
-
-        def persist(current_turn: dict, hop: int) -> None:
-            append_entry(
-                {
-                    "hop": hop,
-                    "text": current_turn.get("text", ""),
-                    "thinking": current_turn.get("thinking", ""),
-                    "tool_blocks": list(current_turn.get("tool_blocks", [])),
-                    "elapsed": current_turn.get("elapsed"),
-                }
-            )
+        review = paths.plan_review_state(task_id)
+        persister = turn_persister(review)
 
         def hop_once(msg: str, tmpl: str, hop: int) -> str:
-            def record(entry: dict) -> None:
-                entry.setdefault("label", log_suffix)
-                entry["template"] = tmpl
-                append_entry(entry)
-
             return pi_runner.run_agent_hop(
                 log_prefix=f"plan-review-{log_suffix}",
                 model=self.model_for("critic"),
@@ -265,35 +278,30 @@ class S03PlanReview(Stage):
                 start=start,
                 sentinel=None,
                 timeout_seconds=CRITIC_TIMEOUT_SECONDS,
-                persist_turn=persist,
+                persist_turn=persister.persist,
                 hop=hop,
-                record_prompt=record,
+                record_prompt=prompt_recorder(persister, log_suffix, tmpl),
                 **self.agent_hop_kwargs(task_id),
             )
 
-        reason = hop_once(message, template, 1)
-        if reason == "empty":
-            raise RuntimeError("pi returned empty responses (no content in any turn)")
-        text = "\n\n".join(t["text"] for t in new_turns if t.get("text")).strip()
-
         # One flow-control nudge (not a cap) when the critic ended without a
         # questions block or a sentinel.
-        if (
-            reason == "agent_end"
-            and not parse_questions(text)
-            and PLAN_REVISED_SENTINEL not in text
-            and READY_TO_REVISE not in text
-        ):
-            reason = hop_once(CRITIC_NUDGE, "", 2)
-            if reason == "empty":
-                raise RuntimeError("pi returned empty responses (no content in any turn)")
-            text = "\n\n".join(t["text"] for t in new_turns if t.get("text")).strip()
-
-        return text, new_turns, reason
+        text, reason = hop_with_nudge(
+            run_hop=hop_once,
+            message=message,
+            template=template,
+            nudge=CRITIC_NUDGE,
+            text_so_far=persister.text,
+            sentinels=(PLAN_REVISED_SENTINEL, READY_TO_REVISE),
+        )
+        return text, persister.new, reason
 
     def _run_review_step(self, task_id: str, step: str, form: dict | None = None) -> None:
-        try:
-            state = paths.read_plan_review_state(task_id)
+        review = paths.plan_review_state(task_id)
+        with record_errors(
+            review, step, log_message=f"plan_review step {step} failed for {task_id}"
+        ):
+            state = review.read()
 
             if step == "critique":
                 plan_md = state.get("plan_md") or paths.read_plan_artefact(task_id, "final_plan.md")
@@ -302,7 +310,7 @@ class S03PlanReview(Stage):
                     .replace("{content}", paths.read_all_prompts_joined(task_id))
                     .replace(
                         "{explore_summary}",
-                        paths.read_explore_state(task_id).get("summary_md")
+                        paths.explore_state(task_id).read().get("summary_md")
                         or "(no exploration summary)",
                     )
                     .replace("{plan}", plan_md)
@@ -324,10 +332,13 @@ class S03PlanReview(Stage):
                             "options": ["Yes, proceed", "No, I have concerns"],
                         }
                     ]
-                state = paths.read_plan_review_state(task_id)
-                state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
-                state["phase"] = "awaiting_answers"
-                paths.write_plan_review_state(task_id, state)
+
+                def _await_first(state: dict) -> dict:
+                    state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
+                    state["phase"] = "awaiting_answers"
+                    return state
+
+                state = review.update(_await_first)
                 rnd = int(state.get("round", 1))
                 paths.write_plan_artefact(
                     task_id, f"review_round_{rnd}_questions.json",
@@ -351,19 +362,24 @@ class S03PlanReview(Stage):
                     return
                 questions = parse_questions(text)
                 if questions and rnd < MAX_AUTO_ROUNDS and READY_TO_REVISE not in text:
-                    state = paths.read_plan_review_state(task_id)
-                    state["round"] = rnd + 1
-                    state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
-                    state["phase"] = "awaiting_answers"
-                    paths.write_plan_review_state(task_id, state)
+                    def _await_next(state: dict) -> dict:
+                        state["round"] = rnd + 1
+                        state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
+                        state["phase"] = "awaiting_answers"
+                        return state
+
+                    review.update(_await_next)
                     paths.write_plan_artefact(
                         task_id, f"review_round_{rnd + 1}_questions.json",
                         json.dumps(questions, indent=2),
                     )
                     return
-                state = paths.read_plan_review_state(task_id)
-                state["phase"] = "revising"
-                paths.write_plan_review_state(task_id, state)
+
+                def _to_revising(state: dict) -> dict:
+                    state["phase"] = "revising"
+                    return state
+
+                review.update(_to_revising)
                 self.enqueue_step(task_id, "revise")
                 return
 
@@ -388,13 +404,17 @@ class S03PlanReview(Stage):
                             "type": "open",
                         }
                     ]
-                state = paths.read_plan_review_state(task_id)
-                rnd = int(state.get("round", 1)) + 1
-                state["round"] = rnd
-                state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
-                state["phase"] = "awaiting_answers"
-                state.pop("grill_topic", None)
-                paths.write_plan_review_state(task_id, state)
+
+                def _await_grill(state: dict) -> dict:
+                    rnd = int(state.get("round", 1)) + 1
+                    state["round"] = rnd
+                    state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
+                    state["phase"] = "awaiting_answers"
+                    state.pop("grill_topic", None)
+                    return state
+
+                state = review.update(_await_grill)
+                rnd = int(state.get("round", 1))
                 paths.write_plan_artefact(
                     task_id, f"review_round_{rnd}_questions.json",
                     json.dumps(questions, indent=2),
@@ -410,7 +430,6 @@ class S03PlanReview(Stage):
                         .replace("{reason}", reason)
                         .replace("{plan_path}", str(plan_path))
                     )
-                    state.pop("reject_reason", None)
                 else:
                     message = self.load_template("revise.md").replace(
                         "{plan_path}", str(plan_path)
@@ -426,15 +445,21 @@ class S03PlanReview(Stage):
                     logger.warning("plan_review: critic did not emit PLAN_REVISED; continuing")
 
                 plan_md = paths.read_plan_artefact(task_id, "final_plan.md")
-                state = paths.read_plan_review_state(task_id)
-                state["plan_md"] = plan_md
-                state["iterations"] = int(state.get("iterations", 0)) + 1
-                paths.write_plan_review_state(task_id, state)
+
+                def _revised(state: dict) -> dict:
+                    state["plan_md"] = plan_md
+                    state["iterations"] = int(state.get("iterations", 0)) + 1
+                    state.pop("reject_reason", None)
+                    return state
+
+                review.update(_revised)
                 self.regenerate_todo(task_id)
 
-                state = paths.read_plan_review_state(task_id)
-                state["phase"] = "awaiting_approval"
-                paths.write_plan_review_state(task_id, state)
+                def _await_approval(state: dict) -> dict:
+                    state["phase"] = "awaiting_approval"
+                    return state
+
+                review.update(_await_approval)
                 return
 
             if step == "user_message":
@@ -446,47 +471,48 @@ class S03PlanReview(Stage):
                     self.mark_stopped(task_id)
                     return
                 questions = parse_questions(text)
-                state = paths.read_plan_review_state(task_id)
-                if questions:
-                    rnd = int(state.get("round", 1)) + 1
-                    state["round"] = rnd
-                    state.setdefault("rounds", []).append(
-                        {"questions": questions, "answers": {}}
-                    )
-                    state["phase"] = "awaiting_answers"
-                else:
-                    state["phase"] = "awaiting_approval"
-                paths.write_plan_review_state(task_id, state)
-                return
 
-        except Exception as e:
-            logger.exception("plan_review step %s failed for %s", step, task_id)
-            state = paths.read_plan_review_state(task_id)
-            state["phase"] = "error"
-            state["error"] = str(e)
-            state["error_detail"] = getattr(e, "detail", "")
-            state["error_step"] = step
-            state["finished_at"] = time.time()
-            paths.write_plan_review_state(task_id, state)
+                def _after_message(state: dict) -> dict:
+                    if questions:
+                        rnd = int(state.get("round", 1)) + 1
+                        state["round"] = rnd
+                        state.setdefault("rounds", []).append(
+                            {"questions": questions, "answers": {}}
+                        )
+                        state["phase"] = "awaiting_answers"
+                    else:
+                        state["phase"] = "awaiting_approval"
+                    return state
+
+                review.update(_after_message)
+                return
 
     def retry_from_error(self, task_id: str) -> None:
         """Resume the failed review step, continuing the critic's pi session."""
-        state = paths.read_plan_review_state(task_id)
-        if state.get("phase") != "error":
-            return
-        step = state.get("error_step") or "critique"
-        running_phase = {
-            "critique": "review_running",
-            "followup": "resuming",
-            "grill": "resuming",
-            "revise": "revising",
-            "reject": "revising",
-        }.get(step, "review_running")
-        state["phase"] = running_phase
-        state["error"] = ""
-        state["error_detail"] = ""
-        paths.write_plan_review_state(task_id, state)
-        self.enqueue_step(task_id, step)
+        retry = False
+        step = "critique"
+
+        def _retry(state: dict) -> dict:
+            nonlocal retry, step
+            if state.get("phase") != "error":
+                return state
+            retry = True
+            step = state.get("error_step") or "critique"
+            running_phase = {
+                "critique": "review_running",
+                "followup": "resuming",
+                "grill": "resuming",
+                "revise": "revising",
+                "reject": "revising",
+            }.get(step, "review_running")
+            state["phase"] = running_phase
+            state["error"] = ""
+            state["error_detail"] = ""
+            return state
+
+        paths.plan_review_state(task_id).update(_retry)
+        if retry:
+            self.enqueue_step(task_id, step)
 
     # -- rendering --------------------------------------------------------------
 
@@ -496,30 +522,55 @@ class S03PlanReview(Stage):
         except FileNotFoundError:
             return ""
 
-    def render_status(self, task_id: str, oob: bool = False) -> str:
-        safe_id = _esc(task_id)
-        state = paths.read_plan_review_state(task_id)
+    def render_msgs(self, task_id: str) -> list[str]:
+        state = paths.plan_review_state(task_id).read()
+        phase = state.get("phase", "idle")
+        msgs: list[str] = []
+
+        # Trajectory stays in msgs for live append; full reload of done omits it
+        # to match the previous "approved" view.
+        if phase != "done":
+            msgs.extend(render_turn_msgs(state.get("turns", [])))
+
+        if phase in ("awaiting_answers", "awaiting_approval", "done"):
+            msgs.extend(render_qa_history(state.get("rounds", [])))
+
+        if phase == "done":
+            msgs.append('<div class="stage-msg"><p class="success">Approved ✓</p></div>')
+            plan_md = state.get("plan_md", "")
+            if not plan_md:
+                try:
+                    plan_md = paths.read_plan_artefact(task_id, "final_plan.md")
+                except FileNotFoundError:
+                    plan_md = ""
+            todo_md = self._read_todo(task_id)
+            if plan_md:
+                msgs.append(
+                    f'<div class="stage-msg plan-final">{_ui._render_markdown(plan_md)}</div>'
+                )
+            if todo_md:
+                msgs.append(
+                    f'<div class="stage-msg plan-todo">{_ui._render_markdown(todo_md)}</div>'
+                )
+
+        return msgs
+
+    def render_tail(self, task_id: str) -> str:
+        state = paths.plan_review_state(task_id).read()
         phase = state.get("phase", "idle")
         content_id = self.stage_content_id()
         target = f"#{content_id}"
         parts: list[str] = []
 
-        turns_html = render_turns_trajectory(state.get("turns", []))
-        qa_html = render_qa_history(state.get("rounds", []))
         plan_md = state.get("plan_md", "")
-        if not plan_md and phase not in ("idle",):
+        if not plan_md and phase not in ("idle", "done"):
             try:
                 plan_md = paths.read_plan_artefact(task_id, "final_plan.md")
             except FileNotFoundError:
                 plan_md = ""
         todo_md = self._read_todo(task_id)
 
-        # Trajectory first in every phase; the spinner / error / forms follow it.
-        if phase != "done":
-            parts.append(turns_html)
-
         if phase == "awaiting_answers":
-            parts.append(qa_html)
             rnd = int(state.get("round", 1))
             questions = state.get("rounds", [{}])[-1].get("questions", [])
             parts.append(
@@ -533,19 +584,18 @@ class S03PlanReview(Stage):
                 )
             )
         elif phase == "awaiting_approval":
-            parts.append(qa_html)
             if plan_md:
                 parts.append(
-                    f'<div class="stage-msg plan-final"><h3>Revised plan</h3>'
+                    f'<div class="plan-final"><h3>Revised plan</h3>'
                     f"{_ui._render_markdown(plan_md)}</div>"
                 )
             if todo_md:
                 parts.append(
-                    f'<div class="stage-msg plan-todo"><h3>Implementation checklist</h3>'
+                    f'<div class="plan-todo"><h3>Implementation checklist</h3>'
                     f"{_ui._render_markdown(todo_md)}</div>"
                 )
             parts.append(f"""
-            <div class="stage-msg approval-controls">
+            <div class="approval-controls">
               <form hx-post="{self.action_url(task_id, "approve")}"
                     hx-target="#{content_id}" hx-swap="outerHTML" style="display:inline">
                 <button type="submit" class="primary">Approve</button>
@@ -566,17 +616,6 @@ class S03PlanReview(Stage):
               </form>
             </div>
             """)
-        elif phase == "done":
-            parts.append('<div class="stage-msg"><p class="success">Approved ✓</p></div>')
-            parts.append(qa_html)
-            if plan_md:
-                parts.append(
-                    f'<div class="stage-msg plan-final">{_ui._render_markdown(plan_md)}</div>'
-                )
-            if todo_md:
-                parts.append(
-                    f'<div class="stage-msg plan-todo">{_ui._render_markdown(todo_md)}</div>'
-                )
 
         if phase == "error":
             parts.append(
@@ -592,7 +631,7 @@ class S03PlanReview(Stage):
                 )
                 if phase == "error":
                     buttons += render_retry_button(self, task_id, state.get("error_step"))
-                parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
+                parts.append(f'<div class="stage-buttons">{buttons}</div>')
 
         if phase in ("error", "stopped"):
             parts.append(render_message_form(self, task_id))
@@ -603,23 +642,18 @@ class S03PlanReview(Stage):
                 "resuming": "Processing answers…",
                 "revising": "Revising plan…",
             }.get(phase, "Working…")
-            parts.append(render_spinner(label))
-            parts.append(render_stop_button(self, task_id))
+            parts.append(render_running_tail(self, task_id, label))
 
-        msg_count = len(state.get("turns", [])) + len(
-            [r for r in state.get("rounds", []) if r.get("answers")]
-        )
-        if phase == "awaiting_answers":
-            msg_count += 1
-        if phase in ("awaiting_approval", "done"):
-            msg_count += 2
-        msg_count = max(msg_count, 1)
+        return "".join(parts)
 
+    def render_status(
+        self, task_id: str, oob: bool = False, after: int | None = None
+    ) -> str:
         return self.wrap_status(
             task_id,
-            "".join(parts),
-            msg_count=msg_count,
-            polling=phase in RUNNING_PHASES,
+            self.render_msgs(task_id),
+            self.render_tail(task_id),
+            after=after,
             extra_class="plan-review-content",
             oob=oob,
         )

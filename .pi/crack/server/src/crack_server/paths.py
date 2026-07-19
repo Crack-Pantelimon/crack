@@ -1,4 +1,9 @@
-"""Resolve project paths and list prompt markdown files."""
+"""Resolve project paths and list prompt markdown files.
+
+JSON state-file I/O (tolerant read / atomic write / locked update) lives in
+``state.py``; this module keeps path construction plus one-line
+:class:`~crack_server.state.JsonState` accessors for each state file.
+"""
 
 from __future__ import annotations
 
@@ -8,17 +13,24 @@ import re
 import time
 from pathlib import Path
 
+from crack_server.state import (
+    CHAT_STATE_FILENAME,
+    EXPLORE_FILENAME,
+    FINISHED_FILENAME,
+    IMPL_REVIEW_FILENAME,
+    IMPLEMENTATION_FILENAME,
+    INFO_FILENAME,
+    PLAN_FILENAME,
+    PLAN_REVIEW_FILENAME,
+    TITLE_REGEN_FILENAME,
+    JsonState,
+)
+
 TASK_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 PROMPT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.md$")
 STAGE_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
 PLAN_ARTEFACT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.(md|json|txt)$")
-CHAT_ID_RE = re.compile(r"^\d{13}(_\d+)?$")
-INFO_FILENAME = "info.json"
-CHAT_STATE_FILENAME = "chat.json"
-TITLE_REGEN_FILENAME = "title_regen.json"
-EXPLORE_FILENAME = "explore.json"
-PLAN_FILENAME = "plan.json"
-PLAN_REVIEW_FILENAME = "plan_review.json"
+CHAT_ID_RE = re.compile(r"^\d{13,}(_\d+)?$")
 
 
 def project_root() -> Path:
@@ -118,48 +130,12 @@ def write_info(task_id: str, info: dict, root: Path | None = None) -> None:
     path.write_text(json.dumps(info, indent=2), encoding="utf-8")
 
 
-def _atomic_write_json(path: Path, data: dict) -> None:
-    directory = path.parent
-    directory.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+def title_regen_state(task_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(task_dir(task_id, root) / TITLE_REGEN_FILENAME)
 
 
-def title_regen_path(task_id: str, root: Path | None = None) -> Path:
-    return task_dir(task_id, root) / TITLE_REGEN_FILENAME
-
-
-def read_title_regen_state(task_id: str, root: Path | None = None) -> dict:
-    path = title_regen_path(task_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_title_regen_state(task_id: str, state: dict, root: Path | None = None) -> None:
-    _atomic_write_json(title_regen_path(task_id, root), state)
-
-
-def explore_path(task_id: str, root: Path | None = None) -> Path:
-    return task_dir(task_id, root) / EXPLORE_FILENAME
-
-
-def read_explore_state(task_id: str, root: Path | None = None) -> dict:
-    path = explore_path(task_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_explore_state(task_id: str, state: dict, root: Path | None = None) -> None:
-    _atomic_write_json(explore_path(task_id, root), state)
+def explore_state(task_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(task_dir(task_id, root) / EXPLORE_FILENAME)
 
 
 def explore_dir(task_id: str, root: Path | None = None) -> Path:
@@ -261,8 +237,11 @@ def harness_dir(root: Path | None = None) -> Path:
     return (root or project_root()) / ".pi" / "crack" / "harness"
 
 
-def models_cache_path(root: Path | None = None) -> Path:
-    return harness_dir(root) / "models_list.json"
+def models_cache_state(root: Path | None = None) -> JsonState:
+    # The harness root is durable (unlike task/chat dirs) — create it so the
+    # first cache write has a parent; JsonState.write refuses to create one.
+    harness_dir(root).mkdir(parents=True, exist_ok=True)
+    return JsonState(harness_dir(root) / "models_list.json")
 
 
 # ---------------------------------------------------------------------------
@@ -288,42 +267,15 @@ def worker_lock_path(root: Path | None = None) -> Path:
     return harness_dir(root) / "worker.lock"
 
 
-def read_models_cache(root: Path | None = None) -> dict:
-    path = models_cache_path(root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_models_cache(data: dict, root: Path | None = None) -> None:
-    _atomic_write_json(models_cache_path(root), data)
-
-
 def _validate_stage_slug(slug: str) -> str:
     if not STAGE_SLUG_RE.fullmatch(slug):
         raise ValueError("invalid stage slug")
     return slug
 
 
-def stage_config_path(slug: str, root: Path | None = None) -> Path:
-    return harness_dir(root) / f"{_validate_stage_slug(slug)}.json"
-
-
-def read_stage_config(slug: str, root: Path | None = None) -> dict:
-    path = stage_config_path(slug, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_stage_config(slug: str, config: dict, root: Path | None = None) -> None:
-    _atomic_write_json(stage_config_path(slug, root), config)
+def stage_config_state(slug: str, root: Path | None = None) -> JsonState:
+    harness_dir(root).mkdir(parents=True, exist_ok=True)  # see models_cache_state
+    return JsonState(harness_dir(root) / f"{_validate_stage_slug(slug)}.json")
 
 
 def stage_templates_dir(slug: str) -> Path:
@@ -366,22 +318,8 @@ def write_stage_template(slug: str, filename: str, content: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def plan_path(task_id: str, root: Path | None = None) -> Path:
-    return task_dir(task_id, root) / PLAN_FILENAME
-
-
-def read_plan_state(task_id: str, root: Path | None = None) -> dict:
-    path = plan_path(task_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_plan_state(task_id: str, state: dict, root: Path | None = None) -> None:
-    _atomic_write_json(plan_path(task_id, root), state)
+def plan_state(task_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(task_dir(task_id, root) / PLAN_FILENAME)
 
 
 def plan_dir(task_id: str, root: Path | None = None) -> Path:
@@ -420,22 +358,8 @@ def plan_todo_path(task_id: str, root: Path | None = None) -> Path:
     return plan_dir(task_id, root) / "todo.md"
 
 
-def plan_review_path(task_id: str, root: Path | None = None) -> Path:
-    return task_dir(task_id, root) / PLAN_REVIEW_FILENAME
-
-
-def read_plan_review_state(task_id: str, root: Path | None = None) -> dict:
-    path = plan_review_path(task_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_plan_review_state(task_id: str, state: dict, root: Path | None = None) -> None:
-    _atomic_write_json(plan_review_path(task_id, root), state)
+def plan_review_state(task_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(task_dir(task_id, root) / PLAN_REVIEW_FILENAME)
 
 
 def plan_review_sessions_dir(task_id: str, root: Path | None = None) -> Path:
@@ -462,27 +386,9 @@ def read_walkthrough(task_id: str, root: Path | None = None) -> str:
 # Implementation stage: per-task state and pi session dir
 # ---------------------------------------------------------------------------
 
-IMPLEMENTATION_FILENAME = "implementation.json"
-IMPL_REVIEW_FILENAME = "impl_review.json"
-FINISHED_FILENAME = "finished.json"
 
-
-def implementation_path(task_id: str, root: Path | None = None) -> Path:
-    return task_dir(task_id, root) / IMPLEMENTATION_FILENAME
-
-
-def read_implementation_state(task_id: str, root: Path | None = None) -> dict:
-    path = implementation_path(task_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_implementation_state(task_id: str, state: dict, root: Path | None = None) -> None:
-    _atomic_write_json(implementation_path(task_id, root), state)
+def implementation_state(task_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(task_dir(task_id, root) / IMPLEMENTATION_FILENAME)
 
 
 def implementation_sessions_dir(task_id: str, root: Path | None = None) -> Path:
@@ -495,22 +401,8 @@ def implementation_sessions_dir(task_id: str, root: Path | None = None) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def impl_review_path(task_id: str, root: Path | None = None) -> Path:
-    return task_dir(task_id, root) / IMPL_REVIEW_FILENAME
-
-
-def read_impl_review_state(task_id: str, root: Path | None = None) -> dict:
-    path = impl_review_path(task_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_impl_review_state(task_id: str, state: dict, root: Path | None = None) -> None:
-    _atomic_write_json(impl_review_path(task_id, root), state)
+def impl_review_state(task_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(task_dir(task_id, root) / IMPL_REVIEW_FILENAME)
 
 
 def impl_review_sessions_dir(task_id: str, root: Path | None = None) -> Path:
@@ -523,22 +415,8 @@ def impl_review_sessions_dir(task_id: str, root: Path | None = None) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def finished_path(task_id: str, root: Path | None = None) -> Path:
-    return task_dir(task_id, root) / FINISHED_FILENAME
-
-
-def read_finished_state(task_id: str, root: Path | None = None) -> dict:
-    path = finished_path(task_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_finished_state(task_id: str, state: dict, root: Path | None = None) -> None:
-    _atomic_write_json(finished_path(task_id, root), state)
+def finished_state(task_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(task_dir(task_id, root) / FINISHED_FILENAME)
 
 
 # ---------------------------------------------------------------------------
@@ -578,40 +456,16 @@ def generate_chat_id() -> str:
     return chat_id
 
 
-def chat_info_path(chat_id: str, root: Path | None = None) -> Path:
-    return chat_dir(chat_id, root) / INFO_FILENAME
-
-
-def read_chat_info(chat_id: str, root: Path | None = None) -> dict:
-    path = chat_info_path(chat_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_chat_info(chat_id: str, info: dict, root: Path | None = None) -> None:
-    _atomic_write_json(chat_info_path(chat_id, root), info)
+def chat_info_state(chat_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(chat_dir(chat_id, root) / INFO_FILENAME)
 
 
 def chat_state_path(chat_id: str, root: Path | None = None) -> Path:
     return chat_dir(chat_id, root) / CHAT_STATE_FILENAME
 
 
-def read_chat_state(chat_id: str, root: Path | None = None) -> dict:
-    path = chat_state_path(chat_id, root)
-    if not path.is_file():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def write_chat_state(chat_id: str, state: dict, root: Path | None = None) -> None:
-    _atomic_write_json(chat_state_path(chat_id, root), state)
+def chat_state(chat_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(chat_state_path(chat_id, root))
 
 
 def chat_sessions_dir(chat_id: str, root: Path | None = None) -> Path:
@@ -624,6 +478,6 @@ def create_chat(chat_id: str, model: str, root: Path | None = None) -> dict:
     directory = chat_dir(chat_id, root)
     directory.mkdir(parents=True, exist_ok=False)
     info = {"id": chat_id, "title": "", "model": model, "created_at": time.time()}
-    write_chat_info(chat_id, info, root)
-    write_chat_state(chat_id, {"phase": "idle", "exchanges": [], "error": "", "error_detail": ""}, root)
+    chat_info_state(chat_id, root).write(info)
+    chat_state(chat_id, root).write({"phase": "idle", "exchanges": [], "error": "", "error_detail": ""})
     return info

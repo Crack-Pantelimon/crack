@@ -11,20 +11,14 @@ from __future__ import annotations
 
 import logging
 import shutil
-import time
 
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from crack_server import app as _ui
-from crack_server import models as models_mod
-from crack_server import paths, pi_runner, queue
-from crack_server.stages.base import (
-    _clean_turn_text,
-    render_error_msg,
-    render_spinner,
-    render_turns_trajectory,
-)
+from crack_server import ui as _ui
+from crack_server import chat_engine
+from crack_server import paths, pi_runner, queue, titles
+from crack_server.state import chat_state_mtime
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -36,6 +30,16 @@ DEFAULT_CHAT_MODEL = "nvidia/z-ai/glm-5.2"
 CHAT_TIMEOUT_SECONDS = 1800
 
 RECENT_CHATS = 5
+
+# Pseudo-slug used for msg/tail ids (mirrors Stage.slug).
+CHAT_SLUG = "chat"
+
+
+def _render():
+    """Lazy import to avoid app ↔ chats ↔ stages circular imports at load time."""
+    from crack_server.stages import render as render_mod
+
+    return render_mod
 
 
 def check_chat_id(chat_id: str) -> None:
@@ -62,7 +66,7 @@ def _render_chat_list(ids: list[str]) -> str:
         return '<p style="color: #888;">No chats yet.</p>'
     items = []
     for cid in ids:
-        info = paths.read_chat_info(cid)
+        info = paths.chat_info_state(cid).read()
         title = info.get("title") or "(untitled chat)"
         created = info.get("created_at")
         when = _ui._format_time(created) if created else ""
@@ -108,47 +112,37 @@ def render_home_section() -> str:
 # -- chat page ----------------------------------------------------------------
 
 
-def render_chat_answer(turns: list[dict]) -> str:
-    """One exchange's agent output: the read/think/tool trajectory as a compact
-    table (assistant text excluded), then that assistant text rendered as
-    markdown. The model answers in markdown, so it must be rendered as HTML
-    rather than shown as an escaped snippet in the actions table."""
+def render_chat_answer(turns: list[dict]) -> list[str]:
+    """One exchange's agent output as a list of msg fragments."""
+    render = _render()
     parts: list[str] = []
-    trajectory = render_turns_trajectory(turns, include_text=False)
-    if trajectory:
-        parts.append(trajectory)
+    agent_turns = [t for t in turns if t.get("kind") != "user_prompt"]
+    parts.extend(render.render_turn_msgs(agent_turns, include_text=False))
     answer = "\n\n".join(
         cleaned
-        for turn in turns
-        if (cleaned := _clean_turn_text(turn.get("text", "")))
+        for turn in agent_turns
+        if (cleaned := render._clean_turn_text(turn.get("text", "")))
     )
     if answer:
         parts.append(
             '<div class="stage-msg chat-assistant"><strong>Assistant:</strong>'
             f"{_ui._render_markdown(answer)}</div>"
         )
-    return "".join(parts)
+    return parts
 
 
 def render_chat_form(chat_id: str, info: dict) -> str:
     """Bottom form: cached-model dropdown (saves on change) + multiline input + Send."""
     current = info.get("model") or DEFAULT_CHAT_MODEL
-    options = models_mod.get_models()
-    if current not in options:
-        options = [current] + options
-    opts = "".join(
-        f'<option value="{_ui._esc(m)}"{" selected" if m == current else ""}>{_ui._esc(m)}</option>'
-        for m in options
-    )
     safe_id = _ui._esc(chat_id)
+    select = _render().model_select(
+        "model", current, f"/api/chats/{chat_id}/model", swap="none", indent=" " * 8
+    )
     return f"""
-    <form class="stage-msg chat-form" hx-post="/api/chats/{safe_id}/messages"
+    <form class="chat-form" hx-post="/api/chats/{safe_id}/messages"
           hx-target="#chat-content" hx-swap="outerHTML">
       <label>Model
-        <select name="model" hx-post="/api/chats/{safe_id}/model"
-                hx-trigger="change" hx-swap="none">
-          {opts}
-        </select>
+{select}
       </label>
       <label>Message
         <textarea name="msg" rows="4" required placeholder="Type a message…"></textarea>
@@ -158,50 +152,92 @@ def render_chat_form(chat_id: str, info: dict) -> str:
     """
 
 
-def render_chat_content(chat_id: str) -> str:
-    """Chat exchanges + status + form. This is also the htmx polling fragment."""
-    info = paths.read_chat_info(chat_id)
-    state = paths.read_chat_state(chat_id)
+def _tag_chat_msg(index: int, html: str) -> str:
+    esc = _ui._esc
+    msg_id = f"{CHAT_SLUG}-msg-{index}"
+    for needle in (
+        '<div class="stage-msg', "<div class='stage-msg",
+        '<details class="stage-msg', "<details class='stage-msg",
+    ):
+        if needle in html[:120]:
+            tag = needle.split(" ", 1)[0]
+            return html.replace(tag + " ", f'{tag} id="{esc(msg_id)}" ', 1)
+    return f'<div id="{esc(msg_id)}" class="stage-msg">{html}</div>'
+
+
+def render_chat_msgs(chat_id: str) -> list[str]:
+    render = _render()
+    state = paths.chat_state(chat_id).read()
+    return render.render_exchanges(state.get("exchanges", []), render_chat_answer)
+
+
+def render_chat_tail(chat_id: str) -> str:
+    render = _render()
+    info = paths.chat_info_state(chat_id).read()
+    state = paths.chat_state(chat_id).read()
     phase = state.get("phase")
     parts: list[str] = []
 
-    for exchange in state.get("exchanges", []):
-        parts.append(
-            f'<div class="stage-msg chat-user"><strong>You:</strong> '
-            f"{_ui._esc(exchange.get('user', ''))}</div>"
-        )
-        turns = exchange.get("turns", [])
-        if turns:
-            parts.append(render_chat_answer(turns))
-
     if phase != "chatting" and state.get("error"):
-        parts.append(render_error_msg(state.get("error", ""), state.get("error_detail", "")))
+        parts.append(render.render_error_msg(state.get("error", ""), state.get("error_detail", "")))
 
     if phase == "chatting":
         safe_id = _ui._esc(chat_id)
         parts.append(
-            '<div class="stage-msg chat-thinking" '
-            'style="display:flex;align-items:center;gap:0.75rem;">'
-            f"{render_spinner('Thinking…')}"
-            f'<button class="chat-stop" hx-post="/api/chats/{safe_id}/stop" '
-            'hx-target="#chat-content" hx-swap="outerHTML" '
-            'style="background:#c0392b;border-color:#c0392b;color:#fff;'
-            'padding:0.2rem 0.75rem;">Stop</button></div>'
+            '<div class="stage-running">'
+            f"{render.render_spinner('Thinking…')}"
+            f'<button class="chat-stop stop-btn" hx-post="/api/chats/{safe_id}/stop" '
+            'hx-target="#chat-content" hx-swap="outerHTML">Stop</button></div>'
         )
 
     parts.append(render_chat_form(chat_id, info))
+    return "".join(parts)
 
-    poll = ""
-    if phase == "chatting":
-        poll = (
-            f' hx-get="/chats/{_ui._esc(chat_id)}/status"'
-            ' hx-trigger="every 1.5s" hx-swap="outerHTML"'
+
+def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | None = None) -> str:
+    esc = _ui._esc
+    tagged = [_tag_chat_msg(i, m) for i, m in enumerate(msgs)]
+    msg_count = len(tagged)
+    mtime = chat_state_mtime(chat_id)
+    phase = paths.chat_state(chat_id).read().get("phase") or "idle"
+    status = "running" if phase == "chatting" else ("error" if phase == "error" else "idle")
+
+    if after is not None:
+        new_msgs = "".join(tagged[i] for i in range(len(tagged)) if i > after)
+        return (
+            new_msgs
+            + f'<div id="chat-tail" hx-swap-oob="outerHTML">{tail}</div>'
+            + '<span id="chat-status-meta" hx-swap-oob="outerHTML"'
+            + f' data-stage-status="{esc(status)}" data-msg-count="{msg_count}"'
+            + f' data-state-mtime="{mtime}" hidden></span>'
         )
-    return f'<div id="chat-content"{poll}>{"".join(parts)}</div>'
+
+    return (
+        f'<div id="chat-content" class="stage-content chat-content"'
+        f' data-chat-id="{esc(chat_id)}" data-stage-status="{esc(status)}"'
+        f' data-msg-count="{msg_count}" data-state-mtime="{mtime}"'
+        f' data-stage-slug="{CHAT_SLUG}">'
+        f'<div id="chat-msgs">{"".join(tagged)}</div>'
+        f'<div id="chat-tail">{tail}</div>'
+        f'<span id="chat-status-meta" hidden'
+        f' data-stage-status="{esc(status)}" data-msg-count="{msg_count}"'
+        f' data-state-mtime="{mtime}"></span>'
+        f"</div>"
+    )
+
+
+def render_chat_content(chat_id: str, after: int | None = None) -> str:
+    """Chat exchanges + status + form (msgs/tail; supports ``?after=`` deltas)."""
+    return wrap_chat_content(
+        chat_id,
+        render_chat_msgs(chat_id),
+        render_chat_tail(chat_id),
+        after=after,
+    )
 
 
 def render_chat_page_body(chat_id: str) -> str:
-    info = paths.read_chat_info(chat_id)
+    info = paths.chat_info_state(chat_id).read()
     title = info.get("title") or f"Chat {chat_id}"
     return f"""
     <header style="margin-bottom: 1rem;">
@@ -228,23 +264,33 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
     """POST /api/chats/{id}/messages: queue the agent for a new user message."""
     check_chat_id(chat_id)
     if model:
-        info = paths.read_chat_info(chat_id)
-        info["model"] = model
-        paths.write_chat_info(chat_id, info)
+        def _set_model(info: dict) -> dict:
+            info["model"] = model
+            return info
+
+        paths.chat_info_state(chat_id).update(_set_model)
     msg = msg.strip()
     if msg:
-        state = paths.read_chat_state(chat_id)
-        if state.get("phase") == "chatting":
+        busy = False
+
+        def _begin(state: dict) -> dict:
+            nonlocal busy
+            if state.get("phase") == "chatting":
+                busy = True
+                return state
+            state.setdefault("exchanges", []).append({"user": msg, "turns": []})
+            state["phase"] = "chatting"
+            # Clear any stale stop from a previous exchange so this run isn't halted.
+            state["stop_requested"] = False
+            state.pop("error", None)
+            state.pop("error_detail", None)
+            return state
+
+        paths.chat_state(chat_id).update(_begin)
+        if busy:
             # B2: one agent at a time — refuse a concurrent send outright.
             logger.info("chats: rejecting concurrent message for %s", chat_id)
             return HTMLResponse(render_chat_content(chat_id))
-        state.setdefault("exchanges", []).append({"user": msg, "turns": []})
-        state["phase"] = "chatting"
-        # Clear any stale stop from a previous exchange so this run isn't halted.
-        state["stop_requested"] = False
-        state.pop("error", None)
-        state.pop("error_detail", None)
-        paths.write_chat_state(chat_id, state)
         queue.enqueue(chat_id, CHAT_JOB_SLUG, "chat")
     return HTMLResponse(render_chat_content(chat_id))
 
@@ -256,16 +302,23 @@ def stop_chat(chat_id: str) -> HTMLResponse:
     won't start another hop), kills the pi process group, and flips the phase to
     idle for immediate UI feedback."""
     check_chat_id(chat_id)
-    state = paths.read_chat_state(chat_id)
-    state["stop_requested"] = True
-    paths.write_chat_state(chat_id, state)
+    chat = paths.chat_state(chat_id)
+
+    def _flag_stop(state: dict) -> dict:
+        state["stop_requested"] = True
+        return state
+
+    chat.update(_flag_stop)
     killed = pi_runner.kill_pid_file(_agent_pid_file(chat_id))
     logger.info("chats: stop requested for %s (killed=%s)", chat_id, killed)
+
     # Reflect the halt right away; the worker also finalizes when its hop ends.
-    state = paths.read_chat_state(chat_id)
-    if state.get("phase") == "chatting":
-        state["phase"] = "idle"
-        paths.write_chat_state(chat_id, state)
+    def _halt(state: dict) -> dict:
+        if state.get("phase") == "chatting":
+            state["phase"] = "idle"
+        return state
+
+    chat.update(_halt)
     return HTMLResponse(render_chat_content(chat_id))
 
 
@@ -286,9 +339,12 @@ def delete_chat(chat_id: str) -> HTMLResponse:
 def set_model(chat_id: str, model: str) -> HTMLResponse:
     """POST /api/chats/{id}/model: persist the dropdown selection."""
     check_chat_id(chat_id)
-    info = paths.read_chat_info(chat_id)
-    info["model"] = model
-    paths.write_chat_info(chat_id, info)
+
+    def _set(info: dict) -> dict:
+        info["model"] = model
+        return info
+
+    paths.chat_info_state(chat_id).update(_set)
     return HTMLResponse("")
 
 
@@ -300,26 +356,21 @@ def _maybe_generate_title(chat_id: str, first_message: str) -> None:
     title model (the same one used for task-prompt titles). Best-effort: a
     failure leaves the title empty ("(untitled chat)") rather than breaking the
     chat run."""
-    info = paths.read_chat_info(chat_id)
+    info = paths.chat_info_state(chat_id).read()
     if info.get("title"):
         return
     message = (first_message or "").strip()
     if not message:
         return
     try:
-        prompt = _ui._load_template("title").replace("{content}", message)
-        title, _ = pi_runner.run_pi_text(
-            prompt,
-            log_prefix="chat-title",
-            model=pi_runner.TITLE_MODEL,
-            max_input_chars=pi_runner.TITLE_MAX_INPUT_CHARS,
-        )
-        title = title.strip().strip('"').strip()
+        title = titles.generate_title(message, log_prefix="chat-title")
         if title:
-            info = paths.read_chat_info(chat_id)
-            info["title"] = title[:80]
-            paths.write_chat_info(chat_id, info)
-            logger.info("chats: titled %s -> %r", chat_id, title[:80])
+            def _set_title(info: dict) -> dict:
+                info["title"] = title
+                return info
+
+            paths.chat_info_state(chat_id).update(_set_title)
+            logger.info("chats: titled %s -> %r", chat_id, title)
     except Exception:
         logger.exception("chats: title generation failed for %s", chat_id)
 
@@ -327,91 +378,36 @@ def _maybe_generate_title(chat_id: str, first_message: str) -> None:
 def run_chat(chat_id: str) -> None:
     """Worker side of a CHAT_JOB_SLUG job: run the agent for the latest message.
 
-    Mirrors s06_finished._run_chat, but with the chat's own pi session and
-    ``tools=None`` (every built-in + extension tool, including MCP)."""
-    start = time.monotonic()
-    try:
-        state = paths.read_chat_state(chat_id)
-        exchanges = state.get("exchanges", [])
-        if not exchanges:
-            state["phase"] = "idle"
-            paths.write_chat_state(chat_id, state)
-            return
-        idx = len(exchanges) - 1
-        message = exchanges[idx].get("user", "")
-        model = paths.read_chat_info(chat_id).get("model") or DEFAULT_CHAT_MODEL
+    Thin adapter over chat_engine.run_exchange with the chat's own pi session
+    and ``tools=None`` (every built-in + extension tool, including MCP)."""
+    chat = paths.chat_state(chat_id)
 
+    def stop_check() -> bool:
+        return bool(chat.read().get("stop_requested"))
+
+    def on_no_exchanges() -> None:
+        def _idle(state: dict) -> dict:
+            state["phase"] = "idle"
+            return state
+
+        chat.update(_idle)
+
+    model = paths.chat_info_state(chat_id).read().get("model") or DEFAULT_CHAT_MODEL
+    chat_engine.run_exchange(
+        state=chat,
+        ident=chat_id,
+        message_builder=lambda user_msg: user_msg,
+        record_template="",  # ad-hoc: the raw user message is the prompt
+        log_prefix="unscripted-chat",
+        model=model,
+        session_id=f"unscripted-{chat_id}",
+        sessions_dir=paths.chat_sessions_dir(chat_id),
+        tools=None,
+        timeout_seconds=CHAT_TIMEOUT_SECONDS,
+        hop_kwargs={"pid_file": _agent_pid_file(chat_id), "stop_check": stop_check},
+        pre_stop_check=stop_check,
         # The very first user message names the chat (nano summary), so the home
         # page shows something better than "(untitled chat)".
-        if idx == 0:
-            _maybe_generate_title(chat_id, message)
-
-        existing = list(exchanges[idx].get("turns", []))
-        new_turns: list[dict] = []
-        pid_file = _agent_pid_file(chat_id)
-
-        def stop_check() -> bool:
-            return bool(paths.read_chat_state(chat_id).get("stop_requested"))
-
-        def append_entry(entry: dict) -> None:
-            new_turns.append(entry)
-            st = paths.read_chat_state(chat_id)
-            st["exchanges"][idx]["turns"] = existing + new_turns
-            paths.write_chat_state(chat_id, st)
-
-        def persist(current_turn: dict, hop: int) -> None:
-            append_entry(
-                {
-                    "hop": hop,
-                    "text": current_turn.get("text", ""),
-                    "thinking": current_turn.get("thinking", ""),
-                    "tool_blocks": list(current_turn.get("tool_blocks", [])),
-                    "elapsed": current_turn.get("elapsed"),
-                }
-            )
-
-        def record(entry: dict) -> None:
-            entry["label"] = "chat"
-            entry["template"] = ""  # ad-hoc: the raw user message is the prompt
-            entry["original"] = message
-            append_entry(entry)
-
-        if stop_check():
-            reason = "stopped"
-        else:
-            reason = pi_runner.run_agent_hop(
-                log_prefix="unscripted-chat",
-                model=model,
-                session_id=f"unscripted-{chat_id}",
-                sessions_dir=paths.chat_sessions_dir(chat_id),
-                tools=None,
-                message=message,
-                start=start,
-                sentinel=None,
-                timeout_seconds=CHAT_TIMEOUT_SECONDS,
-                persist_turn=persist,
-                hop=1,
-                pid_file=pid_file,
-                stop_check=stop_check,
-                record_prompt=record,
-            )
-
-        state = paths.read_chat_state(chat_id)
-        state["phase"] = "idle"
-        state["stop_requested"] = False
-        if reason == "empty":
-            state["error"] = "model returned empty responses"
-            state["error_detail"] = ""
-        paths.write_chat_state(chat_id, state)
-        logger.info("chats: exchange %d done for %s (reason=%s)", idx, chat_id, reason)
-    except Exception as e:
-        logger.exception("unscripted chat failed for %s", chat_id)
-        state = paths.read_chat_state(chat_id)
-        state["phase"] = "idle"
-        # A kill triggered by STOP surfaces as an exception on some paths; don't
-        # dress an intentional halt up as an error.
-        if not state.get("stop_requested"):
-            state["error"] = str(e)
-            state["error_detail"] = getattr(e, "detail", "")
-        state["stop_requested"] = False
-        paths.write_chat_state(chat_id, state)
+        on_first_exchange=lambda user_msg: _maybe_generate_title(chat_id, user_msg),
+        on_no_exchanges=on_no_exchanges,
+    )

@@ -12,6 +12,9 @@ uv sync
 # MCP servers they spawn. Keep tool/browser paths here so nothing has to guess.
 export CRACK_PI_PROJECT_ROOT=/workspace
 export HOME=/root
+# The web server defaults to 127.0.0.1 (main.py); inside the container it must
+# bind 0.0.0.0 or the docker-published port (run.sh) is unreachable.
+export CRACK_PI_HOST=0.0.0.0
 # Toolchains (also set as Docker ENV, re-exported here so a `docker exec` or a
 # child with a scrubbed env still finds them): cargo/wasm-pack, uv python, node.
 export PATH="/usr/local/cargo/bin:/usr/local/python/bin:/usr/local/bin:/usr/bin:/bin:$PATH"

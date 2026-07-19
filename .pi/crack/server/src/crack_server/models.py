@@ -1,8 +1,11 @@
 """Available pi models, cached from `pi --list-models` into harness/models_list.json.
 
-The cache is refreshed when missing, older than 24h, or force=True. On fetch
-failure a stale cache is kept; with no cache at all we fall back to the two
-model ids the harness ships with.
+Page renders read the cache only (B21): when it is stale (>24h) or missing,
+the render path enqueues a ``__models__`` refresh job on the worker queue
+(mirroring the ``TITLE_JOB_SLUG`` pattern) instead of shelling out mid-render
+— a page load can never block on the 60s ``pi --list-models`` subprocess. The
+worker's refresh writes the cache; on fetch failure the stale cache (or a
+two-model fallback list) is kept.
 """
 
 from __future__ import annotations
@@ -22,6 +25,9 @@ FALLBACK_MODELS = [
 MAX_AGE_SECONDS = 24 * 3600
 FETCH_TIMEOUT_SECONDS = 60
 
+# Pseudo-stage slug for the models-cache refresh job on the queue (worker.py).
+MODELS_JOB_SLUG = "__models__"
+
 
 def _fetch_models() -> list[str]:
     """Run `pi --list-models` and parse its whitespace-column table.
@@ -30,7 +36,8 @@ def _fetch_models() -> list[str]:
     column may or may not already carry the provider prefix (nvidia's does,
     google's doesn't), so only prepend the provider when missing.
 
-    Retried twice quickly on failure (transient network / provider hiccups)."""
+    Retried twice quickly on failure (transient network / provider hiccups).
+    Only ever called from the worker (via refresh_models), never in a render."""
     result = None
     for attempt in range(3):
         if attempt > 0:
@@ -62,21 +69,39 @@ def _fetch_models() -> list[str]:
     return sorted(models)
 
 
-def get_models(force: bool = False) -> list[str]:
-    """Return the cached model list, refetching when stale (>24h) or forced."""
-    cache = paths.read_models_cache()
+def models_for_render(force: bool = False) -> list[str]:
+    """Cache-only model list for page renders (B21): never shells out.
+
+    When the cache is stale/missing (or ``force`` is set, e.g. by
+    ``GET /api/models?force=true``) a background refresh job is enqueued —
+    deduped, so a page full of dropdowns enqueues at most one — and the next
+    render sees the fresh list. Callers keep a saved value as an option even
+    when it is missing from this list."""
+    cache = paths.models_cache_state().read()
     fetched_at = float(cache.get("fetched_at", 0) or 0)
-    fresh = bool(cache.get("models")) and (time.time() - fetched_at) < MAX_AGE_SECONDS
-
-    if force or not fresh:
-        try:
-            models = _fetch_models()
-            paths.write_models_cache({"fetched_at": time.time(), "models": models})
-            return models
-        except Exception as e:
-            logger.warning("models: fetch failed (%s); keeping stale cache/fallback", e)
-
     cached = cache.get("models")
+    if force or not cached or (time.time() - fetched_at) >= MAX_AGE_SECONDS:
+        _enqueue_refresh()
     if cached:
         return sorted(str(m) for m in cached)
     return list(FALLBACK_MODELS)
+
+
+def _enqueue_refresh() -> None:
+    """Enqueue a __models__ refresh job unless one is already pending/in flight."""
+    from crack_server import queue
+
+    queue.enqueue_exclusive("", MODELS_JOB_SLUG, "refresh")
+
+
+def refresh_models() -> None:
+    """Worker side of a ``MODELS_JOB_SLUG`` job: fetch `pi --list-models` and
+    rewrite the cache. A fetch failure keeps the stale cache/fallback (logged,
+    never raised — the queue job always completes)."""
+    try:
+        models = _fetch_models()
+    except Exception as e:
+        logger.warning("models: refresh failed (%s); keeping stale cache/fallback", e)
+        return
+    paths.models_cache_state().write({"fetched_at": time.time(), "models": models})
+    logger.info("models: cache refreshed (%d models)", len(models))

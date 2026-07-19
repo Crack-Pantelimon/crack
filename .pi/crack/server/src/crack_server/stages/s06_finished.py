@@ -5,29 +5,22 @@ so the user can keep asking questions or requesting further changes.
 
 from __future__ import annotations
 
-import logging
-import time
-
-from crack_server import paths, pi_runner
-from crack_server.stages.base import (
-    Part,
-    Stage,
+from crack_server import chat_engine, paths
+from crack_server.state import JsonState
+from crack_server.stages.base import Part, Stage
+from crack_server.stages.render import (
     render_error_msg,
-    render_spinner,
-    render_stop_button,
+    render_exchanges,
+    render_running_tail,
+    render_turn_msgs,
     render_turns_trajectory,
 )
-from crack_server import app as _ui
-
-logger = logging.getLogger("uvicorn.error")
+from crack_server import ui as _ui
 
 GLM_MODEL = "nvidia/z-ai/glm-5.2"
 
 CHAT_TIMEOUT_SECONDS = 900
 
-
-def _esc(text: str) -> str:
-    return _ui._esc(text)
 
 
 class S06Finished(Stage):
@@ -41,7 +34,7 @@ class S06Finished(Stage):
     message_phase = "chatting"
 
     def status(self, task_id: str) -> str:
-        phase = paths.read_finished_state(task_id).get("phase")
+        phase = paths.finished_state(task_id).read().get("phase")
         if phase == "chatting":
             return "running"
         if phase == "stopped":
@@ -68,26 +61,29 @@ class S06Finished(Stage):
             msg = str(form.get("msg", "")).strip()
             if not msg:
                 return
-            state = paths.read_finished_state(task_id)
-            if state.get("phase") == "chatting":
-                # B2: one agent at a time — refuse a concurrent send.
-                return
-            exchanges = state.setdefault("exchanges", [])
-            exchanges.append({"user": msg, "turns": []})
-            state["phase"] = "chatting"
-            state["stop_requested"] = False
-            state.pop("error", None)
-            state.pop("error_detail", None)
-            paths.write_finished_state(task_id, state)
-            self.enqueue_step(task_id, "chat")
+            busy = False
+
+            def _begin(state: dict) -> dict:
+                nonlocal busy
+                if state.get("phase") == "chatting":
+                    # B2: one agent at a time — refuse a concurrent send.
+                    busy = True
+                    return state
+                state.setdefault("exchanges", []).append({"user": msg, "turns": []})
+                state["phase"] = "chatting"
+                state["stop_requested"] = False
+                state.pop("error", None)
+                state.pop("error_detail", None)
+                return state
+
+            paths.finished_state(task_id).update(_begin)
+            if not busy:
+                self.enqueue_step(task_id, "chat")
             return
         super().handle_action(action, task_id, form)
 
-    def state_read(self, task_id: str) -> dict:
-        return paths.read_finished_state(task_id)
-
-    def state_write(self, task_id: str, state: dict) -> None:
-        paths.write_finished_state(task_id, state)
+    def state(self, task_id: str) -> JsonState:
+        return paths.finished_state(task_id)
 
     def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
         if step == "chat":
@@ -96,104 +92,44 @@ class S06Finished(Stage):
         super().run_step(task_id, step, form)
 
     def _run_chat(self, task_id: str) -> None:
-        start = time.monotonic()
-        try:
-            state = paths.read_finished_state(task_id)
-            exchanges = state.get("exchanges", [])
-            if not exchanges:
-                return
-            idx = len(exchanges) - 1
-            user_msg = exchanges[idx].get("user", "")
-            message = self.load_template("chat.md").replace("{msg}", user_msg)
-
-            existing = list(exchanges[idx].get("turns", []))
-            new_turns: list[dict] = []
-
-            def append_entry(entry: dict) -> None:
-                new_turns.append(entry)
-                st = paths.read_finished_state(task_id)
-                st["exchanges"][idx]["turns"] = existing + new_turns
-                paths.write_finished_state(task_id, st)
-
-            def persist(current_turn: dict, hop: int) -> None:
-                append_entry(
-                    {
-                        "hop": hop,
-                        "text": current_turn.get("text", ""),
-                        "thinking": current_turn.get("thinking", ""),
-                        "tool_blocks": list(current_turn.get("tool_blocks", [])),
-                        "elapsed": current_turn.get("elapsed"),
-                    }
-                )
-
-            def record(entry: dict) -> None:
-                entry["label"] = "chat"
-                entry["template"] = "chat.md"
-                # The compiled message was built from this single user message.
-                entry["original"] = user_msg
-                append_entry(entry)
-
-            # Resume the review session (same session id + dir), tools enabled.
-            reason = pi_runner.run_agent_hop(
-                log_prefix="finished-chat",
-                model=self.model_for("chat"),
-                session_id=f"review-{task_id}",
-                sessions_dir=paths.impl_review_sessions_dir(task_id),
-                tools="bash,read,edit,write,mcp",
-                message=message,
-                start=start,
-                sentinel=None,
-                timeout_seconds=CHAT_TIMEOUT_SECONDS,
-                persist_turn=persist,
-                hop=1,
-                record_prompt=record,
-                **self.agent_hop_kwargs(task_id),
-            )
-
-            state = paths.read_finished_state(task_id)
-            state["phase"] = "stopped" if reason == "stopped" else "idle"
-            state["stop_requested"] = False
-            if reason == "empty":
-                state["error"] = "model returned empty responses"
-                state["error_detail"] = ""
-            paths.write_finished_state(task_id, state)
-            logger.info("finished: chat exchange %d done for %s (reason=%s)", idx, task_id, reason)
-        except Exception as e:
-            logger.exception("finished chat failed for %s", task_id)
-            state = paths.read_finished_state(task_id)
-            state["phase"] = "idle"
-            # A kill triggered by STOP surfaces as an exception on some paths;
-            # don't dress an intentional halt up as an error.
-            if not state.get("stop_requested"):
-                state["error"] = str(e)
-                state["error_detail"] = getattr(e, "detail", "")
-            state["stop_requested"] = False
-            paths.write_finished_state(task_id, state)
+        """Thin adapter over chat_engine.run_exchange: resume the review session
+        (same session id + dir), tools enabled."""
+        chat_engine.run_exchange(
+            state=paths.finished_state(task_id),
+            ident=task_id,
+            message_builder=lambda user_msg: self.load_template("chat.md").replace(
+                "{msg}", user_msg
+            ),
+            record_template="chat.md",
+            log_prefix="finished-chat",
+            model=self.model_for("chat"),
+            session_id=f"review-{task_id}",
+            sessions_dir=paths.impl_review_sessions_dir(task_id),
+            tools="bash,read,edit,write,mcp",
+            timeout_seconds=CHAT_TIMEOUT_SECONDS,
+            hop_kwargs=self.agent_hop_kwargs(task_id),
+            stopped_phase="stopped",
+        )
 
     # -- rendering ------------------------------------------------------------
 
-    def render_status(self, task_id: str, oob: bool = False) -> str:
-        content_id = self.stage_content_id()
-        target = f"#{content_id}"
-        state = paths.read_finished_state(task_id)
+    def render_msgs(self, task_id: str) -> list[str]:
+        state = paths.finished_state(task_id).read()
         phase = state.get("phase")
-        parts: list[str] = []
+        msgs: list[str] = []
 
         if not self.is_enabled(task_id) and phase != "chatting":
-            parts.append(
+            msgs.append(
                 '<div class="stage-msg"><p style="color: #888;">'
                 "The implementation review must finish before this stage unlocks.</p></div>"
             )
-            return self.wrap_status(
-                task_id, "".join(parts), msg_count=1,
-                polling=False, extra_class="finished-content", oob=oob,
-            )
+            return msgs
 
-        parts.append('<div class="stage-msg"><p class="success">All stages complete ✓</p></div>')
+        msgs.append('<div class="stage-msg"><p class="success">All stages complete ✓</p></div>')
 
         walkthrough = paths.read_walkthrough(task_id)
         if walkthrough:
-            parts.append(
+            msgs.append(
                 '<div class="stage-msg finished-walkthrough"><h3>Retrospective / walkthrough</h3>'
                 f"{_ui._render_markdown(walkthrough)}</div>"
             )
@@ -203,37 +139,40 @@ class S06Finished(Stage):
         except FileNotFoundError:
             final_plan = ""
         if final_plan:
-            parts.append(
+            msgs.append(
                 '<details class="stage-msg finished-plan"><summary>Final plan</summary>'
                 f"{_ui._render_markdown(final_plan)}</details>"
             )
 
-        review_turns = paths.read_impl_review_state(task_id).get("turns", [])
+        review_turns = paths.impl_review_state(task_id).read().get("turns", [])
         if review_turns:
-            parts.append(
+            msgs.append(
                 '<details class="stage-msg finished-review"><summary>Review trajectory</summary>'
                 f"{render_turns_trajectory(review_turns)}</details>"
             )
 
-        # Chat exchanges (each: user bubble + resumed-session agent turns).
-        for exchange in state.get("exchanges", []):
-            parts.append(
-                '<div class="stage-msg chat-user"><strong>You:</strong> '
-                f"{_esc(exchange.get('user', ''))}</div>"
-            )
-            turns = exchange.get("turns", [])
-            if turns:
-                parts.append(render_turns_trajectory(turns))
+        msgs.extend(render_exchanges(state.get("exchanges", []), render_turn_msgs))
+
+        return msgs
+
+    def render_tail(self, task_id: str) -> str:
+        content_id = self.stage_content_id()
+        target = f"#{content_id}"
+        state = paths.finished_state(task_id).read()
+        phase = state.get("phase")
+        parts: list[str] = []
+
+        if not self.is_enabled(task_id) and phase != "chatting":
+            return ""
 
         if phase != "chatting" and state.get("error"):
             parts.append(render_error_msg(state.get("error", ""), state.get("error_detail", "")))
 
         if phase == "chatting":
-            parts.append(render_spinner("Thinking…"))
-            parts.append(render_stop_button(self, task_id))
+            parts.append(render_running_tail(self, task_id, "Thinking…"))
         else:
             parts.append(f"""
-            <form class="stage-msg finished-chat" hx-post="{self.action_url(task_id, "chat")}"
+            <form class="finished-chat chat-form" hx-post="{self.action_url(task_id, "chat")}"
                   hx-target="{target}" hx-swap="outerHTML">
               <label>Ask a follow-up or request a change (continues the review session)
                 <textarea name="msg" rows="3" required placeholder="Type a message…"></textarea>
@@ -242,12 +181,16 @@ class S06Finished(Stage):
             </form>
             """)
 
-        msg_count = max(len(parts) + len(state.get("exchanges", [])), 1)
+        return "".join(parts)
+
+    def render_status(
+        self, task_id: str, oob: bool = False, after: int | None = None
+    ) -> str:
         return self.wrap_status(
             task_id,
-            "".join(parts),
-            msg_count=msg_count,
-            polling=phase == "chatting",
+            self.render_msgs(task_id),
+            self.render_tail(task_id),
+            after=after,
             extra_class="finished-content",
             oob=oob,
         )

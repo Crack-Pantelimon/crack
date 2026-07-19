@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from crack_server import pi_runner, queue
+from crack_server import pi_runner, queue, ratelimit
 
 SHIM = Path(__file__).parent / "fake_pi.sh"
 
@@ -57,8 +57,8 @@ def fake_pi(tmp_path, monkeypatch) -> FakePi:
     monkeypatch.setenv("FAKE_PI_DIR", str(ctrl))
     monkeypatch.setenv("FAKE_PI_SCRIPT", str(script))
     # Fast retry schedules so failure paths finish in well under a second each.
-    monkeypatch.setattr(pi_runner, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
-    monkeypatch.setattr(pi_runner, "PI_RETRY_WINDOW_SECONDS", 0.2)
+    monkeypatch.setattr(ratelimit, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
+    monkeypatch.setattr(ratelimit, "PI_RETRY_WINDOW_SECONDS", 0.2)
     return FakePi(ctrl, script)
 
 
@@ -174,7 +174,7 @@ def test_four_transient_failures_raise(fake_pi, tmp_path):
     fake_pi.set_script(["transient"])
     with pytest.raises(pi_runner.PiError):
         run_hop(tmp_path)
-    assert fake_pi.invocations() == 1 + len(pi_runner.TRANSIENT_RETRY_DELAYS)
+    assert fake_pi.invocations() == 1 + len(ratelimit.TRANSIENT_RETRY_DELAYS)
 
 
 def test_hard_failure_after_persisted_turns_raises_immediately(fake_pi, tmp_path):

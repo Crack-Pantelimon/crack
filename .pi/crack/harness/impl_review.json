@@ -1,5 +1,5 @@
 {
   "models": {
-    "reviewer": "cursor/grok-4.5:slow"
+    "reviewer": "nvidia/nemotron-3-ultra-550b-a55b"
   }
 }

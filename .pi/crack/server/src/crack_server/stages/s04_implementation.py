@@ -16,17 +16,25 @@ import shutil
 import time
 
 from crack_server import git_utils, paths, pi_runner
-from crack_server.stages.base import (
-    Part,
-    Stage,
+from crack_server.state import JsonState
+from crack_server.stages.base import Part, Stage
+from crack_server.stages.render import (
     render_error_msg,
     render_message_form,
     render_retry_button,
-    render_spinner,
-    render_stop_button,
-    render_turns_trajectory,
+    render_running_tail,
+    render_turn_msgs,
 )
-from crack_server import app as _ui
+from crack_server import ui as _ui
+from crack_server.ui import _esc
+from crack_server.stages.steprun import (
+    bump_total_turns,
+    hop_loop,
+    mark_run_stopped,
+    prompt_recorder,
+    record_errors,
+    turn_persister,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -49,9 +57,6 @@ _ERROR_MARKERS = (
     "exit code",
 )
 
-
-def _esc(text: str) -> str:
-    return _ui._esc(text)
 
 
 def _looks_failed(output: str) -> bool:
@@ -96,7 +101,7 @@ class S04Implementation(Stage):
     message_phase = "running"
 
     def status(self, task_id: str) -> str:
-        state = paths.read_implementation_state(task_id)
+        state = paths.implementation_state(task_id).read()
         phase = state.get("phase")
         if phase in ("running", "done", "error", "stopped"):
             return phase
@@ -116,15 +121,12 @@ class S04Implementation(Stage):
 
     # -- lifecycle ------------------------------------------------------------
 
-    def state_read(self, task_id: str) -> dict:
-        return paths.read_implementation_state(task_id)
-
-    def state_write(self, task_id: str, state: dict) -> None:
-        paths.write_implementation_state(task_id, state)
+    def state(self, task_id: str) -> JsonState:
+        return paths.implementation_state(task_id)
 
     def start(self, task_id: str) -> None:
-        state = paths.read_implementation_state(task_id)
-        if state.get("phase") == "running":
+        impl = paths.implementation_state(task_id)
+        if impl.read().get("phase") == "running":
             return
         shutil.rmtree(paths.implementation_sessions_dir(task_id), ignore_errors=True)
         fresh = {
@@ -139,7 +141,7 @@ class S04Implementation(Stage):
             "stop_requested": False,
         }
         form = self.prepare_start_token(fresh)
-        paths.write_implementation_state(task_id, fresh)
+        impl.write(fresh)
         self.enqueue_step(task_id, "run", form)
 
     def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
@@ -166,7 +168,7 @@ class S04Implementation(Stage):
             todo = paths.read_plan_artefact(task_id, "todo.md")
         except FileNotFoundError:
             todo = "(no todo checklist)"
-        explore_summary = paths.read_explore_state(task_id).get("summary_md", "(none)")
+        explore_summary = paths.explore_state(task_id).read().get("summary_md", "(none)")
         content = paths.read_all_prompts_joined(task_id)
 
         return (
@@ -198,105 +200,78 @@ class S04Implementation(Stage):
 
     def _run_implementation(self, task_id: str, initial_message: str | None = None) -> None:
         start = time.monotonic()
-        try:
-            state = paths.read_implementation_state(task_id)
-            current_model = state.get("current_model") or self.model_for("primary")
+        impl = paths.implementation_state(task_id)
+        with record_errors(impl, "run", log_message=f"implementation worker failed for {task_id}"):
+            current_model = impl.read().get("current_model") or self.model_for("primary")
             if initial_message is not None:
-                message, template = initial_message, ""
+                message, init_template = initial_message, ""
             else:
-                message, template = self._assemble_handoff(task_id), "handoff.md"
+                message, init_template = self._assemble_handoff(task_id), "handoff.md"
             fallback_model = self.model_for("fallback")
 
-            stop_reason = None
-            round_n = 0
-            while True:
-                state = paths.read_implementation_state(task_id)
-                existing_turns = list(state.get("turns", []))
-                total = pi_runner.count_turn_groups(existing_turns)
-                if time.monotonic() - start > IMPL_TIMEOUT_SECONDS:
-                    stop_reason = "time_cap"
-                    break
+            # Every 5 completed turns, nudge the agent to refresh the todo.
+            def before_round(round_n: int) -> str | None:
+                if round_n > 1:
+                    total = pi_runner.count_turn_groups(impl.read().get("turns", []))
+                    if total > 0 and total % IMPL_TODO_REMINDER_EVERY == 0:
+                        return self._todo_reminder(task_id)
+                return None
 
-                # Every 5 completed turns, nudge the agent to refresh the todo.
-                if round_n > 0 and total > 0 and total % IMPL_TODO_REMINDER_EVERY == 0:
-                    message, template = self._todo_reminder(task_id), ""
+            # Switch to the fallback model only when two adjacent turns fail
+            # the same tool the same way (B10) — never on turn counts.
+            def after_hop(reason: str, round_n: int) -> None:
+                nonlocal current_model
+                if current_model != fallback_model and _has_consecutive_error(
+                    impl.read().get("turns", [])
+                ):
+                    current_model = fallback_model
 
-                round_n += 1
-                new_turns: list[dict] = []
+                    def _switch_model(state: dict) -> dict:
+                        state["current_model"] = current_model
+                        return state
 
-                def append_entry(entry: dict) -> None:
-                    new_turns.append(entry)
-                    st = paths.read_implementation_state(task_id)
-                    st["turns"] = existing_turns + new_turns
-                    st["total_turns"] = len(st["turns"])
-                    paths.write_implementation_state(task_id, st)
+                    impl.update(_switch_model)
+                    logger.info("implementation: switching to fallback model %s", fallback_model)
 
-                def persist(current_turn: dict, hop: int) -> None:
-                    append_entry(
-                        {
-                            "hop": hop,
-                            "text": current_turn.get("text", ""),
-                            "thinking": current_turn.get("thinking", ""),
-                            "tool_blocks": list(current_turn.get("tool_blocks", [])),
-                            "elapsed": current_turn.get("elapsed"),
-                        }
-                    )
-
-                tmpl = template
-
-                def record(entry: dict) -> None:
-                    entry.setdefault("label", f"round {round_n}")
-                    entry["template"] = tmpl
-                    append_entry(entry)
-
-                reason = pi_runner.run_agent_hop(
+            def run_hop(msg: str, round_n: int) -> str:
+                persister = turn_persister(impl, post=bump_total_turns)
+                tmpl = init_template if round_n == 1 else ""
+                return pi_runner.run_agent_hop(
                     log_prefix="implementation",
                     model=current_model,
                     session_id=f"impl-{task_id}",
                     sessions_dir=paths.implementation_sessions_dir(task_id),
                     tools="bash,read,edit,write,mcp",
-                    message=message,
+                    message=msg,
                     start=start,
                     sentinel=IMPL_SENTINEL,
                     timeout_seconds=IMPL_TIMEOUT_SECONDS,
-                    persist_turn=persist,
+                    persist_turn=persister.persist,
                     hop=round_n,
-                    record_prompt=record,
+                    record_prompt=prompt_recorder(persister, f"round {round_n}", tmpl),
                     **self.agent_hop_kwargs(task_id),
                 )
 
-                # Switch to the fallback model only when two adjacent turns fail
-                # the same tool the same way (B10) — never on turn counts.
-                all_turns = existing_turns + new_turns
-                if current_model != fallback_model and _has_consecutive_error(all_turns):
-                    current_model = fallback_model
-                    st = paths.read_implementation_state(task_id)
-                    st["current_model"] = current_model
-                    paths.write_implementation_state(task_id, st)
-                    logger.info("implementation: switching to fallback model %s", fallback_model)
+            stop_reason = hop_loop(
+                start=start,
+                timeout_seconds=IMPL_TIMEOUT_SECONDS,
+                message=message,
+                run_hop=run_hop,
+                continue_message=lambda: self._continue_message(task_id),
+                before_round=before_round,
+                after_hop=after_hop,
+                on_stopped=lambda: mark_run_stopped(impl),
+            )
+            if stop_reason is None:  # externally stopped; state already written
+                return
 
-                if reason == "empty":
-                    raise RuntimeError("pi returned empty responses (no content in any turn)")
-                if reason == "stopped":
-                    st = paths.read_implementation_state(task_id)
-                    st["phase"] = "stopped"
-                    st["stop_reason"] = "stopped"
-                    paths.write_implementation_state(task_id, st)
-                    return
-                if reason == "sentinel":
-                    stop_reason = "sentinel"
-                    break
-                if reason == "time_cap":
-                    stop_reason = "time_cap"
-                    break
-                # agent_end → keep going with a continuation nudge.
-                message, template = self._continue_message(task_id), ""
+            def _finish(state: dict) -> dict:
+                state["phase"] = "done"
+                state["stop_reason"] = stop_reason
+                state["finished_at"] = time.time()
+                return state
 
-            state = paths.read_implementation_state(task_id)
-            state["phase"] = "done"
-            state["stop_reason"] = stop_reason
-            state["finished_at"] = time.time()
-            paths.write_implementation_state(task_id, state)
+            state = impl.update(_finish)
             git_utils.commit(paths.task_dir(task_id), f"implementation done {task_id}")
             logger.info(
                 "implementation: done for %s stop_reason=%s turns=%d",
@@ -308,73 +283,93 @@ class S04Implementation(Stage):
             review = stages.get("impl_review")
             if review is not None:
                 review.start(task_id)
-        except Exception as e:
-            logger.exception("implementation worker failed for %s", task_id)
-            state = paths.read_implementation_state(task_id)
-            state["phase"] = "error"
-            state["error"] = str(e)
-            state["error_detail"] = getattr(e, "detail", "")
-            state["error_step"] = "run"
-            state["finished_at"] = time.time()
-            paths.write_implementation_state(task_id, state)
 
     def retry_from_error(self, task_id: str) -> None:
         """Resume implementation: the run loop reads existing turns and resumes the
         agent's pi session, so it continues from where it crashed."""
-        state = paths.read_implementation_state(task_id)
-        if state.get("phase") != "error":
-            return
-        state["phase"] = "running"
-        state["error"] = ""
-        state["error_detail"] = ""
-        paths.write_implementation_state(task_id, state)
-        self.enqueue_step(task_id, state.get("error_step") or "run")
+        retry = False
+        step = "run"
+
+        def _retry(state: dict) -> dict:
+            nonlocal retry, step
+            if state.get("phase") != "error":
+                return state
+            retry = True
+            step = state.get("error_step") or "run"
+            state["phase"] = "running"
+            state["error"] = ""
+            state["error_detail"] = ""
+            return state
+
+        paths.implementation_state(task_id).update(_retry)
+        if retry:
+            self.enqueue_step(task_id, step)
 
     # -- rendering ------------------------------------------------------------
 
-    def render_status(self, task_id: str, oob: bool = False) -> str:
-        content_id = self.stage_content_id()
-        state = paths.read_implementation_state(task_id)
+    def render_msgs(self, task_id: str) -> list[str]:
+        state = paths.implementation_state(task_id).read()
         phase = state.get("phase")
         turns = state.get("turns", [])
-        parts: list[str] = []
+        msgs: list[str] = []
 
         if phase is None:
             if not self.is_enabled(task_id):
-                parts.append(
+                msgs.append(
                     '<div class="stage-msg"><p style="color: #888;">'
                     "Approve the plan first to unlock implementation.</p></div>"
                 )
             else:
-                parts.append(
+                msgs.append(
                     '<div class="stage-msg"><p>Ready to implement the approved plan.</p></div>'
                 )
-                parts.append(
-                    f'<div class="stage-msg"><button hx-post="{self.start_url(task_id)}" '
-                    f'hx-target="#{content_id}" hx-swap="outerHTML">Start implementation</button></div>'
-                )
-            return self.wrap_status(
-                task_id, "".join(parts), msg_count=max(len(parts), 1),
-                polling=False, extra_class="implementation-content", oob=oob,
-            )
+            return msgs
 
-        model = state.get("current_model", "")
         if phase == "done":
             finished_at = state.get("finished_at")
             meta = f"implemented {_ui._format_ago(finished_at)}" if finished_at else "implemented"
             meta += f" · {len(turns)} turns"
             if state.get("stop_reason"):
                 meta += f" · stop: {_esc(str(state['stop_reason']))}"
-            parts.append(f'<div class="stage-msg implementation-meta"><small>{meta}</small></div>')
+            msgs.append(f'<div class="stage-msg implementation-meta"><small>{meta}</small></div>')
 
-        parts.append(render_turns_trajectory(turns))
+        msgs.extend(render_turn_msgs(turns))
 
-        walkthrough = paths.read_walkthrough(task_id)
-        if walkthrough:
-            parts.append(
-                '<div class="stage-msg implementation-walkthrough"><h3>Walkthrough</h3>'
-                f"{_ui._render_markdown(walkthrough)}</div>"
-            )
+        if phase == "done":
+            walkthrough = paths.read_walkthrough(task_id)
+            if walkthrough:
+                msgs.append(
+                    '<div class="stage-msg implementation-walkthrough"><h3>Walkthrough</h3>'
+                    f"{_ui._render_markdown(walkthrough)}</div>"
+                )
+
+        return msgs
+
+    def render_tail(self, task_id: str) -> str:
+        content_id = self.stage_content_id()
+        state = paths.implementation_state(task_id).read()
+        phase = state.get("phase")
+        turns = state.get("turns", [])
+        parts: list[str] = []
+
+        if phase is None:
+            if self.is_enabled(task_id):
+                parts.append(
+                    f'<div class="stage-buttons"><button hx-post="{self.start_url(task_id)}" '
+                    f'hx-target="#{content_id}" hx-swap="outerHTML">Start implementation</button></div>'
+                )
+            return "".join(parts)
+
+        model = state.get("current_model", "")
+
+        # Walkthrough mutates during the run — keep it in the tail until done.
+        if phase != "done":
+            walkthrough = paths.read_walkthrough(task_id)
+            if walkthrough:
+                parts.append(
+                    '<div class="implementation-walkthrough"><h3>Walkthrough</h3>'
+                    f"{_ui._render_markdown(walkthrough)}</div>"
+                )
 
         if phase == "error":
             parts.append(
@@ -388,25 +383,30 @@ class S04Implementation(Stage):
             )
             if phase == "error":
                 buttons += render_retry_button(self, task_id, state.get("error_step"))
-            parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
+            parts.append(f'<div class="stage-buttons">{buttons}</div>')
 
         if phase in ("error", "stopped"):
             parts.append(render_message_form(self, task_id))
 
         if phase == "running":
             parts.append(
-                render_spinner(
-                    f"Implementing… turn {pi_runner.count_turn_groups(turns)} · model {model}"
+                render_running_tail(
+                    self,
+                    task_id,
+                    f"Implementing… turn {pi_runner.count_turn_groups(turns)} · model {model}",
                 )
             )
-            parts.append(render_stop_button(self, task_id))
 
-        msg_count = max(len(turns) + len(parts), 1)
+        return "".join(parts)
+
+    def render_status(
+        self, task_id: str, oob: bool = False, after: int | None = None
+    ) -> str:
         return self.wrap_status(
             task_id,
-            "".join(parts),
-            msg_count=msg_count,
-            polling=phase == "running",
+            self.render_msgs(task_id),
+            self.render_tail(task_id),
+            after=after,
             extra_class="implementation-content",
             oob=oob,
         )

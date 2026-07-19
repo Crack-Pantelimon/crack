@@ -1,12 +1,17 @@
 /**
- * Task page behaviour. Tabs are now real links (each tab is its own page), and
- * the server force-navigates the user forward via the auto-follow poller's
- * HX-Redirect — so there is no client-side tab switching here anymore. What's
- * left: live tab colours, scroll-to-latest on new content, and the Q&A "Other"
- * toggle.
+ * Task / chat page behaviour: long-poll watch loop, incremental msg append,
+ * scroll-on-new-content (near bottom only), details open-state restore, and
+ * the Q&A "Other" toggle. htmx still handles forms/buttons; polling hx-trigger
+ * attributes are gone (plan 4.2).
  */
 
 (function () {
+  function sleep(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
   function refreshTabColors() {
     document.querySelectorAll('[data-stage-status]').forEach(function (wrapper) {
       const slug = wrapper.getAttribute('data-stage-slug');
@@ -22,26 +27,201 @@
         idle: 'tab--idle',
         disabled: 'tab--disabled',
         error: 'tab--error',
+        stopped: 'tab--error',
       }[status] || 'tab--idle';
       tab.classList.add(cls);
     });
   }
 
-  function scrollToLatest(evt) {
-    const wrapper = evt.target.closest?.('[data-stage-status]') ||
-      (evt.target.matches?.('[data-stage-status]') ? evt.target : null);
-    if (!wrapper) return;
-    // Keep the newest item (a fresh turn, or the bottom spinner) in view.
-    const msgs = wrapper.querySelectorAll('.stage-msg');
-    const last = msgs[msgs.length - 1];
+  function applyStatusMeta(slug) {
+    const meta = document.getElementById(slug + '-status-meta');
+    const content = document.getElementById(slug + '-content');
+    if (!meta || !content) return;
+    ['data-stage-status', 'data-msg-count', 'data-state-mtime'].forEach(function (attr) {
+      const v = meta.getAttribute(attr);
+      if (v != null) content.setAttribute(attr, v);
+    });
+  }
+
+  function lastMsgIndex(slug) {
+    const msgs = document.getElementById(slug + '-msgs');
+    if (!msgs) return -1;
+    let max = -1;
+    const re = new RegExp('^' + slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '-msg-(\\d+)$');
+    msgs.querySelectorAll(':scope > [id]').forEach(function (el) {
+      const m = el.id.match(re);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    return max;
+  }
+
+  function nearBottom(el, threshold) {
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < (threshold || 200);
+  }
+
+  function scrollIfNearBottom(slug, prevCount) {
+    const content = document.getElementById(slug + '-content');
+    if (!content) return;
+    const count = parseInt(content.getAttribute('data-msg-count') || '0', 10);
+    if (!(count > prevCount)) return;
+    const scrollRoot = document.scrollingElement || document.documentElement;
+    if (!nearBottom(scrollRoot, 200)) return;
+    const msgs = document.getElementById(slug + '-msgs');
+    const last = msgs && msgs.lastElementChild;
     if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Belt-and-braces: remember open <details> inside msg nodes across swaps.
+  const openDetails = Object.create(null);
+
+  function rememberDetails(root) {
+    if (!root) return;
+    root.querySelectorAll('details[id], .stage-msg details, details.stage-msg').forEach(function (d) {
+      const key = d.id || (d.closest('[id]') && d.closest('[id]').id + ':' +
+        Array.prototype.indexOf.call(d.parentNode.children, d));
+      if (key) openDetails[key] = d.open;
+    });
+  }
+
+  function restoreDetails(root) {
+    if (!root) return;
+    root.querySelectorAll('details[id], .stage-msg details, details.stage-msg').forEach(function (d) {
+      const key = d.id || (d.closest('[id]') && d.closest('[id]').id + ':' +
+        Array.prototype.indexOf.call(d.parentNode.children, d));
+      if (key && openDetails[key]) d.open = true;
+    });
+  }
+
+  document.body.addEventListener('toggle', function (evt) {
+    const d = evt.target;
+    if (!(d instanceof HTMLDetailsElement)) return;
+    const key = d.id || (d.closest('[id]') && d.closest('[id]').id + ':' +
+      Array.prototype.indexOf.call(d.parentNode.children, d));
+    if (key) openDetails[key] = d.open;
+  }, true);
+
+  async function fetchStatusDelta(taskId, slug) {
+    const content = document.getElementById(slug + '-content');
+    const prevCount = parseInt((content && content.getAttribute('data-msg-count')) || '0', 10);
+    const after = lastMsgIndex(slug);
+    const url = '/tasks/' + encodeURIComponent(taskId) +
+      '/stages/' + encodeURIComponent(slug) + '/status?after=' + after;
+    rememberDetails(document.getElementById(slug + '-msgs'));
+    await htmx.ajax('GET', url, {
+      target: '#' + slug + '-msgs',
+      swap: 'beforeend',
+    });
+    applyStatusMeta(slug);
+    restoreDetails(document.getElementById(slug + '-msgs'));
+    restoreDetails(document.getElementById(slug + '-tail'));
+    refreshTabColors();
+    scrollIfNearBottom(slug, prevCount);
+  }
+
+  function maybeRefreshTitle(taskId) {
+    const pending = document.querySelector('.title-input-pending, [data-title-pending]');
+    if (!pending) return;
+    htmx.ajax('GET', '/tasks/' + encodeURIComponent(taskId) + '/title-regen-status', {
+      target: '#title-slot-' + taskId,
+      swap: 'innerHTML',
+    });
+  }
+
+  async function watchTask(taskId, slug) {
+    const content = document.getElementById(slug + '-content');
+    let since = (content && content.dataset.stateMtime) || '0';
+    for (;;) {
+      try {
+        const r = await fetch(
+          '/tasks/' + encodeURIComponent(taskId) +
+          '/wait?since=' + encodeURIComponent(since) +
+          '&slug=' + encodeURIComponent(slug)
+        );
+        if (!r.ok) {
+          await sleep(2000);
+          continue;
+        }
+        const j = await r.json().catch(function () { return null; });
+        if (!j) {
+          await sleep(2000);
+          continue;
+        }
+        if (j.redirect) {
+          location.assign(j.redirect);
+          return;
+        }
+        since = j.since;
+        if (j.changed) {
+          await fetchStatusDelta(taskId, slug);
+          maybeRefreshTitle(taskId);
+        }
+      } catch (e) {
+        await sleep(2000);
+      }
+    }
+  }
+
+  function lastChatMsgIndex() {
+    return lastMsgIndex('chat');
+  }
+
+  async function fetchChatDelta(chatId) {
+    const content = document.getElementById('chat-content');
+    const prevCount = parseInt((content && content.getAttribute('data-msg-count')) || '0', 10);
+    const after = lastChatMsgIndex();
+    rememberDetails(document.getElementById('chat-msgs'));
+    await htmx.ajax('GET', '/chats/' + encodeURIComponent(chatId) + '/status?after=' + after, {
+      target: '#chat-msgs',
+      swap: 'beforeend',
+    });
+    applyStatusMeta('chat');
+    restoreDetails(document.getElementById('chat-msgs'));
+    restoreDetails(document.getElementById('chat-tail'));
+    scrollIfNearBottom('chat', prevCount);
+  }
+
+  async function watchChat(chatId) {
+    const content = document.getElementById('chat-content');
+    let since = (content && content.dataset.stateMtime) || '0';
+    for (;;) {
+      try {
+        const r = await fetch(
+          '/chats/' + encodeURIComponent(chatId) +
+          '/wait?since=' + encodeURIComponent(since)
+        );
+        if (!r.ok) {
+          await sleep(2000);
+          continue;
+        }
+        const j = await r.json().catch(function () { return null; });
+        if (!j) {
+          await sleep(2000);
+          continue;
+        }
+        since = j.since;
+        if (j.changed) {
+          await fetchChatDelta(chatId);
+        }
+      } catch (e) {
+        await sleep(2000);
+      }
+    }
   }
 
   function onAfterSwap(evt) {
     const editor = evt.target.querySelector?.('textarea[name="content"]:not([readonly])');
     if (editor) editor.focus();
+
+    // Sync status meta after any full content swap (forms/buttons).
+    const content = evt.target.closest?.('[data-stage-status]') ||
+      (evt.target.matches?.('[data-stage-status]') ? evt.target : null);
+    if (content) {
+      const slug = content.getAttribute('data-stage-slug');
+      if (slug) applyStatusMeta(slug);
+    }
     refreshTabColors();
-    scrollToLatest(evt);
+    // Do not unconditional-scroll here — watch loop handles new-msg scrolls.
   }
 
   function initOtherToggle() {
@@ -72,6 +252,17 @@
   document.addEventListener('DOMContentLoaded', function () {
     refreshTabColors();
     initOtherToggle();
+
+    const taskId = document.body.getAttribute('data-task-id');
+    const stage = document.querySelector('[data-stage-status][data-stage-slug]');
+    if (taskId && stage) {
+      watchTask(taskId, stage.getAttribute('data-stage-slug'));
+    }
+
+    const chat = document.getElementById('chat-content');
+    if (chat && chat.dataset.chatId) {
+      watchChat(chat.dataset.chatId);
+    }
   });
 
   document.body.addEventListener('htmx:afterSwap', onAfterSwap);

@@ -13,27 +13,35 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import shutil
 import time
 
 from crack_server import git_utils, paths, pi_runner
-from crack_server.stages.base import (
-    Part,
-    Stage,
+from crack_server.state import JsonState
+from crack_server.stages.base import Part, Stage
+from crack_server.stages.qa import (
+    _QUESTIONS_BLOCK_RE,
     collect_answers,
     format_qa_for_prompt,
     parse_questions,
-    render_error_msg,
-    render_message_form,
     render_qa_history,
     render_questions_form,
-    render_retry_button,
-    render_spinner,
-    render_stop_button,
-    render_turns_trajectory,
 )
-from crack_server import app as _ui
+from crack_server.stages.render import (
+    render_error_msg,
+    render_message_form,
+    render_retry_button,
+    render_running_tail,
+    render_turn_msgs,
+)
+from crack_server import ui as _ui
+from crack_server.ui import _esc
+from crack_server.stages.steprun import (
+    hop_with_nudge,
+    prompt_recorder,
+    record_errors,
+    turn_persister,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -57,11 +65,6 @@ DRAFT_NUDGE = (
 )
 
 RUNNING_PHASES = ("draft_running", "resuming", "final_running")
-_QUESTIONS_BLOCK_RE = re.compile(r"```questions\s*\n(.*?)```", re.DOTALL)
-
-
-def _esc(text: str) -> str:
-    return _ui._esc(text)
 
 
 def _strip_control_blocks(text: str) -> str:
@@ -83,7 +86,7 @@ class S02Plan(Stage):
     message_phase = "resuming"
 
     def status(self, task_id: str) -> str:
-        phase = paths.read_plan_state(task_id).get("phase", "idle")
+        phase = paths.plan_state(task_id).read().get("phase", "idle")
         if phase in ("draft_running", "resuming", "final_running"):
             return "running"
         if phase == "awaiting_answers":
@@ -92,11 +95,8 @@ class S02Plan(Stage):
             return phase
         return "idle"
 
-    def state_read(self, task_id: str) -> dict:
-        return paths.read_plan_state(task_id)
-
-    def state_write(self, task_id: str, state: dict) -> None:
-        paths.write_plan_state(task_id, state)
+    def state(self, task_id: str) -> JsonState:
+        return paths.plan_state(task_id)
 
     def is_enabled(self, task_id: str) -> bool:
         from crack_server import stages
@@ -108,18 +108,16 @@ class S02Plan(Stage):
 
     def start(self, task_id: str) -> None:
         """(Re)start the plan draft. Idempotent while any phase is running."""
-        state = paths.read_plan_state(task_id)
-        if state.get("phase") in RUNNING_PHASES:
+        plan = paths.plan_state(task_id)
+        if plan.read().get("phase") in RUNNING_PHASES:
             return
 
         content = paths.read_all_prompts_joined(task_id)
         if not content:
-            paths.write_plan_state(
-                task_id, {"phase": "error", "error": "no prompt files to plan from"}
-            )
+            plan.write({"phase": "error", "error": "no prompt files to plan from"})
             return
 
-        explore_summary = paths.read_explore_state(task_id).get("summary_md", "")
+        explore_summary = paths.explore_state(task_id).read().get("summary_md", "")
 
         shutil.rmtree(paths.plan_sessions_dir(task_id), ignore_errors=True)
 
@@ -136,7 +134,7 @@ class S02Plan(Stage):
             "stop_requested": False,
         }
         form = self.prepare_start_token(fresh)
-        paths.write_plan_state(task_id, fresh)
+        plan.write(fresh)
         self.enqueue_step(task_id, "draft", form)
 
     def run_step(self, task_id: str, step: str, form: dict | None = None) -> None:
@@ -162,21 +160,32 @@ class S02Plan(Stage):
 
     def submit_answers(self, task_id: str, form) -> None:
         """Record the current round's answers and kick the resume step."""
-        state = paths.read_plan_state(task_id)
-        if state.get("phase") != "awaiting_answers" or not state.get("rounds"):
+        plan = paths.plan_state(task_id)
+        current = plan.read()
+        if current.get("phase") != "awaiting_answers" or not current.get("rounds"):
             return
 
-        rnd = int(state.get("round", 1))
-        current = state["rounds"][-1]
-        current["answers"] = collect_answers(form, current.get("questions", []))
+        rnd = int(current.get("round", 1))
+        answers = collect_answers(form, current["rounds"][-1].get("questions", []))
         paths.write_plan_artefact(
-            task_id, f"round_{rnd}_answers.json", json.dumps(current["answers"], indent=2)
+            task_id, f"round_{rnd}_answers.json", json.dumps(answers, indent=2)
         )
 
-        state["round"] = rnd + 1
-        state["phase"] = "resuming"
-        paths.write_plan_state(task_id, state)
-        self.enqueue_step(task_id, "resume")
+        recorded = False
+
+        def _record(state: dict) -> dict:
+            nonlocal recorded
+            if state.get("phase") != "awaiting_answers" or not state.get("rounds"):
+                return state
+            recorded = True
+            state["rounds"][-1]["answers"] = answers
+            state["round"] = rnd + 1
+            state["phase"] = "resuming"
+            return state
+
+        plan.update(_record)
+        if recorded:
+            self.enqueue_step(task_id, "resume")
 
     # -- background steps -------------------------------------------------------
 
@@ -184,8 +193,10 @@ class S02Plan(Stage):
         self, task_id: str, initial: bool, message_override: str | None = None
     ) -> None:
         start = time.monotonic()
-        try:
-            state = paths.read_plan_state(task_id)
+        plan = paths.plan_state(task_id)
+        step_name = "draft" if initial else "resume"
+        with record_errors(plan, step_name, log_message=f"plan draft step failed for {task_id}"):
+            state = plan.read()
             rnd = int(state.get("round", 1))
 
             if message_override is not None:
@@ -215,32 +226,9 @@ class S02Plan(Stage):
 
             # Turns accumulate across draft steps (rounds); persist to plan.json
             # incrementally so a refresh restores the whole trajectory like Explore.
-            existing_turns = list(state.get("turns", []))
-            turns: list[dict] = []
-
-            def append_entry(entry: dict) -> None:
-                turns.append(entry)
-                st = paths.read_plan_state(task_id)
-                st["turns"] = existing_turns + turns
-                paths.write_plan_state(task_id, st)
-
-            def persist(current_turn: dict, hop: int) -> None:
-                append_entry(
-                    {
-                        "hop": hop,
-                        "text": current_turn.get("text", ""),
-                        "thinking": current_turn.get("thinking", ""),
-                        "tool_blocks": list(current_turn.get("tool_blocks", [])),
-                        "elapsed": current_turn.get("elapsed"),
-                    }
-                )
+            persister = turn_persister(plan)
 
             def hop_once(msg: str, tmpl: str, hop: int) -> str:
-                def record(entry: dict) -> None:
-                    entry.setdefault("label", f"round {rnd}")
-                    entry["template"] = tmpl
-                    append_entry(entry)
-
                 return pi_runner.run_agent_hop(
                     log_prefix=f"plan-draft-r{rnd}",
                     model=self.model_for("draft"),
@@ -251,45 +239,33 @@ class S02Plan(Stage):
                     start=start,
                     sentinel=None,
                     timeout_seconds=DRAFT_TIMEOUT_SECONDS,
-                    persist_turn=persist,
+                    persist_turn=persister.persist,
                     hop=hop,
-                    record_prompt=record,
+                    record_prompt=prompt_recorder(persister, f"round {rnd}", tmpl),
                     **self.agent_hop_kwargs(task_id),
                 )
 
-            reason = hop_once(message, template, 1)
-            logger.info("plan: draft step round=%d finished reason=%s", rnd, reason)
-            if reason == "empty":
-                raise RuntimeError("pi returned empty responses (no content in any turn)")
-            if reason == "stopped":
-                self.mark_stopped(task_id)
-                return
-
-            text = "\n\n".join(t["text"] for t in turns if t.get("text")).strip()
-
             # One flow-control nudge (not a cap) when the agent ended without
             # emitting either a questions block or the sentinel.
-            if (
-                reason == "agent_end"
-                and not parse_questions(text)
-                and READY_SENTINEL not in text
-            ):
-                reason = hop_once(DRAFT_NUDGE, "", 2)
-                if reason == "empty":
-                    raise RuntimeError("pi returned empty responses (no content in any turn)")
-                if reason == "stopped":
-                    self.mark_stopped(task_id)
-                    return
-                text = "\n\n".join(t["text"] for t in turns if t.get("text")).strip()
+            text, reason = hop_with_nudge(
+                run_hop=hop_once,
+                message=message,
+                template=template,
+                nudge=DRAFT_NUDGE,
+                text_so_far=persister.text,
+                sentinels=(READY_SENTINEL,),
+                on_stopped=lambda: self.mark_stopped(task_id),
+            )
+            logger.info("plan: draft step round=%d finished reason=%s", rnd, reason)
+            if reason == "stopped":
+                return
             if not text:
                 raise RuntimeError("plan draft step produced no text")
 
             questions = parse_questions(text)
             lay = _strip_control_blocks(text)
 
-            state = paths.read_plan_state(task_id)
             if lay:
-                state["lay_of_the_land"] = lay
                 paths.write_plan_artefact(task_id, "draft.md", lay)
 
             if READY_SENTINEL in text or rnd >= MAX_ROUNDS or not questions:
@@ -298,31 +274,34 @@ class S02Plan(Stage):
                         "plan: no questions block and no sentinel in round %d; going to final",
                         rnd,
                     )
-                state["phase"] = "final_running"
-                paths.write_plan_state(task_id, state)
+
+                def _to_final(state: dict) -> dict:
+                    if lay:
+                        state["lay_of_the_land"] = lay
+                    state["phase"] = "final_running"
+                    return state
+
+                plan.update(_to_final)
                 self.enqueue_step(task_id, "final")
                 return
 
-            state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
-            state["phase"] = "awaiting_answers"
-            paths.write_plan_state(task_id, state)
+            def _await_answers(state: dict) -> dict:
+                if lay:
+                    state["lay_of_the_land"] = lay
+                state.setdefault("rounds", []).append({"questions": questions, "answers": {}})
+                state["phase"] = "awaiting_answers"
+                return state
+
+            plan.update(_await_answers)
             paths.write_plan_artefact(
                 task_id, f"round_{rnd}_questions.json", json.dumps(questions, indent=2)
             )
             logger.info("plan: round %d produced %d questions", rnd, len(questions))
-        except Exception as e:
-            logger.exception("plan draft step failed for %s", task_id)
-            state = paths.read_plan_state(task_id)
-            state["phase"] = "error"
-            state["error"] = str(e)
-            state["error_detail"] = getattr(e, "detail", "")
-            state["error_step"] = "draft" if initial else "resume"
-            state["finished_at"] = time.time()
-            paths.write_plan_state(task_id, state)
 
     def _run_final(self, task_id: str) -> None:
-        try:
-            state = paths.read_plan_state(task_id)
+        plan = paths.plan_state(task_id)
+        with record_errors(plan, "final", log_message=f"plan final failed for {task_id}"):
+            state = plan.read()
             qa_all = "\n\n".join(
                 f"Round {i}:\n{format_qa_for_prompt(r)}"
                 for i, r in enumerate(state.get("rounds", []), 1)
@@ -340,9 +319,12 @@ class S02Plan(Stage):
             def record(entry: dict) -> None:
                 entry["label"] = "final"
                 entry["template"] = "final_plan.md"
-                st = paths.read_plan_state(task_id)
-                st.setdefault("turns", []).append(entry)
-                paths.write_plan_state(task_id, st)
+
+                def _append(state: dict) -> dict:
+                    state.setdefault("turns", []).append(entry)
+                    return state
+
+                plan.update(_append)
 
             final_md, final_elapsed = pi_runner.run_pi_text(
                 prompt,
@@ -354,12 +336,14 @@ class S02Plan(Stage):
                 final_md = final_md.rstrip() + "\n\n" + READ_ONLY_REMINDER + "\n"
             paths.write_plan_artefact(task_id, "final_plan.md", final_md)
 
-            state = paths.read_plan_state(task_id)
-            state["final_md"] = final_md
-            state["final_elapsed"] = final_elapsed
-            state["phase"] = "done"
-            state["finished_at"] = time.time()
-            paths.write_plan_state(task_id, state)
+            def _finish(state: dict) -> dict:
+                state["final_md"] = final_md
+                state["final_elapsed"] = final_elapsed
+                state["phase"] = "done"
+                state["finished_at"] = time.time()
+                return state
+
+            plan.update(_finish)
             logger.info("plan: done for %s (%d chars)", task_id, len(final_md))
             git_utils.commit(paths.task_dir(task_id), f"plan complete {task_id}")
 
@@ -369,54 +353,38 @@ class S02Plan(Stage):
             if review is not None:
                 review.regenerate_todo(task_id)
                 review.start(task_id)
-        except Exception as e:
-            logger.exception("plan final failed for %s", task_id)
-            state = paths.read_plan_state(task_id)
-            state["phase"] = "error"
-            state["error"] = str(e)
-            state["error_detail"] = getattr(e, "detail", "")
-            state["error_step"] = "final"
-            state["finished_at"] = time.time()
-            paths.write_plan_state(task_id, state)
 
     def retry_from_error(self, task_id: str) -> None:
         """Resume the failed draft/resume/final step, continuing the pi session."""
-        state = paths.read_plan_state(task_id)
-        if state.get("phase") != "error":
-            return
-        step = state.get("error_step") or "draft"
-        running_phase = {
-            "draft": "draft_running",
-            "resume": "resuming",
-            "final": "final_running",
-        }.get(step, "draft_running")
-        state["phase"] = running_phase
-        state["error"] = ""
-        state["error_detail"] = ""
-        paths.write_plan_state(task_id, state)
-        self.enqueue_step(task_id, step)
+        retry = False
+        step = "draft"
+
+        def _retry(state: dict) -> dict:
+            nonlocal retry, step
+            if state.get("phase") != "error":
+                return state
+            retry = True
+            step = state.get("error_step") or "draft"
+            running_phase = {
+                "draft": "draft_running",
+                "resume": "resuming",
+                "final": "final_running",
+            }.get(step, "draft_running")
+            state["phase"] = running_phase
+            state["error"] = ""
+            state["error_detail"] = ""
+            return state
+
+        paths.plan_state(task_id).update(_retry)
+        if retry:
+            self.enqueue_step(task_id, step)
 
     # -- rendering --------------------------------------------------------------
 
-    def _count_msgs(self, state: dict, phase: str) -> int:
-        n = len(state.get("turns", []))
-        n += len([r for r in state.get("rounds", []) if r.get("answers")])
-        if phase == "awaiting_answers":
-            n += 1
-        if phase == "done" and state.get("final_md"):
-            n += 1
-        return max(n, 1)
-
-    def render_status(self, task_id: str, oob: bool = False) -> str:
-        safe_id = _esc(task_id)
-        state = paths.read_plan_state(task_id)
+    def render_msgs(self, task_id: str) -> list[str]:
+        state = paths.plan_state(task_id).read()
         phase = state.get("phase", "idle")
-        rnd = int(state.get("round", 1))
-        content_id = self.stage_content_id()
-        target = f"#{content_id}"
-
-        parts: list[str] = []
-        trajectory = render_turns_trajectory(state.get("turns", []))
+        msgs: list[str] = []
 
         if phase == "done":
             finished_at = state.get("finished_at")
@@ -426,14 +394,34 @@ class S02Plan(Stage):
             final_elapsed = state.get("final_elapsed")
             if final_elapsed is not None:
                 meta += f" · final {final_elapsed:.1f}s"
-            parts.append(f'<div class="stage-msg plan-meta"><small>{meta}</small></div>')
+            msgs.append(f'<div class="stage-msg plan-meta"><small>{meta}</small></div>')
 
-        # Trajectory first, then any Q&A form / final plan / error / spinner below it,
-        # so the spinner (and error) always sit under the last added item.
-        parts.append(trajectory)
+        msgs.extend(render_turn_msgs(state.get("turns", [])))
 
         if phase in ("awaiting_answers", "done"):
-            parts.append(render_qa_history(state.get("rounds", [])))
+            msgs.extend(render_qa_history(state.get("rounds", [])))
+
+        if phase == "done":
+            final_md = state.get("final_md", "")
+            if final_md:
+                msgs.append(
+                    f'<div class="stage-msg plan-final">{_ui._render_markdown(final_md)}</div>'
+                )
+            safe_id = _esc(task_id)
+            msgs.append(
+                f'<div class="stage-msg"><small style="color: #666;">On disk: '
+                f"<code>tasks/{safe_id}/plan/final_plan.md</code></small></div>"
+            )
+
+        return msgs
+
+    def render_tail(self, task_id: str) -> str:
+        state = paths.plan_state(task_id).read()
+        phase = state.get("phase", "idle")
+        rnd = int(state.get("round", 1))
+        content_id = self.stage_content_id()
+        target = f"#{content_id}"
+        parts: list[str] = []
 
         if phase == "awaiting_answers":
             questions = state.get("rounds", [{}])[-1].get("questions", [])
@@ -446,16 +434,6 @@ class S02Plan(Stage):
                     questions,
                     meta=f"Round {rnd}/{MAX_ROUNDS} — the planner needs clarification:",
                 )
-            )
-        elif phase == "done":
-            final_md = state.get("final_md", "")
-            if final_md:
-                parts.append(
-                    f'<div class="stage-msg plan-final">{_ui._render_markdown(final_md)}</div>'
-                )
-            parts.append(
-                f'<div class="stage-msg"><small style="color: #666;">On disk: '
-                f"<code>tasks/{safe_id}/plan/final_plan.md</code></small></div>"
             )
 
         if phase == "error":
@@ -471,7 +449,7 @@ class S02Plan(Stage):
             )
             if phase == "error":
                 buttons += render_retry_button(self, task_id, state.get("error_step"))
-            parts.append(f'<div class="stage-msg stage-buttons">{buttons}</div>')
+            parts.append(f'<div class="stage-buttons">{buttons}</div>')
 
         if phase in ("error", "stopped"):
             parts.append(render_message_form(self, task_id))
@@ -482,15 +460,18 @@ class S02Plan(Stage):
                 "resuming": f"Drafting plan… round {rnd}",
                 "final_running": "Writing final plan…",
             }.get(phase, "Working…")
-            parts.append(render_spinner(label))
-            parts.append(render_stop_button(self, task_id))
+            parts.append(render_running_tail(self, task_id, label))
 
-        msg_count = self._count_msgs(state, phase)
+        return "".join(parts)
+
+    def render_status(
+        self, task_id: str, oob: bool = False, after: int | None = None
+    ) -> str:
         return self.wrap_status(
             task_id,
-            "".join(parts),
-            msg_count=msg_count,
-            polling=phase in RUNNING_PHASES,
+            self.render_msgs(task_id),
+            self.render_tail(task_id),
+            after=after,
             extra_class="plan-content",
             oob=oob,
         )

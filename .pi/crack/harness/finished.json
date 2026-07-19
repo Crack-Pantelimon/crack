@@ -1,5 +1,5 @@
 {
   "models": {
-    "chat": "cursor/composer-2.5"
+    "chat": "nvidia/nemotron-3-ultra-550b-a55b"
   }
 }

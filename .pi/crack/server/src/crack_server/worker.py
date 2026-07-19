@@ -34,7 +34,7 @@ def _dispatch(job: dict) -> None:
     queue, and — for exceptions that escaped the stage's own handling — that
     the stage's state lands in ``error`` so the UI never spins forever (B6).
     """
-    from crack_server import app, chats, paths, queue, stages
+    from crack_server import app, chats, models as models_mod, paths, queue, stages
 
     slug = job.get("slug")
     step = job.get("step")
@@ -43,6 +43,8 @@ def _dispatch(job: dict) -> None:
     try:
         if slug == app.TITLE_JOB_SLUG:
             app._run_title_regen_worker(task_id)
+        elif slug == models_mod.MODELS_JOB_SLUG:
+            models_mod.refresh_models()
         elif slug == chats.CHAT_JOB_SLUG:
             chats.run_chat(task_id)
         else:
@@ -58,13 +60,15 @@ def _dispatch(job: dict) -> None:
         try:
             detail = f"worker dispatch failed: {exc}"
             if slug == app.TITLE_JOB_SLUG:
-                paths.write_title_regen_state(task_id, {"status": "error", "error": detail})
+                paths.title_regen_state(task_id).write({"status": "error", "error": detail})
             elif slug == chats.CHAT_JOB_SLUG:
-                state = paths.read_chat_state(task_id)
-                state["phase"] = "idle"
-                state["error"] = detail
-                state["error_detail"] = ""
-                paths.write_chat_state(task_id, state)
+                def _fail(state: dict) -> dict:
+                    state["phase"] = "idle"
+                    state["error"] = detail
+                    state["error_detail"] = ""
+                    return state
+
+                paths.chat_state(task_id).update(_fail)
             else:
                 stage = stages.get(slug)
                 if stage is not None:
@@ -95,12 +99,86 @@ def _kill_orphaned_agents() -> None:
             pass
 
 
+SESSION_RETENTION_DAYS = 14
+
+# State phases that mean "nothing is running here"; anything else (running,
+# resuming, chatting, drafting, …) makes the owner off-limits to the janitor.
+_TERMINAL_PHASES = {"idle", "done", "error", "stopped"}
+
+
+def _owner_is_active(owner_dir: Path) -> bool:
+    """True if any JSON state file in the task/chat dir reports a live phase."""
+    import json
+
+    for state_file in owner_dir.glob("*.json"):
+        try:
+            data = json.loads(state_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for key in ("status", "phase"):
+            value = str(data.get(key, "")).strip().lower()
+            if value and value not in _TERMINAL_PHASES:
+                return True
+    return False
+
+
+def _newest_mtime(directory: Path) -> float:
+    """Newest mtime inside a session dir (file appends don't touch the dir mtime)."""
+    latest = directory.stat().st_mtime
+    for path in directory.rglob("*"):
+        try:
+            latest = max(latest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return latest
+
+
+def _prune_old_session_dirs() -> None:
+    """B23: delete pi session dirs idle for more than SESSION_RETENTION_DAYS.
+
+    Candidates are ``…/tasks/<id>/<stage>/(sessions|review_sessions)/`` and
+    ``…/unscripted_chats/<id>/sessions/``. A candidate is removed only when
+    its owning task/chat has no live stage/chat phase AND nothing inside the
+    dir was touched within the retention window — a running pi appends to its
+    session JSONL continuously, so active dirs are always fresh.
+    """
+    import shutil
+
+    from crack_server import paths
+
+    candidates: list[tuple[Path, Path]] = []  # (sessions_dir, owner_dir)
+    tasks = paths.tasks_dir()
+    if tasks.is_dir():
+        for pattern in ("*/*/sessions", "*/*/review_sessions"):
+            for sessions_dir in tasks.glob(pattern):
+                if sessions_dir.is_dir():
+                    candidates.append((sessions_dir, sessions_dir.parent.parent))
+    chats_dir = paths.unscripted_chats_dir()
+    if chats_dir.is_dir():
+        for sessions_dir in chats_dir.glob("*/sessions"):
+            if sessions_dir.is_dir():
+                candidates.append((sessions_dir, sessions_dir.parent))
+
+    for sessions_dir, owner_dir in candidates:
+        if _owner_is_active(owner_dir):
+            continue
+        age_days = (time.time() - _newest_mtime(sessions_dir)) / 86400
+        if age_days <= SESSION_RETENTION_DAYS:
+            continue
+        shutil.rmtree(sessions_dir, ignore_errors=True)
+        logger.info(
+            "crack-worker: pruned idle session dir %s (idle %.1f days)",
+            sessions_dir, age_days,
+        )
+
+
 def _loop() -> None:
     """Claim and dispatch jobs forever, up to MAX_WORKERS at a time."""
     from crack_server import queue
 
     logger.info("crack-worker: starting (max_workers=%d)", MAX_WORKERS)
     _kill_orphaned_agents()
+    _prune_old_session_dirs()
     queue.reclaim_orphans()
 
     executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)

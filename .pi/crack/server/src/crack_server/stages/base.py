@@ -8,27 +8,29 @@ A stage is a named, ordered pipeline step (Explore, Plan, …) with:
 - ``render_section`` / ``render_status``: the task-page section and its htmx
   polling fragment.
 
-HTML helpers (_esc, _format_time, _render_base) live in app.py; we import the
-module (never names) so the app↔stages import cycle stays safe — attribute
-access only ever happens at request time, after both modules are loaded.
+Split (plan 4.2 A5): Q&A parse/render helpers live in ``stages/qa.py``; the
+agent-trajectory renderers, volatile-tail widgets, and the shared model
+<select> live in ``stages/render.py``; generic HTML helpers (_esc,
+_format_time, _render_base, render_file_row) live in ui.py, a leaf module that
+imports neither app nor stages — so there is no import cycle to dodge.
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from fastapi import HTTPException
 
-from crack_server import models as models_mod
 from crack_server import paths
 from crack_server import pi_runner
-from crack_server import app as _ui
+from crack_server import ui as _ui
+from crack_server.stages.render import model_select
+from crack_server.state import JsonState, task_state_mtimes
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -41,10 +43,6 @@ STATUS_COLORS = {
     "error": "tab--error",
     "stopped": "tab--error",
 }
-
-MAX_QUESTIONS_PER_ROUND = 5
-_QUESTION_TYPES = ("single", "multiple", "open")
-_QUESTIONS_BLOCK_RE = re.compile(r"```questions\s*\n(.*?)```", re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -77,15 +75,18 @@ class Stage:
     def model_for(self, part_key: str) -> str:
         """Configured model override, else the Part's default_model."""
         part = self.part(part_key)
-        config = paths.read_stage_config(self.slug)
+        config = paths.stage_config_state(self.slug).read()
         override = config.get("models", {}).get(part_key)
         return override or part.default_model
 
     def set_model(self, part_key: str, model_id: str) -> None:
         self.part(part_key)  # validate the part exists
-        config = paths.read_stage_config(self.slug)
-        config.setdefault("models", {})[part_key] = model_id
-        paths.write_stage_config(self.slug, config)
+
+        def _set(config: dict) -> dict:
+            config.setdefault("models", {})[part_key] = model_id
+            return config
+
+        paths.stage_config_state(self.slug).update(_set)
 
     # -- templates / source ---------------------------------------------------
 
@@ -110,19 +111,25 @@ class Stage:
 
     # -- generic state access (implemented by subclasses) ---------------------
 
-    def state_read(self, task_id: str) -> dict:
-        """Read the stage's per-task state dict (thin wrapper over paths.read_*)."""
-        raise NotImplementedError(f"{self.slug}: state_read not implemented")
+    def state(self, task_id: str) -> JsonState:
+        """The stage's per-task state file (subclasses return their JsonState)."""
+        raise NotImplementedError(f"{self.slug}: state not implemented")
 
-    def state_write(self, task_id: str, state: dict) -> None:
-        """Write the stage's per-task state dict (thin wrapper over paths.write_*)."""
-        raise NotImplementedError(f"{self.slug}: state_write not implemented")
+    def state_read(self, task_id: str) -> dict:
+        """Read the stage's per-task state dict (thin wrapper over state().read)."""
+        return self.state(task_id).read()
+
+    def state_update(self, task_id: str, fn: Callable[[dict], dict]) -> dict:
+        """Read-modify-write the stage's state under its per-path flock (B3)."""
+        return self.state(task_id).update(fn)
 
     def mark_stopped(self, task_id: str) -> None:
         """Persist the stage as cleanly stopped (run_agent_hop returned "stopped")."""
-        state = self.state_read(task_id)
-        state[self.phase_key] = "stopped"
-        self.state_write(task_id, state)
+        def _stop(state: dict) -> dict:
+            state[self.phase_key] = "stopped"
+            return state
+
+        self.state_update(task_id, _stop)
 
     def is_enabled(self, task_id: str) -> bool:
         """Default gating: previous stage in REGISTRY must be done; first always on."""
@@ -192,12 +199,14 @@ class Stage:
         one of its jobs raised outside the stage's own error handling, so the UI
         never spins forever on a silently failed job (B6)."""
         try:
-            state = self.state_read(task_id)
-            state[self.phase_key] = "error"
-            state["error"] = f"worker dispatch failed: {message}"
-            state.setdefault("error_detail", "")
-            state["finished_at"] = time.time()
-            self.state_write(task_id, state)
+            def _fail(state: dict) -> dict:
+                state[self.phase_key] = "error"
+                state["error"] = f"worker dispatch failed: {message}"
+                state.setdefault("error_detail", "")
+                state["finished_at"] = time.time()
+                return state
+
+            self.state_update(task_id, _fail)
         except Exception:
             logger.exception("%s: could not record dispatch error for %s", self.slug, task_id)
 
@@ -223,14 +232,20 @@ class Stage:
         intentional), kill the pi process group, and show ``stopped`` at once."""
         if self.status(task_id) != "running":
             return
-        state = self.state_read(task_id)
-        state["stop_requested"] = True
-        self.state_write(task_id, state)
+
+        def _flag(state: dict) -> dict:
+            state["stop_requested"] = True
+            return state
+
+        self.state_update(task_id, _flag)
         killed = pi_runner.kill_pid_file(paths.stage_pid_file(task_id, self.slug))
         logger.info("%s: stop requested for %s (killed=%s)", self.slug, task_id, killed)
-        state = self.state_read(task_id)
-        state[self.phase_key] = "stopped"
-        self.state_write(task_id, state)
+
+        def _stopped(state: dict) -> dict:
+            state[self.phase_key] = "stopped"
+            return state
+
+        self.state_update(task_id, _stopped)
 
     def post_user_message(self, task_id: str, form) -> None:
         """Generic continue-with-a-message: allowed from ``stopped`` or ``error``;
@@ -239,15 +254,22 @@ class Stage:
         msg = str(form.get("msg", "")).strip()
         if not msg:
             return
-        state = self.state_read(task_id)
-        if state.get(self.phase_key) not in ("stopped", "error"):
-            return
-        state["error"] = ""
-        state["error_detail"] = ""
-        state["stop_requested"] = False
-        state[self.phase_key] = self.message_phase
-        self.state_write(task_id, state)
-        self.enqueue_step(task_id, "user_message", {"msg": msg})
+        accepted = False
+
+        def _resume(state: dict) -> dict:
+            nonlocal accepted
+            if state.get(self.phase_key) not in ("stopped", "error"):
+                return state
+            accepted = True
+            state["error"] = ""
+            state["error_detail"] = ""
+            state["stop_requested"] = False
+            state[self.phase_key] = self.message_phase
+            return state
+
+        self.state_update(task_id, _resume)
+        if accepted:
+            self.enqueue_step(task_id, "user_message", {"msg": msg})
 
     def agent_hop_kwargs(self, task_id: str) -> dict:
         """The ``pid_file`` / ``stop_check`` kwargs every stage passes to
@@ -269,11 +291,37 @@ class Stage:
     def render_section(self, task_id: str) -> str:
         return self.render_status(task_id)
 
-    def render_status(self, task_id: str, oob: bool = False) -> str:
+    def render_msgs(self, task_id: str) -> list[str]:
+        """Append-only history fragments (one HTML string per `.stage-msg`)."""
         raise NotImplementedError
+
+    def render_tail(self, task_id: str) -> str:
+        """Volatile bottom region: spinner, error, forms, buttons."""
+        raise NotImplementedError
+
+    def render_status(
+        self,
+        task_id: str,
+        oob: bool = False,
+        after: int | None = None,
+    ) -> str:
+        """Assemble msgs + tail. With ``after``, return only new msgs + OOB tail."""
+        return self.wrap_status(
+            task_id,
+            self.render_msgs(task_id),
+            self.render_tail(task_id),
+            after=after,
+            oob=oob,
+        )
 
     def stage_content_id(self) -> str:
         return f"{self.slug}-content"
+
+    def msgs_id(self) -> str:
+        return f"{self.slug}-msgs"
+
+    def tail_id(self) -> str:
+        return f"{self.slug}-tail"
 
     def status_poll_url(self, task_id: str) -> str:
         return f"/tasks/{task_id}/stages/{self.slug}/status"
@@ -284,36 +332,71 @@ class Stage:
     def action_url(self, task_id: str, action: str) -> str:
         return f"/api/tasks/{task_id}/stages/{self.slug}/actions/{action}"
 
+    def _tag_msg(self, index: int, html: str) -> str:
+        """Ensure a msg fragment has id="{slug}-msg-{index}" on its outer element."""
+        esc = _ui._esc
+        msg_id = f"{self.slug}-msg-{index}"
+        # Inject id into the first tag when it is already a .stage-msg wrapper.
+        for needle in ('<div class="stage-msg', "<div class='stage-msg",
+                       '<details class="stage-msg', "<details class='stage-msg",
+                       '<form class="stage-msg', "<form class='stage-msg",
+                       '<section class="stage-msg', "<section class='stage-msg"):
+            if needle in html[:120]:
+                tag = needle.split(" ", 1)[0]  # "<div" / "<details" / …
+                return html.replace(tag + " ", f'{tag} id="{esc(msg_id)}" ', 1)
+        return f'<div id="{esc(msg_id)}" class="stage-msg">{html}</div>'
+
     def wrap_status(
         self,
         task_id: str,
-        inner: str,
+        msgs: list[str],
+        tail: str,
         *,
-        msg_count: int,
-        polling: bool = False,
+        after: int | None = None,
         extra_class: str = "",
         oob: bool = False,
     ) -> str:
-        """Outer polling wrapper carrying data-stage-status and data-msg-count.
+        """Msgs/tail structure with stable ids for incremental long-poll swaps.
 
-        With ``oob=True`` the content div carries hx-swap-oob so htmx replaces
-        the live panel (same id) out-of-band as part of another swap."""
+        Full render (``after is None``): content → msgs region + tail region.
+        Delta render (``after=n``): only messages with index ``> n``, plus an
+        out-of-band outerHTML swap for the tail (and a status meta OOB span).
+        """
         esc = _ui._esc
-        safe_id = esc(task_id)
         status = self.status(task_id)
-        poll_attrs = (
-            f' hx-trigger="every 1.5s" hx-get="{esc(self.status_poll_url(task_id))}"'
-            ' hx-swap="outerHTML"'
-            if polling
-            else ""
-        )
+        mtime = task_state_mtimes(task_id)
+        tagged = [self._tag_msg(i, m) for i, m in enumerate(msgs)]
+        msg_count = len(tagged)
+        content_id = esc(self.stage_content_id())
+        msgs_id = esc(self.msgs_id())
+        tail_id = esc(self.tail_id())
+        status_esc = esc(status)
+        slug_esc = esc(self.slug)
+
+        if after is not None:
+            new_msgs = "".join(tagged[i] for i in range(len(tagged)) if i > after)
+            # Tail always refreshes on change; status attrs ride on a meta span
+            # that app.js copies onto the live content div (avoid wiping children).
+            return (
+                new_msgs
+                + f'<div id="{tail_id}" hx-swap-oob="outerHTML">{tail}</div>'
+                + f'<span id="{slug_esc}-status-meta" hx-swap-oob="outerHTML"'
+                + f' data-stage-status="{status_esc}" data-msg-count="{msg_count}"'
+                + f' data-state-mtime="{mtime}" hidden></span>'
+            )
+
         oob_attr = ' hx-swap-oob="true"' if oob else ""
         cls = f"stage-content {extra_class}".strip()
         return (
-            f'<div id="{esc(self.stage_content_id())}" class="{cls}"'
-            f' data-stage-status="{esc(status)}" data-msg-count="{msg_count}"'
-            f' data-stage-slug="{esc(self.slug)}"{poll_attrs}{oob_attr}>'
-            f"{inner}</div>"
+            f'<div id="{content_id}" class="{cls}"'
+            f' data-stage-status="{status_esc}" data-msg-count="{msg_count}"'
+            f' data-state-mtime="{mtime}" data-stage-slug="{slug_esc}"{oob_attr}>'
+            f'<div id="{msgs_id}">{"".join(tagged)}</div>'
+            f'<div id="{tail_id}">{tail}</div>'
+            f'<span id="{slug_esc}-status-meta" hidden'
+            f' data-stage-status="{status_esc}" data-msg-count="{msg_count}"'
+            f' data-state-mtime="{mtime}"></span>'
+            f"</div>"
         )
 
     # -- config screen (/stages/<slug>) ----------------------------------------
@@ -323,67 +406,36 @@ class Stage:
         saves on change (target: the row itself, outerHTML)."""
         esc = _ui._esc
         current = self.model_for(part.key)
-        options = models_mod.get_models()
-        if current not in options:
-            options = [current] + options
-        opts = "".join(
-            f'<option value="{esc(m)}"{" selected" if m == current else ""}>{esc(m)}</option>'
-            for m in options
+        select = model_select(
+            "model",
+            current,
+            f"/api/stages/{self.slug}/parts/{part.key}/model",
+            target="closest .part-row",
+            swap="outerHTML",
+            indent=" " * 10,
         )
         return f"""
         <div class="part-row">
           <span class="part-label">{esc(part.label)}</span>
           <code>{esc(part.template)}</code>
-          <select name="model" hx-post="/api/stages/{esc(self.slug)}/parts/{esc(part.key)}/model"
-                  hx-trigger="change" hx-target="closest .part-row" hx-swap="outerHTML">
-            {opts}
-          </select>
+{select}
         </div>
         """
 
     def render_template_row(self, filename: str, editing: bool = False) -> str:
         """Prompt-row style view/edit toggle for one of the stage's templates."""
-        esc = _ui._esc
         content = paths.read_stage_template(self.slug, filename)  # raises FileNotFoundError
         stat = (self.template_dir() / filename).stat()
-        size = stat.st_size
-        mtime = _ui._format_time(stat.st_mtime)
-
-        safe_slug = esc(self.slug)
-        safe_name = esc(filename)
-        safe_content = esc(content)
-
-        if editing:
-            return f"""
-            <article class="prompt-row">
-              <form hx-put="/api/stages/{safe_slug}/templates/{safe_name}" hx-target="closest article" hx-swap="outerHTML">
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
-                  <label style="flex: 1;">Filename <input type="text" value="{safe_name}" readonly></label>
-                  <small style="color: #666;">{size} bytes • {mtime}</small>
-                </div>
-                <label>Content
-                  <textarea name="content" rows="12" required>{safe_content}</textarea>
-                </label>
-                <div class="actions">
-                  <button type="submit">Save</button>
-                  <button type="button" hx-get="/stages/{safe_slug}/template-row/{safe_name}" hx-target="closest article" hx-swap="outerHTML" class="secondary">Cancel</button>
-                </div>
-              </form>
-            </article>
-            """
-
-        return f"""
-        <article class="prompt-row">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
-            <span class="name">{safe_name}</span>
-            <small style="color: #666;">{size} bytes • {mtime}</small>
-          </div>
-          <textarea readonly rows="4">{safe_content}</textarea>
-          <div class="actions">
-            <button hx-get="/stages/{safe_slug}/template-row/{safe_name}?editing=true" hx-target="closest article" hx-swap="outerHTML">Edit</button>
-          </div>
-        </article>
-        """
+        meta = f"{stat.st_size} bytes • {_ui._format_time(stat.st_mtime)}"
+        return _ui.render_file_row(
+            f"/stages/{self.slug}/template-row/{filename}",
+            f"/api/stages/{self.slug}/templates/{filename}",
+            filename,
+            content,
+            meta,
+            editing,
+            indent=" " * 8,
+        )
 
     def render_config_body(self) -> str:
         """Body of the /stages/<slug> page: part model dropdowns, editable
@@ -428,393 +480,3 @@ class Stage:
           <pre class="stage-source">{esc(source)}</pre>
         </section>
         """
-
-
-# ---------------------------------------------------------------------------
-# Shared Q&A helpers (used by Plan and Plan Review interviewing stages)
-# ---------------------------------------------------------------------------
-
-
-def parse_questions(text: str) -> list[dict]:
-    """Extract and validate the last fenced ```questions JSON block (≤5 items)."""
-    matches = _QUESTIONS_BLOCK_RE.findall(text)
-    if not matches:
-        return []
-    try:
-        raw = json.loads(matches[-1])
-    except json.JSONDecodeError:
-        logger.warning("questions block is not valid JSON")
-        return []
-    if not isinstance(raw, list):
-        return []
-
-    questions: list[dict] = []
-    for item in raw[:MAX_QUESTIONS_PER_ROUND]:
-        if not isinstance(item, dict):
-            continue
-        qid = str(item.get("id", "")).strip()
-        qtext = str(item.get("text", "")).strip()
-        qtype = str(item.get("type", "")).strip()
-        if not qid or not qtext or qtype not in _QUESTION_TYPES:
-            continue
-        question: dict = {"id": qid, "text": qtext, "type": qtype}
-        if qtype in ("single", "multiple"):
-            options = item.get("options")
-            if not isinstance(options, list) or not options:
-                continue
-            question["options"] = [str(o) for o in options]
-        questions.append(question)
-    return questions
-
-
-def _format_answer(answer) -> str:
-    if isinstance(answer, list):
-        return ", ".join(str(a) for a in answer)
-    return str(answer) if answer else "(no answer)"
-
-
-def render_qa_history(rounds: list[dict]) -> str:
-    """Render answered Q&A rounds as .stage-msg blocks (persisted across refresh)."""
-    esc = _ui._esc
-    parts: list[str] = []
-    for i, rnd in enumerate(rounds, 1):
-        answers = rnd.get("answers") or {}
-        if not answers:
-            continue
-        for q in rnd.get("questions", []):
-            answer = answers.get(q["id"], "")
-            if not answer and answer != 0:
-                continue
-            parts.append(
-                '<div class="stage-msg qa-round">'
-                f'<p class="qa-q"><strong>Q:</strong> {esc(str(q["text"]))}</p>'
-                f'<p class="qa-a"><strong>A:</strong> {esc(_format_answer(answer))}</p>'
-                "</div>"
-            )
-    return "".join(parts)
-
-
-def render_questions_form(
-    action_url: str,
-    target: str,
-    round_num: int,
-    max_rounds: int | None,
-    questions: list[dict],
-    *,
-    meta: str | None = None,
-) -> str:
-    """Q&A form with radios/checkboxes/open plus an Other option on single/multiple."""
-    esc = _ui._esc
-    fields: list[str] = []
-    for q in questions:
-        qid = str(q["id"])
-        safe_qid = esc(qid)
-        qtype = q.get("type")
-        if qtype in ("single", "multiple"):
-            input_type = "radio" if qtype == "single" else "checkbox"
-            required = " required" if qtype == "single" else ""
-            options = "".join(
-                f'<label class="plan-option">'
-                f'<input type="{input_type}" name="{safe_qid}" value="{esc(str(o))}"{required}> '
-                f"{esc(str(o))}</label>"
-                for o in q.get("options", [])
-            )
-            other_label = (
-                f'<label class="plan-option">'
-                f'<input type="{input_type}" name="{safe_qid}" value="__other__"> Other,</label>'
-                f'<textarea name="{safe_qid}__other" class="other-input" rows="2" disabled'
-                f' placeholder="Please specify…"></textarea>'
-            )
-            control = f'<div class="plan-options">{options}{other_label}</div>'
-        else:
-            control = f'<textarea name="{safe_qid}" rows="2"></textarea>'
-        fields.append(
-            f'<fieldset class="plan-question">'
-            f"<legend>{esc(str(q['text']))}</legend>"
-            f"{control}</fieldset>"
-        )
-
-    if meta is None:
-        cap = f"/{max_rounds}" if max_rounds else ""
-        meta = f"Round {round_num}{cap} — clarification needed:"
-    return f"""
-    <form class="plan-questions stage-msg" hx-post="{esc(action_url)}"
-          hx-target="{esc(target)}" hx-swap="outerHTML">
-      <p class="plan-meta"><small>{esc(meta)}</small></p>
-      {"".join(fields)}
-      <button type="submit">Submit answers</button>
-    </form>
-    """
-
-
-def collect_answers(form, questions: list[dict]) -> dict:
-    """Collect answers from a FormData, resolving __other__ to free-text."""
-    answers: dict = {}
-    for q in questions:
-        qid = q["id"]
-        values = [str(v) for v in form.getlist(qid) if str(v).strip()]
-        if q.get("type") == "multiple":
-            resolved: list[str] = []
-            for v in values:
-                if v == "__other__":
-                    other = str(form.get(f"{qid}__other", "")).strip()
-                    if other:
-                        resolved.append(other)
-                else:
-                    resolved.append(v)
-            answers[qid] = resolved
-        elif q.get("type") == "single":
-            if values and values[0] == "__other__":
-                answers[qid] = str(form.get(f"{qid}__other", "")).strip()
-            else:
-                answers[qid] = values[0] if values else ""
-        else:
-            answers[qid] = values[0] if values else ""
-    return answers
-
-
-def format_qa_for_prompt(round_entry: dict) -> str:
-    """Render one round's questions + answers as Q:/A: pairs for prompts."""
-    lines = []
-    answers = round_entry.get("answers", {})
-    for q in round_entry.get("questions", []):
-        lines.append(f"Q: {q['text']}\nA: {_format_answer(answers.get(q['id'], ''))}")
-    return "\n\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Shared agent-trajectory rendering — one compact actions table, identical to
-# the Explore stage's look (moved here so Plan and Plan Review render the same).
-# ---------------------------------------------------------------------------
-
-# Control signalling the agent emits inline (questions blocks / sentinels) is not
-# content — strip it from displayed trajectory text so raw JSON never leaks.
-_CONTROL_BLOCK_RE = re.compile(r"```questions\s*\n.*?```", re.DOTALL)
-_CONTROL_SENTINELS = (
-    "READY_TO_PLAN",
-    "READY_TO_REVISE",
-    "PLAN_REVISED",
-    "EXPLORATION_COMPLETE",
-)
-
-
-def _clean_turn_text(text: str) -> str:
-    """Remove fenced questions blocks and known control sentinels from turn text."""
-    text = _CONTROL_BLOCK_RE.sub("", text)
-    for sentinel in _CONTROL_SENTINELS:
-        text = text.replace(sentinel, "")
-    return text.strip()
-
-
-def _fmt_chars(n: int) -> str:
-    """Compact character count: 240, 1.2k, 12.3k."""
-    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
-
-
-def _truncate_middle(s: str, max_len: int = 60) -> str:
-    """Middle-truncate a path, keeping the head and a whole-segment tail (filename)."""
-    if len(s) <= max_len:
-        return s
-    head_len = max_len // 3
-    tail = s[-(max_len - head_len - 1):]
-    if "/" in tail:
-        tail = tail[tail.index("/"):]
-    return s[:head_len] + "…" + tail
-
-
-def _parse_tool_args(input_raw) -> dict:
-    """Tool-call arguments arrive as a dict in pi JSON mode; tolerate JSON strings."""
-    if isinstance(input_raw, dict):
-        return input_raw
-    if isinstance(input_raw, str):
-        try:
-            parsed = json.loads(input_raw)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
-
-
-def _render_text_action_row(kind: str, text: str, elapsed: float | None = None) -> str:
-    """Table row for an assistant text/thinking block: first-line snippet, expandable."""
-    esc = _ui._esc
-    stripped = text.strip()
-    first_line = stripped.splitlines()[0] if stripped else ""
-    snippet = first_line if len(first_line) <= 80 else first_line[:77] + "…"
-    if stripped == first_line and len(first_line) <= 80:
-        middle = esc(snippet)
-    else:
-        middle = (
-            f"<details><summary>{esc(snippet)}</summary>"
-            f'<div class="turn-text">{esc(text)}</div></details>'
-        )
-    size = f"out {_fmt_chars(len(text))}"
-    if elapsed is not None:
-        size += f" · {elapsed:.1f}s"
-    return f"<tr><td>{kind}</td><td>{middle}</td><td>{size}</td></tr>"
-
-
-def _render_tool_action_row(block: dict) -> str:
-    """Table row for one tool call: type, path/command, in/out char counts, output."""
-    esc = _ui._esc
-    name = str(block.get("name", "tool"))
-    input_raw = block.get("input", "")
-    output = str(block.get("output", ""))
-    args = _parse_tool_args(input_raw)
-
-    if name == "read":
-        action_type = "read"
-        path = str(args.get("path") or input_raw)
-        middle = f'<code title="{esc(path)}">{esc(_truncate_middle(path))}</code>'
-    elif name == "bash":
-        command = str(args.get("command") or input_raw)
-        action_type = "sigmap" if command.strip().startswith("sigmap") else "bash"
-        middle = f'<pre class="cmd">{esc(command)}</pre>'
-    elif name in ("edit", "write"):
-        action_type = name
-        path = str(args.get("path") or args.get("filePath") or "")
-        middle = f'<code title="{esc(path)}">{esc(_truncate_middle(path))}</code>' if path \
-            else f'<pre class="cmd">{esc(str(input_raw))[:400]}</pre>'
-    else:
-        action_type = esc(name)
-        middle = f'<pre class="cmd">{esc(str(input_raw))}</pre>'
-
-    if output:
-        truncated, marker = pi_runner.truncate_output(output)
-        body = f"<pre>{esc(truncated)}</pre>"
-        if marker:
-            body += f'<small class="trunc-marker">{esc(marker)}</small>'
-        middle += f"<details><summary>output</summary>{body}</details>"
-
-    size = f"in {_fmt_chars(len(str(input_raw)))} / out {_fmt_chars(len(output))}"
-    elapsed = block.get("elapsed")
-    if elapsed is not None:
-        size += f" · {elapsed:.1f}s"
-    return f"<tr><td>{action_type}</td><td>{middle}</td><td>{size}</td></tr>"
-
-
-def render_actions_table(turns: list[dict], include_text: bool = True) -> str:
-    """Render agent turns as one compact actions table (one row per action).
-
-    Shared by every stage so Explore, Plan, and Plan Review look identical.
-    Turn text is cleaned of control blocks/sentinels before display. With
-    ``include_text=False`` the assistant text rows are omitted — used by the
-    chat surface, which renders those answers as markdown alongside the table."""
-    rows: list[str] = []
-    for turn in turns:
-        # Entries that are not assistant turns (recorded user prompts and any
-        # future `kind`-tagged entries) are skipped — plan 4.2 owns their look.
-        if turn.get("kind"):
-            continue
-        # Content-less turns (empty model responses) have nothing to show.
-        if not (
-            turn.get("text", "").strip()
-            or turn.get("thinking", "").strip()
-            or turn.get("tool_blocks")
-        ):
-            continue
-        thinking = turn.get("thinking", "")
-        text = _clean_turn_text(turn.get("text", ""))
-        elapsed = turn.get("elapsed")
-        if thinking:
-            rows.append(_render_text_action_row("think", thinking, elapsed))
-        if include_text and text:
-            rows.append(_render_text_action_row("text", text, elapsed))
-        for block in turn.get("tool_blocks", []):
-            rows.append(_render_tool_action_row(block))
-    if not rows:
-        return ""
-    return (
-        '<table class="explore-actions"><thead><tr>'
-        "<th>Type</th><th>Path / command</th><th>Size</th>"
-        f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    )
-
-
-def render_turns_trajectory(turns: list[dict], include_text: bool = True) -> str:
-    """Agent turns as one `.stage-msg`-wrapped actions table (Explore's look).
-
-    ``include_text=False`` drops assistant text rows (the chat surface renders
-    those as markdown instead of as escaped snippets in the table)."""
-    table = render_actions_table(turns, include_text=include_text)
-    if not table:
-        return ""
-    return f'<div class="stage-msg">{table}</div>'
-
-
-def render_error_msg(error: str, detail: str = "") -> str:
-    """One `.stage-msg` error card, rendered *inline* as the last turn event.
-
-    An error is a natural event of running an agent, so it belongs at the bottom
-    of the trajectory (after the turns), not as a banner at the top. The captured
-    stdout+stderr tail (last few lines) is tucked into an expandable <details> so
-    the failure is diagnosable without leaving the page."""
-    esc = _ui._esc
-    html = (
-        '<div class="stage-msg stage-error">'
-        f'<p class="error-line">⚠ {esc(error or "error")}</p>'
-    )
-    if detail:
-        html += (
-            '<details class="error-detail"><summary>last output (stdout+stderr)</summary>'
-            f'<pre class="error-log">{esc(detail)}</pre></details>'
-        )
-    return html + "</div>"
-
-
-def render_spinner(label: str) -> str:
-    """A busy spinner rendered as the last `.stage-msg` on the page.
-
-    Always emitted *after* the trajectory so it sits under the last added item;
-    it vanishes as soon as the stage leaves a running phase (and the user is
-    jumped to the next stage's page)."""
-    esc = _ui._esc
-    return (
-        '<div class="stage-msg stage-spinner">'
-        f'<p aria-busy="true">{esc(label)}</p></div>'
-    )
-
-
-def render_retry_button(stage: "Stage", task_id: str, error_step: str | None) -> str:
-    """The "continue from last error" button shown next to a stage's re-run button.
-
-    It POSTs the generic ``retry_error`` action, which re-enqueues the failed step
-    so the agent continues from where it crashed (resuming its pi session) for
-    another full round of retries. Omitted when there is no recorded failed step."""
-    if not error_step:
-        return ""
-    esc = _ui._esc
-    content_id = stage.stage_content_id()
-    return (
-        f'<button hx-post="{esc(stage.action_url(task_id, "retry_error"))}" '
-        f'hx-target="#{content_id}" hx-swap="outerHTML" class="secondary retry-error-btn">'
-        "Continue from last error</button>"
-    )
-
-
-def render_stop_button(stage: "Stage", task_id: str) -> str:
-    """A STOP button shown while a stage's agent is running: kills the pi
-    process group and lands the stage in ``stopped`` (plain — plan 4.2 restyles)."""
-    esc = _ui._esc
-    return (
-        '<div class="stage-msg stage-stop">'
-        f'<button hx-post="{esc(stage.action_url(task_id, "stop"))}" '
-        f'hx-target="#{stage.stage_content_id()}" hx-swap="outerHTML" '
-        'class="secondary stop-btn">STOP</button></div>'
-    )
-
-
-def render_message_form(stage: "Stage", task_id: str) -> str:
-    """One-textarea form posting the generic ``message`` action, shown when a
-    stage is ``stopped`` or ``error`` so the user can resume the agent's session
-    with new instructions (plain — plan 4.2 restyles)."""
-    esc = _ui._esc
-    return f"""
-    <form class="stage-msg stage-message" hx-post="{esc(stage.action_url(task_id, "message"))}"
-          hx-target="#{stage.stage_content_id()}" hx-swap="outerHTML">
-      <label>Send a message to resume the agent
-        <textarea name="msg" rows="3" required placeholder="Type a message…"></textarea>
-      </label>
-      <button type="submit">Send</button>
-    </form>
-    """

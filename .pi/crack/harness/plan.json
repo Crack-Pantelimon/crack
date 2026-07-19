@@ -1,6 +1,6 @@
 {
   "models": {
-    "draft": "cursor/grok-4.5:slow",
-    "final": "moonshotai/kimi-k3"
+    "draft": "nvidia/nemotron-3-ultra-550b-a55b",
+    "final": "nvidia/nemotron-3-ultra-550b-a55b"
   }
 }
