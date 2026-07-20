@@ -1,6 +1,0 @@
-{
-  "id": "1784586114784",
-  "title": "Add missing Rust docstrings via sub-agents",
-  "model": "nvidia/nemotron-3-ultra-550b-a55b",
-  "created_at": 1784586114.7843785
-}

@@ -85,6 +85,14 @@ features = ["derive"]
 version = "1"
 features = ["full"]
 
+[workspace.lints.rust]
+missing_docs = "warn"
+missing_debug_implementations = "warn" 
+missing_docs_in_private_items = "allow"
+missing_doc_code_examples = "allow"
+private_doc_tests = "allow"
+
+
 [workspace.lints.clippy]
 new_without_default = "allow"
 unused-async = "warn"

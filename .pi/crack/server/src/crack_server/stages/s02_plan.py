@@ -59,8 +59,8 @@ ULTRA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
 
 MAX_ROUNDS = 3
 READY_SENTINEL = "READY_TO_PLAN"
-DRAFT_TIMEOUT_SECONDS = 300
-WRITE_TIMEOUT_SECONDS = 1800
+DRAFT_TIMEOUT_SECONDS = 900
+WRITE_TIMEOUT_SECONDS = 3600
 WRITE_MAX_CORRECTIVE = 2
 
 # Flow-control nudge (not a cap): sent once when the agent ended its turn

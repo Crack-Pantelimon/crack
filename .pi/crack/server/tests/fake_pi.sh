@@ -24,6 +24,10 @@
 #   midhard:N      emit N turns, then a non-transient error and exit 1
 #   autoretryfail:N emit N turns, then auto_retry_end success=false +
 #                  agent_settled (rc 0) — pi's internal 429-retry exhaustion
+#   willretry:N:M  emit N turns, agent_end willRetry=true, then M more turns,
+#                  then a final agent_end (willRetry omitted) — one pi
+#                  invocation looping through multiple internal agent-loop
+#                  segments (auto-continue), all turns from a single process
 #   hard           print a non-transient error to stderr and exit 1
 #   ok             (print mode) echo "text-response" and exit 0
 #   copy:SRC>DST   copy file SRC to DST (an "agent wrote the artifact" stand-in),
@@ -142,6 +146,18 @@ time.sleep(arg)
     done
     printf '{"type":"auto_retry_end","success":false,"finalError":"429 status code (no body)"}\n'
     printf '{"type":"agent_settled"}\n'
+    ;;
+  willretry)
+    count1="${arg%%:*}"
+    count2="${arg#*:}"
+    for i in $(seq 1 "$count1"); do
+      emit_turn "phase1 turn $i (invocation $n)"
+    done
+    printf '{"type":"agent_end","willRetry":true}\n'
+    for i in $(seq 1 "$count2"); do
+      emit_turn "phase2 turn $i (invocation $n)"
+    done
+    printf '{"type":"agent_end"}\n'
     ;;
   hard)
     echo "boom: unrecoverable parse explosion" >&2

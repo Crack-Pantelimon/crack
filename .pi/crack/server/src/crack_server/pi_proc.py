@@ -679,6 +679,12 @@ def _process_stream_line(sink: _StreamSink, line: str, terminate: Callable[[], N
     if etype == "auto_retry_end" and not event.get("success"):
         sink.ended_in_error = event.get("finalError") or "auto_retry exhausted"
 
+    if etype == "agent_end" and event.get("willRetry"):
+        # pi is continuing its own internal agent loop (auto-retry,
+        # multi-phase orchestration, etc.) — not a process-exit signal.
+        # Keep tailing; only a willRetry:false agent_end or agent_settled
+        # actually ends the hop.
+        return False
     if etype in ("agent_end", "agent_settled"):
         sink.terminal = True
         return True

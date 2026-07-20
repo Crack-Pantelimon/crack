@@ -345,6 +345,31 @@ def test_persisted_then_clean_agent_end_still_returns_immediately(fake_pi, tmp_p
     assert errors == []
 
 
+def test_willretry_agent_end_does_not_end_hop_early(fake_pi, tmp_path):
+    # Regression: a single pi invocation can emit several internal agent_end
+    # events (willRetry=true) before the CLI process actually exits. Only a
+    # willRetry=false agent_end (or agent_settled) should end the hop — an
+    # earlier willRetry=true agent_end must not be mistaken for process exit,
+    # which used to truncate output and lose every later turn.
+    fake_pi.set_script(["willretry:2:3"])
+    errors: list[dict] = []
+    reason, turns = run_hop(
+        tmp_path,
+        record_error=lambda e: errors.append(e) or len(errors),
+    )
+    assert reason == "agent_end"
+    assert [t["text"] for t in turns] == [
+        "phase1 turn 1 (invocation 1)",
+        "phase1 turn 2 (invocation 1)",
+        "phase2 turn 1 (invocation 1)",
+        "phase2 turn 2 (invocation 1)",
+        "phase2 turn 3 (invocation 1)",
+    ]
+    # All turns come from one pi process — no retry/resume was triggered.
+    assert fake_pi.invocations() == 1
+    assert errors == []
+
+
 def test_hard_backoff_schedule_matches_hard_retry_delays(monkeypatch):
     sleeps: list[float] = []
 

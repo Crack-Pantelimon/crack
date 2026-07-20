@@ -20,7 +20,7 @@ from crack_server import ui as _ui
 
 GLM_MODEL = "nvidia/z-ai/glm-5.2"
 
-CHAT_TIMEOUT_SECONDS = 900
+CHAT_TIMEOUT_SECONDS = 1800
 
 
 

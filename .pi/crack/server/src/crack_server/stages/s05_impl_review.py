@@ -39,7 +39,7 @@ logger = logging.getLogger("uvicorn.error")
 GLM_MODEL = "nvidia/z-ai/glm-5.2"
 
 REVIEW_SENTINEL = "REVIEW_COMPLETE"
-REVIEW_TIMEOUT_SECONDS = 3600
+REVIEW_TIMEOUT_SECONDS = 7200
 
 
 

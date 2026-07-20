@@ -49,8 +49,8 @@ ULTRA_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
 MAX_AUTO_ROUNDS = 2
 READY_TO_REVISE = "READY_TO_REVISE"
 RUNNING_PHASES = ("review_running", "resuming", "revising")
-CRITIC_TIMEOUT_SECONDS = 300
-REVISE_TIMEOUT_SECONDS = 1800
+CRITIC_TIMEOUT_SECONDS = 900
+REVISE_TIMEOUT_SECONDS = 3600
 REVISE_MAX_CORRECTIVE = 2
 
 # Flow-control nudge (not a cap): sent once when the critic ended its turn
