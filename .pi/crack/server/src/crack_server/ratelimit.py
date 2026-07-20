@@ -31,18 +31,18 @@ TITLE_MAX_INPUT_CHARS = 10_000
 # SIGKILL/-9 OOM, timeout, missing binary). We make at least PI_RETRY_ATTEMPTS
 # attempts spaced by exponential backoff, anchored so the final attempt begins
 # exactly PI_RETRY_WINDOW_SECONDS after the first attempt started.
-PI_RETRY_ATTEMPTS = 4
+PI_RETRY_ATTEMPTS = 10
 PI_RETRY_WINDOW_SECONDS = 61.0
 
 # Transient upstream failures (rate limits, 5xx, connection resets) get their
 # own longer, flatter backoff that crosses the provider's per-minute window:
 # one sleep per reattempt, in order (clamped at the last entry).
-TRANSIENT_RETRY_DELAYS = [20.0, 45.0, 75.0]
+TRANSIENT_RETRY_DELAYS = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0]
 
 # Hard failures (nonzero exit, SIGKILL/-9, empty runs) are also retried: one
 # sleep per consecutive no-progress attempt, in order. After
 # len(HARD_RETRY_DELAYS) + 1 attempts without a persisted turn the hop raises.
-HARD_RETRY_DELAYS = [1.0, 3.0, 9.0, 27.0]
+HARD_RETRY_DELAYS = [1.0, 3.0, 6.0, 9.0, 16.0, 27.0]
 
 # Durable error budget: a hop raises PiError(over_budget=True) once the
 # caller's error recorder reports this many recorded errors. A manual

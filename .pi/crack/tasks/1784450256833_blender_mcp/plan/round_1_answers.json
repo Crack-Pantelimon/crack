@@ -1,7 +1,0 @@
-{
-  "q1": "9929 (next down)",
-  "q2": "native FastMCP Streamable HTTP (--transport streamable-http)",
-  "q3": "build time in Dockerfile, don't modify the base image at all it will stay like that forever .",
-  "q4": "Set via Blender Python API on startup (--python-expr)",
-  "q5": "Via blender-mcp MCP tools (tests full stack)"
-}

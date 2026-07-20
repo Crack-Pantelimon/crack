@@ -1,7 +1,0 @@
-{
-  "q1": "Use 9877 for HTTP, 9876 for addon (recommended)",
-  "q2": "Use Blender's --addons flag or startup script to auto-enable",
-  "q3": "we don't know at this point - we just want to have blender control from mcp so the llm can load and look at blend files and glb files.",
-  "q4": "Run verification inside container (docker exec), use container's localhost",
-  "q5": "read it yourself, it's at /workspace/_docker/_cont_start.sh - but yes i do see the function defined. IDK about the port calculation, last turn we decided on some ports to be used (the low ones)."
-}
