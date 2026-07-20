@@ -1,5 +1,5 @@
 {
-  "phase": "awaiting_approval",
+  "phase": "done",
   "round": 2,
   "rounds": [
     {
@@ -1103,7 +1103,7 @@
   "iterations": 2,
   "error": "",
   "started_at": 1784475691.3839943,
-  "finished_at": null,
+  "finished_at": 1784562876.3557234,
   "stop_requested": false,
   "started_token": "796bd06802154cb49c66f4d8fbda6ba1",
   "errors": [
