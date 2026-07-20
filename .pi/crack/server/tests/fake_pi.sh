@@ -19,6 +19,9 @@
 #   turnsgap:N:M   emit N turns with M seconds between each, then agent_end
 #   transient      print a transient-looking error to stderr and exit 1
 #   midfail:N      emit N turns, then print "connection reset" and exit 1
+#   midhard:N      emit N turns, then a non-transient error and exit 1
+#   autoretryfail:N emit N turns, then auto_retry_end success=false +
+#                  agent_settled (rc 0) — pi's internal 429-retry exhaustion
 #   hard           print a non-transient error to stderr and exit 1
 #   ok             (print mode) echo "text-response" and exit 0
 #   copy:SRC>DST   copy file SRC to DST (an "agent wrote the artifact" stand-in),
@@ -116,6 +119,15 @@ time.sleep(arg)
     done
     echo "boom: unrecoverable parse explosion" >&2
     exit 1
+    ;;
+  autoretryfail)
+    # Mirrors a real pi that made progress, then exhausted its internal
+    # 429 auto-retry loop and settled cleanly (rc 0) with no further work.
+    for i in $(seq 1 "$arg"); do
+      emit_turn "turn $i (invocation $n)"
+    done
+    printf '{"type":"auto_retry_end","success":false,"finalError":"429 status code (no body)"}\n'
+    printf '{"type":"agent_settled"}\n'
     ;;
   hard)
     echo "boom: unrecoverable parse explosion" >&2

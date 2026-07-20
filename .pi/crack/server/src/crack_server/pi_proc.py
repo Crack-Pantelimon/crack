@@ -486,6 +486,10 @@ class _StreamSink:
         self.reason = "agent_end"
         self.terminated_by_us = False
         self.terminal = False
+        # Set when pi emits auto_retry_end with success=false: the attempt's
+        # last turn died to an unrecoverable internal error (e.g. exhausted
+        # 429 retries) even if earlier turns in the same attempt persisted.
+        self.ended_in_error: str | None = None
         self.persisted = 0
         self.wait_credit = 0.0
         self.waiting_since: float | None = None
@@ -588,6 +592,11 @@ def _process_stream_line(sink: _StreamSink, line: str, terminate: Callable[[], N
         sink.terminal = True
         terminate()
         return True
+
+    # pi's own "I gave up retrying" signal (distinct from per-attempt
+    # agent_end errorMessage). More precise than inferring from stopReason.
+    if etype == "auto_retry_end" and not event.get("success"):
+        sink.ended_in_error = event.get("finalError") or "auto_retry exhausted"
 
     if etype in ("agent_end", "agent_settled"):
         sink.terminal = True
@@ -814,6 +823,7 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
         "terminal": sink.terminal,
         "returncode": proc.returncode,
         "persisted": sink.persisted,
+        "ended_in_error": sink.ended_in_error,
         "detail": _compose_detail("\n".join(sink.output_tail), "\n".join(sink.stderr_tail)),
     }
 
@@ -874,6 +884,7 @@ async def _reattach_attempt(
         # end (None); anything else is treated as a crash so it is retried.
         "returncode": None if sink.terminal else -1,
         "persisted": sink.persisted,
+        "ended_in_error": sink.ended_in_error,
         "detail": _compose_detail("\n".join(sink.output_tail), "\n".join(sink.stderr_tail)),
     }
 
@@ -952,14 +963,21 @@ async def _run_hop_with_retries(
             and res["returncode"] not in (0, None)
         )
         if not failed:
-            # A clean exit that persisted no real turns means the model returned
-            # only content-less responses: an "empty" attempt, retried like a
-            # hard failure and surfaced as "empty" when the streak runs out.
-            if res["persisted"] > 0 or res["reason"] != "agent_end":
+            # Unrecoverable pi-internal error on the last turn (e.g. exhausted
+            # 429 auto-retries): retry even if earlier turns in this attempt
+            # persisted — otherwise the hop looks "done" and the chat goes idle.
+            if res["ended_in_error"]:
+                last_message = f"pi gave up: {res['ended_in_error']}"
+                last_detail = ""
+                last_rc = res["returncode"]
+            elif res["persisted"] > 0 or res["reason"] != "agent_end":
                 return res["reason"]
-            last_message = "pi returned only empty turns"
-            last_detail = ""
-            last_rc = res["returncode"]
+            else:
+                # Clean exit with no real turns: content-less responses only —
+                # retried like a hard failure, surfaced as "empty" at streak end.
+                last_message = "pi returned only empty turns"
+                last_detail = ""
+                last_rc = res["returncode"]
         else:
             last_message = f"pi exited {res['returncode']}"
             last_detail = res["detail"]

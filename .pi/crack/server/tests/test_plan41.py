@@ -288,6 +288,42 @@ def test_nonzero_exit_without_terminal_still_retries(fake_pi, tmp_path):
     assert errors[0]["rc"] == 1
 
 
+def test_auto_retry_end_after_progress_forces_resume(fake_pi, tmp_path):
+    # Progress then pi-internal auto_retry exhaustion (rc 0 + agent_settled)
+    # must not look "done": the hop retries with RESUME_MESSAGE and keeps the
+    # earlier turns. Second attempt finishing cleanly completes the exchange.
+    fake_pi.set_script(["autoretryfail:1", "turns:1"])
+    errors: list[dict] = []
+    reason, turns = run_hop(
+        tmp_path,
+        record_error=lambda e: errors.append(e) or len(errors),
+    )
+    assert reason == "agent_end"
+    assert len(turns) == 2
+    assert turns[0]["text"] == "turn 1 (invocation 1)"
+    assert turns[1]["text"] == "turn 1 (invocation 2)"
+    assert fake_pi.invocations() == 2
+    assert fake_pi.prompt(2) == pi_runner.RESUME_MESSAGE
+    assert len(errors) == 1
+    assert errors[0]["message"] == "pi gave up: 429 status code (no body)"
+    assert errors[0]["rc"] == 0
+
+
+def test_persisted_then_clean_agent_end_still_returns_immediately(fake_pi, tmp_path):
+    # Regression: a real persisted turn followed by a clean agent_end (no
+    # auto_retry_end failure) must still short-circuit as done — no over-retry.
+    fake_pi.set_script(["turns:1"])
+    errors: list[dict] = []
+    reason, turns = run_hop(
+        tmp_path,
+        record_error=lambda e: errors.append(e) or len(errors),
+    )
+    assert reason == "agent_end"
+    assert len(turns) == 1
+    assert fake_pi.invocations() == 1
+    assert errors == []
+
+
 def test_hard_backoff_schedule_matches_hard_retry_delays(monkeypatch):
     sleeps: list[float] = []
 
