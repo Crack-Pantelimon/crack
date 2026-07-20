@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import signal
 import subprocess
 import time
 
@@ -210,3 +211,105 @@ def test_recover_detached_hops(tmp_path, monkeypatch):
     finally:
         live.kill()
         live.wait()
+
+
+# ---------------------------------------------------------------------------
+# Detached-pid ledger: bound grace-period detaches across attempts
+# ---------------------------------------------------------------------------
+
+
+def test_grace_detach_records_detached_pids_before_retry(fake_pi, tmp_path, monkeypatch):
+    # Empty agent_end + linger past EXIT_GRACE → detached_pids entry lands in
+    # the manifest before the successful second attempt spawns.
+    monkeypatch.setattr(pi_proc, "EXIT_GRACE_SECONDS", 0.3)
+    fake_pi.set_script(["detach:2", "turns:1"])
+    pid_file = tmp_path / "agent.pid"
+    seen: list[list[dict]] = []
+    orig_write = pi_proc._write_hop_manifest
+
+    def capture(path, data):
+        entries = data.get("detached_pids") or []
+        if entries:
+            seen.append(list(entries))
+        return orig_write(path, data)
+
+    monkeypatch.setattr(pi_proc, "_write_hop_manifest", capture)
+    errors: list[dict] = []
+    reason = pi_runner.run_agent_hop(
+        **_hop_kwargs(tmp_path, pid_file),
+        start=time.monotonic(),
+        persist_turn=lambda t, h: None,
+        record_error=lambda e: errors.append(e) or len(errors),
+    )
+    assert reason == "agent_end"
+    assert fake_pi.invocations() == 2
+    assert len(errors) == 1
+    assert errors[0]["message"] == "pi returned only empty turns"
+    assert seen, "expected at least one manifest write with detached_pids"
+    assert all("pid" in e and "since" in e for batch in seen for e in batch)
+
+
+def test_sweep_detached_pids_sigterms_then_sigkills(monkeypatch):
+    now = 1_000_000.0
+    monkeypatch.setattr(pi_proc.time, "time", lambda: now)
+    monkeypatch.setattr(pi_proc, "DETACHED_TERMINATE_AFTER_SECONDS", 10)
+    monkeypatch.setattr(pi_proc, "DETACHED_KILL_AFTER_SECONDS", 5)
+
+    alive = {111, 222, 333}
+    monkeypatch.setattr(
+        pi_proc, "_pid_alive",
+        lambda pid, session_id=None: pid in alive,
+    )
+    signals: list[tuple[int, int]] = []
+
+    def fake_terminate(pid, sig):
+        signals.append((pid, sig))
+        if sig == signal.SIGKILL:
+            alive.discard(pid)
+
+    monkeypatch.setattr(pi_proc, "_terminate_group", fake_terminate)
+
+    entries = [
+        {"pid": 111, "since": now - 5},   # young: keep
+        {"pid": 222, "since": now - 15},  # past terminate: SIGTERM + stamp
+        {"pid": 333, "since": now - 40, "sigterm_at": now - 6},  # past kill
+        {"pid": 444, "since": now - 100},  # dead: drop
+    ]
+    survivors = pi_proc._sweep_detached_pids(entries, "hop-test", "test", 1)
+    assert signals == [(222, signal.SIGTERM), (333, signal.SIGKILL)]
+    assert [e["pid"] for e in survivors] == [111, 222]
+    assert survivors[1]["sigterm_at"] == now
+
+
+def test_kill_pid_file_also_kills_detached_pids(tmp_path):
+    # Current pid + two ledger entries; kill_pid_file must reap all three.
+    current = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    detached_a = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    detached_b = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    pid_file = tmp_path / "agent.pid"
+    pid_file.write_text(str(current.pid), encoding="utf-8")
+    pi_proc._write_hop_manifest(paths.hop_manifest_path(pid_file), {
+        "pid": current.pid,
+        "detached_pids": [
+            {"pid": detached_a.pid, "since": time.time() - 10},
+            {"pid": detached_b.pid, "since": time.time() - 20},
+        ],
+    })
+    try:
+        assert pi_proc.kill_pid_file(pid_file)
+        # Brief wait for SIGKILL delivery / reap.
+        for proc in (current, detached_a, detached_b):
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=1)
+                raise AssertionError(f"pid {proc.pid} still alive after kill_pid_file")
+        assert not pi_proc._pid_alive(current.pid)
+        assert not pi_proc._pid_alive(detached_a.pid)
+        assert not pi_proc._pid_alive(detached_b.pid)
+    finally:
+        for proc in (current, detached_a, detached_b):
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()

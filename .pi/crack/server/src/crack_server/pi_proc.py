@@ -135,6 +135,14 @@ TAIL_POLL_SECONDS = 0.2
 # hang still gets killed after this grace (see ``_attempt_once`` finally).
 EXIT_GRACE_SECONDS = 8
 
+# Grace-period detaches (terminal event but pi still alive) are tracked in the
+# hop manifest under ``detached_pids``. The next attempt sweeps that ledger:
+# SIGTERM once a detach is this old, then SIGKILL after a further wait. Generous
+# enough that legitimate MCP teardown (~8–21s) is never cut short, but no
+# process lingers forever across retries.
+DETACHED_TERMINATE_AFTER_SECONDS = 60
+DETACHED_KILL_AFTER_SECONDS = 30
+
 # The manifest keeps the attempt message for debugging; compiled prompts can
 # be huge, so it is truncated.
 MANIFEST_MESSAGE_MAX_CHARS = 4000
@@ -201,6 +209,55 @@ def _terminate_group(pid: int, sig: int) -> None:
     except (ProcessLookupError, PermissionError, OSError):
         with contextlib.suppress(ProcessLookupError, OSError):
             os.kill(pid, sig)
+
+
+def _sweep_detached_pids(
+    entries: list,
+    session_id: str | None,
+    log_prefix: str,
+    hop: int,
+) -> list[dict]:
+    """Drop dead detached pids; SIGTERM / SIGKILL those past the age thresholds.
+
+    Each entry is ``{"pid", "since", "sigterm_at"?}``. Survivors (still alive
+    and not yet SIGKILL'd) are returned for the next manifest write. Logs one
+    warning summary when any survive — the visibility hook for "are we rate
+    limited by our own leaked processes?".
+    """
+    now = time.time()
+    survivors: list[dict] = []
+    for raw in entries or []:
+        if not isinstance(raw, dict):
+            continue
+        pid = raw.get("pid")
+        since = raw.get("since")
+        if not isinstance(pid, int) or not isinstance(since, (int, float)):
+            continue
+        if not _pid_alive(pid, session_id):
+            continue
+        entry = dict(raw)
+        sigterm_at = entry.get("sigterm_at")
+        if isinstance(sigterm_at, (int, float)):
+            if now - sigterm_at >= DETACHED_KILL_AFTER_SECONDS:
+                _terminate_group(pid, signal.SIGKILL)
+                continue
+            survivors.append(entry)
+            continue
+        if now - since >= DETACHED_TERMINATE_AFTER_SECONDS:
+            _terminate_group(pid, signal.SIGTERM)
+            entry["sigterm_at"] = now
+            survivors.append(entry)
+            continue
+        survivors.append(entry)
+
+    if survivors:
+        oldest = max(now - float(e["since"]) for e in survivors)
+        logger.warning(
+            "%s hop %d: %d detached pi still alive (pids=%s, oldest=%.0fs)",
+            log_prefix, hop, len(survivors),
+            [e["pid"] for e in survivors], oldest,
+        )
+    return survivors
 
 
 async def arun_pi_text(
@@ -389,30 +446,54 @@ def kill_pid_file(pid_file: Path) -> bool:
     """Kill the process group named in ``pid_file`` (written by arun_agent_hop).
 
     Sends SIGTERM to the whole group (pi + any children it spawned), then
-    SIGKILL as a fallback. Returns True if a signal was delivered. Safe to call
-    when the file is missing or the process is already gone."""
+    SIGKILL as a fallback. Also SIGKILL any still-alive ``detached_pids`` in
+    the sibling hop manifest — an explicit STOP is the moment aggressive
+    cleanup is safe (no MCP-teardown ambiguity). Returns True if a signal was
+    delivered. Safe to call when the file is missing or the process is already
+    gone."""
+    delivered = False
     try:
         pid = int(pid_file.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
-        return False
-    try:
-        pgid = os.getpgid(pid)
-    except ProcessLookupError:
-        return False
-    for sig in (signal.SIGTERM, signal.SIGKILL):
+        pid = None
+    if pid is not None:
         try:
-            os.killpg(pgid, sig)
+            pgid = os.getpgid(pid)
         except ProcessLookupError:
-            return True
-        # Give SIGTERM a brief moment before escalating to SIGKILL.
-        if sig == signal.SIGTERM:
-            for _ in range(20):
+            pgid = None
+        if pgid is not None:
+            for sig in (signal.SIGTERM, signal.SIGKILL):
                 try:
-                    os.killpg(pgid, 0)
+                    os.killpg(pgid, sig)
+                    delivered = True
                 except ProcessLookupError:
-                    return True
-                time.sleep(0.1)
-    return True
+                    delivered = True
+                    break
+                # Give SIGTERM a brief moment before escalating to SIGKILL.
+                if sig == signal.SIGTERM:
+                    for _ in range(20):
+                        try:
+                            os.killpg(pgid, 0)
+                        except ProcessLookupError:
+                            break
+                        time.sleep(0.1)
+                    else:
+                        continue
+                    break
+
+    # Explicit STOP: also reap grace-period-detached pids from prior attempts.
+    manifest = _read_hop_manifest(paths_mod.hop_manifest_path(pid_file))
+    for entry in manifest.get("detached_pids") or []:
+        if not isinstance(entry, dict):
+            continue
+        dpid = entry.get("pid")
+        if not isinstance(dpid, int):
+            continue
+        if not _pid_alive(dpid):
+            continue
+        _terminate_group(dpid, signal.SIGKILL)
+        delivered = True
+    return delivered
 
 
 class _TurnAccumulator:
@@ -718,6 +799,13 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
     await async_wait_for_rate_limit(p.model)
     manifest_path, output_path = _hop_paths(p)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    # Carry forward prior grace-period detaches and bound them before we spawn
+    # another pi for this hop (each attempt used to overwrite the sole pid slot).
+    prior = _read_hop_manifest(manifest_path)
+    detached_pids = _sweep_detached_pids(
+        prior.get("detached_pids") or [],
+        p.session_id, p.log_prefix, p.hop,
+    )
     # start_new_session=True puts pi in its own process group so an external
     # STOP can kill pi *and* any children it spawned (npx MCP servers) via
     # the group leader's pid, which we publish to pid_file. Output goes to a
@@ -750,6 +838,7 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
         "hop": p.hop,
         "timeout": p.timeout_seconds,
         "status": "running",
+        "detached_pids": detached_pids,
     }
     _write_hop_manifest(manifest_path, sink.manifest)
 
@@ -778,6 +867,10 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
                     # Terminal event already fired: pi is lingering on MCP
                     # client teardown. Do not SIGKILL — leave it running
                     # (tini / PID 1 reaps it). returncode stays None (= clean).
+                    # Record the pid so the next attempt's sweep can bound it.
+                    sink.manifest.setdefault("detached_pids", []).append(
+                        {"pid": proc.pid, "since": time.time()},
+                    )
                     logger.info(
                         "%s hop %d: pi pid %d still alive %.0fs after terminal "
                         "event; detaching (no SIGKILL)",
@@ -968,7 +1061,7 @@ async def _run_hop_with_retries(
             # persisted — otherwise the hop looks "done" and the chat goes idle.
             if res["ended_in_error"]:
                 last_message = f"pi gave up: {res['ended_in_error']}"
-                last_detail = ""
+                last_detail = res["detail"]
                 last_rc = res["returncode"]
             elif res["persisted"] > 0 or res["reason"] != "agent_end":
                 return res["reason"]
@@ -976,7 +1069,7 @@ async def _run_hop_with_retries(
                 # Clean exit with no real turns: content-less responses only —
                 # retried like a hard failure, surfaced as "empty" at streak end.
                 last_message = "pi returned only empty turns"
-                last_detail = ""
+                last_detail = res["detail"]
                 last_rc = res["returncode"]
         else:
             last_message = f"pi exited {res['returncode']}"

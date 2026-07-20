@@ -16,6 +16,8 @@
 #   sleepy:N       emit one turn, sleep N seconds, then agent_end
 #   linger:N       emit one turn + agent_end, then sleep N seconds before exit
 #                  (MCP-teardown linger: harness must not SIGKILL after terminal)
+#   detach:N       emit agent_end with no turns, then sleep N seconds before exit
+#                  (empty-turn + MCP-teardown linger: records detached_pids on retry)
 #   turnsgap:N:M   emit N turns with M seconds between each, then agent_end
 #   transient      print a transient-looking error to stderr and exit 1
 #   midfail:N      emit N turns, then print "connection reset" and exit 1
@@ -92,6 +94,18 @@ sys.stdout.write("{\"type\":\"agent_end\"}\n")
 sys.stdout.flush()
 time.sleep(arg)
 ' "$n" "$arg"
+    ;;
+  detach)
+    # Empty hop (agent_end only) that then lingers past EXIT_GRACE_SECONDS —
+    # triggers the empty-turns retry path while leaving a detached pi for the
+    # next attempt's sweep to pick up.
+    python3 -c '
+import sys, time
+arg = float(sys.argv[1])
+sys.stdout.write("{\"type\":\"agent_end\"}\n")
+sys.stdout.flush()
+time.sleep(arg)
+' "$arg"
     ;;
   turnsgap)
     count="${arg%%:*}"

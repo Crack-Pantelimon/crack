@@ -307,6 +307,27 @@ def test_auto_retry_end_after_progress_forces_resume(fake_pi, tmp_path):
     assert len(errors) == 1
     assert errors[0]["message"] == "pi gave up: 429 status code (no body)"
     assert errors[0]["rc"] == 0
+    # Detail must surface the attempt's stdout/stderr tail (not hardcoded "").
+    assert errors[0]["detail"]
+    assert "auto_retry_end" in errors[0]["detail"] or "429" in errors[0]["detail"]
+
+
+def test_empty_turns_error_includes_detail(fake_pi, tmp_path):
+    # Clean agent_end with no persisted turns retries like a hard failure; the
+    # recorded error must carry the hop output tail for the UI collapsible.
+    fake_pi.set_script(["turns:0", "turns:1"])
+    errors: list[dict] = []
+    reason, turns = run_hop(
+        tmp_path,
+        record_error=lambda e: errors.append(e) or len(errors),
+    )
+    assert reason == "agent_end"
+    assert len(turns) == 1
+    assert fake_pi.invocations() == 2
+    assert len(errors) == 1
+    assert errors[0]["message"] == "pi returned only empty turns"
+    assert errors[0]["detail"]
+    assert "agent_end" in errors[0]["detail"]
 
 
 def test_persisted_then_clean_agent_end_still_returns_immediately(fake_pi, tmp_path):
