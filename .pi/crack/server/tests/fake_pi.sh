@@ -14,6 +14,7 @@
 #   sentinel:STR   emit one turn ending with STR on its own line, then agent_end
 #   inline:STR     emit one turn with STR embedded mid-line, then agent_end
 #   sleepy:N       emit one turn, sleep N seconds, then agent_end
+#   turnsgap:N:M   emit N turns with M seconds between each, then agent_end
 #   transient      print a transient-looking error to stderr and exit 1
 #   midfail:N      emit N turns, then print "connection reset" and exit 1
 #   hard           print a non-transient error to stderr and exit 1
@@ -65,6 +66,15 @@ $arg"
   sleepy)
     emit_turn "about to nap (invocation $n)"
     sleep "$arg"
+    printf '{"type":"agent_end"}\n'
+    ;;
+  turnsgap)
+    count="${arg%%:*}"
+    gap="${arg#*:}"
+    for i in $(seq 1 "$count"); do
+      emit_turn "turn $i (invocation $n)"
+      [ "$i" -lt "$count" ] && sleep "$gap"
+    done
     printf '{"type":"agent_end"}\n'
     ;;
   transient)

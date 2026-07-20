@@ -38,6 +38,7 @@ def fake_pi_script(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("FAKE_PI_SCRIPT", str(script))
     # Fast retry schedules so failure paths finish in well under a second each.
     monkeypatch.setattr(ratelimit, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
+    monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.05, 0.05, 0.05, 0.05])
     monkeypatch.setattr(ratelimit, "PI_RETRY_WINDOW_SECONDS", 0.2)
     return script
 

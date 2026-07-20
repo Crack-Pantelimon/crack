@@ -1,0 +1,13 @@
+{
+  "pid": 20458,
+  "started_at": 1784561703.1175902,
+  "output_path": "/workspace/.pi/crack/tasks/1784548497158_download_and_parse_news/plan_review.agent.hop.jsonl",
+  "offset": 226745,
+  "session_id": "plan-review-1784548497158_download_and_parse_news",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "tools": "bash,read,edit,write,mcp,analyze_image",
+  "message": "Continue where you left off.",
+  "hop": 1,
+  "timeout": 1800,
+  "status": "crashed"
+}

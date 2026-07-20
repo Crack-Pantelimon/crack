@@ -9,6 +9,9 @@ error-state write that s02–s06 and the chat engine used to copy-paste:
 - :func:`hop_loop` — the continue-nudge loop driver shared by the long-running
   agent stages (s04/s05); :func:`hop_with_nudge` — the single flow-control
   nudge shared by the interviewing stages (s02/s03).
+- :func:`error_recorder` — the durable error-row append (``record_error``
+  callback for the pi runners) plus :func:`grant_error_budget`, the manual
+  "continue from last error" budget reset.
 - :func:`record_errors` / :func:`record_chat_errors` — the canonical
   ``except Exception → error state`` write for worker steps (stage and chat
   variants).
@@ -20,6 +23,7 @@ Everything builds on :class:`state.JsonState` — persistence goes through
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import time
@@ -27,12 +31,65 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator
 
+from crack_server.ratelimit import MAX_TOTAL_ERRORS
 from crack_server.state import JsonState
 
 logger = logging.getLogger("uvicorn.error")
 
 # Raised (as RuntimeError) by every stage when pi came back contentless.
 EMPTY_TURNS_MESSAGE = "pi returned empty responses (no content in any turn)"
+
+
+def attach_media_to_blocks(
+    tool_blocks: list[dict], media_dir: Path, url_prefix: str
+) -> list[dict]:
+    """Copy images referenced by read/analyze_image tool calls into ``media_dir``
+    and attach a ``media: [{src, url}]`` field to their blocks.
+
+    Candidates: ``read`` calls whose path has an image extension, and every
+    path in an ``analyze_image`` call's ``image_paths``. Missing/corrupt/
+    non-image files are skipped silently (save_validated_copy returns None).
+    The saved copy persists inside the task/chat/run dir, so thumbnails keep
+    working even if the source path is later deleted.
+    """
+    from crack_server import images as images_mod
+    from crack_server.paths import project_root
+
+    out: list[dict] = []
+    for block in tool_blocks:
+        block = dict(block)
+        name = str(block.get("name", ""))
+        args = block.get("input")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+
+        candidates: list[str] = []
+        if name == "read":
+            raw = str(args.get("path") or "")
+            if raw and Path(raw).suffix.lower() in images_mod.IMAGE_EXTS:
+                candidates.append(raw)
+        elif name == "analyze_image":
+            raw_list = args.get("image_paths")
+            if isinstance(raw_list, list):
+                candidates.extend(str(p) for p in raw_list)
+
+        media: list[dict] = []
+        for cand in candidates:
+            path = Path(cand)
+            if not path.is_absolute():
+                path = project_root() / path
+            saved = images_mod.save_validated_copy(path, media_dir)
+            if saved is not None:
+                media.append({"src": str(path), "url": f"{url_prefix}/{saved.name}"})
+        if media:
+            block["media"] = media
+        out.append(block)
+    return out
 
 
 def make_turn(current_turn: dict, hop: int) -> dict:
@@ -43,6 +100,7 @@ def make_turn(current_turn: dict, hop: int) -> dict:
         "thinking": current_turn.get("thinking", ""),
         "tool_blocks": list(current_turn.get("tool_blocks", [])),
         "elapsed": current_turn.get("elapsed"),
+        "at": time.time(),
     }
 
 
@@ -65,6 +123,8 @@ class TurnPersister:
         subpath: list | None = None,
         existing: list[dict] | None = None,
         post: Callable[[dict], None] | None = None,
+        media_dir: Path | None = None,
+        media_url_prefix: str = "",
     ):
         self.state = state
         self.key = key
@@ -72,6 +132,8 @@ class TurnPersister:
         self.existing = list(existing) if existing is not None else self._snapshot()
         self.new: list[dict] = []
         self.post = post
+        self.media_dir = media_dir
+        self.media_url_prefix = media_url_prefix
 
     def _snapshot(self) -> list[dict]:
         node = self.state.read()
@@ -95,7 +157,12 @@ class TurnPersister:
 
     def persist(self, current_turn: dict, hop: int) -> None:
         """``persist_turn`` callback for pi_runner.run_agent_hop."""
-        self.append(make_turn(current_turn, hop))
+        turn = make_turn(current_turn, hop)
+        if self.media_dir is not None:
+            turn["tool_blocks"] = attach_media_to_blocks(
+                turn["tool_blocks"], self.media_dir, self.media_url_prefix
+            )
+        self.append(turn)
 
     def text(self) -> str:
         """Combined assistant text of the entries appended so far."""
@@ -108,9 +175,31 @@ def turn_persister(
     subpath: list | None = None,
     existing: list[dict] | None = None,
     post: Callable[[dict], None] | None = None,
+    media_dir: Path | None = None,
+    media_url_prefix: str = "",
 ) -> TurnPersister:
     """A TurnPersister bound to ``state`` (see the class docstring)."""
-    return TurnPersister(state, key=key, subpath=subpath, existing=existing, post=post)
+    return TurnPersister(
+        state, key=key, subpath=subpath, existing=existing, post=post,
+        media_dir=media_dir, media_url_prefix=media_url_prefix,
+    )
+
+
+def task_prompt_media(task_id: str) -> list[dict]:
+    """``media`` rows (``{url, src, description}``) for a task's persistent
+    prompt attachments — attached to recorded ``user_prompt`` entries so the
+    UI renders the same thumbnails the compiled prompt text describes."""
+    from crack_server import attachments as attachments_mod
+    from crack_server import paths
+
+    return [
+        {
+            "url": f"/tasks/{task_id}/attachments/{e.get('id', '')}",
+            "src": str(e.get("saved_path", "")),
+            "description": str(e.get("description", "")),
+        }
+        for e in attachments_mod.list_attachments(paths.task_attachments_state(task_id))
+    ]
 
 
 def prompt_recorder(
@@ -118,17 +207,64 @@ def prompt_recorder(
     label: str,
     template: str,
     original: str | None = None,
+    media: "list[dict] | Callable[[], list[dict]] | None" = None,
 ) -> Callable[[dict], None]:
-    """``record_prompt`` callback: tag the compiled-prompt entry and append it."""
+    """``record_prompt`` callback: tag the compiled-prompt entry and append it.
+
+    ``media`` (optional, a list or a callable returning one — a callable is
+    read at record time so late-added attachments are picked up) attaches
+    prompt-attachment thumbnails to the entry for the UI; the compiled prompt
+    text itself is unchanged."""
 
     def record(entry: dict) -> None:
         entry.setdefault("label", label)
         entry["template"] = template
         if original is not None:
             entry["original"] = original
+        rows = media() if callable(media) else media
+        if rows:
+            entry["media"] = rows
         persister.append(entry)
 
     return record
+
+
+def error_recorder(
+    state: JsonState, key: str = "errors", subpath: list | None = None
+) -> Callable[[dict], int]:
+    """``record_error`` callback for the pi runners: append a durable,
+    timestamped error row (``{"kind": "error", "at": ..., **entry}`` — the
+    entry supplies message/detail/rc/attempt/phase) to ``state[...][key]`` and
+    return the new total count (the runners use it for the error-budget cap).
+    ``subpath`` (e.g. ``["exchanges", 2]``) targets a nested dict, mirroring
+    :class:`TurnPersister` for the chat ``exchanges[idx]["errors"]`` case."""
+
+    def record(entry: dict) -> int:
+        row = {"kind": "error", "at": time.time(), **entry}
+        total = 0
+
+        def _write(s: dict) -> dict:
+            nonlocal total
+            node = s
+            for part in subpath or []:
+                node = node[part]
+            rows = node.setdefault(key, [])
+            rows.append(row)
+            total = len(rows)
+            return s
+
+        state.update(_write)
+        return total
+
+    return record
+
+
+def grant_error_budget(state: dict) -> None:
+    """Manual-continue budget reset (retry_from_error): another
+    MAX_TOTAL_ERRORS errors on top of the rows recorded so far, and the
+    over-budget banner flag cleared. The durable ``errors`` rows are kept."""
+    state["error_budget"] = len(state.get("errors", [])) + MAX_TOTAL_ERRORS
+    state["error_over_budget"] = False
 
 
 def bump_total_turns(state: dict) -> None:
@@ -338,8 +474,10 @@ def record_errors(
 ) -> Iterator[None]:
     """Canonical worker-step error write (stage variant): on exception, log it
     and land the state in error with error/error_detail/error_step/finished_at.
-    The exception is swallowed, exactly like the pasted except blocks this
-    replaces — a failed step must never wedge the worker's queue loop."""
+    A PiError raised over the durable error budget also flags
+    ``error_over_budget`` so the UI can show the "something is likely wrong"
+    banner. The exception is swallowed, exactly like the pasted except blocks
+    this replaces — a failed step must never wedge the worker's queue loop."""
     try:
         yield
     except Exception as e:
@@ -349,6 +487,7 @@ def record_errors(
             s[phase_key] = "error"
             s["error"] = str(e)
             s["error_detail"] = getattr(e, "detail", "")
+            s["error_over_budget"] = bool(getattr(e, "over_budget", False))
             s["error_step"] = step
             s["finished_at"] = time.time()
             return s
@@ -371,6 +510,7 @@ def record_chat_errors(state: JsonState, *, log_message: str = "chat failed") ->
             if not s.get("stop_requested"):
                 s["error"] = str(e)
                 s["error_detail"] = getattr(e, "detail", "")
+                s["error_over_budget"] = bool(getattr(e, "over_budget", False))
             s["stop_requested"] = False
             return s
 

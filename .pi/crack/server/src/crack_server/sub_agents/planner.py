@@ -114,8 +114,13 @@ class PlannerPersona(SubAgentPersona):
         self, run_id: str, message: str, template: str, *, step_label: str
     ) -> tuple[str, dict | None] | None:
         """One pi hop with a fixed message; post-process for planner control flow."""
-        from crack_server.stages.steprun import TurnPersister, prompt_recorder
+        from crack_server.stages.steprun import (
+            TurnPersister,
+            error_recorder,
+            prompt_recorder,
+        )
         from crack_server import pi_runner
+        from crack_server.ratelimit import MAX_TOTAL_ERRORS
         from crack_server.sub_agents import SUBAGENT_TIMEOUT_SECONDS
 
         state = self.state_read(run_id)
@@ -129,7 +134,11 @@ class PlannerPersona(SubAgentPersona):
         chat_id = state["chat_id"]
         hop_n = int(state.get("hops_completed", 0)) + 1
         state_obj = self.state(run_id)
-        persister = TurnPersister(state_obj, key="turns")
+        persister = TurnPersister(
+            state_obj, key="turns",
+            media_dir=paths.run_media_dir(chat_id, run_id),
+            media_url_prefix=f"/chats/{chat_id}/sub_agents/runs/{run_id}/media",
+        )
         record = prompt_recorder(persister, f"{step_label} hop {hop_n}", template, message)
 
         try:
@@ -148,6 +157,10 @@ class PlannerPersona(SubAgentPersona):
                 pid_file=paths.run_pid_file(chat_id, run_id),
                 stop_check=lambda: bool(self.state_read(run_id).get("stop_requested")),
                 record_prompt=record,
+                record_error=error_recorder(state_obj),
+                error_budget=lambda: int(
+                    state_obj.read().get("error_budget", MAX_TOTAL_ERRORS)
+                ),
                 env_extra=self._subagent_env(state),
                 waiting_check=lambda: bool(self.state_read(run_id).get("waiting_on")),
             )
@@ -164,6 +177,7 @@ class PlannerPersona(SubAgentPersona):
                 s["phase"] = "error"
                 s["error"] = str(exc)
                 s["error_detail"] = getattr(exc, "detail", "")
+                s["error_over_budget"] = bool(getattr(exc, "over_budget", False))
                 s["error_step"] = step_label
                 s["finished_at"] = time.time()
                 return s

@@ -12,10 +12,10 @@ import logging
 import shutil
 import time
 
-from fastapi import APIRouter, Form, HTTPException, Query, Response
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from crack_server import chats, git_utils, paths, queue, stages, titles
+from crack_server import attachments, chats, git_utils, paths, queue, stages, titles
 from crack_server.routes_stages import (
     _check_task_id,
     _get_stage_or_404,
@@ -56,17 +56,17 @@ def _render_task_card(task_id: str, info: dict) -> str:
     modified = _format_time(info.get("modified_at", 0))
     glyph_char, glyph_color = task_status_glyph(task_id)
     return f"""
-    <article class="task-card" style="border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+    <article class="task-card">
+      <div class="task-card-header">
         <div>
-          <h3 style="margin: 0 0 0.5rem 0;">
-            <span class="task-glyph" style="color: {glyph_color}; margin-right: 0.35rem;">{glyph_char}</span>
-            <a href="/tasks/{safe_id}" style="text-decoration: none;">{title}</a>
+          <h3>
+            <span class="task-glyph" style="color: {glyph_color};">{glyph_char}</span>
+            <a href="/tasks/{safe_id}">{title}</a>
           </h3>
-          <small style="color: #666;">ID: {safe_id} • Created: {created} • Modified: {modified}</small>
+          <small class="muted">ID: {safe_id} • Created: {created} • Modified: {modified}</small>
         </div>
         <form hx-delete="/api/tasks/{safe_id}" hx-confirm="Delete task '{title}'?" hx-target="closest article" hx-swap="outerHTML swap:1s">
-          <button type="submit" class="secondary" style="margin: 0;">Delete</button>
+          <button type="submit" class="contrast">Delete</button>
         </form>
       </div>
     </article>
@@ -88,17 +88,17 @@ def _render_task_header(task_id: str, info: dict) -> str:
     title_input = _render_title_input(task_id, info.get("title", task_id))
     glyph = _render_task_glyph(task_id)
     return f"""
-    <header style="margin-bottom: 1.5rem;">
-      <div class="title-row" style="margin-bottom: 1rem;">
+    <header class="task-header">
+      <div class="title-row">
         {glyph}
         {title_h1}
-        <form hx-put="/api/tasks/{safe_id}/info" hx-target="#title-slot-{safe_id}" hx-swap="innerHTML" style="flex: 1; display: flex; gap: 0.5rem; align-items: center;">
-          <span id="title-slot-{safe_id}" class="title-slot">{title_input}</span>
-          <button type="button" hx-post="/api/tasks/{safe_id}/regenerate-title" hx-target="#title-slot-{safe_id}" hx-swap="innerHTML" class="secondary">Regenerate Title</button>
-          <button type="submit" class="secondary">Save</button>
-        </form>
       </div>
-      <p style="color: #666; margin: 0;">ID: {safe_id} • Created: {created} • Modified: {modified}</p>
+      <form class="title-edit-form" hx-put="/api/tasks/{safe_id}/info" hx-target="#title-slot-{safe_id}" hx-swap="innerHTML">
+        <span id="title-slot-{safe_id}" class="title-slot">{title_input}</span>
+        <button type="button" hx-post="/api/tasks/{safe_id}/regenerate-title" hx-target="#title-slot-{safe_id}" hx-swap="innerHTML" class="secondary">Regenerate Title</button>
+        <button type="submit" class="secondary">Save</button>
+      </form>
+      <p class="muted">ID: {safe_id} • Created: {created} • Modified: {modified}</p>
       <p><a href="/">← All tasks</a></p>
     </header>
     """
@@ -153,27 +153,27 @@ def index() -> HTMLResponse:
             for t in tasks
         )
     else:
-        cards = '<p style="color: #666; text-align: center; padding: 2rem;">No tasks yet — create one below.</p>'
+        cards = '<p class="muted empty-tasks">No tasks yet — create one below.</p>'
 
     stage_items = "".join(
         f'<li><a href="/stages/{_esc(s.slug)}">{_esc(s.name)}</a> '
-        f'<small style="color: #666;">({_esc(s.slug)})</small></li>'
+        f'<small class="muted">({_esc(s.slug)})</small></li>'
         for s in stages.REGISTRY
     )
 
     body = f"""
-    <header style="margin-bottom: 2rem;">
+    <header>
       <h1>Crack Tasks</h1>
-      <p style="color: #666;">Project: {_esc(str(root))}</p>
+      <p class="muted">Project: {_esc(str(root))}</p>
     </header>
 
-    <form hx-post="/api/tasks" hx-target="#task-list" hx-swap="afterbegin" hx-on::after-request="this.reset()" style="margin-bottom: 2rem;">
-      <h2 style="margin-top: 0;">New Task</h2>
-      <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end;">
-        <div style="flex: 1; min-width: 200px;">
+    <form class="new-task-form" hx-post="/api/tasks" hx-target="#task-list" hx-swap="afterbegin" hx-on::after-request="this.reset()">
+      <h2>New Task</h2>
+      <div class="new-task-row">
+        <div>
           <label>Title <input type="text" name="title" placeholder="My Task Title" required></label>
         </div>
-        <button type="submit" class="primary">Create Task</button>
+        <button type="submit">Create Task</button>
       </div>
     </form>
 
@@ -181,12 +181,12 @@ def index() -> HTMLResponse:
       {cards}
     </section>
 
-    <section id="harness-stages" style="margin-top: 2rem;">
-      <h2># Harness Stages</h2>
+    <section id="harness-stages" class="section-spaced">
+      <h2>Harness Stages</h2>
       <ul>
         {stage_items}
         <li><a href="/sub_agents">Sub-agents</a>
-          <small style="color: #666;">(personas &amp; models)</small></li>
+          <small class="muted">(personas &amp; models)</small></li>
       </ul>
     </section>
 
@@ -401,6 +401,7 @@ def _render_task_view_body(task_id: str, info: dict, active_slug: str) -> str:
     <section id="prompt-list">
       <div hx-get="/tasks/{safe_id}/prompts-list" hx-trigger="load"></div>
     </section>
+    {attachments.render_strip("tasks", task_id, paths.task_attachments_state(task_id), "task-attachments")}
 
     <details class="add">
       <summary style="font-size: 0.95rem; cursor: pointer;">Add Prompt</summary>
@@ -455,3 +456,56 @@ def prompt_row(task_id: str, filename: str, editing: bool = Query(default=False)
         return HTMLResponse(_render_prompt_row(task_id, filename, editing=editing))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail="not found") from e
+
+
+# ---------------------------------------------------------------------------
+# Media (persisted turn thumbnails) + prompt-image attachments
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tasks/{task_id}/media/{filename}")
+def task_media(task_id: str, filename: str):
+    """Serve a persisted image copy from the task's media/ dir."""
+    _check_task_id(task_id)
+    return attachments.serve_file(paths.task_media_dir(task_id), filename)
+
+
+@router.get("/tasks/{task_id}/attachments/{filename}")
+def task_attachment_file(task_id: str, filename: str):
+    """Serve a user-uploaded prompt attachment image."""
+    _check_task_id(task_id)
+    return attachments.serve_file(paths.task_attachments_dir(task_id), filename)
+
+
+@router.post("/api/tasks/{task_id}/attachments", response_class=HTMLResponse)
+async def api_task_attachment_upload(task_id: str, file: UploadFile = File(...)) -> HTMLResponse:
+    """Save a pasted/dropped image, auto-describe it, return its thumbnail chip."""
+    _check_task_id(task_id)
+    data = await file.read()
+    try:
+        entry = await attachments.add_attachment(
+            paths.task_attachments_state(task_id),
+            paths.task_attachments_dir(task_id),
+            data,
+            file.filename or "image.png",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return HTMLResponse(attachments.render_chip("tasks", task_id, entry))
+
+
+@router.delete("/api/tasks/{task_id}/attachments/{attachment_id}", response_class=HTMLResponse)
+def api_task_attachment_delete(task_id: str, attachment_id: str) -> HTMLResponse:
+    """Remove one attachment (file + manifest entry); empty fragment drops the chip."""
+    _check_task_id(task_id)
+    try:
+        deleted = attachments.delete_attachment(
+            paths.task_attachments_state(task_id),
+            paths.task_attachments_dir(task_id),
+            attachment_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not deleted:
+        raise HTTPException(status_code=404, detail="not found")
+    return HTMLResponse("")

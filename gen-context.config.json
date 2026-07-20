@@ -33,6 +33,7 @@
 "rust_pkg/_crack_utils",
 
 "_data/3d_data_v2",
+"_data/news",
 ".pi/crack/server",
 "_docker"
 

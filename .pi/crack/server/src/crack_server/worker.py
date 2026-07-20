@@ -11,7 +11,9 @@ wrapped in ``asyncio.to_thread``.
 
 Reentrancy: uvicorn ``reload=True`` restarts the whole process on source
 edits; each start calls ``queue.reclaim_orphans()`` to requeue any job that
-was in flight, and the orphan sweep kills leaked pi process groups.
+was in flight, and ``recover_detached_hops()`` leaves pi processes that
+survived the reload running (their jobs re-attach via the hop manifest)
+instead of killing them.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import signal
 import time
 from pathlib import Path
 
@@ -136,11 +139,27 @@ async def _dispatch(job: dict) -> None:
             logger.exception("worker: could not record dispatch error for job %s", job.get("id"))
 
 
-def _kill_orphaned_agents() -> None:
-    """Kill pi process groups left behind by a crashed/killed server (B4): any
-    surviving *.agent.pid under tasks/ or unscripted_chats/ names an agent whose
-    owning job is gone, so it must die before its job is reclaimed and re-run."""
+# Grace added to a hop manifest's own timeout when deciding whether a
+# detached pi is stale (never re-attached, e.g. a lost queue file) and may be
+# killed/cleaned at startup.
+DETACHED_HOP_GRACE_SECONDS = 120.0
+
+
+def recover_detached_hops() -> None:
+    """Reload survival (replaces the old kill-orphans sweep): a pi detached by
+    a server reload keeps running (tini reaps it) and the reclaimed job
+    re-attaches. For each hop manifest next to a pid file:
+
+    - pid alive and within its timeout budget → leave it running;
+    - pid alive but long past its budget (never re-attached) → kill the
+      process group and clean up;
+    - pid dead, manifest fresh → leave it: the resumed job drains the output
+      backlog (a pi that finished mid-restart completes from the file);
+    - pid dead and stale → clean up.
+    Stale pid files with no manifest keep the old behavior (kill + unlink).
+    """
     from crack_server import paths, pi_runner
+    from crack_server.pi_proc import _pid_alive, _read_hop_manifest, _terminate_group
 
     pid_files: list[Path] = []
     tasks = paths.tasks_dir()
@@ -150,13 +169,42 @@ def _kill_orphaned_agents() -> None:
     if chats_dir.is_dir():
         pid_files += list(chats_dir.glob("*/agent.pid"))
         pid_files += list(chats_dir.glob("*/sub_agent_runs/*/agent.pid"))
+
     for pid_file in pid_files:
+        manifest_path = paths.hop_manifest_path(pid_file)
+        output_path = paths.hop_output_path(pid_file)
+        manifest = _read_hop_manifest(manifest_path)
+        pid = manifest.get("pid")
+        if manifest.get("status") == "running" and isinstance(pid, int):
+            alive = _pid_alive(pid, str(manifest.get("session_id") or "") or None)
+            budget = float(manifest.get("timeout") or 0) + DETACHED_HOP_GRACE_SECONDS
+            stale = time.time() - float(manifest.get("started_at") or 0) > budget
+            if alive and not stale:
+                logger.info(
+                    "crack-worker: detached hop %s still running (pid %d); leaving for re-attach",
+                    manifest_path, pid,
+                )
+                continue
+            if alive:
+                logger.warning(
+                    "crack-worker: detached hop %s stale (pid %d); killing group",
+                    manifest_path, pid,
+                )
+                _terminate_group(pid, signal.SIGKILL)
+            elif not stale:
+                logger.info(
+                    "crack-worker: detached hop %s ended during restart; leaving for drain",
+                    manifest_path,
+                )
+                continue
+            for path in (pid_file, manifest_path, output_path):
+                path.unlink(missing_ok=True)
+            continue
+        # No live detached hop: legacy orphan behavior (B4).
         killed = pi_runner.kill_pid_file(pid_file)
         logger.info("crack-worker: orphaned agent pid file %s (killed=%s)", pid_file, killed)
-        try:
-            pid_file.unlink()
-        except OSError:
-            pass
+        for path in (pid_file, manifest_path, output_path):
+            path.unlink(missing_ok=True)
 
 
 SESSION_RETENTION_DAYS = 14
@@ -296,7 +344,7 @@ async def async_loop() -> None:
     # through call_soon_threadsafe.
     queue.register_wakeup(lambda: loop.call_soon_threadsafe(wakeup.set))
 
-    await asyncio.to_thread(_kill_orphaned_agents)
+    await asyncio.to_thread(recover_detached_hops)
     await asyncio.to_thread(_prune_old_session_dirs)
     await asyncio.to_thread(queue.reclaim_orphans)
 

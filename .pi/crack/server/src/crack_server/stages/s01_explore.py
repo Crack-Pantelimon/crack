@@ -21,6 +21,7 @@ from crack_server.state import JsonState
 from crack_server.stages.base import Part, Stage
 from crack_server.stages.render import (
     render_error_msg,
+    render_fatal_error_banner,
     render_message_form,
     render_retry_button,
     render_running_tail,
@@ -28,7 +29,13 @@ from crack_server.stages.render import (
 )
 from crack_server import ui as _ui
 from crack_server.ui import _esc
-from crack_server.stages.steprun import record_errors
+from crack_server.stages.steprun import (
+    attach_media_to_blocks,
+    error_recorder,
+    grant_error_budget,
+    record_errors,
+    task_prompt_media,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -87,8 +94,13 @@ def _persist_explore_turn(task_id: str, current_turn: dict, hop: int) -> None:
         "hop": hop,
         "text": text,
         "thinking": current_turn.get("thinking", "").strip(),
-        "tool_blocks": list(current_turn.get("tool_blocks", [])),
+        "tool_blocks": attach_media_to_blocks(
+            list(current_turn.get("tool_blocks", [])),
+            paths.task_dir(task_id) / "media",
+            f"/tasks/{task_id}/media",
+        ),
         "elapsed": current_turn.get("elapsed"),
+        "at": time.time(),
     }
 
     def _append(state: dict) -> dict:
@@ -229,6 +241,8 @@ class S01Explore(Stage):
             "found_files": 0,
             "questions": [],
             "turns": [],
+            "errors": [],
+            "error_budget": pi_runner.MAX_TOTAL_ERRORS,
             "path_refs": [],
             "summary_md": "",
             "error": "",
@@ -253,6 +267,9 @@ class S01Explore(Stage):
         """Append a compiled-prompt entry into explore.json's turns, in order."""
         entry.setdefault("label", label)
         entry["template"] = template
+        media = task_prompt_media(task_id)
+        if media:
+            entry.setdefault("media", media)
 
         def _append(state: dict) -> dict:
             state.setdefault("turns", []).append(entry)
@@ -267,7 +284,7 @@ class S01Explore(Stage):
             model=self.model_for("agent"),
             session_id=f"explore-{task_id}",
             sessions_dir=paths.explore_sessions_dir(task_id),
-            tools="bash,read,mcp",
+            tools="bash,read,mcp,analyze_image",
             message=message,
             start=start,
             sentinel=EXPLORE_SENTINEL,
@@ -331,6 +348,7 @@ class S01Explore(Stage):
                     record_prompt=lambda entry: self._record_prompt_entry(
                         task_id, entry, "turn_zero", "turn_zero.md"
                     ),
+                    record_error=error_recorder(paths.explore_state(task_id)),
                 )
                 paths.write_explore_artefact(task_id, "turn_zero", turn_zero_text)
                 questions = _parse_turn_zero_questions(turn_zero_text)
@@ -402,6 +420,7 @@ class S01Explore(Stage):
                     record_prompt=lambda entry: self._record_prompt_entry(
                         task_id, entry, "gate", "gate.md"
                     ),
+                    record_error=error_recorder(paths.explore_state(task_id)),
                 )
                 logger.info("explore: gate after hop %d replied: %r", hop, gate_reply[:200])
                 if gate_reply.strip().upper().startswith("DONE"):
@@ -450,6 +469,7 @@ class S01Explore(Stage):
                 record_prompt=lambda entry: self._record_prompt_entry(
                     task_id, entry, "summary", "explore_summary.md"
                 ),
+                record_error=error_recorder(paths.explore_state(task_id)),
             )
             paths.write_explore_artefact(task_id, "explore_summary", summary_md)
 
@@ -489,6 +509,7 @@ class S01Explore(Stage):
             state["status"] = "running"
             state["error"] = ""
             state["error_detail"] = ""
+            grant_error_budget(state)
             return state
 
         paths.explore_state(task_id).update(_retry)
@@ -525,7 +546,7 @@ class S01Explore(Stage):
                 f"<ul>{items}</ul></details>"
             )
 
-        msgs.extend(render_turn_msgs(turns))
+        msgs.extend(render_turn_msgs(turns, errors=state.get("errors", [])))
 
         if status == "done" and summary_md:
             msgs.append(
@@ -566,6 +587,7 @@ class S01Explore(Stage):
             parts.append("".join(refs))
 
         if status == "error":
+            parts.append(render_fatal_error_banner(state))
             parts.append(render_error_msg(error, state.get("error_detail", "")))
 
         if status != "running":

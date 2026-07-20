@@ -38,6 +38,7 @@ def fake_pi(tmp_path, monkeypatch) -> FakePi:
     monkeypatch.setenv("FAKE_PI_DIR", str(ctrl))
     monkeypatch.setenv("FAKE_PI_SCRIPT", str(script))
     monkeypatch.setattr(ratelimit, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
+    monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.05, 0.05, 0.05, 0.05])
     monkeypatch.setattr(ratelimit, "PI_RETRY_WINDOW_SECONDS", 0.2)
     # Neutralize the nvidia limiters so stage runs don't pace the test suite.
     monkeypatch.setattr(ratelimit, "NVIDIA_CALLS_PER_MINUTE", 1_000_000.0)
@@ -89,18 +90,27 @@ def test_explore_run_records_compiled_prompts(task, fake_pi):
 
 def test_explore_retry_resumes_session(task, fake_pi):
     stage = explore_stage()
-    # First run: turn-zero ok, then the hop dies hard after 1 persisted turn.
-    # Retry: hop resumes (line 3) and ends on the sentinel, then summary.
-    fake_pi.set_script(["ok", "midhard:1", "sentinel:EXPLORATION_COMPLETE", "ok"])
+    # First run: turn-zero ok, then the hop dies hard with no progress on all
+    # 5 attempts (the no-progress streak cap) — the stage lands in error with
+    # each failed attempt recorded as a durable error row. Retry: the hop
+    # resumes (invocation 7) and ends on the sentinel, then the summary runs.
+    fake_pi.set_script(["ok", "hard", "hard", "hard", "hard", "hard",
+                        "sentinel:EXPLORATION_COMPLETE", "ok"])
     stage._run_job(task)
 
     state = paths.explore_state(task).read()
     assert state["status"] == "error"
     kept = [t for t in state["turns"] if not t.get("kind")]
-    assert len(kept) == 1
+    assert kept == []
+    assert len(state["errors"]) == 1 + len(ratelimit.HARD_RETRY_DELAYS)
+    assert state["error_over_budget"] is False
 
     stage.retry_from_error(task)
-    assert paths.explore_state(task).read()["status"] == "running"
+    st = paths.explore_state(task).read()
+    assert st["status"] == "running"
+    # A manual continue grants another MAX_TOTAL_ERRORS on top of the rows so
+    # far; the durable rows themselves are kept.
+    assert st["error_budget"] == len(st["errors"]) + ratelimit.MAX_TOTAL_ERRORS
     job = queue.claim_next()
     assert job is not None and job["slug"] == "explore" and job["step"] == "resume"
     stage.dispatch_step(job["task_id"], job["step"], job.get("form"))
@@ -108,12 +118,13 @@ def test_explore_retry_resumes_session(task, fake_pi):
 
     state = paths.explore_state(task).read()
     assert state["status"] == "done"
-    # Prior turn kept, resume prompt sent, same pi session id on both hops.
+    # The resume hop's turn was kept, the resume prompt was sent, and both
+    # hops used the same pi session id.
     kept = [t for t in state["turns"] if not t.get("kind")]
-    assert len(kept) == 2
-    assert fake_pi.prompt(3) == "Continue exploring where you left off."
-    a2, a3 = fake_pi.argv(2), fake_pi.argv(3)
-    assert a2[a2.index("--session-id") + 1] == a3[a3.index("--session-id") + 1]
+    assert len(kept) == 1
+    assert fake_pi.prompt(7) == "Continue exploring where you left off."
+    a2, a7 = fake_pi.argv(2), fake_pi.argv(7)
+    assert a2[a2.index("--session-id") + 1] == a7[a7.index("--session-id") + 1]
     assert (paths.explore_sessions_dir(task)).is_dir()
 
 

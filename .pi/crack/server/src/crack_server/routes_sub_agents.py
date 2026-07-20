@@ -8,7 +8,7 @@ import time
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from crack_server import chats, paths, ui as _ui
+from crack_server import attachments, chats, paths, ui as _ui
 from crack_server.stages.render import model_select, render_turn_msgs
 from crack_server.sub_agents import MAX_DEPTH, ask_user, registry, signals, wait
 from crack_server.sub_agents import runner
@@ -269,6 +269,17 @@ def api_get_run(chat_id: str, run_id: str) -> dict:
     return _run_public(state)
 
 
+@router.get("/chats/{chat_id}/sub_agents/runs/{run_id}/media/{filename}")
+def run_media(chat_id: str, run_id: str, filename: str):
+    """Serve a persisted image copy from the run's media/ dir."""
+    chats.check_chat_id(chat_id)
+    try:
+        directory = paths.run_media_dir(chat_id, run_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail="not found") from e
+    return attachments.serve_file(directory, filename)
+
+
 @router.post("/api/chats/{chat_id}/sub_agents/runs/{run_id}/answers", response_class=HTMLResponse)
 async def api_run_answers(chat_id: str, run_id: str, request: Request) -> HTMLResponse:
     chats.check_chat_id(chat_id)
@@ -401,16 +412,16 @@ def sub_agents_page() -> HTMLResponse:
         sections.append(f"""
         <section>
           <h2>{esc(persona.name)}</h2>
-          <p style="color:#666;">{esc(persona.tool_description())}</p>
+          <p class="muted">{esc(persona.tool_description())}</p>
           {_render_persona_row(persona)}
           <h3>Templates</h3>
           {templates}
         </section>
         """)
     body = f"""
-    <header style="margin-bottom:1.5rem;">
+    <header>
       <h1>Sub-agents</h1>
-      <p style="color:#666;">Max depth {MAX_DEPTH}. Personas live in <code>.pi/crack/sub_agents/</code>.</p>
+      <p class="muted">Max depth {MAX_DEPTH}. Personas live in <code>.pi/crack/sub_agents/</code>.</p>
       <p><a href="/">← Home</a></p>
     </header>
     {"".join(sections)}
@@ -431,21 +442,21 @@ def run_page(run_id: str) -> HTMLResponse:
     state = _run_or_404(run_id)
     esc = _ui._esc
     turns = state.get("turns") or []
-    msgs = "".join(render_turn_msgs(turns))
+    msgs = "".join(render_turn_msgs(turns, errors=state.get("errors", [])))
     question_html = ""
     if state.get("phase") == "awaiting_user" and state.get("pending_question"):
         q = state["pending_question"]
         choices = q.get("choices") or []
         if choices:
             field = "".join(
-                f'<label style="display:block;margin:0.15rem 0;">'
+                f'<label class="choice-label">'
                 f'<input type="radio" name="answer" value="{esc(c)}" required> {esc(c)}</label>'
                 for c in choices
             )
         else:
             field = '<textarea name="answer" rows="3" required placeholder="Your answer…"></textarea>'
         question_html = f"""
-        <section style="border:1px solid #b89b2e;padding:0.5rem 1rem;margin-bottom:1rem;">
+        <section class="ask-user-box">
           <h2>Question for you</h2>
           <form method="post" action="/api/chats/{esc(state.get('chat_id', ''))}/sub_agents/runs/{esc(run_id)}/user_answer">
             <p><strong>{esc(q.get('question', ''))}</strong></p>
@@ -466,18 +477,18 @@ def run_page(run_id: str) -> HTMLResponse:
             except OSError:
                 report = ""
     body = f"""
-    <header style="margin-bottom:1rem;">
+    <header>
       <p><a href="/chats/{esc(state.get('chat_id', ''))}">← Chat</a>
          · <a href="/sub_agents">Sub-agents</a></p>
       <h1>Run {esc(run_id)}</h1>
-      <p><small style="color:#666;">
+      <p><small class="muted">
         persona <code>{esc(state.get('persona', ''))}</code> ·
         phase <code>{esc(state.get('phase', ''))}</code> ·
         depth {esc(str(state.get('depth', '')))}
       </small></p>
     </header>
     {question_html}
-    <section><h2>Trajectory</h2>{msgs or '<p style="color:#888;">No turns yet.</p>'}</section>
-    <section><h2>Report</h2>{report or '<p style="color:#888;">No report.md yet.</p>'}</section>
+    <section><h2>Trajectory</h2>{msgs or '<p class="muted">No turns yet.</p>'}</section>
+    <section><h2>Report</h2>{report or '<p class="muted">No report.md yet.</p>'}</section>
     """
     return HTMLResponse(_ui._render_base(f"Run {run_id}", body))

@@ -11,6 +11,7 @@ from crack_server.stages.base import Part, Stage
 from crack_server.stages.render import (
     render_error_msg,
     render_exchanges,
+    render_fatal_error_banner,
     render_running_tail,
     render_turn_msgs,
     render_turns_trajectory,
@@ -105,10 +106,12 @@ class S06Finished(Stage):
             model=self.model_for("chat"),
             session_id=f"review-{task_id}",
             sessions_dir=paths.impl_review_sessions_dir(task_id),
-            tools="bash,read,edit,write,mcp",
+            tools="bash,read,edit,write,mcp,analyze_image",
             timeout_seconds=CHAT_TIMEOUT_SECONDS,
             hop_kwargs=self.agent_hop_kwargs(task_id),
             stopped_phase="stopped",
+            media_dir=paths.task_dir(task_id) / "media",
+            media_url_prefix=f"/tasks/{task_id}/media",
         )
 
     # -- rendering ------------------------------------------------------------
@@ -120,7 +123,7 @@ class S06Finished(Stage):
 
         if not self.is_enabled(task_id) and phase != "chatting":
             msgs.append(
-                '<div class="stage-msg"><p style="color: #888;">'
+                '<div class="stage-msg"><p class="muted">'
                 "The implementation review must finish before this stage unlocks.</p></div>"
             )
             return msgs
@@ -166,6 +169,7 @@ class S06Finished(Stage):
             return ""
 
         if phase != "chatting" and state.get("error"):
+            parts.append(render_fatal_error_banner(state))
             parts.append(render_error_msg(state.get("error", ""), state.get("error_detail", "")))
 
         if phase == "chatting":

@@ -15,6 +15,7 @@ from crack_server.state import JsonState
 from crack_server.stages.base import Part, Stage
 from crack_server.stages.render import (
     render_error_msg,
+    render_fatal_error_banner,
     render_message_form,
     render_retry_button,
     render_running_tail,
@@ -24,10 +25,12 @@ from crack_server import ui as _ui
 from crack_server.ui import _esc
 from crack_server.stages.steprun import (
     bump_total_turns,
+    grant_error_budget,
     hop_loop,
     mark_run_stopped,
     prompt_recorder,
     record_errors,
+    task_prompt_media,
     turn_persister,
 )
 
@@ -81,6 +84,8 @@ class S05ImplReview(Stage):
         fresh = {
             "phase": "running",
             "turns": [],
+            "errors": [],
+            "error_budget": pi_runner.MAX_TOTAL_ERRORS,
             "total_turns": 0,
             "stop_reason": None,
             "error": "",
@@ -149,21 +154,24 @@ class S05ImplReview(Stage):
                 message, init_template = self._assemble_message(task_id), "review.md"
 
             def run_hop(msg: str, round_n: int) -> str:
-                persister = turn_persister(review, post=bump_total_turns)
+                persister = turn_persister(review, post=bump_total_turns, media_dir=paths.task_dir(task_id) / "media", media_url_prefix=f"/tasks/{task_id}/media")
                 tmpl = init_template if round_n == 1 else ""
                 return pi_runner.run_agent_hop(
                     log_prefix="impl-review",
                     model=self.model_for("reviewer"),
                     session_id=f"review-{task_id}",
                     sessions_dir=paths.impl_review_sessions_dir(task_id),
-                    tools="bash,read,edit,write,mcp",
+                    tools="bash,read,edit,write,mcp,analyze_image",
                     message=msg,
                     start=start,
                     sentinel=REVIEW_SENTINEL,
                     timeout_seconds=REVIEW_TIMEOUT_SECONDS,
                     persist_turn=persister.persist,
                     hop=round_n,
-                    record_prompt=prompt_recorder(persister, f"round {round_n}", tmpl),
+                    record_prompt=prompt_recorder(
+                        persister, f"round {round_n}", tmpl,
+                        media=lambda: task_prompt_media(task_id),
+                    ),
                     **self.agent_hop_kwargs(task_id),
                 )
 
@@ -206,6 +214,7 @@ class S05ImplReview(Stage):
             state["phase"] = "running"
             state["error"] = ""
             state["error_detail"] = ""
+            grant_error_budget(state)
             return state
 
         paths.impl_review_state(task_id).update(_retry)
@@ -223,7 +232,7 @@ class S05ImplReview(Stage):
         if phase is None:
             if not self.is_enabled(task_id):
                 msgs.append(
-                    '<div class="stage-msg"><p style="color: #888;">'
+                    '<div class="stage-msg"><p class="muted">'
                     "Finish implementation first to unlock review.</p></div>"
                 )
             else:
@@ -240,7 +249,7 @@ class S05ImplReview(Stage):
                 meta += f" · stop: {_esc(str(state['stop_reason']))}"
             msgs.append(f'<div class="stage-msg impl-review-meta"><small>{meta}</small></div>')
 
-        msgs.extend(render_turn_msgs(turns))
+        msgs.extend(render_turn_msgs(turns, errors=state.get("errors", [])))
 
         if phase == "done":
             walkthrough = paths.read_walkthrough(task_id)
@@ -276,6 +285,7 @@ class S05ImplReview(Stage):
                 )
 
         if phase == "error":
+            parts.append(render_fatal_error_banner(state))
             parts.append(
                 render_error_msg(state.get("error", ""), state.get("error_detail", ""))
             )

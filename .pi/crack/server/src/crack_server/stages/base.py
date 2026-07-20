@@ -30,6 +30,7 @@ from crack_server import paths
 from crack_server import pi_runner
 from crack_server import ui as _ui
 from crack_server.stages.render import model_select
+from crack_server.stages.steprun import error_recorder
 from crack_server.state import JsonState, task_state_mtimes
 
 logger = logging.getLogger("uvicorn.error")
@@ -348,10 +349,19 @@ class Stage:
 
     def agent_hop_kwargs(self, task_id: str) -> dict:
         """The ``pid_file`` / ``stop_check`` kwargs every stage passes to
-        :func:`pi_runner.run_agent_hop` so the generic STOP action works."""
+        :func:`pi_runner.run_agent_hop` so the generic STOP action works, plus
+        the durable error wiring: ``record_error`` appends every failed
+        attempt as a timestamped row into the stage's ``errors`` list and
+        ``error_budget`` reads the current cap (raised by each manual
+        retry_from_error via ``grant_error_budget``)."""
+        state = self.state(task_id)
         return {
             "pid_file": paths.stage_pid_file(task_id, self.slug),
             "stop_check": lambda: bool(self.state_read(task_id).get("stop_requested")),
+            "record_error": error_recorder(state),
+            "error_budget": lambda: int(
+                state.read().get("error_budget", pi_runner.MAX_TOTAL_ERRORS)
+            ),
         }
 
     def retry_from_error(self, task_id: str) -> None:
@@ -531,9 +541,9 @@ class Stage:
             source = f"(could not read source: {e})"
 
         return f"""
-        <header style="margin-bottom: 1.5rem;">
+        <header>
           <h1>Stage: {esc(self.name)}</h1>
-          <p style="color: #666; margin: 0;">
+          <p class="muted">
             slug <code>{esc(self.slug)}</code> • order {self.order} •
             config <code>harness/{esc(self.slug)}.json</code>
           </p>
@@ -551,7 +561,7 @@ class Stage:
         </section>
 
         <section>
-          <h2>Source <small style="color: #666;">(read-only)</small></h2>
+          <h2>Source <small class="muted">(read-only)</small></h2>
           <pre class="stage-source">{esc(source)}</pre>
         </section>
         """

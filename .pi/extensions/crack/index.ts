@@ -50,6 +50,15 @@ const ASK_PARAMS = Type.Object({
 	),
 });
 
+const ANALYZE_IMAGE_PARAMS = Type.Object({
+	prompt: Type.String({
+		description: "What to look for or answer about the image(s).",
+	}),
+	image_paths: Type.Array(Type.String(), {
+		description: "Paths to image files to analyze (must exist and be valid images).",
+	}),
+});
+
 interface SpawnResult {
 	run_id: string;
 	report_path: string;
@@ -272,6 +281,46 @@ export default function crack(pi: ExtensionAPI) {
 					"Question recorded. This session suspends until the user answers — " +
 					"end your turn now, make no further tool calls.";
 				return { content: [{ type: "text" as const, text }] };
+			},
+		});
+		pi.registerTool({
+			name: "analyze_image",
+			label: "Analyze image(s)",
+			description:
+				"Analyze one or more image files with a vision model. Takes a prompt plus a list of " +
+				"image paths; returns the vision model's answer as text. Paths must exist and be " +
+				"valid images — the server rejects the call listing any bad paths.",
+			parameters: ANALYZE_IMAGE_PARAMS,
+			executionMode: "parallel",
+			async execute(_id, params, signal) {
+				const missing = params.image_paths.filter((p) => !existsSync(p));
+				if (missing.length > 0) {
+					throw new Error(`image path(s) not found: ${missing.join(", ")}`);
+				}
+				const to = signal
+					? AbortSignal.any([signal, AbortSignal.timeout(600_000)])
+					: AbortSignal.timeout(600_000);
+				let res: Response;
+				try {
+					res = await fetch(`${BASE}/api/vision/analyze`, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							prompt: params.prompt,
+							image_paths: params.image_paths,
+						}),
+						signal: to,
+					});
+				} catch (e) {
+					throw new Error(
+						`crack-server unreachable at ${BASE}: ${e instanceof Error ? (e.cause ?? e.message) : e}`,
+					);
+				}
+				if (!res.ok) {
+					throw new Error(truncateTail(await res.text()).content);
+				}
+				const d = (await res.json()) as { text: string };
+				return { content: [{ type: "text" as const, text: d.text }] };
 			},
 		});
 		const dir = findSubAgentsDir();

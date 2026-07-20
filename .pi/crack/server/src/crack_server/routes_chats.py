@@ -6,10 +6,10 @@ from __future__ import annotations
 import asyncio
 import time
 
-from fastapi import APIRouter, Form, Query, Response
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from crack_server import chats, paths
+from crack_server import attachments, chats, paths
 from crack_server.state import chat_state_mtime
 from crack_server.ui import _esc, _render_base
 
@@ -90,3 +90,56 @@ def api_chat_stop(chat_id: str) -> HTMLResponse:
 def api_chat_delete(chat_id: str) -> HTMLResponse:
     """Delete a chat directory; empty fragment removes its home-page list item."""
     return chats.delete_chat(chat_id)
+
+
+# ---------------------------------------------------------------------------
+# Media (persisted turn thumbnails) + message-image attachments
+# ---------------------------------------------------------------------------
+
+
+@router.get("/chats/{chat_id}/media/{filename}")
+def chat_media(chat_id: str, filename: str):
+    """Serve a persisted image copy from the chat's media/ dir."""
+    chats.check_chat_id(chat_id)
+    return attachments.serve_file(paths.chat_media_dir(chat_id), filename)
+
+
+@router.get("/chats/{chat_id}/attachments/{filename}")
+def chat_attachment_file(chat_id: str, filename: str):
+    """Serve a user-uploaded message attachment image."""
+    chats.check_chat_id(chat_id)
+    return attachments.serve_file(paths.chat_attachments_dir(chat_id), filename)
+
+
+@router.post("/api/chats/{chat_id}/attachments", response_class=HTMLResponse)
+async def api_chat_attachment_upload(chat_id: str, file: UploadFile = File(...)) -> HTMLResponse:
+    """Save a pasted/dropped image, auto-describe it, return its thumbnail chip."""
+    chats.check_chat_id(chat_id)
+    data = await file.read()
+    try:
+        entry = await attachments.add_attachment(
+            paths.chat_attachments_state(chat_id),
+            paths.chat_attachments_dir(chat_id),
+            data,
+            file.filename or "image.png",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return HTMLResponse(attachments.render_chip("chats", chat_id, entry))
+
+
+@router.delete("/api/chats/{chat_id}/attachments/{attachment_id}", response_class=HTMLResponse)
+def api_chat_attachment_delete(chat_id: str, attachment_id: str) -> HTMLResponse:
+    """Remove one staged attachment (file + manifest entry)."""
+    chats.check_chat_id(chat_id)
+    try:
+        deleted = attachments.delete_attachment(
+            paths.chat_attachments_state(chat_id),
+            paths.chat_attachments_dir(chat_id),
+            attachment_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not deleted:
+        raise HTTPException(status_code=404, detail="not found")
+    return HTMLResponse("")

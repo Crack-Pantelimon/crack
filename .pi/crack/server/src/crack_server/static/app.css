@@ -1,14 +1,86 @@
-/* Pico.css provides base styling - only custom additions needed */
+/* Layout + page-wide customizations only — Pico CSS v2 covers the rest. */
 
-main {
-  max-width: 52rem;
-  margin: 0 auto;
+.layout {
+  display: flex;
+  align-items: flex-start;
 }
 
-.prompt-row {
+.sidebar {
+  flex: 0 0 400px;
+  max-width: 400px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+  padding: 1rem;
+  border-right: 1px solid var(--pico-muted-border-color);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.sidebar-nav a {
   display: block;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #ddd;
+  text-decoration: none;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-nav h6 {
+  margin: 0.85rem 0 0.25rem;
+  color: var(--pico-muted-color);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sidebar-nav h6:first-of-type {
+  margin-top: 0.5rem;
+}
+
+main.container-fluid {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    flex-basis: auto;
+    max-width: none;
+    height: auto;
+    position: static;
+    border-right: none;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+  }
+}
+
+.muted {
+  color: var(--pico-muted-color);
+}
+
+.inline-form {
+  margin: 0;
+}
+
+.file-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.file-row-label {
+  flex: 1;
 }
 
 .prompt-row .name {
@@ -17,7 +89,6 @@ main {
 }
 
 .prompt-row textarea {
-  width: 100%;
   font-family: ui-monospace, monospace;
   margin: 0.5rem 0;
 }
@@ -27,22 +98,48 @@ main {
   gap: 0.5rem;
 }
 
+/* Class-based Pico makes form buttons full-width; keep action rows compact and
+   force single-line labels so buttons in a row share one consistent height. */
+.actions button,
+.stage-buttons button,
+.stage-running button,
+.title-edit-form button,
+.new-task-row button,
+.task-card-header button,
+.chat-list-item button,
+.compact-btn {
+  width: auto;
+  white-space: nowrap;
+}
+
 .add {
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid #ccc;
+  border-top: 1px solid var(--pico-muted-border-color);
 }
 
 .title-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.title-h1 {
+  margin: 0;
+  min-width: 0;
+}
+
+.title-edit-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
 }
 
 .title-input {
   flex: 1;
-  min-width: 200px;
+  min-width: 0;
 }
 
 .error {
@@ -55,7 +152,6 @@ main {
   margin: 0.5rem 0;
 }
 
-/* htmx loading indicator */
 .htmx-indicator {
   opacity: 0;
   transition: opacity 200ms ease-in;
@@ -69,7 +165,6 @@ main {
   opacity: 1;
 }
 
-/* Task card styling */
 .task-card {
   transition: opacity 0.3s, transform 0.3s;
 }
@@ -79,8 +174,78 @@ main {
   transform: translateX(-20px);
 }
 
-/* Title slot: stable container for the title input — swaps only ever replace its
-   innerHTML, never the h1 or the buttons beside it. */
+.task-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.task-card-header h3 {
+  margin: 0 0 0.5rem 0;
+}
+
+.task-card-header a {
+  text-decoration: none;
+}
+
+.task-glyph {
+  font-weight: bold;
+  margin-right: 0.35rem;
+}
+
+.empty-tasks {
+  text-align: center;
+  padding: 2rem;
+}
+
+.new-task-form {
+  margin-bottom: 2rem;
+}
+
+.new-task-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.new-task-row > div {
+  flex: 1;
+  min-width: 200px;
+}
+
+.section-spaced {
+  margin-top: 2rem;
+}
+
+.chat-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.compact-btn {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.choice-label {
+  display: block;
+  margin: 0.15rem 0;
+}
+
+.ask-user-form {
+  margin-top: 0.5rem;
+}
+
+.ask-user-box {
+  border: 1px solid #b89b2e;
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
 .title-slot {
   flex: 1;
   min-width: 200px;
@@ -94,7 +259,6 @@ main {
   min-width: 0;
 }
 
-/* Explore: compact actions table */
 .explore-actions {
   width: 100%;
   border-collapse: collapse;
@@ -107,24 +271,24 @@ main {
   text-align: left;
   vertical-align: top;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--pico-muted-border-color);
 }
 
 .explore-actions th {
-  color: #666;
+  color: var(--pico-muted-color);
   font-weight: 600;
 }
 
 .explore-actions td:first-child {
   white-space: nowrap;
   font-family: ui-monospace, monospace;
-  color: #555;
+  color: var(--pico-muted-color);
 }
 
 .explore-actions td:last-child {
   white-space: nowrap;
   text-align: right;
-  color: #888;
+  color: var(--pico-muted-color);
   font-size: 0.78rem;
 }
 
@@ -143,8 +307,9 @@ main {
   color: #a80;
 }
 
-.explore-meta {
-  color: #666;
+.explore-meta,
+.plan-meta {
+  color: var(--pico-muted-color);
   margin: 0.25rem 0;
 }
 
@@ -156,7 +321,8 @@ main {
   font-size: 0.9rem;
 }
 
-.explore-summary {
+.explore-summary,
+.plan-final {
   border-left: 3px solid #7ab;
   padding-left: 0.75rem;
   margin: 1rem 0;
@@ -166,14 +332,8 @@ main {
   margin: 0.25rem 0 0.5rem;
 }
 
-/* Plan stage: Q&A form + final plan */
-.plan-meta {
-  color: #666;
-  margin: 0.25rem 0;
-}
-
 .plan-questions .plan-question {
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--pico-muted-border-color);
   border-radius: 6px;
   padding: 0.5rem 0.75rem;
   margin: 0.5rem 0;
@@ -203,28 +363,16 @@ main {
   margin: 0;
 }
 
-.plan-questions textarea {
-  width: 100%;
-  font-family: inherit;
-}
-
 .plan-draft {
   margin: 0.75rem 0;
 }
 
-.plan-final {
-  border-left: 3px solid #7ab;
-  padding-left: 0.75rem;
-  margin: 1rem 0;
-}
-
-/* Stage config screen */
 .part-row {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--pico-muted-border-color);
 }
 
 .part-row .part-label {
@@ -233,7 +381,7 @@ main {
 }
 
 .part-row code {
-  color: #888;
+  color: var(--pico-muted-color);
   font-size: 0.8rem;
 }
 
@@ -247,25 +395,24 @@ main {
   max-height: 32rem;
   overflow: auto;
   font-size: 0.78rem;
-  background: #f6f6f6;
-  border: 1px solid #e5e5e5;
+  background: var(--pico-card-background-color);
+  border: 1px solid var(--pico-muted-border-color);
   border-radius: 6px;
   padding: 0.75rem;
   white-space: pre;
 }
 
-/* Stage tabs (sticky tab bar on task page) */
 .stage-tabs {
   position: sticky;
   top: 0;
-  background: var(--pico-background-color, #fff);
+  background: var(--pico-background-color);
   z-index: 5;
   display: flex;
   gap: 0.25rem;
   flex-wrap: wrap;
   padding: 0.5rem 0;
   margin: 1.5rem 0 0.75rem;
-  border-bottom: 2px solid #e0e0e0;
+  border-bottom: 2px solid var(--pico-muted-border-color);
 }
 
 .stage-tabs .tab {
@@ -278,7 +425,6 @@ main {
   font-size: 0.9rem;
   font-weight: 600;
   transition: border-color 0.15s;
-  /* tabs are <a>/<span> now, not buttons */
   text-decoration: none;
   display: inline-block;
   color: inherit;
@@ -300,8 +446,8 @@ main {
 
 .stage-tabs .tab.tab--running { color: #28be5a; }
 .stage-tabs .tab.tab--done { color: #2a7fd4; }
-.stage-tabs .tab.tab--idle { color: #888; }
-.stage-tabs .tab.tab--disabled { color: #bbb; }
+.stage-tabs .tab.tab--idle { color: var(--pico-muted-color); }
+.stage-tabs .tab.tab--disabled { color: var(--pico-muted-border-color); }
 .stage-tabs .tab.tab--error { color: #c44; }
 
 .stage-panel {
@@ -339,16 +485,12 @@ main {
   gap: 0.75rem;
   margin-top: 1rem;
   padding: 0.75rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--pico-muted-border-color);
   border-radius: 6px;
 }
 
 .approval-controls form {
   margin: 0;
-}
-
-.approval-controls textarea {
-  width: 100%;
 }
 
 .handoff-raw {
@@ -369,14 +511,9 @@ main {
 
 .qa-round .qa-a {
   margin: 0 0 0.5rem;
-  color: #444;
+  color: var(--pico-muted-color);
 }
 
-.task-glyph {
-  font-weight: bold;
-}
-
-/* Inline error card — a natural turn event at the bottom of the trajectory. */
 .stage-error {
   border-left: 3px solid #c44;
   background: #fdf0f0;
@@ -389,6 +526,16 @@ main {
   color: #c44;
   font-weight: 600;
   margin: 0;
+}
+
+/* Over-budget banner ("Failed more than 20 times — something is likely wrong"). */
+.stage-error--fatal {
+  border-left-width: 6px;
+  background: #fbe3e3;
+}
+
+.stage-error--fatal .error-line {
+  font-size: 1.05rem;
 }
 
 .stage-error .error-detail {
@@ -407,7 +554,6 @@ main {
   word-break: break-word;
 }
 
-/* The busy spinner always sits at the bottom, under the last added item. */
 .stage-spinner {
   padding-top: 0.5rem;
 }
@@ -423,12 +569,10 @@ main {
   margin: 0;
 }
 
-/* Auto-follow is folded into /wait — keep the class harmless if leftover. */
 .stage-follow {
   display: none;
 }
 
-/* Running tail: spinner + STOP side by side */
 .stage-running {
   display: flex;
   align-items: center;
@@ -441,30 +585,14 @@ main {
   padding: 0;
 }
 
-.stop-btn,
-.chat-stop {
-  background: #c0392b;
-  border-color: #c0392b;
-  color: #fff;
-  margin: 0;
-  padding: 0.2rem 0.75rem;
-}
-
-/* Resume / chat message forms */
 .stage-message.chat-form,
 .finished-chat.chat-form,
 .chat-form {
   margin-top: 0.75rem;
   padding-top: 0.5rem;
-  border-top: 1px solid #e5e5e5;
+  border-top: 1px solid var(--pico-muted-border-color);
 }
 
-.chat-form textarea {
-  width: 100%;
-  font-family: inherit;
-}
-
-/* Recorded user-prompt rows in the trajectory */
 .user-prompt-msg {
   border-left: 3px solid #c4a35a;
   background: #faf8f3;
@@ -501,6 +629,75 @@ main {
 }
 
 .fileref-missing {
-  color: #888;
+  color: var(--pico-muted-color);
   font-size: 0.85rem;
+}
+
+/* -- Image thumbnails (tool-call media + attachment chips) ------------------ */
+
+.tool-thumbs {
+  display: inline-flex;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.tool-thumb {
+  max-width: 120px;
+  max-height: 90px;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 4px;
+  cursor: zoom-in;
+  object-fit: cover;
+}
+
+#img-lightbox {
+  max-width: 92vw;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem;
+}
+
+#img-lightbox::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+#img-lightbox img {
+  max-width: 90vw;
+  max-height: 85vh;
+  display: block;
+  cursor: zoom-out;
+}
+
+.attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.attachment-strip:empty {
+  display: none;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 6px;
+  padding: 0.25rem;
+}
+
+/* Upload-in-progress placeholder (Pico renders the [aria-busy] spinner). */
+.attachment-chip.loading {
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  color: var(--pico-muted-color);
+}
+
+.attachment-chip.loading::before {
+  margin: 0;
 }

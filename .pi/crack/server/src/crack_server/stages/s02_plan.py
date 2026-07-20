@@ -33,6 +33,7 @@ from crack_server.stages.qa import (
 )
 from crack_server.stages.render import (
     render_error_msg,
+    render_fatal_error_banner,
     render_message_form,
     render_retry_button,
     render_running_tail,
@@ -42,10 +43,12 @@ from crack_server import ui as _ui
 from crack_server.ui import _esc
 from crack_server.stages.steprun import (
     file_content_hash,
+    grant_error_budget,
     hop_with_nudge,
     prompt_recorder,
     record_errors,
     run_until_verified,
+    task_prompt_media,
     turn_persister,
     verify_artifact_file,
 )
@@ -158,6 +161,8 @@ class S02Plan(Stage):
             "draft_plan": "",
             "final_md": "",
             "error": "",
+            "errors": [],
+            "error_budget": pi_runner.MAX_TOTAL_ERRORS,
             "explore_summary": explore_summary,
             "started_at": time.time(),
             "finished_at": None,
@@ -272,7 +277,7 @@ class S02Plan(Stage):
 
             # Turns accumulate across draft steps (rounds); persist to plan.json
             # incrementally so a refresh restores the whole trajectory like Explore.
-            persister = turn_persister(plan)
+            persister = turn_persister(plan, media_dir=paths.task_dir(task_id) / "media", media_url_prefix=f"/tasks/{task_id}/media")
 
             def hop_once(msg: str, tmpl: str, hop: int) -> str:
                 return pi_runner.run_agent_hop(
@@ -280,14 +285,17 @@ class S02Plan(Stage):
                     model=self.model_for("draft"),
                     session_id=f"plan-{task_id}",
                     sessions_dir=paths.plan_sessions_dir(task_id),
-                    tools="bash,read,mcp",
+                    tools="bash,read,mcp,analyze_image",
                     message=msg,
                     start=start,
                     sentinel=None,
                     timeout_seconds=DRAFT_TIMEOUT_SECONDS,
                     persist_turn=persister.persist,
                     hop=hop,
-                    record_prompt=prompt_recorder(persister, f"round {rnd}", tmpl),
+                    record_prompt=prompt_recorder(
+                        persister, f"round {rnd}", tmpl,
+                        media=lambda: task_prompt_media(task_id),
+                    ),
                     **self.agent_hop_kwargs(task_id),
                 )
 
@@ -388,7 +396,7 @@ class S02Plan(Stage):
 
                 plan.update(_mark_prompted)
 
-            persister = turn_persister(plan)
+            persister = turn_persister(plan, media_dir=paths.task_dir(task_id) / "media", media_url_prefix=f"/tasks/{task_id}/media")
 
             def run_hop(msg: str, hop: int) -> str:
                 tmpl = template if hop == 1 else ""
@@ -397,14 +405,17 @@ class S02Plan(Stage):
                     model=self.model_for("write"),
                     session_id=f"plan-{task_id}",
                     sessions_dir=paths.plan_sessions_dir(task_id),
-                    tools="bash,read,edit,write,mcp",
+                    tools="bash,read,edit,write,mcp,analyze_image",
                     message=msg,
                     start=start,
                     sentinel=None,
                     timeout_seconds=WRITE_TIMEOUT_SECONDS,
                     persist_turn=persister.persist,
                     hop=hop,
-                    record_prompt=prompt_recorder(persister, "write", tmpl),
+                    record_prompt=prompt_recorder(
+                        persister, "write", tmpl,
+                        media=lambda: task_prompt_media(task_id),
+                    ),
                     **self.agent_hop_kwargs(task_id),
                 )
 
@@ -471,6 +482,7 @@ class S02Plan(Stage):
             state["phase"] = running_phase
             state["error"] = ""
             state["error_detail"] = ""
+            grant_error_budget(state)
             return state
 
         paths.plan_state(task_id).update(_retry)
@@ -491,7 +503,7 @@ class S02Plan(Stage):
             meta += f" · {rounds} Q&A round{'s' if rounds != 1 else ''}"
             msgs.append(f'<div class="stage-msg plan-meta"><small>{meta}</small></div>')
 
-        msgs.extend(render_turn_msgs(state.get("turns", [])))
+        msgs.extend(render_turn_msgs(state.get("turns", []), errors=state.get("errors", [])))
 
         if phase in ("awaiting_answers", "done"):
             msgs.extend(render_qa_history(state.get("rounds", [])))
@@ -504,7 +516,7 @@ class S02Plan(Stage):
                 )
             safe_id = _esc(task_id)
             msgs.append(
-                f'<div class="stage-msg"><small style="color: #666;">On disk: '
+                f'<div class="stage-msg"><small class="muted">On disk: '
                 f"<code>tasks/{safe_id}/plan/final_plan.md</code></small></div>"
             )
 
@@ -532,6 +544,7 @@ class S02Plan(Stage):
             )
 
         if phase == "error":
+            parts.append(render_fatal_error_banner(state))
             parts.append(
                 render_error_msg(state.get("error", ""), state.get("error_detail", ""))
             )

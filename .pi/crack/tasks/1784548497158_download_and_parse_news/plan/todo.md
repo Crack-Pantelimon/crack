@@ -1,0 +1,6 @@
+- [x] Read URLs from data_in/news-links.txt, strip whitespace, skip comments and duplicates
+- [x] Download each URL via wget subprocess with 15s timeout, 2 retries, UA header
+- [x] Cache HTML to data_cache/<sha256_hash[:16]>.html (reuse cache on subsequent runs)
+- [x] Parse HTML with stdlib HTMLParser to extract heading and subtitle
+- [x] Generate markdown report at news_reports.md with one entry per URL
+- [x] Run via `cd _data/news && uv run main.py`

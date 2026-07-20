@@ -8,10 +8,15 @@ import uuid
 from pathlib import Path
 
 from crack_server import paths, pi_runner, queue
-from crack_server.ratelimit import RESUME_MESSAGE
+from crack_server.ratelimit import MAX_TOTAL_ERRORS, RESUME_MESSAGE
 from crack_server.state import JsonState
 from crack_server.stages.base import ORPHAN_PHASE_GRACE_SECONDS
-from crack_server.stages.steprun import TurnPersister, prompt_recorder
+from crack_server.stages.steprun import (
+    TurnPersister,
+    error_recorder,
+    grant_error_budget,
+    prompt_recorder,
+)
 from crack_server.sub_agents.constants import SUBAGENT_JOB_SLUG, SUBAGENT_TIMEOUT_SECONDS
 
 logger = logging.getLogger("uvicorn.error")
@@ -217,7 +222,11 @@ class SubAgentPersona:
         message, template = self._compile_message(run_id, form)
         hop_n = int(state.get("hops_completed", 0)) + 1
         state_obj = self.state(run_id)
-        persister = TurnPersister(state_obj, key="turns")
+        persister = TurnPersister(
+            state_obj, key="turns",
+            media_dir=paths.run_media_dir(chat_id, run_id),
+            media_url_prefix=f"/chats/{chat_id}/sub_agents/runs/{run_id}/media",
+        )
         record = prompt_recorder(persister, f"hop {hop_n}", template, message)
 
         try:
@@ -236,6 +245,10 @@ class SubAgentPersona:
                 pid_file=paths.run_pid_file(chat_id, run_id),
                 stop_check=lambda: bool(self.state_read(run_id).get("stop_requested")),
                 record_prompt=record,
+                record_error=error_recorder(state_obj),
+                error_budget=lambda: int(
+                    state_obj.read().get("error_budget", MAX_TOTAL_ERRORS)
+                ),
                 env_extra=self._subagent_env(state),
                 waiting_check=lambda: bool(self.state_read(run_id).get("waiting_on")),
             )
@@ -250,6 +263,7 @@ class SubAgentPersona:
                 s["phase"] = "error"
                 s["error"] = str(exc)
                 s["error_detail"] = getattr(exc, "detail", "")
+                s["error_over_budget"] = bool(getattr(exc, "over_budget", False))
                 s["error_step"] = "run"
                 s["finished_at"] = time.time()
                 return s
@@ -400,6 +414,7 @@ class SubAgentPersona:
             s["error_step"] = ""
             s["stop_requested"] = False
             s["finished_at"] = None
+            grant_error_budget(s)
             token = uuid.uuid4().hex
             s["started_token"] = token
             return s

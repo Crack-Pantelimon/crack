@@ -55,22 +55,53 @@ def _format_ago(ts: float) -> str:
     return f"{delta // 86400}d ago"
 
 
+def _render_sidebar() -> str:
+    """Persistent left-nav: Home, Tasks, Harness Stages, Sub-agents, Chats."""
+    from crack_server import chats, stages
+
+    task_links = "".join(
+        f'<a href="/tasks/{_esc(tid)}">{_esc(paths.read_info(tid).get("title", tid))}</a>\n'
+        for tid in paths.list_task_ids()
+    ) or '<small class="muted">No tasks</small>\n'
+    stage_links = "".join(
+        f'<a href="/stages/{_esc(s.slug)}">{_esc(s.name)}</a>\n' for s in stages.REGISTRY
+    )
+    chat_links = "".join(
+        f'<a href="/chats/{_esc(cid)}">{_esc(title)}</a>\n'
+        for cid, title in chats.list_chat_links()
+    ) or '<small class="muted">No chats</small>\n'
+    return f"""
+    <nav class="sidebar-nav">
+      <a href="/"><strong>Home</strong></a>
+      <h6>Tasks</h6>
+      {task_links}
+      <h6>Harness Stages</h6>
+      {stage_links}
+      <a href="/sub_agents">Sub-agents</a>
+      <a href="/settings">Settings</a>
+      <h6>Chats</h6>
+      {chat_links}
+    </nav>
+    """
+
+
 def _render_base(title: str, body: str, task_id: str | None = None) -> str:
-    """Render base HTML template with htmx + pico.css. All page/interaction styling and
-    JS lives in static/app.css and static/app.js (linked here, not inlined)."""
+    """Render base HTML with class-based Pico CSS v2 + sidebar shell.
+
+    Page-specific layout/customizations live in static/app.css; interaction JS
+    in static/app.js (linked here, not inlined)."""
     task_attr = f' data-task-id="{_esc(task_id)}"' if task_id else ""
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{_esc(title)}</title>
-  <!-- Pico.css -->
   <link
     rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.1.1/css/pico.classless.min.css"
+    href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
   >
   <link rel="stylesheet" href="/static/app.css">
-  <!-- htmx -->
   <script
     src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
     integrity="sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
@@ -78,9 +109,12 @@ def _render_base(title: str, body: str, task_id: str | None = None) -> str:
   ></script>
 </head>
 <body{task_attr}>
-  <main>
-    {body}
-  </main>
+  <div class="layout">
+    <aside class="sidebar">{_render_sidebar()}</aside>
+    <main class="container-fluid">
+      {body}
+    </main>
+  </div>
   <script src="/static/app.js"></script>
 </body>
 </html>"""
@@ -91,7 +125,7 @@ def _render_title_h1(task_id: str, title: str, oob: bool = False) -> str:
     title changes via slot swaps, so the h1 always tracks the saved value."""
     safe_id = _esc(task_id)
     oob_attr = ' hx-swap-oob="true"' if oob else ""
-    return f'<h1 id="title-h1-{safe_id}" style="margin: 0; flex: 1;"{oob_attr}>{_esc(title)}</h1>'
+    return f'<h1 id="title-h1-{safe_id}" class="title-h1"{oob_attr}>{_esc(title)}</h1>'
 
 
 def _render_title_input(task_id: str, title: str) -> str:
@@ -175,9 +209,9 @@ def render_file_row(
         return (
             f'\n{e1}<article class="prompt-row">\n'
             f'{e2}<form hx-put="{safe_save}" hx-target="closest article" hx-swap="outerHTML">\n'
-            f'{e3}<div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">\n'
-            f'{e4}<label style="flex: 1;">Filename <input type="text" value="{safe_name}" readonly></label>\n'
-            f'{e4}<small style="color: #666;">{safe_meta}</small>\n'
+            f'{e3}<div class="file-row-header">\n'
+            f'{e4}<label class="file-row-label">Filename <input type="text" value="{safe_name}" readonly></label>\n'
+            f'{e4}<small class="muted">{safe_meta}</small>\n'
             f'{e3}</div>\n'
             f"{e3}<label>Content\n"
             f'{e4}<textarea name="content" rows="12" required>{safe_content}</textarea>\n'
@@ -198,9 +232,9 @@ def render_file_row(
         actions += "\n" + extra_actions
     return (
         f'\n{indent}<article class="prompt-row">\n'
-        f'{i2}<div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">\n'
+        f'{i2}<div class="file-row-header">\n'
         f'{i3}<span class="name">{safe_name}</span>\n'
-        f'{i3}<small style="color: #666;">{safe_meta}</small>\n'
+        f'{i3}<small class="muted">{safe_meta}</small>\n'
         f"{i2}</div>\n"
         f'{i2}<textarea readonly rows="4">{safe_content}</textarea>\n'
         f'{i2}<div class="actions">\n'
@@ -221,8 +255,10 @@ def _render_prompt_row(task_id: str, filename: str, editing: bool = False) -> st
     safe_id = _esc(task_id)
     safe_name = _esc(filename)
     extra_actions = (
-        f'<form hx-delete="/api/tasks/{safe_id}/prompts/{safe_name}" hx-target="closest article" hx-swap="outerHTML swap:1s" hx-confirm="Delete \'{safe_name}\'?" style="margin: 0;">\n'
-        '          <button type="submit" class="secondary" style="color: #c44; border-color: #c44;">Remove</button>\n'
+        f'<form class="inline-form" hx-delete="/api/tasks/{safe_id}/prompts/{safe_name}" '
+        f'hx-target="closest article" hx-swap="outerHTML swap:1s" '
+        f'hx-confirm="Delete \'{safe_name}\'?">\n'
+        '          <button type="submit" class="contrast">Remove</button>\n'
         "        </form>"
     )
     return render_file_row(
@@ -241,7 +277,7 @@ def _render_prompts_section(task_id: str) -> str:
     """Render the full list of prompt rows (always shown, content always viewable)."""
     prompts = paths.list_prompt_files(task_id)
     if not prompts:
-        return '<p style="color: #666;">No .md files in this task folder yet.</p>'
+        return '<p class="muted">No .md files in this task folder yet.</p>'
 
     rows = []
     for p in prompts:

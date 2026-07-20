@@ -20,6 +20,7 @@ from crack_server.stages.qa import (
 )
 from crack_server.stages.render import (
     render_error_msg,
+    render_fatal_error_banner,
     render_message_form,
     render_retry_button,
     render_running_tail,
@@ -28,11 +29,14 @@ from crack_server.stages.render import (
 from crack_server import ui as _ui
 from crack_server.stages.s02_plan import REQUIRED_PLAN_HEADINGS
 from crack_server.stages.steprun import (
+    error_recorder,
     file_content_hash,
+    grant_error_budget,
     hop_with_nudge,
     prompt_recorder,
     record_errors,
     run_until_verified,
+    task_prompt_media,
     turn_persister,
     verify_artifact_file,
 )
@@ -118,6 +122,8 @@ class S03PlanReview(Stage):
             "round": 1,
             "rounds": [],
             "turns": [],
+            "errors": [],
+            "error_budget": pi_runner.MAX_TOTAL_ERRORS,
             "plan_md": plan_md,
             "iterations": 0,
             "error": "",
@@ -178,6 +184,7 @@ class S03PlanReview(Stage):
             log_prefix="plan-review-todo",
             model=self.model_for("todo"),
             record_prompt=record,
+            record_error=error_recorder(paths.plan_review_state(task_id)),
             pid_file=paths.stage_pid_file(task_id, self.slug),
             stop_check=lambda: bool(self.state_read(task_id).get("stop_requested")),
         )
@@ -284,7 +291,7 @@ class S03PlanReview(Stage):
         and the hop's stop reason (callers must handle "stopped")."""
         start = time.monotonic()
         review = paths.plan_review_state(task_id)
-        persister = turn_persister(review)
+        persister = turn_persister(review, media_dir=paths.task_dir(task_id) / "media", media_url_prefix=f"/tasks/{task_id}/media")
 
         def hop_once(msg: str, tmpl: str, hop: int) -> str:
             return pi_runner.run_agent_hop(
@@ -299,7 +306,10 @@ class S03PlanReview(Stage):
                 timeout_seconds=CRITIC_TIMEOUT_SECONDS,
                 persist_turn=persister.persist,
                 hop=hop,
-                record_prompt=prompt_recorder(persister, log_suffix, tmpl),
+                record_prompt=prompt_recorder(
+                    persister, log_suffix, tmpl,
+                    media=lambda: task_prompt_media(task_id),
+                ),
                 **self.agent_hop_kwargs(task_id),
             )
 
@@ -337,7 +347,7 @@ class S03PlanReview(Stage):
                     .replace("{plan}", plan_md)
                 )
                 text, _, reason = self._run_critic_hop(
-                    task_id, message, tools="bash,read,mcp", log_suffix="critique",
+                    task_id, message, tools="bash,read,mcp,analyze_image", log_suffix="critique",
                     template="critique.md",
                 )
                 if reason == "stopped":
@@ -382,7 +392,7 @@ class S03PlanReview(Stage):
                 )
                 message = self.load_template("grill_followup.md").replace("{qa}", qa_all)
                 text, _, reason = self._run_critic_hop(
-                    task_id, message, tools="bash,read,mcp", log_suffix="followup",
+                    task_id, message, tools="bash,read,mcp,analyze_image", log_suffix="followup",
                     template="grill_followup.md",
                 )
                 if reason == "stopped":
@@ -419,7 +429,7 @@ class S03PlanReview(Stage):
                     "Emit a ```questions JSON block with at most 5 clarifying questions."
                 )
                 text, _, reason = self._run_critic_hop(
-                    task_id, message, tools="bash,read,mcp", log_suffix="grill"
+                    task_id, message, tools="bash,read,mcp,analyze_image", log_suffix="grill"
                 )
                 if reason == "stopped":
                     self.mark_stopped(task_id)
@@ -483,7 +493,7 @@ class S03PlanReview(Stage):
                         return s
 
                     review.update(_mark_prompted)
-                persister = turn_persister(review)
+                persister = turn_persister(review, media_dir=paths.task_dir(task_id) / "media", media_url_prefix=f"/tasks/{task_id}/media")
 
                 def run_hop(msg: str, hop: int) -> str:
                     tmpl = template if hop == 1 else ""
@@ -492,14 +502,17 @@ class S03PlanReview(Stage):
                         model=self.model_for("critic"),
                         session_id=f"plan-review-{task_id}",
                         sessions_dir=paths.plan_review_sessions_dir(task_id),
-                        tools="bash,read,edit,write,mcp",
+                        tools="bash,read,edit,write,mcp,analyze_image",
                         message=msg,
                         start=start,
                         sentinel=None,
                         timeout_seconds=REVISE_TIMEOUT_SECONDS,
                         persist_turn=persister.persist,
                         hop=hop,
-                        record_prompt=prompt_recorder(persister, step, tmpl),
+                        record_prompt=prompt_recorder(
+                            persister, step, tmpl,
+                            media=lambda: task_prompt_media(task_id),
+                        ),
                         **self.agent_hop_kwargs(task_id),
                     )
 
@@ -548,7 +561,7 @@ class S03PlanReview(Stage):
             if step == "user_message":
                 msg = str((form or {}).get("msg", "")).strip() or pi_runner.RESUME_MESSAGE
                 text, _, reason = self._run_critic_hop(
-                    task_id, msg, tools="bash,read,edit,write,mcp", log_suffix="user"
+                    task_id, msg, tools="bash,read,edit,write,mcp,analyze_image", log_suffix="user"
                 )
                 if reason == "stopped":
                     self.mark_stopped(task_id)
@@ -591,6 +604,7 @@ class S03PlanReview(Stage):
             state["phase"] = running_phase
             state["error"] = ""
             state["error_detail"] = ""
+            grant_error_budget(state)
             return state
 
         paths.plan_review_state(task_id).update(_retry)
@@ -613,7 +627,7 @@ class S03PlanReview(Stage):
         # Trajectory stays in msgs for live append; full reload of done omits it
         # to match the previous "approved" view.
         if phase != "done":
-            msgs.extend(render_turn_msgs(state.get("turns", [])))
+            msgs.extend(render_turn_msgs(state.get("turns", []), errors=state.get("errors", [])))
 
         if phase in ("awaiting_answers", "awaiting_approval", "done"):
             msgs.extend(render_qa_history(state.get("rounds", [])))
@@ -701,6 +715,7 @@ class S03PlanReview(Stage):
             """)
 
         if phase == "error":
+            parts.append(render_fatal_error_banner(state))
             parts.append(
                 render_error_msg(state.get("error", ""), state.get("error_detail", ""))
             )

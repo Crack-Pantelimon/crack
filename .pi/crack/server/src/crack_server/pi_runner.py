@@ -28,6 +28,8 @@ from crack_server.pi_proc import (
     run_pi_text,
 )
 from crack_server.ratelimit import (
+    HARD_RETRY_DELAYS,
+    MAX_TOTAL_ERRORS,
     NVIDIA_CALLS_PER_MINUTE,
     PI_RETRY_ATTEMPTS,
     PI_RETRY_WINDOW_SECONDS,
@@ -59,6 +61,8 @@ from crack_server.transcript import (
 )
 
 __all__ = [
+    "HARD_RETRY_DELAYS",
+    "MAX_TOTAL_ERRORS",
     "NVIDIA_CALLS_PER_MINUTE",
     "OUTPUT_TAIL_LINES",
     "PI_RETRY_ATTEMPTS",

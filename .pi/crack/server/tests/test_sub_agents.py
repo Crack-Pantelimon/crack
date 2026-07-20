@@ -51,6 +51,7 @@ def fake_pi(tmp_path, monkeypatch) -> FakePi:
     monkeypatch.setenv("FAKE_PI_DIR", str(ctrl))
     monkeypatch.setenv("FAKE_PI_SCRIPT", str(script))
     monkeypatch.setattr(ratelimit, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
+    monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.05, 0.05, 0.05, 0.05])
     monkeypatch.setattr(ratelimit, "PI_RETRY_WINDOW_SECONDS", 0.2)
     monkeypatch.setattr(ratelimit, "NVIDIA_CALLS_PER_MINUTE", 1_000_000.0)
     monkeypatch.setattr(ratelimit, "_provider_limiters", {})

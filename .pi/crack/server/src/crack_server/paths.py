@@ -168,14 +168,25 @@ def prompts_last_modified(task_id: str, root: Path | None = None) -> float:
 
 
 def read_all_prompts_joined(task_id: str, root: Path | None = None) -> str:
-    """Read all prompt markdown files in a task and join them with `\n\n---\n\n`."""
+    """Read all prompt markdown files in a task and join them with `\n\n---\n\n`.
+
+    When the task has image attachments (``attachments/images.json``), the
+    formatted attachment block is prepended so every stage's compiled prompt
+    includes them (see ``attachments.format_block``).
+    """
     contents = []
     for p in list_prompt_files(task_id, root):
         try:
             contents.append(read_prompt(task_id, str(p["name"]), root))
         except FileNotFoundError:
             continue  # deleted between listing and reading
-    return "\n\n---\n\n".join(contents)
+    joined = "\n\n---\n\n".join(contents)
+    from crack_server.attachments import format_block, list_attachments
+
+    entries = list_attachments(task_attachments_state(task_id, root))
+    if entries:
+        return format_block(entries) + "\n\n" + joined
+    return joined
 
 
 def slugify_title(title: str) -> str:
@@ -223,6 +234,18 @@ def stage_pid_file(task_id: str, slug: str, root: Path | None = None) -> Path:
     """Where a stage's worker publishes the running pi subprocess's pid so the
     web STOP handler can kill it: tasks/<id>/<slug>.agent.pid."""
     return task_dir(task_id, root) / f"{_validate_stage_slug(slug)}.agent.pid"
+
+
+def hop_manifest_path(pid_file: Path) -> Path:
+    """The detached-hop manifest (hop.json) next to a pid file: lets the
+    restarted worker re-attach to a pi that survived a server reload."""
+    return pid_file.with_name(pid_file.name.removesuffix(".pid") + ".hop.json")
+
+
+def hop_output_path(pid_file: Path) -> Path:
+    """The append-only file (hop.jsonl) a detached pi's stdout+stderr is
+    redirected to, next to the pid file."""
+    return pid_file.with_name(pid_file.name.removesuffix(".pid") + ".hop.jsonl")
 
 
 # ---------------------------------------------------------------------------
@@ -570,3 +593,41 @@ def run_pid_file(chat_id: str, run_id: str, root: Path | None = None) -> Path:
 
 def run_report_path(chat_id: str, run_id: str, root: Path | None = None) -> Path:
     return run_dir(chat_id, run_id, root) / "report.md"
+
+
+# ---------------------------------------------------------------------------
+# Media (persisted image thumbnails) and prompt-image attachments
+# ---------------------------------------------------------------------------
+
+
+def task_media_dir(task_id: str, root: Path | None = None) -> Path:
+    """Persisted image copies referenced by task-stage turns: …/<task>/media/."""
+    return task_dir(task_id, root) / "media"
+
+
+def chat_media_dir(chat_id: str, root: Path | None = None) -> Path:
+    """Persisted image copies referenced by chat turns: …/<chat>/media/."""
+    return chat_dir(chat_id, root) / "media"
+
+
+def run_media_dir(chat_id: str, run_id: str, root: Path | None = None) -> Path:
+    """Persisted image copies referenced by sub-agent run turns: …/<run>/media/."""
+    return run_dir(chat_id, run_id, root) / "media"
+
+
+def task_attachments_dir(task_id: str, root: Path | None = None) -> Path:
+    """User-pasted/dropped images for a task's prompts: …/<task>/attachments/."""
+    return task_dir(task_id, root) / "attachments"
+
+
+def chat_attachments_dir(chat_id: str, root: Path | None = None) -> Path:
+    """User-pasted/dropped images staged for the next chat message."""
+    return chat_dir(chat_id, root) / "attachments"
+
+
+def task_attachments_state(task_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(task_attachments_dir(task_id, root) / "images.json")
+
+
+def chat_attachments_state(chat_id: str, root: Path | None = None) -> JsonState:
+    return JsonState(chat_attachments_dir(chat_id, root) / "images.json")

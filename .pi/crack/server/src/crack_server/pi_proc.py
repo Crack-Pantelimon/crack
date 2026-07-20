@@ -10,6 +10,14 @@ thread. Thin sync wrappers (``run_pi_text`` / ``run_agent_hop``) preserve the
 old API for callers that still run on threads (stage jobs dispatched via
 ``asyncio.to_thread``, tests) — they must not be called from inside a running
 event loop. Everything here logs through the uvicorn logger.
+
+Reload survival (detached hops): an agent hop's pi writes its JSON event
+stream to an append-only hop.jsonl file (not a pipe) and publishes a hop.json
+manifest (pid, session, consumed offset) next to the pid file. A server
+reload never kills pi — the worker detaches and the restarted worker's next
+hop call re-attaches (tailing from the stored offset) instead of spawning a
+second pi for the same session. One-off ``arun_pi_text`` calls stay
+pipe-based (short-lived, idempotent on re-pickup).
 """
 
 from __future__ import annotations
@@ -28,10 +36,12 @@ from pathlib import Path
 from typing import NamedTuple
 
 from crack_server import ratelimit
+from crack_server import paths as paths_mod
 from crack_server.paths import project_root
 from crack_server.ratelimit import (
     PI_RETRY_ATTEMPTS, PI_TIMEOUT_SECONDS, RESUME_MESSAGE,
-    _async_retry_backoff_sleep, _async_transient_backoff_sleep,
+    _async_hard_backoff_sleep, _async_retry_backoff_sleep,
+    _async_transient_backoff_sleep,
     async_wait_for_rate_limit, is_transient,
 )
 from crack_server.transcript import apply_event_to_turn, turn_has_content
@@ -62,11 +72,14 @@ CRACK_EXT = project_root() / ".pi" / "extensions" / "crack" / "index.ts"
 class PiError(RuntimeError):
     """A pi subprocess failure carrying a short message plus a ``detail`` blob
     (the last few lines of captured output — the raw stderr tail when there is
-    one, else the JSON-event/stdout tail) for inline UI display."""
+    one, else the JSON-event/stdout tail) for inline UI display. ``over_budget``
+    marks a failure caused by the durable error budget (MAX_TOTAL_ERRORS) being
+    spent, so stages can show the "something is likely wrong" banner."""
 
-    def __init__(self, message: str, detail: str = "") -> None:
+    def __init__(self, message: str, detail: str = "", over_budget: bool = False) -> None:
         super().__init__(message)
         self.detail = detail
+        self.over_budget = over_budget
 
 
 class PiStopped(RuntimeError):
@@ -91,6 +104,99 @@ def _compose_detail(output_tail: str, stderr_tail: str) -> str:
     return ""
 
 
+def _record_attempt_error(record_error, entry: dict, log_prefix: str) -> int:
+    """Best-effort durable error-row record for one failed attempt.
+
+    Returns the total error count reported by the recorder; a missing or
+    broken recorder never wedges retries (0 = no budget signal)."""
+    if record_error is None:
+        return 0
+    try:
+        return int(record_error(entry))
+    except Exception:
+        logger.exception("%s: record_error raised", log_prefix)
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Detached-hop machinery (reload survival): pi's stdout+stderr is redirected
+# to an append-only hop.jsonl file and a hop.json manifest tracks the pid and
+# the consumed byte offset, so a pi started before a server reload keeps
+# running (tini reaps it) and the restarted worker re-attaches instead of
+# spawning a second pi for the same session.
+# ---------------------------------------------------------------------------
+
+# Idle-poll cadence of the file-tailing stream loop.
+TAIL_POLL_SECONDS = 0.2
+
+# The manifest keeps the attempt message for debugging; compiled prompts can
+# be huge, so it is truncated.
+MANIFEST_MESSAGE_MAX_CHARS = 4000
+
+
+def _hop_paths(p: "_HopParams") -> tuple[Path, Path]:
+    """(manifest, output) paths for the detached-hop machinery: derived from
+    the pid file when one is given (all production callers), else from the
+    sessions dir (pid-less test callers)."""
+    if p.pid_file is not None:
+        return paths_mod.hop_manifest_path(p.pid_file), paths_mod.hop_output_path(p.pid_file)
+    base = p.sessions_dir.parent / p.sessions_dir.name
+    return Path(str(base) + ".hop.json"), Path(str(base) + ".hop.jsonl")
+
+
+def _read_hop_manifest(path: Path) -> dict:
+    """Tolerant manifest read: {} when missing or unparseable."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_hop_manifest(path: Path, data: dict) -> None:
+    """Atomic whole-manifest write (tmp + replace); failures only log."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.warning("hop manifest write failed %s: %s", path, e)
+
+
+def _pid_alive(pid: int, session_id: str | None = None) -> bool:
+    """Liveness for a possibly-detached pi: ``os.kill(pid, 0)`` plus a
+    /proc cmdline identity check — the cmdline contains the ``--session-id``
+    argv, which guards against pid reuse and weeds out zombies (whose
+    cmdline reads empty)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True  # unreadable here: fall back to the kill check alone
+    cmdline = raw.replace(b"\x00", b" ").decode("utf-8", "replace")
+    if not cmdline.strip():
+        return False  # zombie
+    return not session_id or session_id in cmdline
+
+
+def _terminate_group(pid: int, sig: int) -> None:
+    """Signal a detached pi's whole process group (spawned start_new_session,
+    so pgid == pid), falling back to the bare pid."""
+    try:
+        os.killpg(os.getpgid(pid), sig)
+    except (ProcessLookupError, PermissionError, OSError):
+        with contextlib.suppress(ProcessLookupError, OSError):
+            os.kill(pid, sig)
+
+
 async def arun_pi_text(
     prompt: str,
     log_prefix: str,
@@ -99,6 +205,8 @@ async def arun_pi_text(
     record_prompt=None,
     pid_file: Path | None = None,
     stop_check: Callable[[], bool] | None = None,
+    image_paths: list[Path] | None = None,
+    record_error=None,
 ) -> tuple[str, float]:
     """Run `pi` non-interactively with a single text prompt (async).
 
@@ -111,17 +219,27 @@ async def arun_pi_text(
     receives ``{"kind": "user_prompt", "compiled": prompt, "at": ...}`` so
     callers can persist the exact compiled prompt into their trajectory.
 
+    ``record_error`` (optional) is called once per *failed attempt* with
+    ``{"message", "detail", "rc", "attempt", "phase"}`` so callers can persist
+    durable error rows; the retry schedule itself is unchanged by it.
+
     ``pid_file`` / ``stop_check`` (optional, RC5): the subprocess runs in its
     own session with its group-leader pid published to ``pid_file`` so an
     external STOP can kill it, exactly like ``arun_agent_hop``. When a failed
     attempt coincides with ``stop_check()`` being truthy, :class:`PiStopped`
     is raised instead of retrying — callers treat it as a clean halt.
+
+    ``image_paths`` (optional): each path is passed as a ``@<path>`` arg before
+    the prompt (mirrors ``pi @img.png "prompt"``), attaching the image to the
+    one-off call. Callers must validate the paths beforehand.
     """
     if max_input_chars is not None and len(prompt) > max_input_chars:
         logger.info("%s: truncating prompt from %d to %d chars", log_prefix, len(prompt), max_input_chars)
         prompt = prompt[:max_input_chars]
 
-    cmd = ["pi", "--model", model, "--print", "--no-session", "--no-tools", prompt]
+    cmd = ["pi", "--model", model, "--print", "--no-session", "--no-tools"]
+    cmd += [f"@{p}" for p in (image_paths or [])]
+    cmd += [prompt]
 
     logger.info("%s: full prompt:\n%s", log_prefix, prompt)
     logger.info("%s: timeout=%ss", log_prefix, PI_TIMEOUT_SECONDS)
@@ -157,6 +275,10 @@ async def arun_pi_text(
             last_error = "pi command timed out"
             last_detail = _compose_detail(_tail_text(e.stdout or ""), _tail_text(e.stderr or ""))
             last_transient = is_transient(last_detail)
+            _record_attempt_error(record_error, {
+                "message": last_error, "detail": last_detail, "rc": None,
+                "attempt": attempt + 1, "phase": log_prefix,
+            }, log_prefix)
             continue
         except FileNotFoundError:
             elapsed = time.monotonic() - start
@@ -164,6 +286,10 @@ async def arun_pi_text(
             last_error = "pi command not found"
             last_detail = ""
             last_transient = False
+            _record_attempt_error(record_error, {
+                "message": last_error, "detail": "", "rc": None,
+                "attempt": attempt + 1, "phase": log_prefix,
+            }, log_prefix)
             continue
 
         elapsed = time.monotonic() - start
@@ -186,6 +312,10 @@ async def arun_pi_text(
         last_error = f"pi exited {result.returncode}"
         last_detail = detail
         last_transient = is_transient(detail)
+        _record_attempt_error(record_error, {
+            "message": last_error, "detail": detail, "rc": result.returncode,
+            "attempt": attempt + 1, "phase": log_prefix,
+        }, log_prefix)
 
     raise PiError(f"{last_error} after {PI_RETRY_ATTEMPTS} attempts", detail=last_detail)
 
@@ -328,12 +458,19 @@ class _TurnAccumulator:
 class _StreamSink:
     """Per-attempt stream state: the rolling raw-output tail, a separate ring
     buffer for non-JSON (stderr-ish) lines, the turn accumulator, and the
-    stop-reason bookkeeping _stream_events fills in.
+    stop-reason bookkeeping the tail loop fills in.
 
     ``wait_credit`` / ``waiting_since`` track how long the hop's agent has been
     suspended in a server-side wait (``waiting_check`` true, e.g. a blocking
     wait_join): both the in-stream time cap and the hard watchdog bill *active*
-    time only, so a token-free wait never times the hop out."""
+    time only, so a token-free wait never times the hop out.
+
+    ``offset`` is the byte position in the hop output file consumed so far;
+    ``persist_offset`` is the offset just past the last persisted turn (always
+    a turn boundary, so a re-attach replays at most one partial turn). When
+    ``manifest_path`` is set, every persisted turn also flushes the offset to
+    the on-disk hop manifest — that is what lets a restarted worker resume
+    consuming exactly where the killed one stopped."""
 
     def __init__(self, p: _HopParams) -> None:
         self.p = p
@@ -342,13 +479,22 @@ class _StreamSink:
         self.stderr_tail: list[str] = []
         self.reason = "agent_end"
         self.terminated_by_us = False
+        self.terminal = False
         self.persisted = 0
         self.wait_credit = 0.0
         self.waiting_since: float | None = None
+        self.offset = 0
+        self.persist_offset = 0
+        self.manifest_path: Path | None = None
+        self.manifest: dict = {}
 
     def persist(self, turn: dict) -> None:
         self.persisted += 1
         self.p.persist_turn(turn, self.p.hop)
+        self.persist_offset = self.offset
+        if self.manifest_path is not None:
+            self.manifest.update({"offset": self.offset, "status": "running"})
+            _write_hop_manifest(self.manifest_path, self.manifest)
 
 
 def _tick_wait_credit(p: _HopParams, sink: _StreamSink) -> None:
@@ -380,67 +526,142 @@ def _active_elapsed(p: _HopParams, sink: _StreamSink) -> float:
     return now - p.start - credit
 
 
-async def _stream_events(proc: asyncio.subprocess.Process, sink: _StreamSink) -> None:
-    """Consume pi's JSON event stream until the hop ends (sentinel, time cap,
-    agent_end, or EOF), filling sink.reason / sink.terminated_by_us."""
+def _process_stream_line(sink: _StreamSink, line: str, terminate: Callable[[], None]) -> bool:
+    """One hop-output line: tail buffers, event accumulation, turn persistence,
+    and the terminal checks (sentinel / time cap / agent_end). Returns True
+    when the hop is over."""
     p = sink.p
-    assert proc.stdout is not None
-    async for raw in proc.stdout:
-        line = raw.decode("utf-8", "replace").strip()
-        if not line:
-            continue
-        # Keep a rolling tail of the raw output (JSON or not) so a crash is
-        # diagnosable inline in the UI, not just from server logs.
-        sink.output_tail.append(line[:500])
-        del sink.output_tail[:-OUTPUT_TAIL_LINES]
+    # Keep a rolling tail of the raw output (JSON or not) so a crash is
+    # diagnosable inline in the UI, not just from server logs.
+    sink.output_tail.append(line[:500])
+    del sink.output_tail[:-OUTPUT_TAIL_LINES]
 
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            # Keep the full raw line in its own stderr tail: this is usually
-            # what explains a crash, and it would otherwise survive only as a
-            # truncated WARN log line.
-            sink.stderr_tail.append(line[:500])
-            del sink.stderr_tail[:-STDERR_TAIL_LINES]
-            logger.warning("%s hop %d: non-JSON line: %s", p.log_prefix, p.hop, line[:200])
-            continue
+    try:
+        event = json.loads(line)
+    except json.JSONDecodeError:
+        # Keep the full raw line in its own stderr tail: this is usually
+        # what explains a crash, and it would otherwise survive only as a
+        # truncated WARN log line.
+        sink.stderr_tail.append(line[:500])
+        del sink.stderr_tail[:-STDERR_TAIL_LINES]
+        logger.warning("%s hop %d: non-JSON line: %s", p.log_prefix, p.hop, line[:200])
+        return False
 
-        sink.acc.apply(event)
-        etype = event.get("type")
+    sink.acc.apply(event)
+    etype = event.get("type")
 
-        text_lines = sink.acc.current_turn.get("text", "").splitlines()
-        if (p.sentinel is not None and etype == "message_end"
-                and any(l.strip() == p.sentinel for l in text_lines)):
-            if turn_has_content(sink.acc.current_turn):
-                sink.persist(sink.acc.current_turn)
-            logger.info("%s hop %d: sentinel %s received", p.log_prefix, p.hop, p.sentinel)
-            sink.reason = "sentinel"
-            sink.terminated_by_us = True
-            proc.terminate()
-            break
-
-        if etype == "turn_end":
-            if not turn_has_content(sink.acc.current_turn):
-                # Content-less turns (empty model responses) are noise:
-                # never persist them.
-                logger.warning("%s hop %d: empty turn (no text/thinking/tool blocks); skipped",
-                               p.log_prefix, p.hop)
-                continue
+    text_lines = sink.acc.current_turn.get("text", "").splitlines()
+    if (p.sentinel is not None and etype == "message_end"
+            and any(l.strip() == p.sentinel for l in text_lines)):
+        if turn_has_content(sink.acc.current_turn):
             sink.persist(sink.acc.current_turn)
-            logger.info("%s hop %d: completed turn (persisted %d this attempt)",
-                        p.log_prefix, p.hop, sink.persisted)
+        logger.info("%s hop %d: sentinel %s received", p.log_prefix, p.hop, p.sentinel)
+        sink.reason = "sentinel"
+        sink.terminated_by_us = True
+        sink.terminal = True
+        terminate()
+        return True
 
-        _tick_wait_credit(p, sink)
-        if _active_elapsed(p, sink) > p.timeout_seconds:
-            if turn_has_content(sink.acc.current_turn) and etype != "turn_end":
-                sink.persist(sink.acc.current_turn)
-            sink.reason = "time_cap"
-            sink.terminated_by_us = True
-            proc.terminate()
-            break
+    if etype == "turn_end":
+        if not turn_has_content(sink.acc.current_turn):
+            # Content-less turns (empty model responses) are noise:
+            # never persist them.
+            logger.warning("%s hop %d: empty turn (no text/thinking/tool blocks); skipped",
+                           p.log_prefix, p.hop)
+            return False
+        sink.persist(sink.acc.current_turn)
+        logger.info("%s hop %d: completed turn (persisted %d this attempt)",
+                    p.log_prefix, p.hop, sink.persisted)
 
-        if etype in ("agent_end", "agent_settled"):
-            break
+    _tick_wait_credit(p, sink)
+    if _active_elapsed(p, sink) > p.timeout_seconds:
+        if turn_has_content(sink.acc.current_turn) and etype != "turn_end":
+            sink.persist(sink.acc.current_turn)
+        sink.reason = "time_cap"
+        sink.terminated_by_us = True
+        sink.terminal = True
+        terminate()
+        return True
+
+    if etype in ("agent_end", "agent_settled"):
+        sink.terminal = True
+        return True
+    return False
+
+
+async def _tail_events(
+    sink: _StreamSink,
+    output_path: Path,
+    *,
+    proc: asyncio.subprocess.Process | None,
+    pid: int,
+) -> None:
+    """Tail pi's stdout file from ``sink.offset`` until the hop ends (sentinel,
+    time cap, agent_end) or the pid disappears. The same routine serves a
+    freshly-spawned pi (``proc`` given) and a re-attached one (``proc=None``,
+    liveness via the pid). The active-time watchdog is folded in: a pi that
+    hangs without emitting output gets its process group killed well past the
+    stage time cap."""
+    p = sink.p
+
+    def terminate() -> None:
+        if proc is not None:
+            with contextlib.suppress(ProcessLookupError):
+                proc.terminate()
+        else:
+            _terminate_group(pid, signal.SIGTERM)
+
+    def dead() -> bool:
+        if proc is not None:
+            return proc.returncode is not None
+        return not _pid_alive(pid)
+
+    sink.persist_offset = sink.offset
+    buf = b""
+    drained_after_death = False
+    with open(output_path, "rb") as f:
+        f.seek(sink.offset)
+        while True:
+            chunk = f.read()
+            if chunk:
+                buf += chunk
+                if len(buf) > STREAM_LINE_LIMIT:
+                    # A pathological single line would otherwise grow the
+                    # buffer forever; flush it as one line.
+                    complete = [buf]
+                    buf = b""
+                else:
+                    *complete, buf = buf.split(b"\n")
+                for raw in complete:
+                    sink.offset += len(raw) + 1
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line:
+                        continue
+                    if _process_stream_line(sink, line, terminate):
+                        return
+            elif dead():
+                if drained_after_death:
+                    if buf.strip():
+                        # A crash may leave a final line without a trailing
+                        # newline — it often holds the error that killed pi.
+                        sink.offset += len(buf)
+                        line = buf.decode("utf-8", "replace").strip()
+                        _process_stream_line(sink, line, terminate)
+                    return
+                # One final pass so lines written just before death are seen.
+                drained_after_death = True
+            else:
+                _tick_wait_credit(p, sink)
+                if _active_elapsed(p, sink) > p.timeout_seconds + 60:
+                    logger.error("%s hop %d: watchdog kill after %.0fs active seconds",
+                                 p.log_prefix, p.hop, _active_elapsed(p, sink))
+                    if proc is not None:
+                        with contextlib.suppress(ProcessLookupError):
+                            proc.kill()
+                    else:
+                        _terminate_group(pid, signal.SIGKILL)
+                    # Death is observed on a later pass (then drained).
+                await asyncio.sleep(TAIL_POLL_SECONDS)
 
 
 class _HopParams(NamedTuple):
@@ -470,40 +691,29 @@ def _build_cmd(p: _HopParams, msg: str) -> list[str]:
     return cmd
 
 
-async def _watchdog(p: _HopParams, proc: asyncio.subprocess.Process, sink: _StreamSink) -> None:
-    """Hard watchdog: a pi that hangs without emitting output would wedge the
-    stream loop forever; kill it well past the stage time cap. Time spent with
-    ``waiting_check()`` true (a blocking wait_join) does not count."""
-    while True:
-        await asyncio.sleep(1.0)
-        if proc.returncode is not None:
-            return
-        _tick_wait_credit(p, sink)
-        if _active_elapsed(p, sink) > p.timeout_seconds + 60:
-            logger.error("%s hop %d: watchdog kill after %.0fs active seconds",
-                         p.log_prefix, p.hop, _active_elapsed(p, sink))
-            proc.kill()
-            return
-
-
 async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -> dict:
-    """Run one pi subprocess: stream, persist completed turns, and report how it
-    ended. ``persisted`` counts turns committed to disk this attempt so the retry
-    loop can distinguish resuming from replaying."""
+    """Run one pi subprocess: redirect its stdout+stderr to the durable hop
+    output file, tail it to completion, and report how it ended. ``persisted``
+    counts turns committed to disk this attempt so the retry loop can
+    distinguish resuming from replaying."""
     cmd = _build_cmd(p, attempt_message)
     logger.info("%s hop %d: full prompt:\n%s", p.log_prefix, p.hop, attempt_message)
     logger.info("+ %s", shlex.join(cmd))
 
     await async_wait_for_rate_limit(p.model)
+    manifest_path, output_path = _hop_paths(p)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     # start_new_session=True puts pi in its own process group so an external
     # STOP can kill pi *and* any children it spawned (npx MCP servers) via
-    # the group leader's pid, which we publish to pid_file.
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        start_new_session=True, cwd=str(project_root()),
-        env={**os.environ, **(p.env_extra or {})},
-        limit=STREAM_LINE_LIMIT,
-    )
+    # the group leader's pid, which we publish to pid_file. Output goes to a
+    # file (not a pipe) so pi survives a server reload: the restarted worker
+    # re-attaches via the manifest instead of respawning.
+    with open(output_path, "wb") as out:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=out, stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True, cwd=str(project_root()),
+            env={**os.environ, **(p.env_extra or {})},
+        )
     if p.pid_file is not None:
         try:
             p.pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -512,30 +722,58 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
             logger.warning("%s hop %d: could not write pid_file %s: %s",
                            p.log_prefix, p.hop, p.pid_file, e)
     sink = _StreamSink(p)
-    watchdog = asyncio.create_task(_watchdog(p, proc, sink))
+    sink.manifest_path = manifest_path
+    sink.manifest = {
+        "pid": proc.pid,
+        "started_at": time.time(),
+        "output_path": str(output_path),
+        "offset": 0,
+        "session_id": p.session_id,
+        "model": p.model,
+        "tools": p.tools,
+        "message": attempt_message[:MANIFEST_MESSAGE_MAX_CHARS],
+        "hop": p.hop,
+        "timeout": p.timeout_seconds,
+        "status": "running",
+    }
+    _write_hop_manifest(manifest_path, sink.manifest)
+
+    detached = False
     try:
-        await _stream_events(proc, sink)
+        await _tail_events(sink, output_path, proc=proc, pid=proc.pid)
     except asyncio.CancelledError:
-        # Server shutdown / job abort: kill the whole group so no pi leaks,
-        # then let the finally below reap it before the cancellation resumes.
-        _kill_process_group(proc)
+        # Server reload / job abort: DON'T kill pi — it keeps writing to the
+        # output file (tini reaps it later) and the restarted worker
+        # re-attaches via the manifest. The pid_file must survive too, so a
+        # user STOP can still find the pid. Flush the offset of the last
+        # persisted turn (a turn boundary): the re-attaching worker replays
+        # at most the one partial in-flight turn.
+        detached = True
+        sink.manifest.update({"offset": sink.persist_offset, "status": "running"})
+        _write_hop_manifest(manifest_path, sink.manifest)
+        logger.info("%s hop %d: detached pi pid %d at offset %d (reload?); leaving it running",
+                    p.log_prefix, p.hop, proc.pid, sink.persist_offset)
         raise
     finally:
-        watchdog.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await watchdog
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=5)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-        if p.pid_file is not None:
+        if not detached:
             try:
-                p.pid_file.unlink()
-            except OSError:
-                pass
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+            if p.pid_file is not None:
+                try:
+                    p.pid_file.unlink()
+                except OSError:
+                    pass
+            crashed = not sink.terminated_by_us and proc.returncode not in (0, None)
+            sink.manifest.update({
+                "offset": sink.offset,
+                "status": "crashed" if crashed else "done",
+            })
+            _write_hop_manifest(manifest_path, sink.manifest)
 
-    # An external STOP kills the subprocess out from under the stream loop,
+    # An external STOP kills the subprocess out from under the tail loop,
     # which looks like a crash (non-zero rc). If the caller confirms a stop
     # was requested, classify it as an intentional, clean halt.
     if not sink.terminated_by_us and p.stop_check is not None:
@@ -559,67 +797,201 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
     }
 
 
-async def _run_hop_with_retries(p: _HopParams, message: str) -> str:
-    """Drive _attempt_once until the hop stops cleanly or the retry schedules are
-    exhausted, then either return the stop reason or raise PiError."""
-    first_attempt_at = time.monotonic()
+async def _reattach_attempt(
+    p: _HopParams, attempt_idx: int, manifest_path: Path, manifest: dict
+) -> dict:
+    """Re-attach to a pi that survived a server reload: tail its output file
+    from the stored offset to completion, persisting new turns — no second pi
+    is spawned for the session. A pi that already died is drained from the
+    file: a terminal event in the backlog completes the hop normally,
+    otherwise the attempt reports a crash (rc -1) and the retry loop resumes
+    the session with a fresh pi."""
+    pid = int(manifest["pid"])
+    output_path = Path(manifest.get("output_path") or str(_hop_paths(p)[1]))
+    logger.info("%s hop %d: re-attaching to detached pi pid %d at offset %d",
+                p.log_prefix, p.hop, pid, int(manifest.get("offset") or 0))
+    sink = _StreamSink(p)
+    sink.offset = int(manifest.get("offset") or 0)
+    sink.manifest_path = manifest_path
+    sink.manifest = manifest
+    await _tail_events(sink, output_path, proc=None, pid=pid)
+
+    # A pi that emitted agent_end may still be flushing its session files;
+    # give it a moment to exit before a later hop spawns against the same dir.
+    deadline = time.monotonic() + 5
+    while _pid_alive(pid, p.session_id) and time.monotonic() < deadline:
+        await asyncio.sleep(0.1)
+
+    if p.pid_file is not None:
+        try:
+            p.pid_file.unlink()
+        except OSError:
+            pass
+    sink.manifest.update({
+        "offset": sink.offset,
+        "status": "done" if sink.terminal else "crashed",
+    })
+    _write_hop_manifest(manifest_path, sink.manifest)
+
+    # Same STOP classification as a freshly-spawned attempt.
+    if not sink.terminated_by_us and p.stop_check is not None:
+        try:
+            if p.stop_check():
+                sink.reason = "stopped"
+                sink.terminated_by_us = True
+        except Exception:
+            logger.exception("%s hop %d: stop_check raised", p.log_prefix, p.hop)
+
+    elapsed = time.monotonic() - p.start
+    logger.info("%s hop %d: re-attached attempt %d finished reason=%s persisted=%d elapsed=%.2fs",
+                p.log_prefix, p.hop, attempt_idx + 1, sink.reason, sink.persisted, elapsed)
+    return {
+        "reason": sink.reason,
+        "terminated_by_us": sink.terminated_by_us,
+        # Unknown rc for a re-attached process: a terminal event is a clean
+        # end (None); anything else is treated as a crash so it is retried.
+        "returncode": None if sink.terminal else -1,
+        "persisted": sink.persisted,
+        "detail": _compose_detail("\n".join(sink.output_tail), "\n".join(sink.stderr_tail)),
+    }
+
+
+def _live_detached_manifest(p: _HopParams) -> tuple[Path, dict] | None:
+    """The hop manifest worth re-attaching to: status "running", same
+    session, and either a live pid or unconsumed output left to drain (a pi
+    that finished or crashed during the restart window)."""
+    manifest_path, _ = _hop_paths(p)
+    manifest = _read_hop_manifest(manifest_path)
+    if manifest.get("status") != "running":
+        return None
+    if manifest.get("session_id") != p.session_id:
+        return None
+    pid = manifest.get("pid")
+    if not isinstance(pid, int):
+        return None
+    if _pid_alive(pid, p.session_id):
+        return manifest_path, manifest
+    try:
+        size = Path(str(manifest.get("output_path") or "")).stat().st_size
+    except OSError:
+        return None
+    if size > int(manifest.get("offset") or 0):
+        return manifest_path, manifest
+    return None
+
+
+async def _run_hop_with_retries(
+    p: _HopParams,
+    message: str,
+    record_error=None,
+    error_budget: Callable[[], int] | None = None,
+) -> str:
+    """Drive _attempt_once until the hop stops cleanly, the no-progress streak
+    is exhausted, or the durable error budget is spent; then either return the
+    stop reason or raise PiError.
+
+    Every error is retried: hard failures (SIGKILL/-9 included) and empty runs
+    sleep on the HARD_RETRY_DELAYS schedule, transient upstream failures on
+    TRANSIENT_RETRY_DELAYS. An attempt that persisted a turn counts as
+    progress: it resets the no-progress streak and the next attempt resumes
+    the preserved session with RESUME_MESSAGE. Two caps end the loop: the
+    streak cap (len(HARD_RETRY_DELAYS) + 1 attempts without progress) and the
+    error budget (``error_budget()`` total recorded errors, default
+    MAX_TOTAL_ERRORS), the latter raising PiError(over_budget=True)."""
+    budget = error_budget if error_budget is not None else (lambda: ratelimit.MAX_TOTAL_ERRORS)
     attempt_message = message
+    last_message = "pi command failed"
     last_detail = ""
     last_rc: int | None = None
-    hard_attempts = 0       # hard failures + empty runs, on the 4/61s schedule
-    transient_reattempts = 0  # transient failures, on the TRANSIENT_RETRY_DELAYS schedule
+    consecutive_no_progress = 0  # failed attempts since the last persisted turn
+    transient_reattempts = 0
     total_attempts = 0
+    local_errors = 0  # fallback count when no recorder is wired (or it breaks)
+
+    # Reload survival: a pi detached by a server restart (live pid, or a
+    # backlog to drain) is re-attached as the first attempt instead of
+    # spawning a second pi for the same session.
+    detached = _live_detached_manifest(p)
 
     while True:
-        res = await _attempt_once(p, total_attempts, attempt_message)
+        if detached is not None:
+            res = await _reattach_attempt(p, total_attempts, *detached)
+            detached = None
+        else:
+            res = await _attempt_once(p, total_attempts, attempt_message)
         total_attempts += 1
 
         failed = not res["terminated_by_us"] and res["returncode"] not in (0, None)
         if not failed:
             # A clean exit that persisted no real turns means the model returned
-            # only content-less responses: retry, then surface "empty" so callers
-            # fail the stage instead of treating silence as success.
+            # only content-less responses: an "empty" attempt, retried like a
+            # hard failure and surfaced as "empty" when the streak runs out.
             if res["persisted"] > 0 or res["reason"] != "agent_end":
                 return res["reason"]
-            hard_attempts += 1
-            if hard_attempts >= PI_RETRY_ATTEMPTS:
+            last_message = "pi returned only empty turns"
+            last_detail = ""
+            last_rc = res["returncode"]
+        else:
+            last_message = f"pi exited {res['returncode']}"
+            last_detail = res["detail"]
+            last_rc = res["returncode"]
+
+        local_errors += 1
+        total_errors = local_errors
+        if record_error is not None:
+            try:
+                total_errors = int(record_error({
+                    "message": last_message,
+                    "detail": last_detail,
+                    "rc": last_rc,
+                    "attempt": total_attempts,
+                    "phase": p.log_prefix,
+                }))
+            except Exception:
+                # A broken recorder must never wedge retries.
+                logger.exception("%s hop %d: record_error raised", p.log_prefix, p.hop)
+                total_errors = local_errors
+
+        if res["persisted"] > 0:
+            # Progress: turns are committed and the session dir kept them, so
+            # the streak resets and every further attempt resumes the session,
+            # never replays the original prompt.
+            consecutive_no_progress = 0
+            attempt_message = RESUME_MESSAGE
+        else:
+            consecutive_no_progress += 1
+
+        if total_errors >= budget():
+            logger.error("%s hop %d: error budget spent (%d errors); giving up",
+                         p.log_prefix, p.hop, total_errors)
+            raise PiError(
+                f"{last_message} after {total_attempts} attempts "
+                f"({total_errors} recorded errors — budget spent)",
+                detail=last_detail, over_budget=True,
+            )
+
+        if consecutive_no_progress > len(ratelimit.HARD_RETRY_DELAYS):
+            if not failed:
                 logger.error("%s hop %d: pi returned only empty turns after %d attempts",
                              p.log_prefix, p.hop, total_attempts)
                 return "empty"
-            logger.warning("%s hop %d: pi returned only empty turns; retrying", p.log_prefix, p.hop)
-            await _async_retry_backoff_sleep(hard_attempts, first_attempt_at)
-            continue
+            logger.error("%s hop %d: %d consecutive attempts without progress; giving up",
+                         p.log_prefix, p.hop, consecutive_no_progress)
+            raise PiError(
+                f"{last_message} after {total_attempts} attempts "
+                f"(no progress in {consecutive_no_progress} consecutive attempts)",
+                detail=last_detail,
+            )
 
-        last_detail = res["detail"]
-        last_rc = res["returncode"]
-        if res["persisted"] > 0:
-            # Turns are already committed and the session dir kept them: every
-            # further attempt must resume the session, never replay the prompt.
-            attempt_message = RESUME_MESSAGE
-
-        if is_transient(last_detail):
-            if transient_reattempts < len(ratelimit.TRANSIENT_RETRY_DELAYS):
-                logger.warning("%s hop %d: transient failure (rc=%s); will resume (reattempt %d/%d)",
-                               p.log_prefix, p.hop, last_rc,
-                               transient_reattempts + 1, len(ratelimit.TRANSIENT_RETRY_DELAYS))
-                await _async_transient_backoff_sleep(transient_reattempts)
-                transient_reattempts += 1
-                continue
-            break
-
-        # Hard failure. Partial progress (turns already committed to disk) is
-        # real work: don't replay it — raise so the stage records the error and
-        # a later retry/resume continues the session.
-        if res["persisted"] > 0:
-            logger.info("%s hop %d: pi exited %s after %d persisted turn(s); not retrying",
-                        p.log_prefix, p.hop, last_rc, res["persisted"])
-            break
-        hard_attempts += 1
-        if hard_attempts >= PI_RETRY_ATTEMPTS:
-            break
-        await _async_retry_backoff_sleep(hard_attempts, first_attempt_at)
-
-    raise PiError(f"pi exited {last_rc} after {total_attempts} attempts", detail=last_detail)
+        if failed and is_transient(last_detail):
+            logger.warning("%s hop %d: transient failure (rc=%s); will resume (reattempt %d)",
+                           p.log_prefix, p.hop, last_rc, transient_reattempts + 1)
+            await _async_transient_backoff_sleep(transient_reattempts)
+            transient_reattempts += 1
+        else:
+            logger.warning("%s hop %d: %s; retrying (streak %d)",
+                           p.log_prefix, p.hop, last_message, consecutive_no_progress)
+            await _async_hard_backoff_sleep(consecutive_no_progress)
 
 
 async def arun_agent_hop(
@@ -638,6 +1010,8 @@ async def arun_agent_hop(
     pid_file: Path | None = None,
     stop_check=None,
     record_prompt=None,
+    record_error=None,
+    error_budget: Callable[[], int] | None = None,
     env_extra: dict[str, str] | None = None,
     waiting_check: Callable[[], bool] | None = None,
 ) -> str:
@@ -669,12 +1043,26 @@ async def arun_agent_hop(
     "at": ...}`` so callers can persist the exact compiled prompt into their
     trajectory alongside the turns it produced.
 
-    Retries: hard process failures with no persisted turns follow the standard
-    4-attempt/61s schedule, replaying ``message``. *Transient* upstream
-    failures (see ``is_transient``) follow their own longer backoff and retry
-    even after turns were persisted — the preserved session is resumed with
-    ``RESUME_MESSAGE`` instead of replaying, so no work is duplicated. A hard
-    failure after persisted turns raises immediately.
+    ``record_error`` (optional) is called once per *failed attempt* (hard,
+    transient, or empty) with ``{"message", "detail", "rc", "attempt",
+    "phase"}`` and returns the new total error count; ``error_budget``
+    (optional, default ``ratelimit.MAX_TOTAL_ERRORS``) supplies the total-error
+    cap at which the hop raises PiError(over_budget=True).
+
+    Retries: every failure is retried. *Transient* upstream failures (see
+    ``is_transient``) follow their own longer backoff; hard failures
+    (SIGKILL/-9 included) and empty runs follow HARD_RETRY_DELAYS. Whenever an
+    attempt persisted turns, the preserved session is resumed with
+    ``RESUME_MESSAGE`` instead of replaying, so no work is duplicated, and the
+    no-progress streak resets. The hop gives up after
+    ``len(HARD_RETRY_DELAYS) + 1`` consecutive attempts without progress, or
+    when the recorded-error total reaches the budget (over_budget).
+
+    Reload survival: pi's event stream goes to a durable hop.jsonl file with a
+    hop.json manifest (pid, session, offset). If a previous, still-running
+    (or just-finished) detached hop exists for this session, the first
+    attempt re-attaches to it — tailing from the stored offset — instead of
+    spawning a second pi that would corrupt the shared session dir.
     """
     p = _HopParams(log_prefix=log_prefix, model=model, session_id=session_id,
                    sessions_dir=sessions_dir, tools=tools, start=start, sentinel=sentinel,
@@ -689,7 +1077,9 @@ async def arun_agent_hop(
         except Exception:
             logger.exception("%s hop %d: record_prompt raised", log_prefix, hop)
 
-    return await _run_hop_with_retries(p, message)
+    return await _run_hop_with_retries(
+        p, message, record_error=record_error, error_budget=error_budget
+    )
 
 
 def run_agent_hop(**kwargs) -> str:

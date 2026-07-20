@@ -99,6 +99,21 @@ def _render_text_action_row(kind: str, text: str, elapsed: float | None = None) 
     return f"<tr><td>{kind}</td><td>{middle}</td><td>{size}</td></tr>"
 
 
+def _render_media_thumbs(block: dict) -> str:
+    """Click-to-expand thumbnails for a tool block's persisted ``media`` copies."""
+    esc = _ui._esc
+    media = block.get("media")
+    if not isinstance(media, list) or not media:
+        return ""
+    thumbs = "".join(
+        f'<img class="tool-thumb" src="{esc(str(m.get("url", "")))}" '
+        f'alt="{esc(str(m.get("src", "image")))}" title="{esc(str(m.get("src", "")))}">'
+        for m in media
+        if isinstance(m, dict) and m.get("url")
+    )
+    return f'<span class="tool-thumbs">{thumbs}</span>' if thumbs else ""
+
+
 def _render_tool_action_row(block: dict) -> str:
     """Table row for one tool call: type, path/command, in/out char counts, output."""
     esc = _ui._esc
@@ -111,6 +126,18 @@ def _render_tool_action_row(block: dict) -> str:
         action_type = "read"
         path = str(args.get("path") or input_raw)
         middle = f'<code title="{esc(path)}">{esc(_truncate_middle(path))}</code>'
+        middle += _render_media_thumbs(block)
+    elif name == "analyze_image":
+        action_type = "analyze_image"
+        prompt = str(args.get("prompt") or "")
+        bits: list[str] = []
+        if prompt:
+            bits.append(f'<span class="muted">{esc(prompt)}</span>')
+        for p in args.get("image_paths") or []:
+            sp = str(p)
+            bits.append(f'<code title="{esc(sp)}">{esc(_truncate_middle(sp))}</code>')
+        middle = " ".join(bits) if bits else f'<pre class="cmd">{esc(str(input_raw))}</pre>'
+        middle += _render_media_thumbs(block)
     elif name == "bash":
         command = str(args.get("command") or input_raw)
         action_type = "sigmap" if command.strip().startswith("sigmap") else "bash"
@@ -141,7 +168,8 @@ def _render_tool_action_row(block: dict) -> str:
 def render_user_prompt_msg(entry: dict) -> str:
     """Expandable `.stage-msg` for a recorded ``user_prompt`` turn entry.
 
-    Collapsed summary is the first line of ``original`` (else ``compiled``).
+    Collapsed summary is the first line of ``original`` (else ``compiled``),
+    plus thumbnails when the entry carries prompt-attachment ``media`` rows.
     Expanded: original message (when present), then a nested details with the
     full compiled prompt verbatim."""
     esc = _ui._esc
@@ -155,6 +183,7 @@ def render_user_prompt_msg(entry: dict) -> str:
     if len(first_line) > 100:
         first_line = first_line[:97] + "…"
     summary = f"user prompt · {label} — {first_line}"
+    thumbs = _render_media_thumbs(entry)
 
     body_parts: list[str] = []
     if original_s:
@@ -173,7 +202,7 @@ def render_user_prompt_msg(entry: dict) -> str:
         body_parts.append(f'<pre class="prompt-full">{esc(summary_src)}</pre>')
     return (
         f'<details class="stage-msg user-prompt-msg">'
-        f"<summary>{esc(summary)}</summary>"
+        f"<summary>{esc(summary)}{thumbs}</summary>"
         f'{"".join(body_parts)}</details>'
     )
 
@@ -211,17 +240,75 @@ def render_actions_table(turns: list[dict], include_text: bool = True) -> str:
     )
 
 
-def render_turn_msgs(turns: list[dict], include_text: bool = True) -> list[str]:
-    """One `.stage-msg` per turn / ``user_prompt`` entry (append-friendly)."""
+def _merged_trajectory(turns: list[dict], errors: list[dict]) -> list[dict]:
+    """Merge turn/prompt entries with durable error rows, time-ordered.
+
+    Turns keep list order (their ``at`` is monotonic by construction; legacy
+    entries without ``at`` inherit the previous entry's key). Errors sort by
+    their own ``at`` and, on ties, after the turn(s) they follow — so the
+    append-only ``wrap_status`` delta-swap stays consistent."""
+    keyed: list[tuple[float, int, int, dict]] = []
+    last = 0.0
+    for idx, turn in enumerate(turns):
+        at = turn.get("at")
+        if at is None:
+            at = last
+        else:
+            last = float(at)
+        keyed.append((at, 0, idx, turn))
+    for idx, err in enumerate(errors):
+        keyed.append((float(err.get("at", 0.0)), 1, idx, err))
+    keyed.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [payload for _, _, _, payload in keyed]
+
+
+def render_error_row(entry: dict) -> str:
+    """A durable `.stage-msg` error row in the trajectory (sibling of the turn
+    rows): the ``render_error_msg`` markup plus attempt # and relative time."""
+    esc = _ui._esc
+    message = str(entry.get("message") or "error")
+    detail = str(entry.get("detail") or "")
+    meta_bits: list[str] = []
+    if entry.get("attempt") is not None:
+        meta_bits.append(f"attempt {entry['attempt']}")
+    if entry.get("at"):
+        meta_bits.append(_ui._format_ago(float(entry["at"])))
+    meta = f' <small class="muted">({" · ".join(meta_bits)})</small>' if meta_bits else ""
+    html = (
+        '<div class="stage-msg stage-error">'
+        f'<p class="error-line">⚠ {esc(message)}{meta}</p>'
+    )
+    if detail:
+        html += (
+            '<details class="error-detail"><summary>last output (stdout+stderr)</summary>'
+            f'<pre class="error-log">{esc(detail)}</pre></details>'
+        )
+    return html + "</div>"
+
+
+def render_turn_msgs(
+    turns: list[dict],
+    errors: list[dict] | None = None,
+    include_text: bool = True,
+) -> list[str]:
+    """One `.stage-msg` per turn / ``user_prompt`` entry (append-friendly).
+
+    When ``errors`` is given, the durable error rows are interleaved by their
+    ``at`` timestamps (see :func:`_merged_trajectory`). Error rows are UI-only:
+    agent context never reads them."""
+    entries = _merged_trajectory(turns, errors) if errors else list(turns)
     out: list[str] = []
-    for turn in turns:
-        kind = turn.get("kind")
+    for entry in entries:
+        kind = entry.get("kind")
         if kind == "user_prompt":
-            out.append(render_user_prompt_msg(turn))
+            out.append(render_user_prompt_msg(entry))
+            continue
+        if kind == "error":
+            out.append(render_error_row(entry))
             continue
         if kind:
             continue
-        table = render_actions_table([turn], include_text=include_text)
+        table = render_actions_table([entry], include_text=include_text)
         if table:
             out.append(f'<div class="stage-msg">{table}</div>')
     return out
@@ -245,12 +332,15 @@ def render_exchanges(
     for exchange in exchanges:
         user_text = exchange.get("user", "")
         turns = exchange.get("turns", [])
+        media = exchange.get("media", [])
         prompt_entry = next((t for t in turns if t.get("kind") == "user_prompt"), None)
         if prompt_entry is not None:
             # Prefer recorded compiled prompt; keep original from the exchange.
             entry = dict(prompt_entry)
             entry.setdefault("original", user_text)
             entry.setdefault("label", "chat")
+            if media:
+                entry.setdefault("media", media)
             msgs.append(render_user_prompt_msg(entry))
         else:
             msgs.append(render_user_prompt_msg({
@@ -258,8 +348,12 @@ def render_exchanges(
                 "compiled": "",
                 "original": user_text,
                 "label": "chat",
+                **({"media": media} if media else {}),
             }))
         agent_turns = [t for t in turns if t.get("kind") != "user_prompt"]
+        errors = exchange.get("errors", [])
+        if errors:
+            agent_turns = _merged_trajectory(agent_turns, errors)
         if agent_turns:
             msgs.extend(render_agent_turns(agent_turns))
     return msgs
@@ -283,6 +377,22 @@ def render_error_msg(error: str, detail: str = "") -> str:
             f'<pre class="error-log">{esc(detail)}</pre></details>'
         )
     return html + "</div>"
+
+
+def render_fatal_error_banner(state: dict) -> str:
+    """Prominent "something is likely wrong" banner for the error tail, shown
+    once the durable error budget is spent (over_budget flag, or the recorded
+    error rows reaching the budget). Empty string otherwise."""
+    over = bool(state.get("error_over_budget")) or len(state.get("errors", [])) >= int(
+        state.get("error_budget", pi_runner.MAX_TOTAL_ERRORS)
+    )
+    if not over:
+        return ""
+    return (
+        '<div class="stage-error stage-error--fatal">'
+        '<p class="error-line">⚠ Failed more than 20 times — '
+        "something is likely wrong</p></div>"
+    )
 
 
 def render_spinner(label: str) -> str:
@@ -325,7 +435,7 @@ def render_stop_button(stage: "Stage", task_id: str) -> str:
     return (
         f'<button hx-post="{esc(stage.action_url(task_id, "stop"))}" '
         f'hx-target="#{stage.stage_content_id()}" hx-swap="outerHTML" '
-        'class="secondary stop-btn">STOP</button>'
+        'class="contrast">STOP</button>'
     )
 
 

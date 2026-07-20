@@ -5,10 +5,16 @@ rate limiting (§2), transient retries + session resume (§3), cap removal (§4)
 STOP classification (§6 backend), the exclusive queue (§7), sentinel own-line
 matching (§8), and compiled-prompt recording (§1) — including one stage-level
 run of Explore against the shim.
+
+Retry-everything update: hard failures (SIGKILL/-9 included) and empty runs
+retry on the HARD_RETRY_DELAYS schedule; the no-progress streak cap is
+len(HARD_RETRY_DELAYS) + 1 attempts, and the durable error budget
+(MAX_TOTAL_ERRORS recorded errors) raises PiError(over_budget=True).
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import threading
@@ -17,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from crack_server import pi_runner, queue, ratelimit
+from crack_server import pi_proc, pi_runner, queue, ratelimit
 
 SHIM = Path(__file__).parent / "fake_pi.sh"
 
@@ -58,6 +64,7 @@ def fake_pi(tmp_path, monkeypatch) -> FakePi:
     monkeypatch.setenv("FAKE_PI_SCRIPT", str(script))
     # Fast retry schedules so failure paths finish in well under a second each.
     monkeypatch.setattr(ratelimit, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
+    monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.05, 0.05, 0.05, 0.05])
     monkeypatch.setattr(ratelimit, "PI_RETRY_WINDOW_SECONDS", 0.2)
     return FakePi(ctrl, script)
 
@@ -170,17 +177,27 @@ def test_midstream_kill_resumes_session_with_continuation(fake_pi, tmp_path):
     assert prompts[0]["hop"] == 1
 
 
-def test_four_transient_failures_raise(fake_pi, tmp_path):
+def test_transient_failures_raise_at_streak_cap(fake_pi, tmp_path):
     fake_pi.set_script(["transient"])
-    with pytest.raises(pi_runner.PiError):
-        run_hop(tmp_path)
-    assert fake_pi.invocations() == 1 + len(ratelimit.TRANSIENT_RETRY_DELAYS)
+    errors: list[dict] = []
+    with pytest.raises(pi_runner.PiError) as excinfo:
+        run_hop(tmp_path, record_error=lambda e: errors.append(e) or len(errors))
+    # Transients also retry until the no-progress streak cap: every attempt
+    # failed without persisting a turn, so the streak ends it (not the budget).
+    assert fake_pi.invocations() == 1 + len(ratelimit.HARD_RETRY_DELAYS)
+    assert not excinfo.value.over_budget
+    assert len(errors) == 1 + len(ratelimit.HARD_RETRY_DELAYS)
 
 
-def test_hard_failure_after_persisted_turns_raises_immediately(fake_pi, tmp_path):
+def test_hard_failure_after_persisted_turns_resumes_and_retries(fake_pi, tmp_path):
+    # A hard failure after persisted turns no longer raises immediately: the
+    # hop resumes the session (RESUME_MESSAGE) and retries on the hard
+    # schedule. Here every attempt makes progress, so only the error budget
+    # (MAX_TOTAL_ERRORS recorded errors) stops it, over_budget=True.
     fake_pi.set_script(["midhard:2"])
     persisted: list[dict] = []
-    with pytest.raises(pi_runner.PiError):
+    errors: list[dict] = []
+    with pytest.raises(pi_runner.PiError) as excinfo:
         pi_runner.run_agent_hop(
             log_prefix="test",
             model="moonshotai/x",
@@ -192,10 +209,92 @@ def test_hard_failure_after_persisted_turns_raises_immediately(fake_pi, tmp_path
             sentinel=None,
             timeout_seconds=60,
             persist_turn=lambda t, h: persisted.append(dict(t)),
+            record_error=lambda e: errors.append(e) or len(errors),
         )
-    # Turns 1-2 were kept and the hard failure was not retried (no replay).
-    assert len(persisted) == 2
-    assert fake_pi.invocations() == 1
+    assert excinfo.value.over_budget is True
+    # Every failed attempt was recorded durably with the entry fields.
+    assert len(errors) == ratelimit.MAX_TOTAL_ERRORS
+    assert errors[0]["rc"] == 1 and errors[0]["attempt"] == 1
+    assert errors[0]["message"] == "pi exited 1"
+    # Turns 1-2 of every attempt were kept and the session was resumed.
+    assert len(persisted) == 2 * ratelimit.MAX_TOTAL_ERRORS
+    assert fake_pi.invocations() == ratelimit.MAX_TOTAL_ERRORS
+    assert fake_pi.prompt(2) == pi_runner.RESUME_MESSAGE
+
+
+def test_error_budget_cap_raises_over_budget(fake_pi, tmp_path):
+    fake_pi.set_script(["hard"])
+    errors: list[dict] = []
+    with pytest.raises(pi_runner.PiError) as excinfo:
+        run_hop(
+            tmp_path,
+            record_error=lambda e: errors.append(e) or len(errors),
+            error_budget=lambda: 3,
+        )
+    assert excinfo.value.over_budget is True
+    assert fake_pi.invocations() == 3
+    assert len(errors) == 3
+
+
+def test_broken_error_recorder_never_wedges_retries(fake_pi, tmp_path):
+    fake_pi.set_script(["hard"])
+
+    def broken(entry: dict) -> int:
+        raise RuntimeError("recorder exploded")
+
+    with pytest.raises(pi_runner.PiError):
+        run_hop(tmp_path, record_error=broken)
+    # The streak cap still stops the loop on the local fallback count.
+    assert fake_pi.invocations() == 1 + len(ratelimit.HARD_RETRY_DELAYS)
+
+
+def test_hard_backoff_schedule_is_1_3_9_27(monkeypatch):
+    sleeps: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    for streak in (0, 1, 2, 3, 4, 5):
+        asyncio.run(ratelimit._async_hard_backoff_sleep(streak))
+    # streak 1..4 → [1,3,9,27]; a progress-reset streak of 0 maps to index 0
+    # (1s); anything past the end clamps at 27s.
+    assert sleeps == [1.0, 1.0, 3.0, 9.0, 27.0, 27.0]
+
+
+def test_no_progress_streak_resets_on_progress(fake_pi, tmp_path, monkeypatch):
+    streaks: list[int] = []
+
+    async def fake_hard_sleep(streak: int) -> None:
+        streaks.append(streak)
+
+    monkeypatch.setattr(pi_proc, "_async_hard_backoff_sleep", fake_hard_sleep)
+    fake_pi.set_script(["hard", "hard", "midhard:1", "hard"])
+    errors: list[dict] = []
+    persisted: list[dict] = []
+    with pytest.raises(pi_runner.PiError) as excinfo:
+        pi_runner.run_agent_hop(
+            log_prefix="test",
+            model="moonshotai/x",
+            session_id="hop-test",
+            sessions_dir=tmp_path / "sessions",
+            tools="bash",
+            message="do it",
+            start=time.monotonic(),
+            sentinel=None,
+            timeout_seconds=60,
+            persist_turn=lambda t, h: persisted.append(dict(t)),
+            record_error=lambda e: errors.append(e) or len(errors),
+        )
+    # Streak climbs 1,2 → midhard persists a turn (progress → 0, resume) →
+    # climbs again until the cap (len(HARD_RETRY_DELAYS) + 1 attempts).
+    assert streaks == [1, 2, 0, 1, 2, 3, 4]
+    assert fake_pi.invocations() == 8
+    assert len(persisted) == 1
+    assert len(errors) == 8
+    assert not excinfo.value.over_budget
+    # After the progressing failure the session was resumed, not replayed.
+    assert fake_pi.prompt(4) == pi_runner.RESUME_MESSAGE
 
 
 def test_run_pi_text_transient_then_ok(fake_pi):
@@ -210,6 +309,23 @@ def test_run_pi_text_hard_failures_exhaust_schedule(fake_pi):
     with pytest.raises(pi_runner.PiError):
         pi_runner.run_pi_text("hello", log_prefix="t", model="moonshotai/x")
     assert fake_pi.invocations() == pi_runner.PI_RETRY_ATTEMPTS
+
+
+def test_run_pi_text_records_each_failed_attempt(fake_pi):
+    fake_pi.set_script(["hard"])
+    errors: list[dict] = []
+    with pytest.raises(pi_runner.PiError):
+        pi_runner.run_pi_text(
+            "hello",
+            log_prefix="t",
+            model="moonshotai/x",
+            record_error=lambda e: errors.append(e) or len(errors),
+        )
+    # One durable error row per failed attempt; the schedule itself is unchanged.
+    assert len(errors) == pi_runner.PI_RETRY_ATTEMPTS
+    assert [e["attempt"] for e in errors] == [1, 2, 3, 4]
+    assert all(e["message"] == "pi exited 1" for e in errors)
+    assert all(e["phase"] == "t" for e in errors)
 
 
 # ---------------------------------------------------------------------------

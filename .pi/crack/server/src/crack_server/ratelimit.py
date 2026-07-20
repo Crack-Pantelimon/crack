@@ -35,9 +35,20 @@ PI_RETRY_ATTEMPTS = 4
 PI_RETRY_WINDOW_SECONDS = 61.0
 
 # Transient upstream failures (rate limits, 5xx, connection resets) get their
-# own longer, flatter backoff that crosses the provider's per-minute window
-# before giving up: one sleep per reattempt, in order.
+# own longer, flatter backoff that crosses the provider's per-minute window:
+# one sleep per reattempt, in order (clamped at the last entry).
 TRANSIENT_RETRY_DELAYS = [20.0, 45.0, 75.0]
+
+# Hard failures (nonzero exit, SIGKILL/-9, empty runs) are also retried: one
+# sleep per consecutive no-progress attempt, in order. After
+# len(HARD_RETRY_DELAYS) + 1 attempts without a persisted turn the hop raises.
+HARD_RETRY_DELAYS = [1.0, 3.0, 9.0, 27.0]
+
+# Durable error budget: a hop raises PiError(over_budget=True) once the
+# caller's error recorder reports this many recorded errors. A manual
+# "continue from last error" grants another MAX_TOTAL_ERRORS on top of the
+# rows recorded so far (see stages.steprun.grant_error_budget).
+MAX_TOTAL_ERRORS = 20
 
 _TRANSIENT_MARKERS = (
     "resourceexhausted",
@@ -85,6 +96,20 @@ async def _async_transient_backoff_sleep(reattempt: int) -> None:
         logger.info(
             "pi-retry: transient failure; sleeping %.1fs before reattempt %d",
             delay, reattempt + 1,
+        )
+        await asyncio.sleep(delay)
+
+
+async def _async_hard_backoff_sleep(streak: int) -> None:
+    """Sleep before the next reattempt of a hard/empty failure.
+
+    ``streak`` is the 1-based no-progress count (attempts since the last
+    persisted turn); a progress-reset streak of 0 maps to index 0 (1s)."""
+    delay = HARD_RETRY_DELAYS[max(0, min(streak - 1, len(HARD_RETRY_DELAYS) - 1))]
+    if delay > 0:
+        logger.info(
+            "pi-retry: hard failure; sleeping %.1fs before reattempt (streak %d)",
+            delay, streak,
         )
         await asyncio.sleep(delay)
 

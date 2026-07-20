@@ -16,7 +16,7 @@ from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from crack_server import ui as _ui
-from crack_server import chat_engine
+from crack_server import attachments, chat_engine
 from crack_server import paths, pi_runner, queue, titles
 from crack_server.state import chat_state_mtime
 
@@ -61,9 +61,19 @@ def _agent_pid_file(chat_id: str):
 # -- home-page section --------------------------------------------------------
 
 
+def list_chat_links() -> list[tuple[str, str]]:
+    """``(chat_id, title)`` pairs for the persistent sidebar nav."""
+    links: list[tuple[str, str]] = []
+    for cid in paths.list_chat_ids():
+        info = paths.chat_info_state(cid).read()
+        title = info.get("title") or f"Chat {cid}"
+        links.append((cid, str(title)))
+    return links
+
+
 def _render_chat_list(ids: list[str]) -> str:
     if not ids:
-        return '<p style="color: #888;">No chats yet.</p>'
+        return '<p class="muted">No chats yet.</p>'
     items = []
     for cid in ids:
         info = paths.chat_info_state(cid).read()
@@ -71,16 +81,14 @@ def _render_chat_list(ids: list[str]) -> str:
         created = info.get("created_at")
         when = _ui._format_time(created) if created else ""
         delete_btn = (
-            f'<button hx-delete="/api/chats/{_ui._esc(cid)}" '
+            f'<button class="contrast compact-btn" hx-delete="/api/chats/{_ui._esc(cid)}" '
             'hx-target="closest li" hx-swap="outerHTML" '
-            'hx-confirm="Delete this chat permanently?" '
-            'style="background:#c0392b;border-color:#c0392b;color:#fff;'
-            'padding:0.1rem 0.5rem;font-size:0.8rem;margin-left:0.5rem;">Delete</button>'
+            'hx-confirm="Delete this chat permanently?">Delete</button>'
         )
         items.append(
-            f'<li style="display:flex;align-items:center;gap:0.25rem;">'
+            f'<li class="chat-list-item">'
             f'<a href="/chats/{_ui._esc(cid)}">{_ui._esc(title)}</a> '
-            f'<small style="color: #666;">({_ui._esc(cid)}{" · " + when if when else ""})</small>'
+            f'<small class="muted">({_ui._esc(cid)}{" · " + when if when else ""})</small>'
             f"{delete_btn}</li>"
         )
     return "<ul>" + "".join(items) + "</ul>"
@@ -98,9 +106,9 @@ def render_home_section() -> str:
         )
     return f"""
     <hr>
-    <section id="unscripted-chats" style="margin-top: 2rem;">
+    <section id="unscripted-chats" class="section-spaced">
       <h2>Unscripted Chats</h2>
-      <form method="post" action="/api/chats" style="margin-bottom: 1rem;">
+      <form method="post" action="/api/chats">
         <button type="submit">New Chat</button>
       </form>
       {recent}
@@ -138,12 +146,16 @@ def render_chat_form(chat_id: str, info: dict) -> str:
     select = _render().model_select(
         "model", current, f"/api/chats/{chat_id}/model", swap="none", indent=" " * 8
     )
+    strip = attachments.render_strip(
+        "chats", chat_id, paths.chat_attachments_state(chat_id), "chat-attachments"
+    )
     return f"""
     <form class="chat-form" hx-post="/api/chats/{safe_id}/messages"
           hx-target="#chat-content" hx-swap="outerHTML">
       <label>Model
 {select}
       </label>
+      {strip}
       <label>Message
         <textarea name="msg" rows="4" required placeholder="Type a message…"></textarea>
       </label>
@@ -158,15 +170,15 @@ def render_user_question_form(chat_id: str, run_id: str, question: dict) -> str:
     choices = question.get("choices") or []
     if choices:
         field = "".join(
-            f'<label style="display:block;margin:0.15rem 0;">'
+            f'<label class="choice-label">'
             f'<input type="radio" name="answer" value="{esc(c)}" required> {esc(c)}</label>'
             for c in choices
         )
     else:
         field = '<textarea name="answer" rows="3" required placeholder="Your answer…"></textarea>'
     return f"""
-    <form hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{esc(run_id)}/user_answer"
-          hx-target="#subagent-run-tree" hx-swap="outerHTML" style="margin-top:0.5rem;">
+    <form class="ask-user-form" hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{esc(run_id)}/user_answer"
+          hx-target="#subagent-run-tree" hx-swap="outerHTML">
       <p><strong>The agent asks:</strong> {esc(question.get("question", ""))}</p>
       {field}
       <button type="submit">Answer</button>
@@ -200,15 +212,15 @@ def render_run_tree(chat_id: str) -> str:
         actions = ""
         if phase not in ("done", "error", "stopped"):
             actions += (
-                f' <button hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/stop" '
-                f'hx-target="#subagent-run-tree" hx-swap="outerHTML" '
-                f'style="padding:0.1rem 0.4rem;font-size:0.8rem;">Stop</button>'
+                f' <button class="contrast compact-btn" '
+                f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/stop" '
+                f'hx-target="#subagent-run-tree" hx-swap="outerHTML">Stop</button>'
             )
         if phase in ("error", "stopped"):
             actions += (
-                f' <button hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/retry" '
-                f'hx-target="#subagent-run-tree" hx-swap="outerHTML" '
-                f'style="padding:0.1rem 0.4rem;font-size:0.8rem;">Retry</button>'
+                f' <button class="secondary compact-btn" '
+                f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/retry" '
+                f'hx-target="#subagent-run-tree" hx-swap="outerHTML">Retry</button>'
             )
         error = ""
         if phase == "error" and state.get("error"):
@@ -226,8 +238,9 @@ def render_run_tree(chat_id: str) -> str:
                 meta=f"Planner round {state.get('round', 1)} — answer to continue:",
             )
             form_html += (
-                f'<form hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/continue" '
-                f'hx-target="#subagent-run-tree" hx-swap="outerHTML" style="margin-top:0.5rem;">'
+                f'<form class="ask-user-form" '
+                f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/continue" '
+                f'hx-target="#subagent-run-tree" hx-swap="outerHTML">'
                 f'<button type="submit">Continue to plan (skip more questions)</button></form>'
             )
         rows.append(
@@ -296,6 +309,7 @@ def render_chat_tail(chat_id: str) -> str:
         )
 
     if phase != "chatting" and state.get("error"):
+        parts.append(render.render_fatal_error_banner(state))
         parts.append(render.render_error_msg(state.get("error", ""), state.get("error_detail", "")))
 
     if phase == "chatting":
@@ -303,7 +317,7 @@ def render_chat_tail(chat_id: str) -> str:
         parts.append(
             '<div class="stage-running">'
             f"{render.render_spinner('Thinking…')}"
-            f'<button class="chat-stop stop-btn" hx-post="/api/chats/{safe_id}/stop" '
+            f'<button class="contrast" hx-post="/api/chats/{safe_id}/stop" '
             'hx-target="#chat-content" hx-swap="outerHTML">Stop</button></div>'
         )
 
@@ -357,10 +371,10 @@ def render_chat_page_body(chat_id: str) -> str:
     info = paths.chat_info_state(chat_id).read()
     title = info.get("title") or f"Chat {chat_id}"
     return f"""
-    <header style="margin-bottom: 1rem;">
+    <header>
       <p><a href="/">← Home</a> · <a href="/sub_agents">Sub-agents</a></p>
       <h1>{_ui._esc(title)}</h1>
-      <p><small style="color: #666;">id {_ui._esc(chat_id)} · all tools enabled</small></p>
+      <p><small class="muted">id {_ui._esc(chat_id)} · all tools enabled</small></p>
     </header>
     {render_run_tree(chat_id)}
     {render_chat_content(chat_id)}
@@ -392,9 +406,31 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
 
         paths.chat_info_state(chat_id).update(_set_model)
     msg = msg.strip()
+    # One-shot attachments staged via paste/drop: weave them into this message,
+    # then clear the manifest so they aren't resent on the next message. The
+    # uploaded files stay on disk under attachments/ for history. A media list
+    # rides along on the exchange so the sent-message bubble can render the
+    # thumbnails (the woven prompt text itself stays text-only).
+    staged = attachments.list_attachments(paths.chat_attachments_state(chat_id))
+    media: list[dict] = []
+    if staged:
+        block = attachments.format_block(staged)
+        msg = (block + "\n\n" + msg) if msg else block
+        media = [
+            {
+                "url": f"/chats/{chat_id}/attachments/{e.get('id', '')}",
+                "src": str(e.get("saved_path", "")),
+                "description": str(e.get("description", "")),
+            }
+            for e in staged
+        ]
+        attachments.clear(paths.chat_attachments_state(chat_id))
     if msg:
         def _begin(state: dict) -> dict:
-            state.setdefault("pending", []).append({"user": msg, "source": "human"})
+            item: dict = {"user": msg, "source": "human"}
+            if media:
+                item["media"] = media
+            state.setdefault("pending", []).append(item)
             state["phase"] = "chatting"
             state["stop_requested"] = False
             # A human message answers any outstanding ask_user question.
@@ -551,6 +587,7 @@ def _pop_pending(chat_id: str) -> dict | None:
             "turns": [],
             "source": taken.get("source", "human"),
             **({"run_id": taken["run_id"]} if taken.get("run_id") else {}),
+            **({"media": taken["media"]} if taken.get("media") else {}),
         })
         state["phase"] = "chatting"
         return state
@@ -616,6 +653,8 @@ async def run_chat(chat_id: str) -> None:
                 "CRACK_PARENT_KIND": "chat",
                 "CRACK_PARENT_ID": chat_id,
             },
+            media_dir=paths.chat_dir(chat_id) / "media",
+            media_url_prefix=f"/chats/{chat_id}/media",
         )
         if stop_check():
             def _halt(state: dict) -> dict:

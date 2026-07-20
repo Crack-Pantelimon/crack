@@ -21,6 +21,7 @@ from typing import Callable
 from crack_server import pi_runner
 from crack_server.state import JsonState
 from crack_server.stages.steprun import (
+    error_recorder,
     prompt_recorder,
     record_chat_errors,
     turn_persister,
@@ -56,6 +57,8 @@ async def run_exchange(
     on_no_exchanges: Callable[[], None] | None = None,
     stopped_phase: str = "idle",
     env_extra: dict[str, str] | None = None,
+    media_dir: Path | None = None,
+    media_url_prefix: str = "",
 ) -> None:
     """Run the agent for the latest entry in ``state["exchanges"]``.
 
@@ -67,7 +70,9 @@ async def run_exchange(
     runs before the first exchange's hop (chat titling); ``on_no_exchanges``
     runs when there is nothing to do. ``stopped_phase`` is the phase written
     when the hop was externally stopped ("idle" for unscripted chats,
-    "stopped" for the Finished stage).
+    "stopped" for the Finished stage). ``media_dir`` / ``media_url_prefix``
+    (optional) enable image-thumbnail persistence for read/analyze_image tool
+    calls (see ``stages.steprun.attach_media_to_blocks``).
     """
     start = time.monotonic()
     with record_chat_errors(state, log_message=f"{log_prefix}: exchange failed for {ident}"):
@@ -83,7 +88,10 @@ async def run_exchange(
         if idx == 0 and on_first_exchange is not None:
             await on_first_exchange(user_msg)
 
-        persister = turn_persister(state, subpath=["exchanges", idx])
+        persister = turn_persister(
+            state, subpath=["exchanges", idx],
+            media_dir=media_dir, media_url_prefix=media_url_prefix,
+        )
         record = prompt_recorder(persister, "chat", record_template, original=user_msg)
 
         if pre_stop_check is not None and pre_stop_check():
@@ -102,6 +110,7 @@ async def run_exchange(
                 persist_turn=persister.persist,
                 hop=1,
                 record_prompt=record,
+                record_error=error_recorder(state, subpath=["exchanges", idx]),
                 env_extra=env_extra,
                 **(hop_kwargs or {}),
             )

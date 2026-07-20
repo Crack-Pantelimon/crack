@@ -270,4 +270,124 @@
   document.body.addEventListener('htmx:responseError', function (evt) {
     console.error('htmx error:', evt.detail);
   });
+
+  // -- Image lightbox: click any .tool-thumb to expand full size -------------
+  document.body.addEventListener('click', function (evt) {
+    const img = evt.target.closest && evt.target.closest('img.tool-thumb');
+    if (!img) return;
+    let dlg = document.getElementById('img-lightbox');
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.id = 'img-lightbox';
+      dlg.innerHTML = '<img alt="expanded image">';
+      document.body.appendChild(dlg);
+      dlg.addEventListener('click', function () { dlg.close(); });
+    }
+    dlg.querySelector('img').src = img.getAttribute('src');
+    dlg.showModal();
+  });
+
+  // -- Paste/drop image attachments (task prompt editor + chat message box) --
+  function attachmentEndpointFor(ta) {
+    const taskId = document.body.getAttribute('data-task-id');
+    if (ta.name === 'content' && taskId) {
+      return {
+        url: '/api/tasks/' + encodeURIComponent(taskId) + '/attachments',
+        strip: 'task-attachments',
+      };
+    }
+    if (ta.name === 'msg') {
+      const form = ta.closest('form');
+      const hx = (form && form.getAttribute('hx-post')) || '';
+      const m = hx.match(/^\/api\/chats\/([^/]+)\/messages/);
+      if (m) {
+        return {
+          url: '/api/chats/' + encodeURIComponent(m[1]) + '/attachments',
+          strip: 'chat-attachments',
+        };
+      }
+    }
+    return null;
+  }
+
+  function imageFilesFrom(dt) {
+    if (!dt) return [];
+    const files = [];
+    if (dt.items) {
+      for (const item of dt.items) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+    } else if (dt.files) {
+      for (const f of dt.files) {
+        if (f.type.startsWith('image/')) files.push(f);
+      }
+    }
+    return files;
+  }
+
+  function uploadAttachment(ep, file) {
+    const fd = new FormData();
+    fd.append('file', file, file.name || 'pasted-image.png');
+    // Placeholder chip with a spinner: the upload + vision-model description
+    // is slow, so show progress immediately (Pico styles [aria-busy="true"]).
+    const strip = document.getElementById(ep.strip);
+    let placeholder = null;
+    if (strip) {
+      placeholder = document.createElement('span');
+      placeholder.className = 'attachment-chip loading';
+      placeholder.setAttribute('aria-busy', 'true');
+      placeholder.setAttribute('title', 'Uploading image…');
+      strip.appendChild(placeholder);
+    }
+    fetch(ep.url, { method: 'POST', body: fd })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+        return r.text();
+      })
+      .then(function (html) {
+        if (placeholder) {
+          const tpl = document.createElement('template');
+          tpl.innerHTML = html.trim();
+          placeholder.replaceWith(tpl.content);
+        } else if (strip) {
+          strip.insertAdjacentHTML('beforeend', html);
+        }
+      })
+      .catch(function (e) {
+        if (placeholder) placeholder.remove();
+        console.error('attachment upload failed:', e);
+        alert('Image upload failed: ' + e.message);
+      });
+  }
+
+  document.body.addEventListener('paste', function (evt) {
+    const ta = evt.target.closest && evt.target.closest('textarea');
+    if (!ta) return;
+    const ep = attachmentEndpointFor(ta);
+    if (!ep) return;
+    const files = imageFilesFrom(evt.clipboardData);
+    if (!files.length) return;
+    evt.preventDefault();
+    files.forEach(function (f) { uploadAttachment(ep, f); });
+  });
+
+  document.body.addEventListener('dragover', function (evt) {
+    const ta = evt.target.closest && evt.target.closest('textarea');
+    if (!ta || !attachmentEndpointFor(ta)) return;
+    evt.preventDefault();
+  });
+
+  document.body.addEventListener('drop', function (evt) {
+    const ta = evt.target.closest && evt.target.closest('textarea');
+    if (!ta) return;
+    const ep = attachmentEndpointFor(ta);
+    if (!ep) return;
+    const files = imageFilesFrom(evt.dataTransfer);
+    if (!files.length) return;
+    evt.preventDefault();
+    files.forEach(function (f) { uploadAttachment(ep, f); });
+  });
 })();
