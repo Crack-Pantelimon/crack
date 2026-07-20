@@ -152,6 +152,28 @@ def render_chat_form(chat_id: str, info: dict) -> str:
     """
 
 
+def render_user_question_form(chat_id: str, run_id: str, question: dict) -> str:
+    """The ask_user Q&A form for a suspended run (run tree + run page)."""
+    esc = _ui._esc
+    choices = question.get("choices") or []
+    if choices:
+        field = "".join(
+            f'<label style="display:block;margin:0.15rem 0;">'
+            f'<input type="radio" name="answer" value="{esc(c)}" required> {esc(c)}</label>'
+            for c in choices
+        )
+    else:
+        field = '<textarea name="answer" rows="3" required placeholder="Your answer…"></textarea>'
+    return f"""
+    <form hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{esc(run_id)}/user_answer"
+          hx-target="#subagent-run-tree" hx-swap="outerHTML" style="margin-top:0.5rem;">
+      <p><strong>The agent asks:</strong> {esc(question.get("question", ""))}</p>
+      {field}
+      <button type="submit">Answer</button>
+    </form>
+    """
+
+
 def render_run_tree(chat_id: str) -> str:
     """Live fragment listing sub-agent runs for this chat (statuses, planner forms)."""
     from crack_server.stages.qa import render_questions_form
@@ -192,6 +214,8 @@ def render_run_tree(chat_id: str) -> str:
         if phase == "error" and state.get("error"):
             error = f'<br><small class="error">{esc(str(state["error"]))}</small>'
         form_html = ""
+        if phase == "awaiting_user" and state.get("pending_question"):
+            form_html = render_user_question_form(chat_id, run_id, state["pending_question"])
         if phase == "awaiting_answers" and state.get("pending_questions"):
             form_html = render_questions_form(
                 f"/api/chats/{chat_id}/sub_agents/runs/{run_id}/answers",
@@ -255,6 +279,20 @@ def render_chat_tail(chat_id: str) -> str:
     if pending_n:
         parts.append(
             f'<p class="chat-pending"><small>{pending_n} message(s) queued…</small></p>'
+        )
+
+    pending_question = state.get("pending_question") or {}
+    if pending_question.get("question"):
+        choices = pending_question.get("choices") or []
+        choice_html = ""
+        if choices:
+            choice_html = (
+                "<ul>" + "".join(f"<li>{_ui._esc(c)}</li>" for c in choices) + "</ul>"
+            )
+        parts.append(
+            '<div class="stage-msg chat-assistant"><strong>Clanker asks:</strong>'
+            f"{_ui._render_markdown(pending_question['question'])}{choice_html}"
+            "<p><small>Answer in the message box below.</small></p></div>"
         )
 
     if phase != "chatting" and state.get("error"):
@@ -359,6 +397,8 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
             state.setdefault("pending", []).append({"user": msg, "source": "human"})
             state["phase"] = "chatting"
             state["stop_requested"] = False
+            # A human message answers any outstanding ask_user question.
+            state.pop("pending_question", None)
             state.pop("error", None)
             state.pop("error_detail", None)
             return state
@@ -433,7 +473,7 @@ def set_model(chat_id: str, model: str) -> HTMLResponse:
 # -- worker entry point ---------------------------------------------------------
 
 
-def _maybe_generate_title(chat_id: str, first_message: str) -> None:
+async def _maybe_generate_title(chat_id: str, first_message: str) -> None:
     """Summarize the first user message into a short chat title via the nano
     title model (the same one used for task-prompt titles). Best-effort: a
     failure leaves the title empty ("(untitled chat)") rather than breaking the
@@ -445,7 +485,7 @@ def _maybe_generate_title(chat_id: str, first_message: str) -> None:
     if not message:
         return
     try:
-        title = titles.generate_title(message, log_prefix="chat-title")
+        title = await titles.agenerate_title(message, log_prefix="chat-title")
         if title:
             def _set_title(info: dict) -> dict:
                 info["title"] = title
@@ -519,7 +559,7 @@ def _pop_pending(chat_id: str) -> dict | None:
     return taken
 
 
-def run_chat(chat_id: str) -> None:
+async def run_chat(chat_id: str) -> None:
     """Worker side of a CHAT_JOB_SLUG job: drain child reports, then process
     pending exchanges FIFO until the queue is empty."""
     chat = paths.chat_state(chat_id)
@@ -547,7 +587,7 @@ def run_chat(chat_id: str) -> None:
 
         model = paths.chat_info_state(chat_id).read().get("model") or DEFAULT_CHAT_MODEL
         is_first = len(chat.read().get("exchanges", [])) == 1
-        chat_engine.run_exchange(
+        await chat_engine.run_exchange(
             state=chat,
             ident=chat_id,
             message_builder=lambda user_msg: user_msg,
@@ -558,7 +598,11 @@ def run_chat(chat_id: str) -> None:
             sessions_dir=paths.chat_sessions_dir(chat_id),
             tools=None,
             timeout_seconds=CHAT_TIMEOUT_SECONDS,
-            hop_kwargs={"pid_file": _agent_pid_file(chat_id), "stop_check": stop_check},
+            hop_kwargs={
+                "pid_file": _agent_pid_file(chat_id),
+                "stop_check": stop_check,
+                "waiting_check": lambda: bool(chat.read().get("waiting_on")),
+            },
             pre_stop_check=stop_check,
             on_first_exchange=(
                 (lambda user_msg: _maybe_generate_title(chat_id, user_msg))

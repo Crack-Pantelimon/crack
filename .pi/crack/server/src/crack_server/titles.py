@@ -23,9 +23,22 @@ def generate_title(content: str, *, log_prefix: str) -> str:
 
     Returns the reply normalized (stripped, surrounding quotes removed) and
     clamped to ``TITLE_MAX_LENGTH`` chars. Raises on pi failure — the caller
-    decides how to record/log it."""
+    decides how to record/log it. Sync: for thread-based callers only (the
+    title-regen job); async callers use :func:`agenerate_title`."""
     prompt = _ui._load_template("title").replace("{content}", content)
     title, _ = pi_runner.run_pi_text(
+        prompt,
+        log_prefix=log_prefix,
+        model=pi_runner.TITLE_MODEL,
+        max_input_chars=pi_runner.TITLE_MAX_INPUT_CHARS,
+    )
+    return title.strip().strip('"').strip()[:TITLE_MAX_LENGTH]
+
+
+async def agenerate_title(content: str, *, log_prefix: str) -> str:
+    """Async twin of :func:`generate_title` (chat titles, in the event loop)."""
+    prompt = _ui._load_template("title").replace("{content}", content)
+    title, _ = await pi_runner.arun_pi_text(
         prompt,
         log_prefix=log_prefix,
         model=pi_runner.TITLE_MODEL,

@@ -10,7 +10,7 @@ from crack_server.sub_agents.runner import format_child_result
 logger = logging.getLogger("uvicorn.error")
 
 
-def drain_children(
+async def drain_children(
     run_id: str, persona: SubAgentPersona
 ) -> tuple[str, dict | None] | None:
     """Read+clear child_inbox, run one parent hop with the formatted results."""
@@ -26,4 +26,4 @@ def drain_children(
         return None
 
     message = "\n\n---\n\n".join(format_child_result(entry) for entry in inbox)
-    return persona._run_hop(run_id, {"child_results": message})
+    return await persona._run_hop(run_id, {"child_results": message})

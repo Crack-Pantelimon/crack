@@ -23,7 +23,6 @@ _blend_build_map.py ← mathutils, bmesh, bpy, numpy
 _blend_render_postprocess.py ← __future__, mathutils, bpy
 _blend_render_topdown.py ← __future__, mathutils, bpy
 _check_blend.py ← bpy, numpy
-main.py ← octree, earth_client, mesh_decoder, numpy
 osm_download.py ← octree, pyarrow, requests
 osm_postprocess_batch.py ← octree, cv2, pyarrow, yolo_v8_obb_sat
 rebuild_manifest.py ← pygltflib, octree, pyarrow
@@ -94,13 +93,6 @@ def main() → None  :256-287
 ### _check_blend.py
 ```
 def check_blend(blend_path: str) → None  :17-115
-```
-
-### main.py
-```
-def run_blender_batch  :43-60
-def compute_reference_point  :74-91
-def main  :94-364
 ```
 
 ### migrate_glb_paths.py

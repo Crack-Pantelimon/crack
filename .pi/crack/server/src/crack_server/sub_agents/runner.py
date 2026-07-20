@@ -9,7 +9,7 @@ from pathlib import Path
 
 from crack_server import paths, queue
 from crack_server.sub_agents.constants import MAX_DEPTH, SUBAGENT_JOB_SLUG
-from crack_server.sub_agents import registry
+from crack_server.sub_agents import registry, signals
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -57,6 +57,25 @@ def _report_excerpt(report_path: str) -> str:
     if len(text) <= _REPORT_EXCERPT_CHARS:
         return text
     return text[:_REPORT_EXCERPT_CHARS] + "\n…(truncated)"
+
+
+def build_entry(run_id: str, state: dict | None = None, status: str | None = None) -> dict:
+    """The canonical child-result entry for a run — the exact shape finish()
+    inboxes to the parent. wait.py uses it to rebuild a result whose inbox
+    entry was already consumed (a ``delivered_earlier`` rebuild): the entry is
+    derivable from run state alone, so nothing is lost when the inbox copy is
+    gone."""
+    if state is None:
+        state = paths.run_state_by_id(run_id).read()
+    report_path = state.get("report_path", "")
+    return {
+        "run_id": run_id,
+        "persona": state.get("persona", ""),
+        "status": status or state.get("phase", "unknown"),
+        "last_message": _last_assistant_message(state),
+        "report_excerpt": _report_excerpt(report_path),
+        "report_path": report_path,
+    }
 
 
 def spawn(
@@ -163,8 +182,6 @@ def finish(run_id: str, status: str) -> None:
         return
 
     chat_id = state.get("chat_id", "")
-    persona_slug = state.get("persona", "")
-    report_path = state.get("report_path", "")
 
     def _terminal(s: dict) -> dict:
         if s.get("phase") not in ("done", "error", "stopped"):
@@ -181,14 +198,7 @@ def finish(run_id: str, status: str) -> None:
     state_obj.update(_terminal)
     state = state_obj.read()
 
-    entry = {
-        "run_id": run_id,
-        "persona": persona_slug,
-        "status": status,
-        "last_message": _last_assistant_message(state),
-        "report_excerpt": _report_excerpt(report_path),
-        "report_path": report_path,
-    }
+    entry = build_entry(run_id, state, status=status)
 
     parent_kind = state.get("parent_kind")
     parent_id = state.get("parent_id")
@@ -206,6 +216,8 @@ def finish(run_id: str, status: str) -> None:
         from crack_server import chats
 
         queue.enqueue_exclusive(chat_id, chats.CHAT_JOB_SLUG, "drain_children")
+        # Only after the inbox write is durable: wake blocking wait_join polls.
+        signals.notify_parent(parent_kind, parent_id)
         return
 
     if parent_kind == "run":
@@ -232,6 +244,8 @@ def finish(run_id: str, status: str) -> None:
                     "started_token": parent_state.read().get("started_token"),
                 },
             )
+        # Only after the inbox write is durable: wake blocking wait_join polls.
+        signals.notify_parent(parent_kind, parent_id)
         return
 
     logger.warning("finish: run %s has unknown parent_kind %r", run_id, parent_kind)

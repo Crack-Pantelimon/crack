@@ -19,7 +19,7 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ### src/lib.rs
 ```
-pub fn make_registered_mapping() → Arc<ApiImplMapping>  :10-16
-pub async fn spawn_in_process_worker() → anyhow::Result<WorkerPipe>  :18-30
-pub async fn run_bootstrap_if_needed() → anyhow::Result<()>  :32-37
+pub fn make_registered_mapping() → Arc<ApiImplMapping>
+pub async fn spawn_in_process_worker() → anyhow::Result<WorkerPipe>
+pub async fn run_bootstrap_if_needed() → anyhow::Result<()>
 ```

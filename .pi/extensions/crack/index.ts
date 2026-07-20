@@ -1,5 +1,6 @@
 /**
- * crack — spawn background sub-agents via crack-server personas.
+ * crack — spawn background sub-agents via crack-server personas, block for
+ * their results (wait_join), and suspend for human input (ask_user).
  *
  * Tools-only (no slash commands). Personas are read synchronously from
  * .pi/crack/sub_agents/<slug>/config.json at factory time — no HTTP on the
@@ -25,9 +26,179 @@ const PARAMS = Type.Object({
 	instructions: Type.String({ description: "Task for the sub-agent" }),
 });
 
+const WAIT_PARAMS = Type.Object({
+	target: Type.Optional(
+		Type.String({
+			description:
+				"Which child to wait for: a run id, a persona slug (e.g. \"explorer\"), or omit/\"all\" for every outstanding sub-agent.",
+		}),
+	),
+	timeout_seconds: Type.Optional(
+		Type.Number({
+			description:
+				"Max seconds to block (default 600, clamped to 5..3600). Waiting is free — no tokens are burned while blocked. On timeout, call wait_join again or end your turn.",
+		}),
+	),
+});
+
+const ASK_PARAMS = Type.Object({
+	question: Type.String({ description: "The question for the human." }),
+	choices: Type.Optional(
+		Type.Array(Type.String(), {
+			description: "Optional multiple-choice options the human picks from.",
+		}),
+	),
+});
+
 interface SpawnResult {
 	run_id: string;
 	report_path: string;
+}
+
+interface WaitPending {
+	run_id: string;
+	persona: string;
+	phase: string;
+	notified: boolean;
+}
+
+interface WaitResult {
+	run_id: string;
+	persona: string;
+	status: string;
+	text: string;
+	delivered_earlier: boolean;
+}
+
+interface WaitResponse {
+	results: WaitResult[];
+	pending: WaitPending[];
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+	return Math.min(hi, Math.max(lo, n));
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function crackContext(): { chatId: string; parentKind: string; parentId: string } {
+	const chatId = process.env.CRACK_CHAT_ID;
+	if (!chatId) {
+		throw new Error(
+			"spawn/wait/ask tools only work inside a crack unscripted chat or sub-agent run",
+		);
+	}
+	return {
+		chatId,
+		parentKind: process.env.CRACK_PARENT_KIND ?? "chat",
+		parentId: process.env.CRACK_PARENT_ID ?? chatId,
+	};
+}
+
+async function executeWaitJoin(
+	params: { target?: string; timeout_seconds?: number },
+	signal?: AbortSignal,
+) {
+	const { chatId, parentKind, parentId } = crackContext();
+	const budget = clamp(params.timeout_seconds ?? 600, 5, 3600);
+	const deadline = Date.now() + budget * 1000;
+	const graceDeadline = Date.now() + 10_000; // a spawn may race the first poll
+	const results = new Map<string, WaitResult>();
+	const strikes = new Map<string, number>();
+	let pending: WaitPending[] = [];
+	let failureSince: number | null = null;
+
+	while (true) {
+		// Two-strike rule: a target notified=true with no inbox entry on two
+		// consecutive polls is in the transient finish() gap (or was consumed
+		// earlier) — ask the server to rebuild its entry from run state.
+		const rebuild = [...strikes.entries()]
+			.filter(([, n]) => n >= 2)
+			.map(([id]) => id);
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) {
+			const what = pending
+				.map((p) => `${p.run_id} (${p.persona}, ${p.phase})`)
+				.join(", ");
+			const text =
+				(results.size
+					? [...results.values()].map((r) => r.text).join("\n\n---\n\n") +
+						"\n\n---\n\n"
+					: "") +
+				`Still running: ${what}. Call wait_join again to keep waiting (free) ` +
+				"or end your turn — results arrive automatically.";
+			return { content: [{ type: "text" as const, text: truncateTail(text).content }] };
+		}
+
+		const block = Math.min(25, remaining / 1000);
+		let data: WaitResponse;
+		try {
+			const to = signal
+				? AbortSignal.any([signal, AbortSignal.timeout(Math.ceil(block) * 1000 + 10000)])
+				: AbortSignal.timeout(Math.ceil(block) * 1000 + 10000);
+			const res = await fetch(
+				`${BASE}/api/chats/${encodeURIComponent(chatId)}/sub_agents/wait`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						parent_kind: parentKind,
+						parent_id: parentId,
+						target: params.target,
+						rebuild,
+						block_seconds: block,
+					}),
+					signal: to,
+				},
+			);
+			if (!res.ok) {
+				throw new Error(truncateTail(await res.text()).content);
+			}
+			data = (await res.json()) as WaitResponse;
+			failureSince = null;
+		} catch (e) {
+			if (signal?.aborted) throw e;
+			// Tolerate ~30s of transient fetch failures (server reload mid-wait).
+			failureSince ??= Date.now();
+			if (Date.now() - failureSince > 30_000) {
+				throw new Error(
+					`crack-server unreachable at ${BASE} for 30s: ${e instanceof Error ? (e.cause ?? e.message) : e}`,
+				);
+			}
+			await sleep(1000);
+			continue;
+		}
+
+		for (const r of data.results) results.set(r.run_id, r);
+		pending = data.pending;
+		for (const p of pending) {
+			strikes.set(p.run_id, p.notified ? (strikes.get(p.run_id) ?? 0) + 1 : 0);
+		}
+
+		if (pending.length === 0) {
+			if (results.size === 0) {
+				if (Date.now() < graceDeadline) {
+					await sleep(1000);
+					continue;
+				}
+				const text =
+					"No outstanding sub-agents" +
+					(params.target ? ` matching ${JSON.stringify(params.target)}` : "") +
+					". Spawn one first, or check the run id/persona slug.";
+				return { content: [{ type: "text" as const, text }] };
+			}
+			const parts = [...results.values()].map((r) =>
+				r.delivered_earlier ? `(delivered earlier)\n${r.text}` : r.text,
+			);
+			return {
+				content: [
+					{ type: "text" as const, text: truncateTail(parts.join("\n\n---\n\n")).content },
+				],
+			};
+		}
+	}
 }
 
 function findSubAgentsDir(): string | null {
@@ -45,6 +216,64 @@ function findSubAgentsDir(): string | null {
 
 export default function crack(pi: ExtensionAPI) {
 	try {
+		pi.registerTool({
+			name: "wait_join",
+			label: "Wait for sub-agents",
+			description:
+				"Block until spawned sub-agents finish and return their reports as the tool result. " +
+				"Waiting is free (no tokens burned, no polling). Always prefer this over checking " +
+				"report files — never poll report.md with bash sleep loops.",
+			parameters: WAIT_PARAMS,
+			executionMode: "parallel",
+			async execute(_id, params, signal) {
+				return executeWaitJoin(params, signal);
+			},
+		});
+		pi.registerTool({
+			name: "ask_user",
+			label: "Ask the human",
+			description:
+				"Ask the human a question and suspend until they answer. The session ends its " +
+				"current turn cleanly (nothing burns tokens or times out while waiting, even " +
+				"for hours); a fresh hop resumes with the answer. After calling this, end " +
+				"your turn immediately — make no further tool calls.",
+			parameters: ASK_PARAMS,
+			executionMode: "parallel",
+			async execute(_id, params, signal) {
+				const { chatId, parentKind, parentId } = crackContext();
+				const to = signal
+					? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+					: AbortSignal.timeout(15000);
+				let res: Response;
+				try {
+					res = await fetch(
+						`${BASE}/api/chats/${encodeURIComponent(chatId)}/ask_user`,
+						{
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								parent_kind: parentKind,
+								parent_id: parentId,
+								question: params.question,
+								choices: params.choices,
+							}),
+							signal: to,
+						},
+					);
+				} catch (e) {
+					throw new Error(
+						`crack-server unreachable at ${BASE}: ${e instanceof Error ? (e.cause ?? e.message) : e}`,
+					);
+				}
+				if (!res.ok) {
+					throw new Error(truncateTail(await res.text()).content);
+				}
+				const text =
+					"Question recorded. This session suspends until the user answers — " +
+					"end your turn now, make no further tool calls.";
+				return { content: [{ type: "text" as const, text }] };
+			},
+		});
 		const dir = findSubAgentsDir();
 		if (!dir) return;
 		for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -62,16 +291,11 @@ export default function crack(pi: ExtensionAPI) {
 				label: cfg.tool_label ?? slug,
 				description:
 					(cfg.tool_description ?? `Spawn ${slug} sub-agent.`) +
-					" Returns immediately; runs in the background and reports back here when done.",
+					" Runs in the background. Call wait_join to block until it finishes and get its report; do not poll report files.",
 				parameters: PARAMS,
 				executionMode: "parallel",
 				async execute(_id, params, signal) {
-					const chatId = process.env.CRACK_CHAT_ID;
-					if (!chatId) {
-						throw new Error(
-							"spawn tools only work inside a crack unscripted chat or sub-agent run",
-						);
-					}
+					const { chatId, parentKind, parentId } = crackContext();
 					const depth = Number.parseInt(process.env.CRACK_SUBAGENT_DEPTH ?? "0", 10) || 0;
 					if (depth >= MAX_DEPTH) {
 						throw new Error(`max sub-agent depth (${MAX_DEPTH}) reached`);
@@ -89,8 +313,8 @@ export default function crack(pi: ExtensionAPI) {
 								body: JSON.stringify({
 									persona: slug,
 									instructions: params.instructions,
-									parent_kind: process.env.CRACK_PARENT_KIND ?? "chat",
-									parent_id: process.env.CRACK_PARENT_ID ?? chatId,
+									parent_kind: parentKind,
+									parent_id: parentId,
 									depth,
 								}),
 								signal: to,
@@ -106,7 +330,7 @@ export default function crack(pi: ExtensionAPI) {
 					}
 					const d = (await res.json()) as SpawnResult;
 					const text = truncateTail(
-						`Spawned ${slug} run ${d.run_id}. It runs in the background and will report back here when done; report path: ${d.report_path}.`,
+						`Spawned ${slug} run ${d.run_id}. It runs in the background: call wait_join (target "${d.run_id}", or omit for all) to block until it finishes and receive its report, or end your turn and it will report back automatically. Do NOT poll ${d.report_path} with bash sleeps.`,
 					).content;
 					return { content: [{ type: "text", text }] };
 				},

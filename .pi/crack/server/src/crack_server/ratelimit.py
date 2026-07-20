@@ -2,12 +2,14 @@
 
 Split out of pi_runner.py (A6): the thread-safe minimum-interval limiter, the
 provider/model limiter registry, and the retry-offset helpers shared by
-run_pi_text and run_agent_hop. Everything here logs through the uvicorn logger
-and is only ever called from background threads.
+run_pi_text and run_agent_hop. Sync waits (``time.sleep``) serve thread-based
+callers; each has an async twin (``asyncio.sleep``) for the in-process worker.
+Everything here logs through the uvicorn logger.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 import time
@@ -76,6 +78,17 @@ def _transient_backoff_sleep(reattempt: int) -> None:
         time.sleep(delay)
 
 
+async def _async_transient_backoff_sleep(reattempt: int) -> None:
+    """Async twin of :func:`_transient_backoff_sleep` (asyncio.sleep)."""
+    delay = TRANSIENT_RETRY_DELAYS[min(reattempt, len(TRANSIENT_RETRY_DELAYS) - 1)]
+    if delay > 0:
+        logger.info(
+            "pi-retry: transient failure; sleeping %.1fs before reattempt %d",
+            delay, reattempt + 1,
+        )
+        await asyncio.sleep(delay)
+
+
 def _retry_offsets(n: int, total: float) -> list[float]:
     """Offsets (seconds, from the first attempt) at which each attempt starts.
 
@@ -100,6 +113,19 @@ def _retry_backoff_sleep(next_attempt: int, first_attempt_at: float) -> None:
         time.sleep(delay)
 
 
+async def _async_retry_backoff_sleep(next_attempt: int, first_attempt_at: float) -> None:
+    """Async twin of :func:`_retry_backoff_sleep` (asyncio.sleep)."""
+    offsets = _retry_offsets(PI_RETRY_ATTEMPTS, PI_RETRY_WINDOW_SECONDS)
+    idx = min(next_attempt, len(offsets) - 1)
+    delay = (first_attempt_at + offsets[idx]) - time.monotonic()
+    if delay > 0:
+        logger.info(
+            "pi-retry: sleeping %.1fs before attempt %d/%d",
+            delay, next_attempt + 1, PI_RETRY_ATTEMPTS,
+        )
+        await asyncio.sleep(delay)
+
+
 class RateLimiter:
     """Thread-safe minimum-interval limiter: converts a calls/minute budget into
     a minimum spacing between calls. Waiting reserves the next free slot under
@@ -112,15 +138,26 @@ class RateLimiter:
         self._lock = threading.Lock()
         self._next_free = 0.0
 
-    def wait(self) -> None:
+    def _reserve(self) -> float:
+        """Claim the next free slot under the lock; return the wait in seconds."""
         with self._lock:
             now = time.monotonic()
             slot = max(now, self._next_free)
             self._next_free = slot + self._min_interval
-        delay = slot - now
+        return slot - now
+
+    def wait(self) -> None:
+        delay = self._reserve()
         if delay > 0:
             logger.info("rate-limit(%s): sleeping %.2fs for reserved slot", self._name, delay)
             time.sleep(delay)
+
+    async def await_slot(self) -> None:
+        """Async twin of :meth:`wait`: same slot reservation, asyncio.sleep."""
+        delay = self._reserve()
+        if delay > 0:
+            logger.info("rate-limit(%s): sleeping %.2fs for reserved slot", self._name, delay)
+            await asyncio.sleep(delay)
 
 
 # Limiters are keyed by provider (the shared per-provider budget) and by model id
@@ -158,3 +195,13 @@ def wait_for_rate_limit(model: str) -> None:
     model_limiter = _model_limiters.get(model)
     if model_limiter is not None:
         model_limiter.wait()
+
+
+async def async_wait_for_rate_limit(model: str) -> None:
+    """Async twin of :func:`wait_for_rate_limit` (asyncio.sleep, no loop blocking)."""
+    limiter = limiter_for(model)
+    if limiter is not None:
+        await limiter.await_slot()
+    model_limiter = _model_limiters.get(model)
+    if model_limiter is not None:
+        await model_limiter.await_slot()

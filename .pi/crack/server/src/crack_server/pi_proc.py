@@ -2,19 +2,26 @@
 agent hop, plus process-group kill support.
 
 Split out of pi_runner.py (A6). Rate limiting and retry scheduling live in
-ratelimit.py; turn accumulation lives in transcript.py. Everything here logs
-through the uvicorn logger and is only ever called from background threads.
+ratelimit.py; turn accumulation lives in transcript.py.
+
+The implementation is fully async (``arun_*``): subprocesses are awaited via
+``asyncio.create_subprocess_exec`` so a waiting hop costs a coroutine, not a
+thread. Thin sync wrappers (``run_pi_text`` / ``run_agent_hop``) preserve the
+old API for callers that still run on threads (stage jobs dispatched via
+``asyncio.to_thread``, tests) — they must not be called from inside a running
+event loop. Everything here logs through the uvicorn logger.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import os
 import shlex
 import signal
 import subprocess
-import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -23,8 +30,9 @@ from typing import NamedTuple
 from crack_server import ratelimit
 from crack_server.paths import project_root
 from crack_server.ratelimit import (
-    PI_RETRY_ATTEMPTS, PI_TIMEOUT_SECONDS, RESUME_MESSAGE, _retry_backoff_sleep,
-    _transient_backoff_sleep, is_transient, wait_for_rate_limit,
+    PI_RETRY_ATTEMPTS, PI_TIMEOUT_SECONDS, RESUME_MESSAGE,
+    _async_retry_backoff_sleep, _async_transient_backoff_sleep,
+    async_wait_for_rate_limit, is_transient,
 )
 from crack_server.transcript import apply_event_to_turn, turn_has_content
 
@@ -38,6 +46,11 @@ OUTPUT_TAIL_LINES = 10
 # JSON-event output_tail usually holds only well-formed events, not the stderr
 # that explains a crash, so PiError.detail prefers this tail when it's nonempty.
 STDERR_TAIL_LINES = 10
+
+# asyncio's StreamReader defaults to a 64 KiB line limit; pi JSON event lines
+# (tool results embedded in message_end) can exceed that, and the old sync
+# reader was unbounded. 16 MiB is a pragmatic ceiling.
+STREAM_LINE_LIMIT = 16 * 1024 * 1024
 
 # pi auto-discovers `.pi/extensions/` relative to its launch cwd, so we pass our
 # extension explicitly with `-e` (existence-checked in _build_cmd, so tests and
@@ -78,7 +91,7 @@ def _compose_detail(output_tail: str, stderr_tail: str) -> str:
     return ""
 
 
-def run_pi_text(
+async def arun_pi_text(
     prompt: str,
     log_prefix: str,
     model: str,
@@ -87,13 +100,12 @@ def run_pi_text(
     pid_file: Path | None = None,
     stop_check: Callable[[], bool] | None = None,
 ) -> tuple[str, float]:
-    """Run `pi` non-interactively with a single text prompt.
+    """Run `pi` non-interactively with a single text prompt (async).
 
     Returns ``(text, elapsed_seconds)``. Logs the full prompt, exact command
     line, timeout, elapsed time, and an output summary so failures are
-    diagnosable from server logs alone. Raises RuntimeError because this helper
-    is only used from background threads, where HTTPException has no request
-    context to turn into.
+    diagnosable from server logs alone. Raises RuntimeError: callers run in
+    worker tasks, where HTTPException has no request context to turn into.
 
     ``record_prompt`` (optional, called once per logical call, not per retry)
     receives ``{"kind": "user_prompt", "compiled": prompt, "at": ...}`` so
@@ -101,7 +113,7 @@ def run_pi_text(
 
     ``pid_file`` / ``stop_check`` (optional, RC5): the subprocess runs in its
     own session with its group-leader pid published to ``pid_file`` so an
-    external STOP can kill it, exactly like ``run_agent_hop``. When a failed
+    external STOP can kill it, exactly like ``arun_agent_hop``. When a failed
     attempt coincides with ``stop_check()`` being truthy, :class:`PiStopped`
     is raised instead of retrying — callers treat it as a clean halt.
     """
@@ -130,15 +142,15 @@ def run_pi_text(
     for attempt in range(PI_RETRY_ATTEMPTS):
         if attempt > 0:
             if last_transient:
-                _transient_backoff_sleep(transient_reattempts)
+                await _async_transient_backoff_sleep(transient_reattempts)
                 transient_reattempts += 1
             else:
-                _retry_backoff_sleep(attempt, first_attempt_at)
+                await _async_retry_backoff_sleep(attempt, first_attempt_at)
 
-        wait_for_rate_limit(model)
+        await async_wait_for_rate_limit(model)
         start = time.monotonic()
         try:
-            result = _run_text_attempt(cmd, log_prefix, pid_file)
+            result = await _arun_text_attempt(cmd, log_prefix, pid_file)
         except subprocess.TimeoutExpired as e:
             elapsed = time.monotonic() - start
             logger.error("%s: pi timed out after %.2fs (attempt %d)", log_prefix, elapsed, attempt + 1)
@@ -178,15 +190,24 @@ def run_pi_text(
     raise PiError(f"{last_error} after {PI_RETRY_ATTEMPTS} attempts", detail=last_detail)
 
 
-def _run_text_attempt(
+def run_pi_text(*args, **kwargs) -> tuple[str, float]:
+    """Sync wrapper over :func:`arun_pi_text` for thread-based callers.
+
+    Must NOT be called from inside a running event loop (asyncio.run)."""
+    return asyncio.run(arun_pi_text(*args, **kwargs))
+
+
+async def _arun_text_attempt(
     cmd: list[str], log_prefix: str, pid_file: Path | None
 ) -> subprocess.CompletedProcess:
-    """One run_pi_text attempt via Popen so the group-leader pid can be
-    published to ``pid_file`` for the whole call (kill_pid_file kills the
-    group). Mirrors ``subprocess.run(capture_output=True, timeout=...)``."""
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, start_new_session=True,
-                            cwd=str(project_root()))
+    """One arun_pi_text attempt so the group-leader pid can be published to
+    ``pid_file`` for the whole call (kill_pid_file kills the group). Mirrors
+    ``subprocess.run(capture_output=True, timeout=...)``."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        start_new_session=True, cwd=str(project_root()),
+        limit=STREAM_LINE_LIMIT,
+    )
     if pid_file is not None:
         try:
             pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -194,22 +215,42 @@ def _run_text_attempt(
         except OSError as e:
             logger.warning("%s: could not write pid_file %s: %s", log_prefix, pid_file, e)
     try:
-        stdout, stderr = proc.communicate(timeout=PI_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        stdout, stderr = proc.communicate()
-        raise subprocess.TimeoutExpired(cmd, PI_TIMEOUT_SECONDS, output=stdout, stderr=stderr)
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(
+                proc.communicate(), timeout=PI_TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError:
+            _kill_process_group(proc)
+            stdout_b, stderr_b = await proc.communicate()
+            raise subprocess.TimeoutExpired(
+                cmd, PI_TIMEOUT_SECONDS,
+                output=(stdout_b or b"").decode("utf-8", "replace"),
+                stderr=(stderr_b or b"").decode("utf-8", "replace"),
+            )
     finally:
         if pid_file is not None:
             try:
                 pid_file.unlink()
             except OSError:
                 pass
-    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+    return subprocess.CompletedProcess(
+        cmd, proc.returncode,
+        (stdout_b or b"").decode("utf-8", "replace"),
+        (stderr_b or b"").decode("utf-8", "replace"),
+    )
+
+
+def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
+    """Best-effort SIGKILL of the subprocess's whole process group."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        with contextlib.suppress(ProcessLookupError, OSError):
+            proc.kill()
 
 
 def kill_pid_file(pid_file: Path) -> bool:
-    """Kill the process group named in ``pid_file`` (written by run_agent_hop).
+    """Kill the process group named in ``pid_file`` (written by arun_agent_hop).
 
     Sends SIGTERM to the whole group (pi + any children it spawned), then
     SIGKILL as a fallback. Returns True if a signal was delivered. Safe to call
@@ -287,7 +328,12 @@ class _TurnAccumulator:
 class _StreamSink:
     """Per-attempt stream state: the rolling raw-output tail, a separate ring
     buffer for non-JSON (stderr-ish) lines, the turn accumulator, and the
-    stop-reason bookkeeping _stream_events fills in."""
+    stop-reason bookkeeping _stream_events fills in.
+
+    ``wait_credit`` / ``waiting_since`` track how long the hop's agent has been
+    suspended in a server-side wait (``waiting_check`` true, e.g. a blocking
+    wait_join): both the in-stream time cap and the hard watchdog bill *active*
+    time only, so a token-free wait never times the hop out."""
 
     def __init__(self, p: _HopParams) -> None:
         self.p = p
@@ -297,18 +343,50 @@ class _StreamSink:
         self.reason = "agent_end"
         self.terminated_by_us = False
         self.persisted = 0
+        self.wait_credit = 0.0
+        self.waiting_since: float | None = None
 
     def persist(self, turn: dict) -> None:
         self.persisted += 1
         self.p.persist_turn(turn, self.p.hop)
 
 
-def _stream_events(proc: subprocess.Popen, sink: _StreamSink) -> None:
+def _tick_wait_credit(p: _HopParams, sink: _StreamSink) -> None:
+    """Fold the current waiting_check() state into sink's wait-credit ledger."""
+    waiting = False
+    if p.waiting_check is not None:
+        try:
+            waiting = bool(p.waiting_check())
+        except Exception:
+            logger.exception("%s hop %d: waiting_check raised", p.log_prefix, p.hop)
+    now = time.monotonic()
+    if waiting and sink.waiting_since is None:
+        sink.waiting_since = now
+        logger.info("%s hop %d: agent is waiting (server-side); timeout clock suspended",
+                    p.log_prefix, p.hop)
+    elif not waiting and sink.waiting_since is not None:
+        sink.wait_credit += now - sink.waiting_since
+        sink.waiting_since = None
+        logger.info("%s hop %d: wait ended; timeout clock resumed (credit %.1fs)",
+                    p.log_prefix, p.hop, sink.wait_credit)
+
+
+def _active_elapsed(p: _HopParams, sink: _StreamSink) -> float:
+    """Monotonic seconds since hop start, minus time spent server-side waiting."""
+    now = time.monotonic()
+    credit = sink.wait_credit
+    if sink.waiting_since is not None:
+        credit += now - sink.waiting_since
+    return now - p.start - credit
+
+
+async def _stream_events(proc: asyncio.subprocess.Process, sink: _StreamSink) -> None:
     """Consume pi's JSON event stream until the hop ends (sentinel, time cap,
     agent_end, or EOF), filling sink.reason / sink.terminated_by_us."""
     p = sink.p
-    for line in proc.stdout or []:
-        line = line.strip()
+    assert proc.stdout is not None
+    async for raw in proc.stdout:
+        line = raw.decode("utf-8", "replace").strip()
         if not line:
             continue
         # Keep a rolling tail of the raw output (JSON or not) so a crash is
@@ -352,7 +430,8 @@ def _stream_events(proc: subprocess.Popen, sink: _StreamSink) -> None:
             logger.info("%s hop %d: completed turn (persisted %d this attempt)",
                         p.log_prefix, p.hop, sink.persisted)
 
-        if time.monotonic() - p.start > p.timeout_seconds:
+        _tick_wait_credit(p, sink)
+        if _active_elapsed(p, sink) > p.timeout_seconds:
             if turn_has_content(sink.acc.current_turn) and etype != "turn_end":
                 sink.persist(sink.acc.current_turn)
             sink.reason = "time_cap"
@@ -378,6 +457,7 @@ class _HopParams(NamedTuple):
     pid_file: Path | None
     stop_check: Callable[[], bool] | None
     env_extra: dict[str, str] | None
+    waiting_check: Callable[[], bool] | None
 
 
 def _build_cmd(p: _HopParams, msg: str) -> list[str]:
@@ -390,7 +470,23 @@ def _build_cmd(p: _HopParams, msg: str) -> list[str]:
     return cmd
 
 
-def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -> dict:
+async def _watchdog(p: _HopParams, proc: asyncio.subprocess.Process, sink: _StreamSink) -> None:
+    """Hard watchdog: a pi that hangs without emitting output would wedge the
+    stream loop forever; kill it well past the stage time cap. Time spent with
+    ``waiting_check()`` true (a blocking wait_join) does not count."""
+    while True:
+        await asyncio.sleep(1.0)
+        if proc.returncode is not None:
+            return
+        _tick_wait_credit(p, sink)
+        if _active_elapsed(p, sink) > p.timeout_seconds + 60:
+            logger.error("%s hop %d: watchdog kill after %.0fs active seconds",
+                         p.log_prefix, p.hop, _active_elapsed(p, sink))
+            proc.kill()
+            return
+
+
+async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -> dict:
     """Run one pi subprocess: stream, persist completed turns, and report how it
     ended. ``persisted`` counts turns committed to disk this attempt so the retry
     loop can distinguish resuming from replaying."""
@@ -398,19 +494,16 @@ def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -> dict
     logger.info("%s hop %d: full prompt:\n%s", p.log_prefix, p.hop, attempt_message)
     logger.info("+ %s", shlex.join(cmd))
 
-    wait_for_rate_limit(p.model)
+    await async_wait_for_rate_limit(p.model)
     # start_new_session=True puts pi in its own process group so an external
     # STOP can kill pi *and* any children it spawned (npx MCP servers) via
     # the group leader's pid, which we publish to pid_file.
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, start_new_session=True,
-                            cwd=str(project_root()),
-                            env={**os.environ, **(p.env_extra or {})})
-    # Hard watchdog: a pi that hangs without emitting output would wedge the
-    # stream loop forever; kill it well past the stage time cap.
-    watchdog = threading.Timer(p.timeout_seconds + 60, proc.kill)
-    watchdog.daemon = True
-    watchdog.start()
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        start_new_session=True, cwd=str(project_root()),
+        env={**os.environ, **(p.env_extra or {})},
+        limit=STREAM_LINE_LIMIT,
+    )
     if p.pid_file is not None:
         try:
             p.pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -419,15 +512,23 @@ def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -> dict
             logger.warning("%s hop %d: could not write pid_file %s: %s",
                            p.log_prefix, p.hop, p.pid_file, e)
     sink = _StreamSink(p)
+    watchdog = asyncio.create_task(_watchdog(p, proc, sink))
     try:
-        _stream_events(proc, sink)
+        await _stream_events(proc, sink)
+    except asyncio.CancelledError:
+        # Server shutdown / job abort: kill the whole group so no pi leaks,
+        # then let the finally below reap it before the cancellation resumes.
+        _kill_process_group(proc)
+        raise
     finally:
         watchdog.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watchdog
         try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
             proc.kill()
-            proc.wait()
+            await proc.wait()
         if p.pid_file is not None:
             try:
                 p.pid_file.unlink()
@@ -458,7 +559,7 @@ def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -> dict
     }
 
 
-def _run_hop_with_retries(p: _HopParams, message: str) -> str:
+async def _run_hop_with_retries(p: _HopParams, message: str) -> str:
     """Drive _attempt_once until the hop stops cleanly or the retry schedules are
     exhausted, then either return the stop reason or raise PiError."""
     first_attempt_at = time.monotonic()
@@ -470,7 +571,7 @@ def _run_hop_with_retries(p: _HopParams, message: str) -> str:
     total_attempts = 0
 
     while True:
-        res = _attempt_once(p, total_attempts, attempt_message)
+        res = await _attempt_once(p, total_attempts, attempt_message)
         total_attempts += 1
 
         failed = not res["terminated_by_us"] and res["returncode"] not in (0, None)
@@ -486,7 +587,7 @@ def _run_hop_with_retries(p: _HopParams, message: str) -> str:
                              p.log_prefix, p.hop, total_attempts)
                 return "empty"
             logger.warning("%s hop %d: pi returned only empty turns; retrying", p.log_prefix, p.hop)
-            _retry_backoff_sleep(hard_attempts, first_attempt_at)
+            await _async_retry_backoff_sleep(hard_attempts, first_attempt_at)
             continue
 
         last_detail = res["detail"]
@@ -501,7 +602,7 @@ def _run_hop_with_retries(p: _HopParams, message: str) -> str:
                 logger.warning("%s hop %d: transient failure (rc=%s); will resume (reattempt %d/%d)",
                                p.log_prefix, p.hop, last_rc,
                                transient_reattempts + 1, len(ratelimit.TRANSIENT_RETRY_DELAYS))
-                _transient_backoff_sleep(transient_reattempts)
+                await _async_transient_backoff_sleep(transient_reattempts)
                 transient_reattempts += 1
                 continue
             break
@@ -516,12 +617,12 @@ def _run_hop_with_retries(p: _HopParams, message: str) -> str:
         hard_attempts += 1
         if hard_attempts >= PI_RETRY_ATTEMPTS:
             break
-        _retry_backoff_sleep(hard_attempts, first_attempt_at)
+        await _async_retry_backoff_sleep(hard_attempts, first_attempt_at)
 
     raise PiError(f"pi exited {last_rc} after {total_attempts} attempts", detail=last_detail)
 
 
-def run_agent_hop(
+async def arun_agent_hop(
     *,
     log_prefix: str,
     model: str,
@@ -538,8 +639,9 @@ def run_agent_hop(
     stop_check=None,
     record_prompt=None,
     env_extra: dict[str, str] | None = None,
+    waiting_check: Callable[[], bool] | None = None,
 ) -> str:
-    """Run one hop of a tool-using agent and stream its JSON events.
+    """Run one hop of a tool-using agent and stream its JSON events (async).
 
     Parameterized on model / session / tools so multiple stages can share it.
     ``tools=None`` omits ``--tools`` so pi runs with every tool it has. A hop
@@ -557,6 +659,11 @@ def run_agent_hop(
     it returns truthy after the subprocess ends, the hop is classified as
     "stopped" (a clean, intentional halt) rather than a crash to retry.
 
+    ``waiting_check`` (optional, called with no args): while it returns truthy
+    the hop's agent is suspended in a server-side wait (a blocking ``wait_join``
+    long-poll). That time is credited out of both the in-stream time cap and
+    the hard watchdog — timeouts bill active time only.
+
     ``record_prompt`` (optional, called once per hop call, not per retry
     attempt) receives ``{"kind": "user_prompt", "compiled": message, "hop": hop,
     "at": ...}`` so callers can persist the exact compiled prompt into their
@@ -572,7 +679,8 @@ def run_agent_hop(
     p = _HopParams(log_prefix=log_prefix, model=model, session_id=session_id,
                    sessions_dir=sessions_dir, tools=tools, start=start, sentinel=sentinel,
                    timeout_seconds=timeout_seconds, persist_turn=persist_turn, hop=hop,
-                   pid_file=pid_file, stop_check=stop_check, env_extra=env_extra)
+                   pid_file=pid_file, stop_check=stop_check, env_extra=env_extra,
+                   waiting_check=waiting_check)
     p.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     if record_prompt is not None:
@@ -581,4 +689,11 @@ def run_agent_hop(
         except Exception:
             logger.exception("%s hop %d: record_prompt raised", log_prefix, hop)
 
-    return _run_hop_with_retries(p, message)
+    return await _run_hop_with_retries(p, message)
+
+
+def run_agent_hop(**kwargs) -> str:
+    """Sync wrapper over :func:`arun_agent_hop` for thread-based callers.
+
+    Must NOT be called from inside a running event loop (asyncio.run)."""
+    return asyncio.run(arun_agent_hop(**kwargs))

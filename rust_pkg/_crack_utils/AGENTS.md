@@ -19,8 +19,8 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ### src/lib.rs
 ```
-pub fn get_timestamp_now_ms() → i64  :3-5
-pub fn spawn(f: F) → n0_future::task::JoinHandle...  :7-13
-pub fn random_u32() → u32  :15-17
-pub async fn sleep_ms(dt_ms: u32)  :19-21
+pub fn get_timestamp_now_ms() → i64
+pub fn spawn(f: F) → n0_future::task::JoinHandle...
+pub fn random_u32() → u32
+pub async fn sleep_ms(dt_ms: u32)
 ```

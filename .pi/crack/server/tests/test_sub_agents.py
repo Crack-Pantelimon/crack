@@ -25,14 +25,14 @@ def _seed_personas(root: Path) -> None:
     shutil.copytree(REAL_PERSONAS, dest)
 
 
-def _drain_jobs(max_jobs: int = 50) -> int:
+async def _drain_jobs(max_jobs: int = 50) -> int:
     """Claim and dispatch pending jobs until empty (or max_jobs)."""
     n = 0
     while n < max_jobs:
         job = queue.claim_next()
         if job is None:
             break
-        worker._dispatch(job)
+        await worker._dispatch(job)
         n += 1
     return n
 
@@ -73,7 +73,9 @@ def test_personas_discovered(chat_root):
     assert slugs == ["coder", "explorer", "planner", "tester"]
 
 
-def test_spawn_run_report_parent_resume(chat_root, fake_pi):
+
+@pytest.mark.anyio
+async def test_spawn_run_report_parent_resume(chat_root, fake_pi):
     fake_pi.set_script(["write_report", "turns:1"])
     state = runner.spawn(
         chat_id=chat_root,
@@ -87,7 +89,7 @@ def test_spawn_run_report_parent_resume(chat_root, fake_pi):
     assert state["depth"] == 1
     assert Path(state["report_path"]).name == "report.md"
 
-    n = _drain_jobs()
+    n = await _drain_jobs()
     assert n >= 1
 
     run = paths.run_state(chat_root, run_id).read()
@@ -101,7 +103,9 @@ def test_spawn_run_report_parent_resume(chat_root, fake_pi):
     assert "child_report" in sources
 
 
-def test_nudge_then_report(chat_root, fake_pi):
+
+@pytest.mark.anyio
+async def test_nudge_then_report(chat_root, fake_pi):
     # First hop: settle with no tools and no report → nudge; second: write report.
     fake_pi.set_script(["turns:1", "write_report"])
     state = runner.spawn(
@@ -113,14 +117,16 @@ def test_nudge_then_report(chat_root, fake_pi):
         depth=0,
     )
     run_id = state["run_id"]
-    _drain_jobs()
+    await _drain_jobs()
     run = paths.run_state(chat_root, run_id).read()
     assert run["phase"] == "done"
     assert run["nudge_count"] >= 1
     assert Path(run["report_path"]).is_file()
 
 
-def test_nudge_exhaustion_errors_and_resumes_parent(chat_root, fake_pi):
+
+@pytest.mark.anyio
+async def test_nudge_exhaustion_errors_and_resumes_parent(chat_root, fake_pi):
     fake_pi.set_script(["turns:1"])
     state = runner.spawn(
         chat_id=chat_root,
@@ -131,7 +137,7 @@ def test_nudge_exhaustion_errors_and_resumes_parent(chat_root, fake_pi):
         depth=0,
     )
     run_id = state["run_id"]
-    _drain_jobs(max_jobs=20)
+    await _drain_jobs(max_jobs=20)
     run = paths.run_state(chat_root, run_id).read()
     assert run["phase"] == "error"
     assert run["nudge_count"] >= 3
@@ -139,7 +145,9 @@ def test_nudge_exhaustion_errors_and_resumes_parent(chat_root, fake_pi):
     assert any(e.get("source") == "child_report" for e in chat.get("exchanges", []))
 
 
-def test_depth_limit_rejects_spawn_beyond_max(chat_root, fake_pi):
+
+@pytest.mark.anyio
+async def test_depth_limit_rejects_spawn_beyond_max(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     parent = runner.spawn(
         chat_id=chat_root,
@@ -149,7 +157,7 @@ def test_depth_limit_rejects_spawn_beyond_max(chat_root, fake_pi):
         parent_id=chat_root,
         depth=0,
     )
-    _drain_jobs()
+    await _drain_jobs()
     # Manually set depth to MAX_DEPTH so a further spawn is rejected.
     def _max(s: dict) -> dict:
         s["depth"] = MAX_DEPTH
@@ -171,7 +179,9 @@ def test_depth_limit_rejects_spawn_beyond_max(chat_root, fake_pi):
         )
 
 
-def test_parallel_children_both_delivered(chat_root, fake_pi):
+
+@pytest.mark.anyio
+async def test_parallel_children_both_delivered(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     a = runner.spawn(
         chat_id=chat_root,
@@ -189,7 +199,7 @@ def test_parallel_children_both_delivered(chat_root, fake_pi):
         parent_id=chat_root,
         depth=0,
     )
-    _drain_jobs()
+    await _drain_jobs()
     chat = paths.chat_state(chat_root).read()
     report_exchanges = [
         e for e in chat.get("exchanges", []) if e.get("source") == "child_report"
@@ -200,7 +210,9 @@ def test_parallel_children_both_delivered(chat_root, fake_pi):
     assert b["run_id"] in joined
 
 
-def test_reclaim_orphans_requeues(chat_root, fake_pi):
+
+@pytest.mark.anyio
+async def test_reclaim_orphans_requeues(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     state = runner.spawn(
         chat_id=chat_root,
@@ -218,12 +230,14 @@ def test_reclaim_orphans_requeues(chat_root, fake_pi):
     os.utime(job["_path"], (0, 0))
     n = queue.reclaim_orphans(threshold_seconds=0.0)
     assert n >= 1
-    _drain_jobs()
+    await _drain_jobs()
     run = paths.run_state(chat_root, state["run_id"]).read()
     assert run["phase"] == "done"
 
 
-def test_planner_qa_round_then_write(chat_root, fake_pi):
+
+@pytest.mark.anyio
+async def test_planner_qa_round_then_write(chat_root, fake_pi):
     # grill → questions; after answers+continue → write_report
     fake_pi.set_script(["questions", "write_report"])
     state = runner.spawn(
@@ -235,7 +249,7 @@ def test_planner_qa_round_then_write(chat_root, fake_pi):
         depth=0,
     )
     run_id = state["run_id"]
-    _drain_jobs()
+    await _drain_jobs()
     run = paths.run_state(chat_root, run_id).read()
     assert run["phase"] == "awaiting_answers"
     assert run.get("pending_questions")
@@ -255,7 +269,7 @@ def test_planner_qa_round_then_write(chat_root, fake_pi):
     persona.submit_answers(run_id, _Form(q1="A"))
     run = paths.run_state(chat_root, run_id).read()
     assert run["phase"] == "resuming"
-    _drain_jobs()
+    await _drain_jobs()
 
     # After followup with no new questions (script line repeats write_report? —
     # second invocation is write_report only if we continue_to_write).
@@ -263,17 +277,17 @@ def test_planner_qa_round_then_write(chat_root, fake_pi):
     run = paths.run_state(chat_root, run_id).read()
     if run["phase"] == "awaiting_answers":
         persona.continue_to_write(run_id)
-        _drain_jobs()
+        await _drain_jobs()
     elif run["phase"] not in ("done", "writing"):
         persona.continue_to_write(run_id)
-        _drain_jobs()
+        await _drain_jobs()
 
     run = paths.run_state(chat_root, run_id).read()
     # Followup may have consumed write_report; ensure done or drive write.
     if run["phase"] != "done":
         fake_pi.set_script(["write_report"])
         persona.continue_to_write(run_id)
-        _drain_jobs()
+        await _drain_jobs()
         run = paths.run_state(chat_root, run_id).read()
     assert run["phase"] == "done"
     assert Path(run["report_path"]).is_file()
@@ -288,10 +302,11 @@ def test_api_list_personas(chat_root):
     assert all("tool_name" in p for p in data)
 
 
-def test_api_spawn(chat_root, fake_pi):
+
+@pytest.mark.anyio
+async def test_api_spawn(chat_root, fake_pi):
     from starlette.requests import Request
     from crack_server.routes_sub_agents import api_spawn_sub_agent
-    import asyncio
 
     fake_pi.set_script(["write_report", "turns:1"])
 
@@ -314,10 +329,10 @@ def test_api_spawn(chat_root, fake_pi):
         return {"type": "http.request", "body": body, "more_body": False}
 
     request = Request(scope, receive)
-    response = asyncio.run(api_spawn_sub_agent(chat_root, request))
+    response = await api_spawn_sub_agent(chat_root, request)
     assert response.status_code == 200
     payload = json.loads(response.body)
     assert "run_id" in payload and "report_path" in payload
-    _drain_jobs()
+    await _drain_jobs()
     run = paths.run_state(chat_root, payload["run_id"]).read()
     assert run["phase"] == "done"

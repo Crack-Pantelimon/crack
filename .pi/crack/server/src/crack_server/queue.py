@@ -40,6 +40,25 @@ logger = logging.getLogger("uvicorn.error")
 # or restarted worker and reclaimed back to pending on startup.
 ORPHAN_THRESHOLD_SECONDS = 5.0
 
+# In-process wakeup hooks (single merged server/worker process): the worker's
+# async loop registers a callback here so an enqueue wakes dispatch immediately
+# instead of waiting out the poll interval. Best-effort: exceptions in a
+# callback never break the enqueue.
+_WAKEUP_CALLBACKS: list = []
+
+
+def register_wakeup(callback) -> None:
+    """Register a no-arg callback fired after every successful enqueue."""
+    _WAKEUP_CALLBACKS.append(callback)
+
+
+def _notify_enqueued() -> None:
+    for callback in _WAKEUP_CALLBACKS:
+        try:
+            callback()
+        except Exception:
+            logger.exception("queue: wakeup callback raised")
+
 
 def _ensure_dirs() -> tuple[Path, Path]:
     pending = paths.queue_pending_dir()
@@ -74,6 +93,7 @@ def enqueue(
     tmp.write_text(json.dumps(job, indent=2), encoding="utf-8")
     os.replace(tmp, path)
     logger.info("queue: enqueued %s (%s/%s) for %s", job_id, slug, step, task_id)
+    _notify_enqueued()
     return job_id
 
 

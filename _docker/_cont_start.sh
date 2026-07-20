@@ -87,6 +87,6 @@ respawn web-search-fwd \
     python3 /workspace/_docker/tcp_forward.py "${MCP_WEBSEARCH_PORT}" 127.0.0.1 "$((MCP_WEBSEARCH_PORT + 10000))"
 # --------------------------------------------------------------------------
 
-# Single-instance, auto-refreshing worker: if the flock is already held, exit 0.
-( flock -n /workspace/.pi/crack/harness/worker.lock uv run crack-worker || true ) &
+# Single process: the queue worker runs inside the server (uvicorn app lifespan,
+# in-process asyncio tasks — see crack_server/worker.py).
 uv run crack-server

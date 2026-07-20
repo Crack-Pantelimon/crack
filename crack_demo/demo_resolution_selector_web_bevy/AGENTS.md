@@ -36,8 +36,8 @@ title: Crack! - Clouds
 
 ### src/main_game_plugin.rs
 ```
-pub struct MainGamePlugin  :3-3
-impl MainGamePlugin  :5-31
+pub struct MainGamePlugin
+impl MainGamePlugin
 ```
 
 ### src/plugins/cloud_sky/ground_shadow.wgsl
@@ -54,20 +54,20 @@ let alpha = cloud * intensity;
 
 ### src/plugins/cloud_sky/materials.rs
 ```
-pub struct SkyParamsUniform  :10-19
-pub struct SkyDomeMaterial  :23-26
-pub struct PrecipOverlayMaterial  :67-70
-pub struct GroundShadowUniform  :106-111
-pub struct CloudGroundShadowMaterial  :116-122
-impl SkyDomeMaterial  :28-62
-impl PrecipOverlayMaterial  :72-103
-impl CloudGroundShadowMaterial  :124-149
+pub struct SkyParamsUniform
+pub struct SkyDomeMaterial
+pub struct PrecipOverlayMaterial
+pub struct GroundShadowUniform
+pub struct CloudGroundShadowMaterial
+impl SkyDomeMaterial
+impl PrecipOverlayMaterial
+impl CloudGroundShadowMaterial
 ```
 
 ### src/plugins/cloud_sky/mod.rs
 ```
-pub struct CloudSkyPlugin  :19-19
-impl CloudSkyPlugin  :21-39
+pub struct CloudSkyPlugin
+impl CloudSkyPlugin
 ```
 
 ### src/plugins/cloud_sky/precip_overlay.wgsl
@@ -91,11 +91,11 @@ let span = 4.0 + rnd * 3.0;
 
 ### src/plugins/cloud_sky/settings.rs
 ```
-pub struct CloudSkySettings  :5-37
-impl CloudSkySettings  :39-57
-impl CloudSkySettings  :59-83
-  pub fn sun_dir_and_day_factor(&self) → (Vec3, f32)  :62-62
-  pub fn wind_vec(&self) → Vec2  :79-79
+pub struct CloudSkySettings
+impl CloudSkySettings
+impl CloudSkySettings
+  pub fn sun_dir_and_day_factor(&self) → (Vec3, f32)
+  pub fn wind_vec(&self) → Vec2
 ```
 
 ### src/plugins/cloud_sky/skybox_clouds.wgsl
@@ -114,106 +114,93 @@ let d = hash2(i + vec2<f32>(1.0, 1.0));
 let w = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
 fn fbm(p_in: vec2<f32>, octaves: f32) -> f32 {
 let rot = mat2x2<f32>(vec2<f32>(0.8, -0.6), vec2<f32>(0.6, 0.8));
-fn sky_color(rd: vec3<f32>, sun_dir: vec3<f32>, day: f32, overcast: f32) -> vec3<f32> {
+fn kelvin_to_rgb(kelvin: f32) -> vec3<f32> {
 ```
 
 ### src/plugins/cloud_sky/systems.rs
 ```
-pub struct CloudSkyDome  :15-15
-pub struct PrecipOverlayQuad  :18-18
-pub struct CloudGroundShadowQuad  :21-21
-pub fn make_sky_params(s: &CloudSkySettings) → SkyParamsUniform  :24-43
-pub fn setup_cloud_sky(mut commands: Commands, settings: Res<CloudSkySettings>, mut meshes: ResMut<Assets<Mesh>>, mut images: ResMut<Assets<Image>>, mut sky_mats: ResMut<Assets<SkyDomeMaterial>>, mut precip_mats: ResMut<Assets<PrecipOverlayMaterial>>, mut shadow_mats: ResMut<Assets<CloudGroundShadowMaterial>>,)  :54-98
-pub fn follow_camera(camera_q: Query<&GlobalTransform, With<MainCamera>>, mut dome_q: Query<&mut Transform, (With<CloudSkyDome>, Without<PrecipOverlayQuad>)  :101-118
-pub fn sync_sky_uniforms(settings: Res<CloudSkySettings>, mut sky_mats: ResMut<Assets<SkyDomeMaterial>>, mut precip_mats: ResMut<Assets<PrecipOverlayMaterial>>, mut shadow_mats: ResMut<Assets<CloudGroundShadowMaterial>>,)  :121-141
-pub fn sync_sun_light(settings: Res<CloudSkySettings>, mut light_q: Query<(&mut Transform, &mut DirectionalLight)  :145-161
-pub fn generate_cloud_shadow_image() → Image  :205-248
+pub struct CloudSkyDome
+pub struct PrecipOverlayQuad
+pub struct CloudGroundShadowQuad
+pub fn make_sky_params(s: &CloudSkySettings) → SkyParamsUniform
+pub fn setup_cloud_sky(mut commands: Commands, settings: Res<CloudSkySettings>, mut meshes: ResMut<Assets<Mesh>>, mut images: ResMut<Assets<Image>>, mut sky_mats: ResMut<Assets<SkyDomeMaterial>>, mut precip_mats: ResMut<Assets<PrecipOverlayMaterial>>, mut shadow_mats: ResMut<Assets<CloudGroundShadowMaterial>>,)
+pub fn follow_camera(camera_q: Query<&GlobalTransform, With<MainCamera>>, mut dome_q: Query<&mut Transform, (With<CloudSkyDome>, Without<PrecipOverlayQuad>)
+pub fn auto_sun_temperature(mut settings: ResMut<CloudSkySettings>)
+pub fn sync_sky_uniforms(settings: Res<CloudSkySettings>, mut sky_mats: ResMut<Assets<SkyDomeMaterial>>, mut precip_mats: ResMut<Assets<PrecipOverlayMaterial>>, mut shadow_mats: ResMut<Assets<CloudGroundShadowMaterial>>,)
+pub fn sync_sun_light(settings: Res<CloudSkySettings>, mut light_q: Query<(&mut Transform, &mut DirectionalLight)
+pub fn generate_cloud_shadow_image() → Image
 ```
 
 ### src/plugins/cloud_sky/ui.rs
 ```
-pub fn cloud_sky_window(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>, mut settings: ResMut<CloudSkySettings>,)  :9-68
-```
-
-### src/plugins/debug_picker.rs
-```
-pub struct DebugPickerPlugin  :24-24
-pub struct DebugPickerState  :38-41
-pub struct PickResult  :43-48
-pub enum PickKind  :50-76
-impl DebugPickerPlugin  :26-35
+pub fn cloud_sky_window(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>, mut settings: ResMut<CloudSkySettings>,)
 ```
 
 ### src/plugins/main_scene_plugin.rs
 ```
-pub struct MainScenePlugin  :6-6
-impl MainScenePlugin  :8-20
+pub struct MainScenePlugin
+impl MainScenePlugin
 ```
 
 ### src/plugins/map_plugin/map_material_edit.rs
 ```
-pub struct MapMaterialEditPlugin  :6-6
-pub struct MapMaterialEditState  :29-41
-impl MapMaterialEditPlugin  :8-26
-impl MapMaterialEditState  :43-57
+pub struct MapMaterialEditPlugin
+pub struct MapMaterialEditState
+impl MapMaterialEditPlugin
+impl MapMaterialEditState
 ```
 
 ### src/plugins/map_plugin/map_plugin_ui.rs
 ```
-pub fn configure_map_extent_gizmo  :11-15
-pub fn draw_tree_bboxes  :17-25
-pub fn draw_map_extent_gizmo  :62-77
-pub fn tree_navigator_ui  :79-206
-pub fn draw_reference_points_gizmos  :208-232
-```
-
-### src/plugins/traffic/despawn.rs
-```
-pub fn despawn_traffic_cars  :8-77
+pub fn configure_map_extent_gizmo(mut store: ResMut<GizmoConfigStore>)
+pub fn draw_tree_bboxes(_gizmos: Gizmos, _data_res: Res<MapTree>, _lod_state: Res<MapLODState>, _tiles_query: Query<&TreeMapTile>, _ui_state: Option<Res<crate::ui_egui::UiState>>,)
+pub fn draw_map_extent_gizmo(mut gizmos: Gizmos<MapExtentGizmoGroup>, data_res: Res<MapTree>, ui_state: Option<Res<crate::ui_egui::UiState>>,)
+pub fn tree_navigator_ui(mut contexts: EguiContexts, data_res: Res<MapTree>, mut lod_state: ResMut<MapLODState>, tiles_query: Query<&TreeMapTile>, ui_state: Option<ResMut<crate::ui_egui::UiState>>,)
+pub fn draw_reference_points_gizmos(mut gizmos: Gizmos, data_res: Res<MapTree>, lod_state: Res<MapLODState>, camera_query: Query<&Transform, With<Camera>>,)
 ```
 
 ### src/plugins/visual_fx/materials.rs
 ```
-pub struct BillboardParams  :17-26
-pub struct AdditiveFxMaterial  :30-33
-pub struct BlendFxMaterial  :64-67
-pub enum FxKind  :7-14
-impl AdditiveFxMaterial  :35-60
-impl BlendFxMaterial  :69-94
+pub struct BillboardParams
+pub struct AdditiveFxMaterial
+pub struct BlendFxMaterial
+pub enum FxKind
+impl AdditiveFxMaterial
+impl BlendFxMaterial
 ```
 
 ### src/plugins/visual_fx/mod.rs
 ```
-pub struct VisualFXPlugin  :27-27
-impl VisualFXPlugin  :29-57
+pub struct VisualFXPlugin
+impl VisualFXPlugin
 ```
 
 ### src/plugins/visual_fx/settings.rs
 ```
-pub struct VfxSettings  :4-25
-impl VfxSettings  :27-49
+pub struct VfxSettings
+impl VfxSettings
 ```
 
 ### src/plugins/visual_fx/ui.rs
 ```
-pub fn vfx_controls_window(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>, mut s: ResMut<VfxSettings>,)  :6-53
+pub fn vfx_controls_window(mut contexts: EguiContexts, mut ui_state: ResMut<UiState>, mut s: ResMut<VfxSettings>,)
 ```
 
 ### src/ui_egui.rs
 ```
-pub struct UiEguiPlugin  :7-7
-pub struct UiState  :23-44
-impl UiEguiPlugin  :9-20
-impl UiState  :45-70
-impl UiState  :71-96
-  pub fn with_physics_debug() → Self  :72-72
-impl UiState  :98-102
-pub fn web_set_loading_status(_show: bool, _message: &str)  :493-528
+pub struct UiEguiPlugin
+pub struct UiState
+impl UiEguiPlugin
+impl UiState
+impl UiState
+  pub fn with_physics_debug() → Self
+impl UiState
+pub fn web_set_loading_status(_show: bool, _message: &str)
 ```
 
 ### src/utils/setup_debug_scene.rs
 ```
-pub struct SetupDebugScenePlugin  :15-15
-pub struct DebugSceneGroundComponent  :26-26
-impl SetupDebugScenePlugin  :17-22
+pub struct SetupDebugScenePlugin
+pub struct DebugSceneGroundComponent
+impl SetupDebugScenePlugin
 ```

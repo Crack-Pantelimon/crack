@@ -10,9 +10,9 @@ A6 split the implementation into three modules:
 This module is kept as a thin re-export shim so existing ``pi_runner.<name>``
 imports keep working without churning every caller in the same commit. Note
 that monkeypatching must target the owning module (e.g.
-``crack_server.ratelimit.TRANSIENT_RETRY_DELAYS``), not this shim. Everything
-here logs through the uvicorn logger and is only ever called from background
-threads.
+``crack_server.ratelimit.TRANSIENT_RETRY_DELAYS``), not this shim. The
+implementation is async (``arun_*``); the unprefixed names are sync wrappers
+for thread-based callers. Everything here logs through the uvicorn logger.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ from crack_server.pi_proc import (
     OUTPUT_TAIL_LINES,
     PiError,
     PiStopped,
+    arun_agent_hop,
+    arun_pi_text,
     kill_pid_file,
     run_agent_hop,
     run_pi_text,
@@ -73,6 +75,8 @@ __all__ = [
     "PiStopped",
     "RateLimiter",
     "apply_event_to_turn",
+    "arun_agent_hop",
+    "arun_pi_text",
     "count_turn_groups",
     "extract_path_refs",
     "fit_nano_transcript",

@@ -110,7 +110,8 @@ def review_stage():
 # ---------------------------------------------------------------------------
 
 
-def test_draft_chains_to_write_through_worker_cycle(task, fake_pi, tmp_path):
+@pytest.mark.anyio
+async def test_draft_chains_to_write_through_worker_cycle(task, fake_pi, tmp_path):
     stage = plan_stage()
     plan_path = paths.plan_dir(task) / "final_plan.md"
     src = tmp_path / "plan_src.md"
@@ -124,7 +125,7 @@ def test_draft_chains_to_write_through_worker_cycle(task, fake_pi, tmp_path):
     stage.start(task)
     job = queue.claim_next()
     assert job is not None and (job["slug"], job["step"]) == ("plan", "draft")
-    worker._dispatch(job)
+    await worker._dispatch(job)
 
     # The decisive RC1 assertion: the successor was enqueued, not dropped.
     write_job = queue.claim_next()
@@ -132,7 +133,7 @@ def test_draft_chains_to_write_through_worker_cycle(task, fake_pi, tmp_path):
     assert (write_job["slug"], write_job["step"]) == ("plan", "write")
     assert paths.plan_state(task).read()["phase"] == "write_running"
 
-    worker._dispatch(write_job)
+    await worker._dispatch(write_job)
     state = paths.plan_state(task).read()
     assert state["phase"] == "done", state.get("error")
     text = plan_path.read_text(encoding="utf-8")
@@ -146,7 +147,8 @@ def test_draft_chains_to_write_through_worker_cycle(task, fake_pi, tmp_path):
     assert (review_job["slug"], review_job["step"]) == ("plan_review", "critique")
 
 
-def test_write_step_corrective_retry_names_deficiency(task, fake_pi, tmp_path):
+@pytest.mark.anyio
+async def test_write_step_corrective_retry_names_deficiency(task, fake_pi, tmp_path):
     stage = plan_stage()
     plan_path = paths.plan_dir(task) / "final_plan.md"
     src = tmp_path / "plan_src.md"
@@ -158,8 +160,8 @@ def test_write_step_corrective_retry_names_deficiency(task, fake_pi, tmp_path):
     )
 
     stage.start(task)
-    worker._dispatch(queue.claim_next())
-    worker._dispatch(queue.claim_next())
+    await worker._dispatch(queue.claim_next())
+    await worker._dispatch(queue.claim_next())
 
     state = paths.plan_state(task).read()
     assert state["phase"] == "done", state.get("error")
@@ -169,7 +171,8 @@ def test_write_step_corrective_retry_names_deficiency(task, fake_pi, tmp_path):
     assert str(plan_path) in corrective
 
 
-def test_critique_no_questions_chains_to_verified_revise(task, fake_pi):
+@pytest.mark.anyio
+async def test_critique_no_questions_chains_to_verified_revise(task, fake_pi):
     review = review_stage()
     paths.write_plan_artefact(task, "final_plan.md", VALID_PLAN)
     # 1: critic has nothing to ask; 2: auto-revise settles without editing
@@ -179,14 +182,14 @@ def test_critique_no_questions_chains_to_verified_revise(task, fake_pi):
     review.start(task)
     job = queue.claim_next()
     assert job is not None and (job["slug"], job["step"]) == ("plan_review", "critique")
-    worker._dispatch(job)
+    await worker._dispatch(job)
 
     revise_job = queue.claim_next()
     assert revise_job is not None
     assert (revise_job["slug"], revise_job["step"]) == ("plan_review", "revise")
     assert paths.plan_review_state(task).read()["phase"] == "revising"
 
-    worker._dispatch(revise_job)
+    await worker._dispatch(revise_job)
     state = paths.plan_review_state(task).read()
     assert state["phase"] == "awaiting_approval", state.get("error")
     assert state["iterations"] == 1

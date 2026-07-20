@@ -30,18 +30,18 @@ class PlannerPersona(SubAgentPersona):
     )
     templates = ["system.md", "nudge.md", "grill.md", "followup.md", "write.md"]
 
-    def run_step(
+    async def run_step(
         self, run_id: str, step: str, form: dict | None = None
     ) -> tuple[str, dict | None] | None:
         if step == "run_start":
-            return self._run_grill(run_id, initial=True)
+            return await self._run_grill(run_id, initial=True)
         if step == "grill":
-            return self._run_grill(run_id, initial=False)
+            return await self._run_grill(run_id, initial=False)
         if step == "followup":
-            return self._run_followup(run_id)
+            return await self._run_followup(run_id)
         if step == "write":
-            return self._run_write(run_id)
-        return super().run_step(run_id, step, form)
+            return await self._run_write(run_id)
+        return await super().run_step(run_id, step, form)
 
     def _qa_blob(self, run_id: str) -> str:
         state = self.state_read(run_id)
@@ -50,7 +50,7 @@ class PlannerPersona(SubAgentPersona):
             parts.append(format_qa_for_prompt(rnd))
         return "\n\n".join(p for p in parts if p.strip())
 
-    def _run_grill(self, run_id: str, *, initial: bool) -> tuple[str, dict | None] | None:
+    async def _run_grill(self, run_id: str, *, initial: bool) -> tuple[str, dict | None] | None:
         state = self.state_read(run_id)
         if state.get("phase") in TERMINAL_PHASES:
             return None
@@ -72,9 +72,9 @@ class PlannerPersona(SubAgentPersona):
             .replace("{report_instructions}", self.report_instructions)
             .replace("{qa}", self._qa_blob(run_id))
         )
-        return self._run_named_hop(run_id, message, template, step_label="grill")
+        return await self._run_named_hop(run_id, message, template, step_label="grill")
 
-    def _run_followup(self, run_id: str) -> tuple[str, dict | None] | None:
+    async def _run_followup(self, run_id: str) -> tuple[str, dict | None] | None:
         state = self.state_read(run_id)
         template = "followup.md"
         message = (
@@ -90,9 +90,9 @@ class PlannerPersona(SubAgentPersona):
             return s
 
         self.state_update(run_id, _resuming)
-        return self._run_named_hop(run_id, message, template, step_label="followup")
+        return await self._run_named_hop(run_id, message, template, step_label="followup")
 
-    def _run_write(self, run_id: str) -> tuple[str, dict | None] | None:
+    async def _run_write(self, run_id: str) -> tuple[str, dict | None] | None:
         state = self.state_read(run_id)
 
         def _writing(s: dict) -> dict:
@@ -108,9 +108,9 @@ class PlannerPersona(SubAgentPersona):
             .replace("{report_instructions}", self.report_instructions)
             .replace("{qa}", self._qa_blob(run_id))
         )
-        return self._run_named_hop(run_id, message, template, step_label="write")
+        return await self._run_named_hop(run_id, message, template, step_label="write")
 
-    def _run_named_hop(
+    async def _run_named_hop(
         self, run_id: str, message: str, template: str, *, step_label: str
     ) -> tuple[str, dict | None] | None:
         """One pi hop with a fixed message; post-process for planner control flow."""
@@ -133,7 +133,7 @@ class PlannerPersona(SubAgentPersona):
         record = prompt_recorder(persister, f"{step_label} hop {hop_n}", template, message)
 
         try:
-            reason = pi_runner.run_agent_hop(
+            reason = await pi_runner.arun_agent_hop(
                 log_prefix=f"sub_agent/{self.slug}/{run_id}",
                 model=self.model_for(),
                 session_id=f"subagent-{run_id}",
@@ -149,6 +149,7 @@ class PlannerPersona(SubAgentPersona):
                 stop_check=lambda: bool(self.state_read(run_id).get("stop_requested")),
                 record_prompt=record,
                 env_extra=self._subagent_env(state),
+                waiting_check=lambda: bool(self.state_read(run_id).get("waiting_on")),
             )
         except pi_runner.PiStopped:
             self._mark_stopped(run_id)
@@ -185,7 +186,12 @@ class PlannerPersona(SubAgentPersona):
             return None
 
         if step_label == "write":
-            return self._after_hop(run_id, reason, persister)
+            return await self._after_hop(run_id, reason, persister)
+
+        if self.state_read(run_id).get("phase") == "awaiting_user":
+            # ask_user during the hop: suspend (no nudge/successor) until the
+            # human's answer enqueues a resume hop.
+            return None
 
         text = persister.text()
         questions = parse_questions(text)

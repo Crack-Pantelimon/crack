@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Awaitable
 from pathlib import Path
 from typing import Callable
 
@@ -28,7 +29,16 @@ from crack_server.stages.steprun import (
 logger = logging.getLogger("uvicorn.error")
 
 
-def run_exchange(
+def run_exchange_sync(**kwargs) -> None:
+    """Sync wrapper over :func:`run_exchange` for thread-based callers (the
+    Finished stage's review chat, dispatched via ``asyncio.to_thread``).
+    Must NOT be called from inside a running event loop."""
+    import asyncio
+
+    return asyncio.run(run_exchange(**kwargs))
+
+
+async def run_exchange(
     *,
     state: JsonState,
     ident: str,
@@ -42,7 +52,7 @@ def run_exchange(
     timeout_seconds: int,
     hop_kwargs: dict | None = None,
     pre_stop_check: Callable[[], bool] | None = None,
-    on_first_exchange: Callable[[str], None] | None = None,
+    on_first_exchange: "Callable[[str], Awaitable[None]] | None" = None,
     on_no_exchanges: Callable[[], None] | None = None,
     stopped_phase: str = "idle",
     env_extra: dict[str, str] | None = None,
@@ -71,7 +81,7 @@ def run_exchange(
         message = message_builder(user_msg)
 
         if idx == 0 and on_first_exchange is not None:
-            on_first_exchange(user_msg)
+            await on_first_exchange(user_msg)
 
         persister = turn_persister(state, subpath=["exchanges", idx])
         record = prompt_recorder(persister, "chat", record_template, original=user_msg)
@@ -79,7 +89,7 @@ def run_exchange(
         if pre_stop_check is not None and pre_stop_check():
             reason = "stopped"
         else:
-            reason = pi_runner.run_agent_hop(
+            reason = await pi_runner.arun_agent_hop(
                 log_prefix=log_prefix,
                 model=model,
                 session_id=session_id,

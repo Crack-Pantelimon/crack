@@ -122,7 +122,7 @@ class SubAgentPersona:
         state["started_token"] = token
         return {"run_id": state["run_id"], "started_token": token}
 
-    def dispatch_step(
+    async def dispatch_step(
         self, run_id: str, step: str, form: dict | None = None
     ) -> tuple[str, dict | None] | None:
         token = (form or {}).get("started_token")
@@ -134,7 +134,7 @@ class SubAgentPersona:
                     self.slug, run_id,
                 )
                 return None
-        successor = self.run_step(run_id, step, form)
+        successor = await self.run_step(run_id, step, form)
         state = self.state_read(run_id)
         phase = state.get("phase", "")
         inbox = state.get("child_inbox") or []
@@ -142,20 +142,20 @@ class SubAgentPersona:
             return ("drain_children", {"run_id": run_id, "started_token": state.get("started_token")})
         return successor
 
-    def run_step(
+    async def run_step(
         self, run_id: str, step: str, form: dict | None = None
     ) -> tuple[str, dict | None] | None:
         if step == "run_start":
-            return self._begin_run(run_id)
+            return await self._begin_run(run_id)
         if step == "run":
-            return self._run_hop(run_id, form)
+            return await self._run_hop(run_id, form)
         if step == "drain_children":
             from crack_server.sub_agents import resume
 
-            return resume.drain_children(run_id, self)
+            return await resume.drain_children(run_id, self)
         raise NotImplementedError(f"{self.slug}: no run_step handler for {step!r}")
 
-    def _begin_run(self, run_id: str) -> tuple[str, dict | None] | None:
+    async def _begin_run(self, run_id: str) -> tuple[str, dict | None] | None:
         def _start(state: dict) -> dict:
             state["phase"] = "running"
             state["hops_completed"] = 0
@@ -163,10 +163,12 @@ class SubAgentPersona:
             return state
 
         self.state_update(run_id, _start)
-        return self._run_hop(run_id, None)
+        return await self._run_hop(run_id, None)
 
     def _compile_message(self, run_id: str, form: dict | None) -> tuple[str, str]:
         state = self.state_read(run_id)
+        if form and form.get("user_answer"):
+            return str(form["user_answer"]), "user_answer"
         if form and form.get("child_results"):
             return str(form["child_results"]), "child_results"
         if form and form.get("resume"):
@@ -198,7 +200,7 @@ class SubAgentPersona:
             "CRACK_PARENT_ID": state.get("run_id", ""),
         }
 
-    def _run_hop(
+    async def _run_hop(
         self, run_id: str, form: dict | None
     ) -> tuple[str, dict | None] | None:
         state = self.state_read(run_id)
@@ -219,7 +221,7 @@ class SubAgentPersona:
         record = prompt_recorder(persister, f"hop {hop_n}", template, message)
 
         try:
-            reason = pi_runner.run_agent_hop(
+            reason = await pi_runner.arun_agent_hop(
                 log_prefix=f"sub_agent/{self.slug}/{run_id}",
                 model=self.model_for(),
                 session_id=f"subagent-{run_id}",
@@ -235,6 +237,7 @@ class SubAgentPersona:
                 stop_check=lambda: bool(self.state_read(run_id).get("stop_requested")),
                 record_prompt=record,
                 env_extra=self._subagent_env(state),
+                waiting_check=lambda: bool(self.state_read(run_id).get("waiting_on")),
             )
         except pi_runner.PiStopped:
             self._mark_stopped(run_id)
@@ -270,9 +273,9 @@ class SubAgentPersona:
             runner.finish(run_id, "stopped")
             return None
 
-        return self._after_hop(run_id, reason, persister)
+        return await self._after_hop(run_id, reason, persister)
 
-    def _after_hop(
+    async def _after_hop(
         self, run_id: str, reason: str, persister: TurnPersister
     ) -> tuple[str, dict | None] | None:
         state = self.state_read(run_id)
@@ -287,6 +290,12 @@ class SubAgentPersona:
             from crack_server.sub_agents import runner
 
             runner.finish(run_id, "done")
+            return None
+
+        if state.get("phase") == "awaiting_user":
+            # ask_user hop-termination: the run suspends until the human
+            # answers (a fresh resume hop delivers it) — no nudge, no
+            # successor, exactly like the planner's awaiting_answers.
             return None
 
         if state.get("children"):
@@ -331,11 +340,15 @@ class SubAgentPersona:
         self.state_update(run_id, _stop)
 
     def check_orphaned(self, run_id: str) -> bool:
-        if self.state_read(run_id).get("children"):
+        current = self.state_read(run_id)
+        if current.get("children"):
+            return False
+        if current.get("waiting_on"):
+            # Suspended in a blocking wait_join: no job is meant to be queued.
             return False
         state_obj = self.state(run_id)
-        observed = state_obj.read().get("phase")
-        if observed in TERMINAL_PHASES or observed == "awaiting_answers":
+        observed = current.get("phase")
+        if observed in TERMINAL_PHASES or observed in ("awaiting_answers", "awaiting_user"):
             return False
         if observed not in ACTIVE_PHASES and observed != "running":
             # running is in ACTIVE_PHASES; allow writing/resuming only

@@ -94,7 +94,7 @@ class S06Finished(Stage):
     def _run_chat(self, task_id: str) -> None:
         """Thin adapter over chat_engine.run_exchange: resume the review session
         (same session id + dir), tools enabled."""
-        chat_engine.run_exchange(
+        chat_engine.run_exchange_sync(
             state=paths.finished_state(task_id),
             ident=task_id,
             message_builder=lambda user_msg: self.load_template("chat.md").replace(

@@ -434,9 +434,15 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## deps
 ```
-src/crack_server/app.py ← __future__, fastapi, crack_server, shlex
-src/crack_server/main.py ← uvicorn
-src/crack_server/paths.py ← __future__
+src/crack_server/chat_engine.py ← __future__, crack_server
+src/crack_server/chats.py ← __future__, fastapi, crack_server
+src/crack_server/routes_sub_agents.py ← __future__, fastapi, crack_server
+src/crack_server/sub_agents/ask_user.py ← __future__, crack_server
+src/crack_server/sub_agents/planner.py ← __future__, crack_server
+src/crack_server/sub_agents/wait.py ← __future__, crack_server
+src/crack_server/titles.py ← __future__, crack_server
+tests/test_ask_user.py ← __future__, crack_server, tests, pytest
+tests/test_async_worker.py ← __future__, crack_server, tests, pytest
 ```
 
 ## versions (installed direct deps)
@@ -446,92 +452,109 @@ python-multipart@0.0.32
 uvicorn@0.51.0
 ```
 
-## .
-
-### pyproject.toml
-```
-table [project]
-table [project.scripts]
-table [build-system]
-table [tool.hatch.build.targets.wheel]
-table [tool.hatch.build.targets.wheel.sources]
-key name
-key version
-key description
-key readme
-key requires-python
-key dependencies
-key crack-server
-key build-backend
-```
-
-### README.md
-```
-h1 crack-pi-server
-h1 from repository root
-code-fence bash
-code-fence plain
-```
-
 ## src
 
-### src/crack_server/app.py
+### src/crack_server/chat_engine.py
 ```
-def index() → HTMLResponse  :214-246
-def api_delete_prompt(task_id: str, filename: str) → HTMLResponse  :371-379  # Returns an empty fragment so htmx's outerHTML swap removes t
-def api_regenerate_task_title(task_id: str) → HTMLResponse  :422-447  # Regenerate the task title from the combined content of its p
-def task_page(task_id: str) → HTMLResponse  :451-482
-def task_prompts_list(task_id: str) → HTMLResponse  :486-492  # Return the prompt list HTML fragment for htmx (initial load 
-GET /  →  index()  :214-246
-POST /api/tasks  →  api_create_task()  :250-259
-DELETE /api/tasks/{task_id}  →  api_delete_task()  :263-282
-GET /api/tasks  →  api_tasks()  :286-288
-GET /api/tasks/{task_id}/info  →  api_get_task_info()  :292-297
-PUT /api/tasks/{task_id}/info  →  api_update_task_info()  :301-311
-GET /api/tasks/{task_id}/prompts  →  api_list_prompts()  :315-320
-GET /api/tasks/{task_id}/prompts/{filename}  →  api_get_prompt()  :324-331
-POST /api/tasks/{task_id}/prompts  →  api_create_prompt()  :335-356
-PUT /api/tasks/{task_id}/prompts/{filename}  →  api_update_prompt()  :360-367
-DELETE /api/tasks/{task_id}/prompts/{filename}  →  api_delete_prompt()  :371-379
-POST /api/tasks/{task_id}/regenerate-title  →  api_regenerate_task_title()  :422-447
-GET /tasks/{task_id}  →  task_page()  :451-482
-GET /tasks/{task_id}/prompts-list  →  task_prompts_list()  :486-492
-GET /tasks/{task_id}/prompt-row/{filename}  →  prompt_row()  :496-502
+def run_exchange_sync(**kwargs) → None  :32-38  # Sync wrapper over :func:`run_exchange` for thread-based call
+async def run_exchange(*, state: JsonState, ident: str, message_builder: Callable[[str], str], record_template: str, log_prefix: str, model: str, session_id: str, sessions_dir: Path, tools: str | None, timeout_seconds: int, hop_kwargs: dict | None, pre_stop_check: Callable[[], bool] | None, on_first_exchange: "Callable[[str], Awaitable[None]] | None", on_no_exchanges: Callable[[], None] | None, stopped_phase: str, env_extra: dict[str, str] | None) → None  :41-58
 ```
 
-### src/crack_server/main.py
+### src/crack_server/chats.py
 ```
-def main() → None  :8-11
-```
-
-### src/crack_server/paths.py
-```
-def project_root() → Path  :16-18
-def tasks_dir(root: Path | None) → Path  :21-22
-def task_dir(task_id: str, root: Path | None) → Path  :25-28
-def validate_prompt_filename(name: str) → str  :31-35
-def list_task_ids(root: Path | None) → list[str]  :38-42
-def list_prompt_files(task_id: str, root: Path | None) → list[dict[str, str | int]]  :45-63  # Glob *
-def read_prompt(task_id: str, filename: str, root: Path | None) → str  :66-71
-def write_prompt(task_id: str, filename: str, content: str, root: Path | None) → None  :74-79
-def delete_prompt(task_id: str, filename: str, root: Path | None) → None  :82-87
-def info_path(task_id: str, root: Path | None) → Path  :90-91
-def read_info(task_id: str, root: Path | None) → dict  :94-101
-def write_info(task_id: str, info: dict, root: Path | None) → None  :104-110
-def slugify_title(title: str) → str  :113-116  # Replace runs of non-alphanumeric characters with '_', stripp
-def generate_task_id(title: str) → str  :119-121  # Task id format: <ms_epoch_timestamp>_<slugified_title>
-def create_task(task_id: str, title: str | None, root: Path | None) → dict  :124-139  # Create a new task directory with info
-def next_prompt_filename(task_id: str, root: Path | None) → str | None  :142-151  # Return the next available prompt filename (prompt
+def check_chat_id(chat_id: str) → None  :45-52  # 404 on malformed or unknown chat ids (mirrors app
+def render_home_section() → str  :89-109  # The 'Unscripted Chats' block appended to the home page body
+def render_chat_answer(turns: list[dict]) → list[str]  :115-131  # One exchange's agent output as a list of msg fragments
+def render_chat_form(chat_id: str, info: dict) → str  :134-144  # Bottom form: cached-model dropdown (saves on change) + multi
+def render_user_question_form(chat_id: str, run_id: str, question: dict) → str  :155-174  # The ask_user Q&A form for a suspended run (run tree + run pa
+def render_run_tree(chat_id: str) → str  :177-249  # Live fragment listing sub-agent runs for this chat (statuses
+def render_chat_msgs(chat_id: str) → list[str]  :265-268
+def render_chat_tail(chat_id: str) → str  :271-311
+def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | None) → str  :314-343
+def render_chat_content(chat_id: str, after: int | None) → str  :346-353  # Chat exchanges + status + form (msgs/tail; supports ``
+def render_chat_page_body(chat_id: str) → str  :356-367
+def create_chat() → RedirectResponse  :373-378  # POST /api/chats: create a chat and redirect into its page
+def post_message(chat_id: str, msg: str, model: str | None) → HTMLResponse  :381-408  # POST /api/chats/{id}/messages: queue the agent for a new use
+def stop_chat(chat_id: str) → HTMLResponse  :424-445  # POST /api/chats/{id}/stop: halt the chat agent and all sub-a
+def delete_chat(chat_id: str) → HTMLResponse  :448-458  # DELETE /api/chats/{id}: kill agents (incl
+def set_model(chat_id: str, model: str) → HTMLResponse  :461-470  # POST /api/chats/{id}/model: persist the dropdown selection
+async def run_chat(chat_id: str) → None  :562-627  # Worker side of a CHAT_JOB_SLUG job: drain child reports, the
 ```
 
-### src/crack_server/static/app.css
+### src/crack_server/routes_sub_agents.py
 ```
-.prompt-row
-.prompt-row
-.prompt-row
-.title-row
-.title-input
-.htmx-indicator
-.htmx-request
-.htmx-request
+def api_list_sub_agents() → list[dict]  :63-75  # Persona list for the crack_subagents pi extension
+async def api_spawn_sub_agent(chat_id: str, request: Request) → JSONResponse  :79-121  # Mint a run and enqueue it; returns immediately
+async def api_wait_sub_agents(chat_id: str, request: Request) → JSONResponse  :125-193  # Long-poll for child results (the server side of the wait_joi
+async def api_ask_user(chat_id: str, request: Request) → JSONResponse  :197-235  # Record a question for the human (the server side of the ask_
+def api_list_runs(chat_id: str) → dict  :257-260
+def api_get_run(chat_id: str, run_id: str) → dict  :264-269
+async def api_run_answers(chat_id: str, run_id: str, request: Request) → HTMLResponse  :273-283
+def api_run_continue(chat_id: str, run_id: str) → HTMLResponse  :287-296
+def api_run_stop(chat_id: str, run_id: str) → HTMLResponse  :300-307
+def api_run_retry(chat_id: str, run_id: str) → HTMLResponse  :311-318
+def sub_agents_page() → HTMLResponse  :393-418
+def persona_template_row(slug: str, filename: str, editing: bool) → HTMLResponse  :422-423
+def run_page(run_id: str) → HTMLResponse  :430-483
+GET /api/sub_agents  →  api_list_sub_agents()  :63-75
+POST /api/chats/{chat_id}/sub_agents/spawn  →  api_spawn_sub_agent()  :79-121
+POST /api/chats/{chat_id}/sub_agents/wait  →  api_wait_sub_agents()  :125-193
+POST /api/chats/{chat_id}/ask_user  →  api_ask_user()  :197-235
+POST /api/chats/{chat_id}/sub_agents/runs/{run_id}/user_answer  →  api_run_user_answer()  :239-240
+GET /api/chats/{chat_id}/sub_agents/runs  →  api_list_runs()  :257-260
+GET /api/chats/{chat_id}/sub_agents/runs/{run_id}  →  api_get_run()  :264-269
+POST /api/chats/{chat_id}/sub_agents/runs/{run_id}/answers  →  api_run_answers()  :273-283
+POST /api/chats/{chat_id}/sub_agents/runs/{run_id}/continue  →  api_run_continue()  :287-296
+POST /api/chats/{chat_id}/sub_agents/runs/{run_id}/stop  →  api_run_stop()  :300-307
+POST /api/chats/{chat_id}/sub_agents/runs/{run_id}/retry  →  api_run_retry()  :311-318
+POST /api/sub_agents/{slug}/model  →  api_set_persona_model()  :322-325
+PUT /api/sub_agents/{slug}/templates/{filename}  →  api_put_persona_template()  :329-330
+GET /sub_agents  →  sub_agents_page()  :393-418
+GET /sub_agents/{slug}/template-row/{filename}  →  persona_template_row()  :422-423
+GET /sub_agents/runs/{run_id}  →  run_page()  :430-483
+```
+
+### src/crack_server/sub_agents/ask_user.py
+```
+def ask(*, chat_id: str, parent_kind: str, parent_id: str, question: str, choices: list[str] | None) → str  :26-32  # Record a pending question for the parent
+def answer(chat_id: str, run_id: str, answer_text: str) → bool  :67-101  # Store the human's answer and enqueue a resume hop that recei
+```
+
+### src/crack_server/sub_agents/planner.py
+```
+class PlannerPersona(SubAgentPersona)  :24-269
+  def submit_answers(run_id: str, form) → None
+  def continue_to_write(run_id: str) → None
+```
+
+### src/crack_server/sub_agents/wait.py
+```
+def drain_matching  :82-86
+def poll  :135-142
+def stamp_waiting  :220-221
+def clear_waiting  :235-241
+```
+
+### src/crack_server/titles.py
+```
+def generate_title(content: str, *, log_prefix: str) → str  :21-35  # Summarize ``content`` into a short title via the nano title 
+async def agenerate_title(content: str, *, log_prefix: str) → str  :38-47  # Async twin of :func:`generate_title` (chat titles, in the ev
+```
+
+## tests
+
+### tests/test_ask_user.py
+```
+async def test_ask_user_suspends_run_then_answer_resumes(chat_root, fake_pi)  :22-62
+async def test_ask_user_orphan_sweep_skips_awaiting_user(chat_root, fake_pi)  :66-87
+async def test_ask_user_answer_requires_awaiting_phase(chat_root, fake_pi)  :91-104
+async def test_ask_user_route_and_chat_parent(chat_root, fake_pi)  :108-142
+async def test_user_answer_route(chat_root, fake_pi)  :146-176
+```
+
+### tests/test_async_worker.py
+```
+def fake_pi(tmp_path, monkeypatch) → FakePi  :19-36
+async def test_two_chat_hops_interleave(tmp_path, monkeypatch, fake_pi)  :61-86  # Two 2s-sleeping chat hops dispatched concurrently finish in 
+async def test_enqueue_fires_wakeup_callback(tmp_path, monkeypatch, fake_pi)  :90-98
 ```
