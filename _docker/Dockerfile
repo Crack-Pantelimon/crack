@@ -31,6 +31,8 @@ RUN pip install --no-cache-dir --break-system-packages blender-mcp==1.6.4
 # Stable path for the addon (synced into /root on every boot — see _cont_start.sh)
 COPY blender_mcp_addon.py /opt/blender_mcp_addon.py
 
+RUN pi install npm:pi-antigravity
+
 VOLUME /root
 WORKDIR /workspace
 
