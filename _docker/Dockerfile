@@ -1,4 +1,4 @@
-FROM johnnysmitherson/crack-dev:base
+FROM docker.io/johnnysmitherson/crack-dev:base
 
 # Install Blender 5.1.2 dependencies + xvfb for headless GUI
 RUN apt-get update && apt-get install -y --no-install-recommends \
