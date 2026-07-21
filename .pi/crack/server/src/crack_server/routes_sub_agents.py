@@ -247,7 +247,7 @@ async def api_run_user_answer(
     if not ask_user.answer(chat_id, run_id, answer):
         raise HTTPException(status_code=409, detail="run is not awaiting an answer")
     if request.headers.get("hx-request"):
-        return HTMLResponse(chats.render_run_tree(chat_id))
+        return HTMLResponse(chats.render_inline_run_region(chat_id, chats.root_run_id(chat_id, run_id)))
     from fastapi.responses import RedirectResponse
 
     return RedirectResponse(url=f"/sub_agents/runs/{run_id}", status_code=303)
@@ -291,7 +291,7 @@ async def api_run_answers(chat_id: str, run_id: str, request: Request) -> HTMLRe
         raise HTTPException(status_code=400, detail="persona does not accept answers")
     form = await request.form()
     persona.submit_answers(run_id, form)
-    return HTMLResponse(chats.render_run_tree(chat_id))
+    return HTMLResponse(chats.render_inline_run_region(chat_id, chats.root_run_id(chat_id, run_id)))
 
 
 @router.post("/api/chats/{chat_id}/sub_agents/runs/{run_id}/continue", response_class=HTMLResponse)
@@ -304,7 +304,7 @@ def api_run_continue(chat_id: str, run_id: str) -> HTMLResponse:
     if not hasattr(persona, "continue_to_write"):
         raise HTTPException(status_code=400, detail="persona does not support continue")
     persona.continue_to_write(run_id)
-    return HTMLResponse(chats.render_run_tree(chat_id))
+    return HTMLResponse(chats.render_inline_run_region(chat_id, chats.root_run_id(chat_id, run_id)))
 
 
 @router.post("/api/chats/{chat_id}/sub_agents/runs/{run_id}/stop", response_class=HTMLResponse)
@@ -315,7 +315,7 @@ def api_run_stop(chat_id: str, run_id: str) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="run not found")
     persona = _persona_or_404(state.get("persona", ""))
     persona.request_stop(run_id, cascade=False)
-    return HTMLResponse(chats.render_run_tree(chat_id))
+    return HTMLResponse(chats.render_inline_run_region(chat_id, chats.root_run_id(chat_id, run_id)))
 
 
 @router.post("/api/chats/{chat_id}/sub_agents/runs/{run_id}/retry", response_class=HTMLResponse)
@@ -326,7 +326,7 @@ def api_run_retry(chat_id: str, run_id: str) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="run not found")
     persona = _persona_or_404(state.get("persona", ""))
     persona.retry(run_id)
-    return HTMLResponse(chats.render_run_tree(chat_id))
+    return HTMLResponse(chats.render_inline_run_region(chat_id, chats.root_run_id(chat_id, run_id)))
 
 
 @router.post("/api/sub_agents/{slug}/model", response_class=HTMLResponse)
@@ -341,15 +341,12 @@ def api_put_persona_template(
     slug: str, filename: str, content: str = Form(...)
 ) -> HTMLResponse:
     persona = _persona_or_404(slug)
-    base = paths.validate_prompt_filename(filename) if filename.endswith(".md") else None
-    if base is None:
-        # Allow any basename under the persona dir that is a simple .md name.
-        from pathlib import Path as P
+    # Allow any basename under the persona dir that is a simple .md name.
+    from pathlib import Path as P
 
-        name = P(filename).name
-        if not name.endswith(".md") or "/" in name or "\\" in name:
-            raise HTTPException(status_code=400, detail="invalid template filename")
-        base = name
+    base = P(filename).name
+    if not base.endswith(".md") or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="invalid template filename")
     path = persona.persona_dir() / base
     if not path.is_file() and base not in persona.templates:
         raise HTTPException(status_code=404, detail="unknown template")

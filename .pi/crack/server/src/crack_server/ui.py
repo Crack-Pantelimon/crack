@@ -74,11 +74,83 @@ def _render_sidebar() -> str:
     """
 
 
-def _render_base(title: str, body: str) -> str:
+def render_file_row(
+    view_url: str,
+    save_url: str,
+    name: str,
+    content: str,
+    meta: str,
+    editing: bool,
+    *,
+    extra_actions: str = "",
+    indent: str = "",
+) -> str:
+    """View/edit article for one web-editable file (sub-agent persona templates).
+
+    View mode shows the read-only content plus an Edit button (hx-get on
+    ``view_url?editing=true``); edit mode swaps the same row into a Save/Cancel
+    form (hx-put on ``save_url``, Cancel hx-gets ``view_url``) — both target
+    ``closest article`` with outerHTML. ``meta`` is the ``<small>`` header note
+    (``"<size> bytes • <mtime>"``). ``extra_actions`` is optional pre-rendered
+    HTML appended inside view mode's ``.actions`` div.
+
+    ``indent`` is the view-mode article indent; edit mode renders one level
+    (4 spaces) deeper, matching the historic call-site layouts."""
+    safe_view = _esc(view_url)
+    safe_save = _esc(save_url)
+    safe_name = _esc(name)
+    safe_content = _esc(content)
+    safe_meta = _esc(meta)
+
+    if editing:
+        e1 = indent + "    "
+        e2, e3, e4 = e1 + "  ", e1 + "    ", e1 + "      "
+        return (
+            f'\n{e1}<article class="prompt-row">\n'
+            f'{e2}<form hx-put="{safe_save}" hx-target="closest article" hx-swap="outerHTML">\n'
+            f'{e3}<div class="file-row-header">\n'
+            f'{e4}<label class="file-row-label">Filename <input type="text" value="{safe_name}" readonly></label>\n'
+            f'{e4}<small class="muted">{safe_meta}</small>\n'
+            f'{e3}</div>\n'
+            f"{e3}<label>Content\n"
+            f'{e4}<textarea name="content" rows="12" required>{safe_content}</textarea>\n'
+            f"{e3}</label>\n"
+            f'{e3}<div class="actions">\n'
+            f"{e4}<button type=\"submit\">Save</button>\n"
+            f'{e4}<button type="button" hx-get="{safe_view}" hx-target="closest article" hx-swap="outerHTML" class="secondary">Cancel</button>\n'
+            f"{e3}</div>\n"
+            f"{e2}</form>\n"
+            f"{e1}</article>\n{e1}"
+        )
+
+    i2, i3 = indent + "  ", indent + "    "
+    actions = (
+        f'{i3}<button hx-get="{safe_view}?editing=true" hx-target="closest article" hx-swap="outerHTML">Edit</button>'
+    )
+    if extra_actions:
+        actions += "\n" + extra_actions
+    return (
+        f'\n{indent}<article class="prompt-row">\n'
+        f'{i2}<div class="file-row-header">\n'
+        f'{i3}<span class="name">{safe_name}</span>\n'
+        f'{i3}<small class="muted">{safe_meta}</small>\n'
+        f"{i2}</div>\n"
+        f'{i2}<textarea readonly rows="4">{safe_content}</textarea>\n'
+        f'{i2}<div class="actions">\n'
+        f"{actions}\n"
+        f"{i2}</div>\n"
+        f"{indent}</article>\n{indent}"
+    )
+
+
+def _render_base(title: str, body: str, right: str = "") -> str:
     """Render base HTML with class-based Pico CSS v2 + sidebar shell.
 
-    Page-specific layout/customizations live in static/app.css; interaction JS
-    in static/app.js (linked here, not inlined)."""
+    ``right`` is an optional right-rail (same width as the left sidebar) — the
+    chat page passes its sub-agent control tree here. Page-specific
+    layout/customizations live in static/app.css; interaction JS in
+    static/app.js (linked here, not inlined)."""
+    right_aside = f'<aside class="sidebar right-sidebar">{right}</aside>' if right else ""
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -102,6 +174,7 @@ def _render_base(title: str, body: str) -> str:
     <main class="container-fluid">
       {body}
     </main>
+    {right_aside}
   </div>
   <script src="/static/app.js"></script>
 </body>

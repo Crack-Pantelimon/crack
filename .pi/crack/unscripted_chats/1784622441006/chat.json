@@ -1,0 +1,31 @@
+{
+  "phase": "idle",
+  "exchanges": [
+    {
+      "user": "just write ok and exit",
+      "turns": [
+        {
+          "kind": "user_prompt",
+          "compiled": "just write ok and exit",
+          "hop": 1,
+          "at": 1784622462.3068497,
+          "label": "chat",
+          "template": "",
+          "original": "just write ok and exit"
+        },
+        {
+          "hop": 1,
+          "text": "ok",
+          "thinking": "",
+          "tool_blocks": [],
+          "elapsed": 4.214,
+          "at": 1784622467.72766
+        }
+      ],
+      "source": "human"
+    }
+  ],
+  "pending": [],
+  "child_inbox": [],
+  "stop_requested": false
+}

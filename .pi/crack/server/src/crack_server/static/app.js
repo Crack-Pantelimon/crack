@@ -66,7 +66,9 @@
     root.querySelectorAll('details[id], .stage-msg details, details.stage-msg').forEach(function (d) {
       const key = d.id || (d.closest('[id]') && d.closest('[id]').id + ':' +
         Array.prototype.indexOf.call(d.parentNode.children, d));
-      if (key && openDetails[key]) d.open = true;
+      // Apply the exact remembered state so a user can collapse a still-running
+      // sub-agent card without the 2s self-poll re-expanding it.
+      if (key && key in openDetails) d.open = openDetails[key];
     });
   }
 
@@ -182,6 +184,12 @@
     if (content) {
       const slug = content.getAttribute('data-stage-slug');
       if (slug) applyStatusMeta(slug);
+    }
+
+    // Self-polling sub-agent regions swap their own outerHTML every 2s; restore
+    // any user collapse/expand state on the freshly swapped-in details.
+    if (evt.target.querySelector?.('details') || evt.target.matches?.('details')) {
+      restoreDetails(evt.target);
     }
   }
 

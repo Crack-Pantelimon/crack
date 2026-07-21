@@ -1,0 +1,5 @@
+{"type":"session","version":3,"id":"unscripted-1784622441006","timestamp":"2026-07-21T08:27:42.780Z","cwd":"/workspace"}
+{"type":"model_change","id":"7026c4dc","parentId":null,"timestamp":"2026-07-21T08:27:43.414Z","provider":"nvidia","modelId":"minimaxai/minimax-m3"}
+{"type":"thinking_level_change","id":"6fcf1e8d","parentId":"7026c4dc","timestamp":"2026-07-21T08:27:43.414Z","thinkingLevel":"high"}
+{"type":"message","id":"113bf8d7","parentId":"6fcf1e8d","timestamp":"2026-07-21T08:27:43.431Z","message":{"role":"user","content":[{"type":"text","text":"just write ok and exit"}],"timestamp":1784622463430}}
+{"type":"message","id":"dcc341ee","parentId":"113bf8d7","timestamp":"2026-07-21T08:27:47.630Z","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"api":"openai-completions","provider":"nvidia","model":"minimaxai/minimax-m3","usage":{"input":5453,"output":2,"cacheRead":128,"cacheWrite":0,"reasoning":0,"totalTokens":5583,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1784622463454,"responseId":"chatcmpl-63be27c6-e30d-466b-ad77-b03edf77cbef"}}

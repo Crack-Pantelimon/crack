@@ -1,5 +1,5 @@
 {
-  "fetched_at": 1784560250.191074,
+  "fetched_at": 1784621196.5019834,
   "models": [
     "cursor/auto",
     "cursor/claude-fable-5@1m",
@@ -257,5 +257,4359 @@
     "nvidia/stepfun-ai/step-3.5-flash",
     "nvidia/stepfun-ai/step-3.7-flash",
     "nvidia/z-ai/glm-5.2"
-  ]
+  ],
+  "info": {
+    "cursor/auto": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "auto",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/claude-fable-5@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-fable-5@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-fable-5@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-fable-5@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-haiku-4-5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-haiku-4-5",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-5",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-6@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-6@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-6@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-6@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-7@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-7@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-7@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-7@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-7@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-7@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-7@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-7@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-7@300k:fast": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-7@300k:fast",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-7@300k:slow": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-7@300k:slow",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-8@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-8@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-8@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-8@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-8@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-8@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-8@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-8@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-8@300k:fast": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-8@300k:fast",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-opus-4-8@300k:slow": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-opus-4-8@300k:slow",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-sonnet-4-5@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-sonnet-4-5@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-sonnet-4-6@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-sonnet-4-6@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-sonnet-4-6@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-sonnet-4-6@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-sonnet-4@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-sonnet-4@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-sonnet-5@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-sonnet-5@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/claude-sonnet-5@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "claude-sonnet-5@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.1-max": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.1-max",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.1-max:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.1-max:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.1-max:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.1-max:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.2": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.2",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.2:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.2:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.2:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.2:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.3": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.3",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.3:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.3:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-5.3:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-5.3:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-latest": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-latest",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-latest:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-latest:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-latest:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-latest:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-mini": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-mini",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/codex-mini-latest": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "codex-mini-latest",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/composer": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2-5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2-5",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2-5:fast": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2-5:fast",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2-5:slow": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2-5:slow",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2:fast": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2:fast",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2:slow": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2:slow",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2.5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2.5",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2.5:fast": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2.5:fast",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-2.5:slow": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-2.5:slow",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-latest": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-latest",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-latest:fast": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-latest:fast",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer-latest:slow": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer-latest:slow",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer:fast": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer:fast",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/composer:slow": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "composer:slow",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/default": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "default",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/fable-5@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "fable-5@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/fable-5@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "fable-5@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/fable@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "fable@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/fable@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "fable@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gemini": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gemini-2.5-flash": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini-2.5-flash",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gemini-3-flash": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini-3-flash",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gemini-3.1-pro": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini-3.1-pro",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gemini-3.5-flash": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini-3.5-flash",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gemini-flash-latest": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini-flash-latest",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gemini-latest": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini-latest",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gemini-pro": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini-pro",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gemini-pro-latest": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gemini-pro-latest",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/glm-5.2": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "glm-5.2",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-5@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-5@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-5@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-5@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-5@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-5@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-5@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-5@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-5@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-5@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-5@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-5@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-luna@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-luna@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-luna@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-luna@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-luna@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-luna@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-luna@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-luna@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-luna@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-luna@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-luna@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-luna@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-sol@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-sol@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-sol@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-sol@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-sol@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-sol@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-sol@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-sol@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-sol@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-sol@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-sol@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-sol@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-terra@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-terra@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-terra@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-terra@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-terra@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-terra@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-terra@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-terra@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-terra@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-terra@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-6-terra@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-6-terra@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5-mini": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5-mini",
+        "272K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.1": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.1",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.1-codex-max": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.1-codex-max",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.1-codex-max:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.1-codex-max:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.1-codex-max:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.1-codex-max:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.1-codex-mini": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.1-codex-mini",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.2": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.2",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.2-codex": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.2-codex",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.2-codex:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.2-codex:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.2-codex:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.2-codex:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.2:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.2:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.2:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.2:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.3-codex": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.3-codex",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.3-codex:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.3-codex:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.3-codex:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.3-codex:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.4-mini": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.4-mini",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.4-nano": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.4-nano",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.4@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.4@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.4@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.4@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.4@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.4@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.4@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.4@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.4@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.4@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.4@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.4@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.5@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.5@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.5@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.5@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.5@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.5@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.5@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.5@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.5@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.5@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.5@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.5@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-luna@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-luna@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-luna@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-luna@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-luna@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-luna@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-luna@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-luna@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-luna@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-luna@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-luna@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-luna@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-sol@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-sol@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-sol@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-sol@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-sol@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-sol@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-sol@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-sol@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-sol@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-sol@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-sol@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-sol@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-terra@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-terra@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-terra@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-terra@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-terra@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-terra@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-terra@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-terra@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-terra@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-terra@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6-terra@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6-terra@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-5.6@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-5.6@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-latest@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-latest@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-latest@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-latest@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-latest@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-latest@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-latest@272k": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-latest@272k",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-latest@272k:fast": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-latest@272k:fast",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-latest@272k:slow": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-latest@272k:slow",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-mini-latest": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-mini-latest",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-nano": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-nano",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/gpt-nano-latest": {
+      "provider": "cursor",
+      "context": "272K",
+      "context_tokens": 272000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "gpt-nano-latest",
+        "272K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/grok-4.5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "grok-4.5",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/grok-4.5:fast": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "grok-4.5:fast",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/grok-4.5:slow": {
+      "provider": "cursor",
+      "context": "256K",
+      "context_tokens": 256000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "grok-4.5:slow",
+        "256K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/haiku": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "haiku",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/haiku-4-5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "haiku-4-5",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/haiku-4.5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "haiku-4.5",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/haiku-latest": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "haiku-latest",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/kimi": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "kimi",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/kimi-k2.7-code": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "kimi-k2.7-code",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/kimi-latest": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "kimi-latest",
+        "200K",
+        "16.4K",
+        "no",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-5",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-6@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-6@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-6@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-6@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-7@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-7@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-7@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-7@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-7@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-7@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-7@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-7@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-7@300k:fast": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-7@300k:fast",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-7@300k:slow": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-7@300k:slow",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-8@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-8@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-8@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-8@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-8@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-8@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-8@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-8@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-8@300k:fast": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-8@300k:fast",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4-8@300k:slow": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4-8@300k:slow",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.5": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.5",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.6@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.6@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.6@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.6@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.7@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.7@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.7@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.7@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.7@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.7@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.7@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.7@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.7@300k:fast": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.7@300k:fast",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.7@300k:slow": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.7@300k:slow",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.8@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.8@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.8@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.8@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.8@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.8@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.8@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.8@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.8@300k:fast": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.8@300k:fast",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-4.8@300k:slow": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-4.8@300k:slow",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-latest@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-latest@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-latest@1m:fast": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-latest@1m:fast",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-latest@1m:slow": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-latest@1m:slow",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-latest@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-latest@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-latest@300k:fast": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-latest@300k:fast",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/opus-latest@300k:slow": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "opus-latest@300k:slow",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-4-5@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-4-5@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-4-6@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-4-6@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-4-6@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-4-6@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-4.5@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-4.5@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-4.6@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-4.6@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-4.6@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-4.6@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-4@200k": {
+      "provider": "cursor",
+      "context": "200K",
+      "context_tokens": 200000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-4@200k",
+        "200K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-5@1m": {
+      "provider": "cursor",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-5@1m",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "cursor/sonnet-5@300k": {
+      "provider": "cursor",
+      "context": "300K",
+      "context_tokens": 300000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "cursor",
+        "sonnet-5@300k",
+        "300K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-2.0-flash": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "8.2K",
+      "max_out_tokens": 8200,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-2.0-flash",
+        "1.0M",
+        "8.2K",
+        "no",
+        "yes"
+      ]
+    },
+    "google/gemini-2.0-flash-lite": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "8.2K",
+      "max_out_tokens": 8200,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-2.0-flash-lite",
+        "1.0M",
+        "8.2K",
+        "no",
+        "yes"
+      ]
+    },
+    "google/gemini-2.5-flash": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-2.5-flash",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-2.5-flash-lite": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-2.5-flash-lite",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-2.5-pro": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-2.5-pro",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-3-flash-preview": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-3-flash-preview",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-3-pro-preview": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-3-pro-preview",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-3.1-flash-lite": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-3.1-flash-lite",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-3.1-flash-lite-preview": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-3.1-flash-lite-preview",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-3.1-pro-preview": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-3.1-pro-preview",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-3.1-pro-preview-customtools": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-3.1-pro-preview-customtools",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-3.5-flash": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-3.5-flash",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-flash-latest": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-flash-latest",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemini-flash-lite-latest": {
+      "provider": "google",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemini-flash-lite-latest",
+        "1.0M",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemma-4-26b-a4b-it": {
+      "provider": "google",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "32.8K",
+      "max_out_tokens": 32800,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemma-4-26b-a4b-it",
+        "262.1K",
+        "32.8K",
+        "yes",
+        "yes"
+      ]
+    },
+    "google/gemma-4-31b-it": {
+      "provider": "google",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "32.8K",
+      "max_out_tokens": 32800,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "google",
+        "gemma-4-31b-it",
+        "262.1K",
+        "32.8K",
+        "yes",
+        "yes"
+      ]
+    },
+    "moonshotai/kimi-k2-0711-preview": {
+      "provider": "moonshotai",
+      "context": "131.1K",
+      "context_tokens": 131100,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": false,
+      "images": false,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2-0711-preview",
+        "131.1K",
+        "16.4K",
+        "no",
+        "no"
+      ]
+    },
+    "moonshotai/kimi-k2-0905-preview": {
+      "provider": "moonshotai",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": false,
+      "images": false,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2-0905-preview",
+        "262.1K",
+        "262.1K",
+        "no",
+        "no"
+      ]
+    },
+    "moonshotai/kimi-k2-thinking": {
+      "provider": "moonshotai",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2-thinking",
+        "262.1K",
+        "262.1K",
+        "yes",
+        "no"
+      ]
+    },
+    "moonshotai/kimi-k2-thinking-turbo": {
+      "provider": "moonshotai",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2-thinking-turbo",
+        "262.1K",
+        "262.1K",
+        "yes",
+        "no"
+      ]
+    },
+    "moonshotai/kimi-k2-turbo-preview": {
+      "provider": "moonshotai",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": false,
+      "images": false,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2-turbo-preview",
+        "262.1K",
+        "262.1K",
+        "no",
+        "no"
+      ]
+    },
+    "moonshotai/kimi-k2.5": {
+      "provider": "moonshotai",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2.5",
+        "262.1K",
+        "262.1K",
+        "yes",
+        "yes"
+      ]
+    },
+    "moonshotai/kimi-k2.6": {
+      "provider": "moonshotai",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2.6",
+        "262.1K",
+        "262.1K",
+        "yes",
+        "yes"
+      ]
+    },
+    "moonshotai/kimi-k2.7-code": {
+      "provider": "moonshotai",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2.7-code",
+        "262.1K",
+        "262.1K",
+        "yes",
+        "yes"
+      ]
+    },
+    "moonshotai/kimi-k2.7-code-highspeed": {
+      "provider": "moonshotai",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k2.7-code-highspeed",
+        "262.1K",
+        "262.1K",
+        "yes",
+        "yes"
+      ]
+    },
+    "moonshotai/kimi-k3": {
+      "provider": "moonshotai",
+      "context": "1.0M",
+      "context_tokens": 1000000,
+      "max_out": "131.1K",
+      "max_out_tokens": 131100,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "moonshotai",
+        "kimi-k3",
+        "1.0M",
+        "131.1K",
+        "yes",
+        "yes"
+      ]
+    },
+    "nvidia/meta/llama-3.1-70b-instruct": {
+      "provider": "nvidia",
+      "context": "128K",
+      "context_tokens": 128000,
+      "max_out": "4.1K",
+      "max_out_tokens": 4100,
+      "thinking": false,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "meta/llama-3.1-70b-instruct",
+        "128K",
+        "4.1K",
+        "no",
+        "no"
+      ]
+    },
+    "nvidia/meta/llama-3.1-8b-instruct": {
+      "provider": "nvidia",
+      "context": "16K",
+      "context_tokens": 16000,
+      "max_out": "4.1K",
+      "max_out_tokens": 4100,
+      "thinking": false,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "meta/llama-3.1-8b-instruct",
+        "16K",
+        "4.1K",
+        "no",
+        "no"
+      ]
+    },
+    "nvidia/meta/llama-3.2-11b-vision-instruct": {
+      "provider": "nvidia",
+      "context": "128K",
+      "context_tokens": 128000,
+      "max_out": "4.1K",
+      "max_out_tokens": 4100,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "meta/llama-3.2-11b-vision-instruct",
+        "128K",
+        "4.1K",
+        "no",
+        "yes"
+      ]
+    },
+    "nvidia/meta/llama-3.2-90b-vision-instruct": {
+      "provider": "nvidia",
+      "context": "128K",
+      "context_tokens": 128000,
+      "max_out": "8.2K",
+      "max_out_tokens": 8200,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "meta/llama-3.2-90b-vision-instruct",
+        "128K",
+        "8.2K",
+        "no",
+        "yes"
+      ]
+    },
+    "nvidia/meta/llama-3.3-70b-instruct": {
+      "provider": "nvidia",
+      "context": "128K",
+      "context_tokens": 128000,
+      "max_out": "4.1K",
+      "max_out_tokens": 4100,
+      "thinking": false,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "meta/llama-3.3-70b-instruct",
+        "128K",
+        "4.1K",
+        "no",
+        "no"
+      ]
+    },
+    "nvidia/minimaxai/minimax-m3": {
+      "provider": "nvidia",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "minimaxai/minimax-m3",
+        "1M",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "nvidia/mistralai/mistral-large-3-675b-instruct-2512": {
+      "provider": "nvidia",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": false,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "mistralai/mistral-large-3-675b-instruct-2512",
+        "262.1K",
+        "262.1K",
+        "no",
+        "yes"
+      ]
+    },
+    "nvidia/mistralai/mistral-small-4-119b-2603": {
+      "provider": "nvidia",
+      "context": "128K",
+      "context_tokens": 128000,
+      "max_out": "8.2K",
+      "max_out_tokens": 8200,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "mistralai/mistral-small-4-119b-2603",
+        "128K",
+        "8.2K",
+        "yes",
+        "yes"
+      ]
+    },
+    "nvidia/moonshotai/kimi-k2.6": {
+      "provider": "nvidia",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "moonshotai/kimi-k2.6",
+        "262.1K",
+        "262.1K",
+        "yes",
+        "yes"
+      ]
+    },
+    "nvidia/nemotron-3-nano-30b-a3b": {
+      "provider": "nvidia",
+      "context": "131.1K",
+      "context_tokens": 131100,
+      "max_out": "131.1K",
+      "max_out_tokens": 131100,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "nvidia/nemotron-3-nano-30b-a3b",
+        "131.1K",
+        "131.1K",
+        "yes",
+        "no"
+      ]
+    },
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": {
+      "provider": "nvidia",
+      "context": "256K",
+      "context_tokens": 256000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "256K",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "nvidia/nemotron-3-super-120b-a12b": {
+      "provider": "nvidia",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "262.1K",
+      "max_out_tokens": 262100,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "262.1K",
+        "262.1K",
+        "yes",
+        "no"
+      ]
+    },
+    "nvidia/nemotron-3-ultra-550b-a55b": {
+      "provider": "nvidia",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "1M",
+        "65.5K",
+        "yes",
+        "no"
+      ]
+    },
+    "nvidia/nvidia-nemotron-nano-9b-v2": {
+      "provider": "nvidia",
+      "context": "131.1K",
+      "context_tokens": 131100,
+      "max_out": "131.1K",
+      "max_out_tokens": 131100,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "nvidia/nvidia-nemotron-nano-9b-v2",
+        "131.1K",
+        "131.1K",
+        "yes",
+        "no"
+      ]
+    },
+    "nvidia/openai/gpt-oss-120b": {
+      "provider": "nvidia",
+      "context": "128K",
+      "context_tokens": 128000,
+      "max_out": "8.2K",
+      "max_out_tokens": 8200,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "openai/gpt-oss-120b",
+        "128K",
+        "8.2K",
+        "yes",
+        "no"
+      ]
+    },
+    "nvidia/openai/gpt-oss-20b": {
+      "provider": "nvidia",
+      "context": "131.1K",
+      "context_tokens": 131100,
+      "max_out": "32.8K",
+      "max_out_tokens": 32800,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "openai/gpt-oss-20b",
+        "131.1K",
+        "32.8K",
+        "yes",
+        "no"
+      ]
+    },
+    "nvidia/qwen/qwen3.5-122b-a10b": {
+      "provider": "nvidia",
+      "context": "262.1K",
+      "context_tokens": 262100,
+      "max_out": "65.5K",
+      "max_out_tokens": 65500,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "qwen/qwen3.5-122b-a10b",
+        "262.1K",
+        "65.5K",
+        "yes",
+        "yes"
+      ]
+    },
+    "nvidia/stepfun-ai/step-3.5-flash": {
+      "provider": "nvidia",
+      "context": "256K",
+      "context_tokens": 256000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "stepfun-ai/step-3.5-flash",
+        "256K",
+        "16.4K",
+        "yes",
+        "no"
+      ]
+    },
+    "nvidia/stepfun-ai/step-3.7-flash": {
+      "provider": "nvidia",
+      "context": "256K",
+      "context_tokens": 256000,
+      "max_out": "16.4K",
+      "max_out_tokens": 16400,
+      "thinking": true,
+      "images": true,
+      "raw_columns": [
+        "nvidia",
+        "stepfun-ai/step-3.7-flash",
+        "256K",
+        "16.4K",
+        "yes",
+        "yes"
+      ]
+    },
+    "nvidia/z-ai/glm-5.2": {
+      "provider": "nvidia",
+      "context": "1M",
+      "context_tokens": 1000000,
+      "max_out": "131.1K",
+      "max_out_tokens": 131100,
+      "thinking": true,
+      "images": false,
+      "raw_columns": [
+        "nvidia",
+        "z-ai/glm-5.2",
+        "1M",
+        "131.1K",
+        "yes",
+        "no"
+      ]
+    }
+  }
 }

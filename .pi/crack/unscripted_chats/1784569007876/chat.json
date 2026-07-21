@@ -506,5 +506,5 @@
   ],
   "pending": [],
   "child_inbox": [],
-  "stop_requested": false
+  "stop_requested": true
 }

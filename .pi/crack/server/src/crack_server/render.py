@@ -330,6 +330,20 @@ def render_exchanges(
         user_text = exchange.get("user", "")
         turns = exchange.get("turns", [])
         media = exchange.get("media", [])
+        # An ask_user answer exchange shows the read-only Q&A form the user
+        # submitted, not a plain user-message bubble.
+        qa = exchange.get("qa")
+        if qa:
+            from crack_server import chats
+
+            msgs.append(chats.render_answered_question(qa))
+            agent_turns = [t for t in turns if t.get("kind") != "user_prompt"]
+            errors = exchange.get("errors", [])
+            if errors:
+                agent_turns = _merged_trajectory(agent_turns, errors)
+            if agent_turns:
+                msgs.extend(render_agent_turns(agent_turns))
+            continue
         prompt_entry = next((t for t in turns if t.get("kind") == "user_prompt"), None)
         if prompt_entry is not None:
             # Prefer recorded compiled prompt; keep original from the exchange.

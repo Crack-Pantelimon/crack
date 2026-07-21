@@ -57,7 +57,25 @@ def chat_page(chat_id: str) -> HTMLResponse:
     chats.check_chat_id(chat_id)
     info = paths.chat_info_state(chat_id).read()
     title = info.get("title") or f"Chat {chat_id}"
-    return HTMLResponse(_render_base(f"Crack Chat: {_esc(title)}", chats.render_chat_page_body(chat_id)))
+    return HTMLResponse(_render_base(
+        f"Crack Chat: {_esc(title)}",
+        chats.render_chat_page_body(chat_id),
+        right=chats.render_sidebar_tree(chat_id),
+    ))
+
+
+@router.get("/chats/{chat_id}/run/{run_id}", response_class=HTMLResponse)
+def chat_run_region(chat_id: str, run_id: str) -> HTMLResponse:
+    """Self-polling inline sub-agent card fragment (embedded under a spawn tool)."""
+    chats.check_chat_id(chat_id)
+    return HTMLResponse(chats.render_inline_run_region(chat_id, run_id))
+
+
+@router.get("/chats/{chat_id}/sidebar-tree", response_class=HTMLResponse)
+def chat_sidebar_tree(chat_id: str) -> HTMLResponse:
+    """Right-rail sub-agent control-tree fragment for the chat page."""
+    chats.check_chat_id(chat_id)
+    return HTMLResponse(chats.render_sidebar_tree(chat_id))
 
 
 @router.get("/chats/{chat_id}/status", response_class=HTMLResponse)
@@ -68,13 +86,6 @@ def chat_status(
     """Status fragment (full or ``?after=`` delta) for the chat long-poll watch."""
     chats.check_chat_id(chat_id)
     return HTMLResponse(chats.render_chat_content(chat_id, after=after))
-
-
-@router.get("/chats/{chat_id}/run-tree", response_class=HTMLResponse)
-def chat_run_tree(chat_id: str) -> HTMLResponse:
-    """Sub-agent run-tree fragment for the chat page."""
-    chats.check_chat_id(chat_id)
-    return HTMLResponse(chats.render_run_tree(chat_id))
 
 
 @router.get("/chats/{chat_id}/wait")
@@ -102,6 +113,12 @@ def api_chat_message(
 ) -> HTMLResponse:
     """Append a user message, enqueue the agent, return the updated chat fragment."""
     return chats.post_message(chat_id, msg, model or None)
+
+
+@router.post("/api/chats/{chat_id}/ask_answer", response_class=HTMLResponse)
+def api_chat_ask_answer(chat_id: str, answer: str = Form(...)) -> HTMLResponse:
+    """Answer a chat ask_user question; records the Q&A and resumes the agent."""
+    return chats.answer_chat_question(chat_id, answer)
 
 
 @router.post("/api/chats/{chat_id}/model", response_class=HTMLResponse)

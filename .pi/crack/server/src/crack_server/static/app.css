@@ -844,3 +844,169 @@ main.container-fluid {
 .subagent-card .subagent-card {
   margin-left: 0.75rem;
 }
+
+/* Collapsible sub-agent trajectory (open while running, collapsed when done). */
+.subagent-details > summary.subagent-card-header {
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 0;
+}
+.subagent-details > summary.subagent-card-header::-webkit-details-marker {
+  display: none;
+}
+.subagent-details > summary.subagent-card-header::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.15rem;
+  font-size: 0.7rem;
+  color: var(--pico-muted-color);
+  transition: transform 0.15s;
+}
+.subagent-details[open] > summary.subagent-card-header::before {
+  transform: rotate(90deg);
+}
+.subagent-body {
+  margin-top: 0.4rem;
+}
+.subagent-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.subagent-actions:empty {
+  display: none;
+}
+.run-model {
+  font-size: 0.72rem;
+  color: var(--pico-muted-color);
+}
+.run-link {
+  font-size: 0.72rem;
+  text-decoration: none;
+  margin-left: auto;
+  color: var(--pico-muted-color);
+}
+.subagent-run-region {
+  margin-top: 0.4rem;
+}
+
+/* ---- Context-window status line (pi-CLI style, pinned to frame bottom) ---- */
+.ctx-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0 0.25rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--pico-muted-border-color);
+  font-size: 0.75rem;
+  color: var(--pico-muted-color);
+}
+.ctx-line code {
+  font-size: 0.72rem;
+}
+.ctx-meter {
+  position: relative;
+  flex: 1;
+  min-width: 80px;
+  max-width: 220px;
+  height: 0.5rem;
+  border-radius: 0.25rem;
+  background: var(--pico-muted-border-color);
+  overflow: hidden;
+}
+.ctx-meter-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #2a8f4a, #4a90e2);
+  transition: width 0.4s ease;
+}
+.ctx-label {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Read-only answered-question mirror (chat ask_user) ---- */
+.answered-question {
+  border-left: 3px solid #b89b2e;
+  background: #faf8f3;
+  border-radius: 4px;
+  padding: 0.4rem 0.75rem;
+}
+.answered-question .aq-q {
+  margin: 0 0 0.35rem;
+}
+.answered-question .aq-form textarea,
+.answered-question .aq-form .choice-label {
+  opacity: 0.85;
+}
+.answered-question .aq-form textarea {
+  margin: 0;
+}
+.chat-ask {
+  border: 1px solid #b89b2e;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+/* ---- Right-rail sub-agent control tree ---- */
+.right-sidebar {
+  border-right: none;
+  border-left: 1px solid var(--pico-muted-border-color);
+}
+.subagent-sidebar-tree h6 {
+  margin: 0.25rem 0 0.5rem;
+  color: var(--pico-muted-color);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.subagent-sidebar-tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--pico-muted-border-color);
+}
+.subagent-sidebar-tree > ul {
+  padding-left: 0;
+  border-left: none;
+}
+.tree-root {
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+.tree-root.phase-running { border-color: #4a90e2; }
+.tree-root.phase-error { border-color: #c44; }
+.tree-node {
+  margin: 0.3rem 0;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.tree-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.tree-phase {
+  font-size: 0.7rem;
+}
+.tree-meta {
+  padding-left: 1rem;
+  font-size: 0.7rem;
+}
+.tree-stop.compact-btn {
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+}
