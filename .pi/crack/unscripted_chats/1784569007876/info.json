@@ -1,6 +1,0 @@
-{
-  "id": "1784569007876",
-  "title": "Create JSON articles from Romanian news extracts.",
-  "model": "nvidia/nemotron-3-ultra-550b-a55b",
-  "created_at": 1784569007.8770752
-}
