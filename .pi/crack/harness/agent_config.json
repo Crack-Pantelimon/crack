@@ -1,3 +1,4 @@
 {
-  "nonplan": "nvidia/moonshotai/kimi-k2.6"
+  "nonplan": "nvidia/nemotron-3-ultra-550b-a55b",
+  "plan_planner": "cursor-agent/gpt-5.6-terra-medium"
 }

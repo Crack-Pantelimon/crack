@@ -430,11 +430,7 @@ mod tests {
             self.broadcast_log.lock().unwrap().push(message);
             Ok(())
         }
-        async fn direct_message(
-            &self,
-            _to: NodeIdentity,
-            _message: Vec<u8>,
-        ) -> anyhow::Result<()> {
+        async fn direct_message(&self, _to: NodeIdentity, _message: Vec<u8>) -> anyhow::Result<()> {
             Ok(())
         }
         async fn next_message(&self) -> anyhow::Result<Option<Arc<Vec<u8>>>> {
@@ -489,8 +485,7 @@ mod tests {
         // ...and the bytes on the wire are a valid signed ChatMessage.
         let log = raw.broadcast_log.lock().unwrap();
         assert_eq!(log.len(), 1);
-        let wire =
-            SignedMessage::verify_and_decode::<ChatMessage<TestRoomType>>(&log[0]).unwrap();
+        let wire = SignedMessage::verify_and_decode::<ChatMessage<TestRoomType>>(&log[0]).unwrap();
         assert!(matches!(wire.message, ChatMessage::Message(ref m) if m == "hello"));
         drop(log);
         // The room is only alive because `controller` is still owned here:

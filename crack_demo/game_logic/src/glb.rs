@@ -16,9 +16,9 @@ pub struct FetchGlbResponse {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test as test;
-    use super::*;
 
     #[test]
     fn smoke_fetch_glb_response_serde_round_trip() {

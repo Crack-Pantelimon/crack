@@ -53,9 +53,9 @@ impl SleepManagerInner {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test as test;
-    use super::*;
 
     #[test]
     fn smoke_construct_and_wake() {
@@ -68,7 +68,10 @@ mod tests {
         let before = crate::timestamp_micros();
         sm.sleep(Duration::from_millis(20)).await;
         let elapsed_ms = (crate::timestamp_micros() - before) / 1000;
-        assert!(elapsed_ms >= 15, "sleep(20ms) returned after {elapsed_ms}ms");
+        assert!(
+            elapsed_ms >= 15,
+            "sleep(20ms) returned after {elapsed_ms}ms"
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]

@@ -36,9 +36,9 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test as test;
-    use super::*;
 
     #[test]
     fn smoke_timestamp_micros() {

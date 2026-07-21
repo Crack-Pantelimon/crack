@@ -50,9 +50,9 @@ pub async fn sleep_ms(dt_ms: u32) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test as test;
-    use super::*;
 
     #[test]
     fn smoke_get_timestamp_now_ms() {

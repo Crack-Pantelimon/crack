@@ -1,0 +1,12 @@
+{
+  "readseek": {
+    "replacedTools": [ "read", "edit", "write",  "grep"],
+    "imageMode": "off",
+    "syntaxValidation": "warn",
+    "timeoutMs": 120000,
+    "grep": {
+      "maxLines": 300,
+      "maxBytes": 8000
+    }
+  }
+}

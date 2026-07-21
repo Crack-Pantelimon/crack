@@ -1,0 +1,14 @@
+{
+  "pid": 4482,
+  "started_at": 1784650151.8526785,
+  "output_path": "/workspace/.pi/crack/unscripted_chats/1784649133356/agent.hop.jsonl",
+  "offset": 0,
+  "session_id": "unscripted-1784649133356",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "tools": null,
+  "message": "Your spawned sub-agent(s) have reported back:\n\nSub-agent run 1784649408266_d79f5196 (coder) finished with status: stopped.\n\nLast assistant message:\n(no assistant message)\n\nFull report path: /workspace/.pi/crack/unscripted_chats/1784649133356/sub_agent_runs/1784649408266_d79f5196/report.md",
+  "hop": 1,
+  "timeout": 3600,
+  "status": "crashed",
+  "detached_pids": []
+}

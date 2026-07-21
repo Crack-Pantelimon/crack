@@ -8,11 +8,18 @@ use crate::{
     crack_worker::WorkerMessage,
 };
 
+/// Immutable lookup tables that pair API metadata with executable methods.
 pub struct ApiImplMapping {
     impl_fns: BTreeMap<String, ApiMethodImpl>,
     info_fns: BTreeMap<String, ApiMethodInfo>,
 }
 
+/// Builds a validated dispatch mapping from the supplied API group implementations.
+///
+/// `groups` provides the declarations and executable method wrappers to merge.
+/// Returns a shared mapping when every declared method has exactly one matching
+/// implementation. Panics when names are duplicated or declarations and
+/// implementations do not match.
 pub fn make_api_mapping(groups: Vec<Arc<dyn ApiGroupImpls>>) -> Arc<ApiImplMapping> {
     for item in &groups {
         tracing::info!("Loading API GROUP: {}", item.grp_name());
@@ -84,6 +91,11 @@ pub fn make_api_mapping(groups: Vec<Arc<dyn ApiGroupImpls>>) -> Arc<ApiImplMappi
 //         .clone()
 // }
 
+/// Dispatches one request through `mapping` and returns its protocol response.
+///
+/// `_request` supplies the method name, correlation ID, and serialized argument;
+/// `mapping` selects the matching registered implementation. Returns the
+/// implementation response, or an error-typed response if the method is absent.
 pub async fn compute_response_message(
     _request: WorkerMessage,
     mapping: Arc<ApiImplMapping>,

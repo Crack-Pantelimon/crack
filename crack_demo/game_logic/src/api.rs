@@ -21,9 +21,9 @@ declare_api_group2! { GameLogicApiGroup, [
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test as test;
-    use super::*;
 
     #[test]
     fn smoke_fetch_args_serde_round_trip() {

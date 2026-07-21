@@ -46,9 +46,9 @@ pub struct OsmDataResult {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test as test;
-    use super::*;
 
     #[test]
     fn smoke_osm_data_result_serde_round_trip() {
@@ -59,7 +59,10 @@ mod tests {
             osm_type: "way".to_string(),
             name: Some("Main St".to_string()),
             tags,
-            geometry: FeatureGeometry::LineString(vec![Vec3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 1.0)]),
+            geometry: FeatureGeometry::LineString(vec![
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 1.0),
+            ]),
             center: Vec3::new(0.5, 0.0, 0.5),
             bbox_min: Vec3::new(0.0, 0.0, 0.0),
             bbox_max: Vec3::new(1.0, 0.0, 1.0),

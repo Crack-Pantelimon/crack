@@ -1,4 +1,8 @@
+//! Built-in API declarations used to verify worker request dispatch.
+//! 
+
 use _crack_utils::sleep_ms;
+
 
 use crate::declare_api_group2;
 use crate::implement_api_group2;
@@ -17,6 +21,10 @@ implement_api_group2! {
     ]
 }
 
+/// Handles the built-in no-op worker ping request.
+///
+/// The unit argument carries no request data. Returns `Ok(())` after a brief
+/// asynchronous delay; this implementation currently has no error path.
 pub async fn worker_ping(_x: ()) -> anyhow::Result<()> {
     sleep_ms(1).await;
     Ok(())

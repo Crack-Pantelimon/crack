@@ -53,8 +53,11 @@ mod tests {
 
         let conn = rusqlite::Connection::open("file:crackhouse_smoke.db?vfs=relaxed-idb")
             .expect("open rusqlite connection over relaxed-idb VFS");
-        conn.execute("CREATE TABLE IF NOT EXISTS smoke (id INTEGER PRIMARY KEY)", [])
-            .expect("create table over relaxed-idb VFS");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS smoke (id INTEGER PRIMARY KEY)",
+            [],
+        )
+        .expect("create table over relaxed-idb VFS");
         conn.execute("INSERT INTO smoke (id) VALUES (1)", [])
             .expect("insert over relaxed-idb VFS");
         let count: i64 = conn

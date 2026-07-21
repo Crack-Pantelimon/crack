@@ -32,6 +32,8 @@ RUN pip install --no-cache-dir --break-system-packages blender-mcp==1.6.4
 COPY blender_mcp_addon.py /opt/blender_mcp_addon.py
 
 RUN pi install npm:pi-antigravity
+RUN pi install npm:pi-cursor-agent && pi uninstall npm:pi-cursor-sdk  
+RUN pi install npm:pi-readseek 
 
 VOLUME /root
 WORKDIR /workspace

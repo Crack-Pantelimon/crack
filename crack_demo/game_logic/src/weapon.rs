@@ -20,9 +20,9 @@ pub struct WeaponManifestResult {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test as test;
-    use super::*;
 
     #[test]
     fn smoke_weapon_manifest_serde_round_trip() {

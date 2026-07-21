@@ -2,13 +2,13 @@
   "pid": 1070,
   "started_at": 1784647979.0299213,
   "output_path": "/workspace/.pi/crack/unscripted_chats/1784647639776/agent.hop.jsonl",
-  "offset": 0,
+  "offset": 1436011,
   "session_id": "unscripted-1784647639776",
   "model": "nvidia/nemotron-3-ultra-550b-a55b",
   "tools": null,
   "message": "continue with the api_asscrack crate under rust_pkg",
   "hop": 1,
   "timeout": 3600,
-  "status": "running",
+  "status": "crashed",
   "detached_pids": []
 }

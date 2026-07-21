@@ -1,0 +1,14 @@
+{
+  "pid": 353,
+  "started_at": 1784649808.2837896,
+  "output_path": "/workspace/.pi/crack/unscripted_chats/1784649133356/sub_agent_runs/1784649408476_9a5b8d6f/agent.hop.jsonl",
+  "offset": 659248,
+  "session_id": "subagent-1784649408476_9a5b8d6f",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "tools": null,
+  "message": "Continue where you left off.",
+  "hop": 2,
+  "timeout": 3600,
+  "status": "crashed",
+  "detached_pids": []
+}

@@ -1,3 +1,8 @@
+//! Browser-side adapter that turns the JavaScript dedicated-worker bridge into a Rust [`WorkerLoaderFactory`].
+//!
+//! The JavaScript host supplies `init_workers2`, which this crate uses to initialize a worker,
+//! exchange typed messages, and expose request and response channels to Rust callers.
+
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 use api_asscrack::{
@@ -11,14 +16,32 @@ use wasm_bindgen_futures::JsFuture;
 
 #[wasm_bindgen]
 extern "C" {
+    /// Opaque JavaScript handle for the worker pair managed by the page host.
     pub type WorkerHandlesJs;
+
+    /// Initializes the JavaScript worker bridge and returns its message handle.
+    ///
+    /// The host must make this function available before a [`WebWorkerFactory`] loads a worker.
     pub fn init_workers2() -> WorkerHandlesJs;
+
+    /// Sends `message` to the worker represented by `this`.
+    ///
+    /// The message must use the bridge's `msg_id`, `msg_type`, and `msg_content` shape.
     #[wasm_bindgen(method)]
     pub fn send_message(this: &WorkerHandlesJs, message: &JsValue);
+
+    /// Registers `callback` as the JavaScript `onmessage` handler for `this`.
+    ///
+    /// The callback receives each response emitted by the worker bridge.
     #[wasm_bindgen(method)]
     pub fn set_onmessage(this: &WorkerHandlesJs, callback: JsValue);
 }
 
+/// Factory that initializes and connects to the page-hosted JavaScript worker bridge.
+///
+/// Calling [`WorkerLoaderFactory::load_worker`] creates the bridge and returns channels for
+/// submitting requests and receiving worker responses. It returns an error when the host bridge
+/// cannot be found, initialized, or pinged successfully.
 #[derive(Clone)]
 pub struct WebWorkerFactory {}
 
@@ -29,7 +52,8 @@ impl WorkerLoaderFactory for WebWorkerFactory {
     }
 }
 
-/// Creates a JS promise that resolves after the given number of milliseconds and awaits it
+/// Creates a JavaScript promise that resolves after `ms` milliseconds and awaits it.
+/// Returns an error if the promise is rejected.
 async fn sleep(ms: i32) -> Result<(), JsValue> {
     let window = web_sys::window().expect("no window?");
 
@@ -43,6 +67,9 @@ async fn sleep(ms: i32) -> Result<(), JsValue> {
 }
 
 #[allow(deprecated)]
+/// Waits for the page host to expose `init_workers2`, initializes the bridge, and
+/// installs a temporary message logger.
+/// Returns an error if the bridge function does not appear within ~3 seconds.
 async fn get_js_worker() -> anyhow::Result<WorkerHandlesJs> {
     let window = web_sys::window().context("no window?")?;
     use api_asscrack::_crack_utils::sleep_ms;
@@ -79,6 +106,9 @@ async fn get_js_worker() -> anyhow::Result<WorkerHandlesJs> {
     Ok(js_handles)
 }
 
+/// Initializes the JavaScript worker bridge, performs a ping-pong handshake,
+/// and returns channels for sending requests and receiving responses.
+/// Returns an error if the bridge cannot be found, initialized, or pinged.
 async fn make_worker() -> anyhow::Result<WorkerPipe> {
     let js_handles = get_js_worker().await?;
 

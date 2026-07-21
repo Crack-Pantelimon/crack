@@ -1,3 +1,9 @@
+//! Threaded worker backend for the async worker RPC framework.
+//!
+//! This crate provides a Tokio-based [`WorkerLoaderFactory`] implementation
+//! that runs the API message loop on a background Tokio task. It is the
+//! default native backend when the application is not compiled for WebAssembly.
+
 pub extern crate dioxus_logger;
 pub extern crate tokio;
 pub extern crate tracing;
@@ -10,12 +16,34 @@ use api_asscrack::crack_worker::{
 
 // Called when the wasm module is instantiated
 
+/// Factory that produces a [`WorkerPipe`] backed by a Tokio task.
+///
+/// The factory stores an [`Arc<ApiImplMapping>`] containing all registered
+/// API method implementations. When [`load_worker`] is called it spawns a
+/// background task that drains the request channel, invokes the matching
+/// method implementation via [`compute_response_message`], and sends the
+/// response back through the reply channel.
+///
+/// This is the default native (non-WASM) worker backend.
+///
+/// [`load_worker`]: WorkerLoaderFactory::load_worker
+/// [`compute_response_message`]: api_asscrack::crack_worker::api_worker::compute_response_message
 pub struct ThreadWorkerFactory {
+    /// Mapping from fully-qualified method names to their implementations.
     pub impl_mapping: Arc<ApiImplMapping>,
 }
 
 #[api_asscrack::async_trait::async_trait(?Send)]
 impl WorkerLoaderFactory for ThreadWorkerFactory {
+    /// Spawns the worker task and returns the request/response channel pair.
+    ///
+    /// The returned [`WorkerPipe`] connects the caller to a background Tokio
+    /// task that serializes incoming requests, dispatches them to the API
+    /// implementations stored in `self.impl_mapping`, and sends typed
+    /// responses back.
+    ///
+    /// # Errors
+    /// Returns an error if the channel setup or task spawn fails.
     async fn load_worker(&self) -> anyhow::Result<WorkerPipe> {
         // let worker_compute = std::sync::Arc::new(ThreadWorkerCompute);
         let t = init_thread(self.impl_mapping.clone()).await?;
@@ -24,6 +52,19 @@ impl WorkerLoaderFactory for ThreadWorkerFactory {
     }
 }
 
+/// Spawns the background request-processing task and returns the channel ends.
+///
+/// Creates a bounded MPSC channel pair. The returned [`WorkerPipe`] holds the
+/// sender for requests and the receiver for responses. A Tokio task is spawned
+/// that continuously receives requests, handles the special `"ping"` message
+/// by echoing a `"pong"` response, and delegates all other messages to
+/// [`compute_response_message`] with the provided API implementation mapping.
+///
+/// # Errors
+/// Returns an error if the channel creation fails (should not happen with
+/// bounded channels).
+///
+/// [`compute_response_message`]: api_asscrack::crack_worker::api_worker::compute_response_message
 async fn init_thread(mapping: Arc<ApiImplMapping>) -> anyhow::Result<WorkerPipe> {
     let (req_tx, mut req_rx) = tokio::sync::mpsc::channel::<WorkerMessage>(1024);
     let (resp_tx, resp_rx) = tokio::sync::mpsc::channel(1024);

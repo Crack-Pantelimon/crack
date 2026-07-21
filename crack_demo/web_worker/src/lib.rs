@@ -60,9 +60,7 @@ pub async fn run_bootstrap_if_needed() -> anyhow::Result<()> {
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::*;
-    use crack::api_asscrack::crack_worker::{
-        WorkerMessage, api_worker::compute_response_message,
-    };
+    use crack::api_asscrack::crack_worker::{WorkerMessage, api_worker::compute_response_message};
     use wasm_bindgen_test::wasm_bindgen_test;
 
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
