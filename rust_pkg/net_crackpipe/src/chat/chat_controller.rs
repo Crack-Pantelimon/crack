@@ -19,6 +19,8 @@ use crate::{
     ReceivedMessage,
 };
 
+/// Chat controller for a chat room type.
+/// Manages message dispatch, presence, sender/receiver, and background tasks.
 #[derive(Clone, Debug)]
 pub struct ChatController<T: IChatRoomType> {
     ticket: ChatTicket,
@@ -248,6 +250,8 @@ impl<T: IChatRoomType> IChatController<T> for ChatController<T> {
     }
 }
 
+/// Chat message types for a room type.
+/// Variants: user message, presence update, or ping/pong response.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ChatMessage<T: IChatRoomType> {
     Message(T::M),

@@ -1,8 +1,7 @@
 //! Built-in API declarations used to verify worker request dispatch.
-//! 
+//!
 
 use _crack_utils::sleep_ms;
-
 
 use crate::declare_api_group2;
 use crate::implement_api_group2;

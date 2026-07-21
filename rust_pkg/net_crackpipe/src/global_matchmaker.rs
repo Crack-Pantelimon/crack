@@ -35,6 +35,8 @@ use crate::{
     // ReceivedMessage,
 };
 
+/// Global matchmaker instance.
+/// Manages the local node, bootstrap nodes, global chat, matchmaking, and periodic tasks.
 #[derive(Debug, Clone)]
 pub struct GlobalMatchmaker {
     user_secrets: Arc<UserIdentitySecrets>,
@@ -95,6 +97,7 @@ impl PartialEq for GlobalMatchmaker {
 }
 
 #[derive(Debug, Clone)]
+/// Bootstrap node info: index, ID, own ID, and ping/connect timing.
 pub struct BootstrapNodeInfo {
     bs_idx: usize,
     _bootstrap_id: NodeId,

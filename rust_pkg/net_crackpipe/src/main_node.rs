@@ -24,6 +24,7 @@ use crate::{
     user_identity::{NodeIdentity, UserIdentitySecrets},
 };
 
+/// Main P2P node wrapper combining router, gossip, direct messaging, and chat.
 #[derive(Debug, Clone)]
 pub struct MainNode {
     pub(crate) router: Router,

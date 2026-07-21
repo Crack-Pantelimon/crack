@@ -1,13 +1,25 @@
+//! Chat constants and configuration.
 use std::time::Duration;
 
+/// Topic ID for the global chat room.
 pub const GLOBAL_CHAT_TOPIC_ID: &str = "global";
 
+/// Interval between presence broadcasts.
 pub const PRESENCE_INTERVAL: Duration = Duration::from_secs(7);
+
+/// Duration after which a peer is considered idle.
 pub const PRESENCE_IDLE: Duration = Duration::from_secs(16);
+
+/// Duration after which a peer's presence expires.
 pub const PRESENCE_EXPIRATION: Duration = Duration::from_secs(30);
+
+/// Timeout for establishing connections.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Interval for periodic global chat tasks.
 pub const GLOBAL_PERIODIC_TASK_INTERVAL: Duration = Duration::from_secs(5);
 
+/// Returns the relay domain and pkarr domain for global chat.
 pub fn get_relay_domain() -> (String, String) {
     (
         String::from("https://net2.sparganothis.org"),

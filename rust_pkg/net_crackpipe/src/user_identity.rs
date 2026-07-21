@@ -1,5 +1,7 @@
 use iroh::{PublicKey, SecretKey};
 
+/// User identity derived from a public key.
+/// Provides nickname, color, and access to the underlying public key.
 #[derive(
     Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash,
 )]
@@ -33,6 +35,8 @@ impl UserIdentity {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// User identity with secret key for signing.
+/// Contains the private key and derived public identity.
 pub struct UserIdentitySecrets {
     _user_private_key: SecretKey,
     user_identity: UserIdentity,
@@ -66,6 +70,8 @@ impl UserIdentitySecrets {
 #[derive(
     Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, PartialOrd, Ord, Eq, Hash,
 )]
+/// Node identity combining user identity, node ID, and optional bootstrap index.
+/// Used to identify nodes in the network with display info.
 pub struct NodeIdentity {
     user_identity: UserIdentity,
     node_id: PublicKey,

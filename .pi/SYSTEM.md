@@ -61,6 +61,78 @@ and add a comment after it in one call:
       ]
     }
 
+## Gotcha 1 — an edit changes ONLY its target lines; never re-type existing lines
+
+`set_line`, `insert_after`, and `replace_lines` touch **only** the line(s) they
+anchor. Every other line in the file stays exactly where it was — nothing shifts,
+nothing is removed. So `new_text` must contain **only** the content that is
+actually new. Do NOT paste back lines that already exist elsewhere in the file:
+they are still there, and pasting them again **duplicates** them.
+
+This is the #1 mistake. It happens when you treat `edit` like `write` and drop a
+whole block (or the whole file) into one `set_line`.
+
+WRONG — `set_line` on line 1 with the whole file re-typed. Lines 2..N still
+exist below, so every `pub mod` / `const` is now defined **twice** (Rust:
+`error[E0428]: defined multiple times`, `error[E0252]: name defined multiple
+times`):
+
+    // file already contains, from a read:
+    //   1:88f|pub mod chat_const;
+    //   2:936|pub mod chat_controller;
+    { "set_line": { "anchor": "1:88f",
+      "new_text": "//! Docs.\npub mod chat_const;\npub mod chat_controller;" } }
+    // → line 1 becomes 3 lines, but old lines 2:936 etc. are UNTOUCHED and remain
+    //   ⇒ chat_controller declared twice.
+
+RIGHT — to add a doc line above ONE existing line, `set_line` **that one line**
+and repeat **only its own** original text (never its neighbors):
+
+    { "set_line": { "anchor": "2:936",
+      "new_text": "/// Chat controller.\npub mod chat_controller;" } }
+
+To add a NEW line that doesn't exist yet, use `insert_after` with just the new
+text — do not restate the anchor line:
+
+    { "insert_after": { "anchor": "1:88f", "new_text": "/// Chat controller.\n" } }
+
+After any multi-line `new_text`, glance at the next read: if a definition now
+appears twice, you duplicated it — fix by deleting the extra copy
+(`set_line` … `new_text: ""`), don't paper over it.
+
+## Gotcha 2 — doc comments attach to the item DIRECTLY below, above attributes
+
+A `///` doc comment documents the very next item, and it must sit **above** that
+item's attributes (`#[derive(...)]`, `#[cfg(...)]`) with **no blank line** in
+between. Land it in the wrong place and it attaches to the wrong thing or dangles
+(Rust warns `unused_doc_comment`, and the item ends up undocumented).
+
+WRONG — doc placed after the attribute, or a second doc added around it. Here the
+struct ends up with a doc both above and below the derive (redundant), and a doc
+stranded on the `use`:
+
+    /// Node handler.
+    use crate::foo::Bar;          // ← doc wrongly attached to a `use`
+
+    /// Sleep manager.
+    #[derive(Clone, Debug)]
+    /// Sleep manager, again.      // ← second, duplicate doc
+    pub struct SleepManager { ... }
+
+RIGHT — one doc block, immediately above the attribute, nothing between it and
+the item:
+
+    use crate::foo::Bar;
+
+    /// Sleep manager for interruptible sleeps.
+    #[derive(Clone, Debug)]
+    pub struct SleepManager { ... }
+
+The reliable move: `set_line` the item's own line (the `#[derive(...)]` line, or
+the `pub struct`/`pub fn`/`pub mod` line if it has no attribute) and prepend the
+doc to it — `new_text: "/// doc\n<that exact original line>"`. That guarantees
+correct placement and touches nothing else.
+
 ## write — create or fully overwrite a file
 
     { "path": "src/new.rs", "content": "fn main() {}\n" }

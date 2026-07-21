@@ -10,21 +10,29 @@ use crate::{
     user_identity::NodeIdentity,
 };
 
+/// Presence state for a chat room type.
+/// Tracks online users with timestamps, payloads, and RTT.
 #[derive(Clone, Debug)]
 pub struct ChatPresence<T: IChatRoomType> {
     presence: Arc<RwLock<ChatPresenceData<T>>>,
     notify: Arc<Notify>,
 }
 
+/// Presence status flag for a peer in chat.
 #[derive(Clone, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum PresenceFlag {
+    /// Peer is actively present.
     ACTIVE,
+    /// Peer has not sent presence recently.
     IDLE,
+    /// Peer's presence has expired.
     EXPIRED,
+    /// Peer presence is unconfirmed.
     UNCONFIRMED,
 }
 
 impl PresenceFlag {
+    /// Create PresenceFlag from timestamp.
     pub fn from_instant(instant: i64) -> Self {
         let duration = get_timestamp_now_ms() - instant;
         let duration = if duration < 0 { 1 } else { duration } as u64;

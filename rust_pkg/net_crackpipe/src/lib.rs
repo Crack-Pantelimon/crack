@@ -1,3 +1,8 @@
+//! net_crackpipe — P2P networking layer for crackpipe.
+//!
+//! Provides P2P networking via iroh, including global matchmaking, chat,
+//! direct messaging, echo protocol, sleep management, and user identity.
+
 use chrono::{DateTime, Utc};
 
 pub mod _bootstrap_keys;
@@ -12,6 +17,7 @@ pub(crate) mod signed_message;
 pub mod sleep;
 pub mod user_identity;
 
+/// Returns the current UNIX timestamp in microseconds.
 pub fn timestamp_micros() -> u128 {
     web_time::SystemTime::now()
         .duration_since(web_time::UNIX_EPOCH)
@@ -19,6 +25,7 @@ pub fn timestamp_micros() -> u128 {
         .as_micros()
 }
 
+/// Returns the current UTC datetime with microsecond precision.
 pub fn datetime_now() -> DateTime<Utc> {
     let timestamp = timestamp_micros() as i64;
     DateTime::<Utc>::from_timestamp_micros(timestamp).unwrap()

@@ -5,6 +5,8 @@ use tracing::warn;
 
 use crate::{chat::chat_const::CONNECT_TIMEOUT, sleep::SleepManager};
 
+/// Echo protocol handler for the global matchmaker.
+/// Responds with the local node's ID to verify connectivity.
 #[derive(Debug, Clone)]
 pub struct Echo {
     own_endpoint_node_id: NodeId,

@@ -3,6 +3,8 @@ use std::{sync::Arc, time::Duration};
 use n0_future::time::Instant;
 use tokio::sync::Notify;
 
+/// Sleep manager for interruptible sleeps.
+/// Wraps an inner state that can be woken early via `wake_up()`.
 #[derive(Clone, Debug)]
 pub struct SleepManager {
     inner: Arc<SleepManagerInner>,
