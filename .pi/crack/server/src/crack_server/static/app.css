@@ -1144,3 +1144,35 @@ main.container-fluid {
 .chat-model-pick select {
   margin-bottom: 0.4rem;
 }
+.chat-plan-locked {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.72rem;
+}
+
+/* In-chat config editor (shown before the first message is sent). */
+.chat-config {
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px dashed var(--pico-muted-border-color);
+  border-radius: 6px;
+}
+.chat-config-hint {
+  margin: 0 0 0.4rem;
+}
+.chat-config .new-chat-plan {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+/* Per-turn hop-end reason note (why the next turn exists). */
+.turn-reason {
+  text-align: right;
+  line-height: 1;
+  margin-top: -0.2rem;
+}
+.turn-reason small {
+  font-size: 0.68rem;
+}

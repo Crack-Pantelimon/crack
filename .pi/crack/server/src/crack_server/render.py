@@ -259,6 +259,23 @@ def _model_switch_divider(prev: str, cur: str, prewalk_swap: bool) -> str:
     )
 
 
+# Hop-end reasons worth a muted note in the trajectory. The mundane natural
+# ends (agent_end / sentinel / empty) get nothing; "swap" is already shown by
+# the model-switch divider, so it is omitted here to avoid double-labelling.
+_REASON_NOTES = {
+    "time_cap": "hop hit the time cap — continued on the next turn",
+    "stopped": "stopped here",
+}
+
+
+def _reason_note(reason: str) -> str:
+    """A small muted note explaining why the hop ended (empty for mundane ends)."""
+    label = _REASON_NOTES.get(reason)
+    if not label:
+        return ""
+    return f'<div class="turn-reason"><small class="muted">⏱ {_ui._esc(label)}</small></div>'
+
+
 def new_model_state() -> dict:
     """Mutable tracker threaded through :func:`render_turn_msgs` calls so model
     switches are detected across exchanges (chats) or across a run's hops."""
@@ -391,7 +408,8 @@ def render_turn_msgs(
             b.get("name") == "todo" for b in entry.get("tool_blocks") or []
         ):
             model_state["seen_todo"] = True
-        out.append(f'<div class="stage-msg">{tag}{table}</div>')
+        reason_note = _reason_note(str(entry.get("reason") or ""))
+        out.append(f'<div class="stage-msg">{tag}{table}{reason_note}</div>')
     return out
 
 
@@ -507,15 +525,19 @@ def model_select(
     swap: str,
     target: str | None = None,
     indent: str = "",
+    models: list[str] | None = None,
 ) -> str:
     """The one model <select> markup: options from the render-safe models
     cache (B21 — never shells out), a saved value kept as an option even when
     missing from the cache, saving on change via hx-post.
 
+    ``models`` (optional) supplies a pre-filtered option list — e.g. the vision
+    row passes only image-capable models — instead of the full cache.
+
     ``indent`` is the select's own leading indent; continuation lines sit 8
     deeper and the options 2 deeper (matching the historic call-site layouts)."""
     esc = _ui._esc
-    options = models_mod.models_for_render()
+    options = models if models is not None else models_mod.models_for_render()
     if current not in options:
         options = [current] + options
     opts = "".join(

@@ -47,20 +47,11 @@ async def api_chat_dots_wait(since: float = Query(default=0.0)) -> JSONResponse:
 
 
 @router.post("/api/chats")
-def api_create_chat(
-    plan: str = Form(default=""),
-    planner_model: str = Form(default=""),
-    implementer_model: str = Form(default=""),
-    model: str = Form(default=""),
-) -> Response:
-    """Create a new prewalk-coder chat with its locked model choices and
-    redirect (303) into its chat page. ``plan`` is the checkbox (present ⇒ on)."""
-    return chats.create_chat(
-        plan=bool(plan),
-        planner_model=planner_model,
-        implementer_model=implementer_model,
-        model=model,
-    )
+def api_create_chat() -> Response:
+    """Create a new prewalk-coder chat seeded with the global-settings model
+    defaults (plan mode on) and redirect (303) into its chat page. Plan mode and
+    the model choices are picked inside the chat, before the first message."""
+    return chats.create_chat()
 
 
 @router.get("/chats/{chat_id}", response_class=HTMLResponse)
@@ -121,9 +112,25 @@ def api_chat_message(
     chat_id: str,
     msg: str = Form(default=""),
     model: str = Form(default=""),
+    plan: str | None = Form(default=None),
+    planner_model: str = Form(default=""),
+    implementer_model: str = Form(default=""),
 ) -> HTMLResponse:
-    """Append a user message, enqueue the agent, return the updated chat fragment."""
-    return chats.post_message(chat_id, msg, model or None)
+    """Append a user message, enqueue the agent, return the updated chat fragment.
+
+    The first message also carries the in-chat plan/model config: ``plan`` is the
+    checkbox (present ⇒ on, absent ⇒ off) but only when the config editor was
+    shown (``planner_model``/``implementer_model`` non-empty)."""
+    config_shown = bool(planner_model or implementer_model)
+    plan_flag = bool(plan) if config_shown else None
+    return chats.post_message(
+        chat_id,
+        msg,
+        model or None,
+        plan=plan_flag,
+        planner_model=planner_model,
+        implementer_model=implementer_model,
+    )
 
 
 @router.post("/api/chats/{chat_id}/ask_answer", response_class=HTMLResponse)

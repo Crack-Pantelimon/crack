@@ -206,6 +206,8 @@ async def _run_prewalk_loop(
             **(hop_kwargs or {}),
             **pw_kwargs,
         )
+        # Record why this hop ended on its last persisted turn (trajectory note).
+        persister.stamp_reason(reason)
 
         if reason in ("stopped", "empty"):
             break

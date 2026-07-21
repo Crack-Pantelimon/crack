@@ -121,6 +121,25 @@ def models_for_render(force: bool = False) -> list[str]:
     return list(FALLBACK_MODELS)
 
 
+def image_models_for_render(force: bool = False) -> list[str]:
+    """Cache-only list of models that accept image input (``images: yes`` in
+    ``pi --list-models``), for the vision-model dropdown — vision calls fail on
+    text-only models. Shares :func:`models_for_render`'s refresh-on-stale path.
+
+    Falls back to the default vision model when the cache has no per-model
+    ``info`` yet (older/empty cache) so the dropdown is never empty; the caller's
+    saved value is kept as an option regardless."""
+    all_models = models_for_render(force=force)
+    cache = paths.models_cache_state().read()
+    info = cache.get("info") or {}
+    imaged = [m for m in all_models if (info.get(m) or {}).get("images")]
+    if imaged:
+        return imaged
+    from crack_server import vision
+
+    return [vision.DEFAULT_VISION_MODEL]
+
+
 def _enqueue_refresh() -> None:
     """Enqueue a __models__ refresh job unless one is already pending/in flight."""
     from crack_server import queue

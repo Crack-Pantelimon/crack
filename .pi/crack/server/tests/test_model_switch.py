@@ -46,6 +46,34 @@ def test_persister_stamps_current_model(tmp_path):
     assert models == ["acme/planner", "acme/cheap"]
 
 
+def test_persister_stamp_reason_on_last_turn(tmp_path):
+    state = JsonState(tmp_path / "s.json")
+    state.write({"turns": []})
+    persister = steprun.turn_persister(state)
+    persister.persist({"text": "a", "tool_blocks": []}, hop=1)
+    persister.persist({"text": "b", "tool_blocks": []}, hop=1)
+    persister.stamp_reason("time_cap")
+    turns = state.read()["turns"]
+    assert "reason" not in turns[0]
+    assert turns[1]["reason"] == "time_cap"
+
+
+def test_persister_stamp_reason_noop_when_empty(tmp_path):
+    state = JsonState(tmp_path / "s.json")
+    state.write({"turns": []})
+    persister = steprun.turn_persister(state)
+    persister.stamp_reason("agent_end")  # nothing persisted this hop
+    assert state.read()["turns"] == []
+
+
+def test_reason_note_shown_for_notable_reasons():
+    assert "time cap" in render._reason_note("time_cap")
+    assert render._reason_note("agent_end") == ""
+    assert render._reason_note("swap") == ""  # divider already covers swaps
+    html = render.render_turn_msgs([{**_turn("m"), "reason": "time_cap"}])[0]
+    assert "turn-reason" in html
+
+
 # ---------------------------------------------------------------------------
 # trajectory rendering: tag + divider
 # ---------------------------------------------------------------------------
@@ -121,10 +149,26 @@ def test_tool_output_long_has_single_icon_toggle():
 # ---------------------------------------------------------------------------
 
 
-def test_plan_chat_form_locked_before_graduation(chat_root):
+# A chat that has sent its first message (so it's past the in-chat config editor).
+_SENT = {"exchanges": [{"user": "hi", "turns": []}]}
+
+
+def test_plan_chat_form_editor_before_first_message(chat_root):
+    # Before the first message the plan/model config is editable inline.
     info = {"plan": True, "planner_model": "acme/p", "implementer_model": "acme/i"}
-    html = chats.render_chat_form(chat_root, info)
+    html = chats.render_chat_form(chat_root, info, {"exchanges": [], "pending": []})
+    assert "chat-config" in html
+    assert 'name="planner_model"' in html
+    assert 'name="implementer_model"' in html
+    assert "data-plan-toggle" in html
+
+
+def test_plan_chat_form_locked_before_graduation(chat_root):
+    # First message sent, not yet graduated → read-only badge (no editor/dropdown).
+    info = {"plan": True, "planner_model": "acme/p", "implementer_model": "acme/i"}
+    html = chats.render_chat_form(chat_root, info, _SENT)
     assert "chat-model-badge" in html
+    assert "chat-config" not in html
     assert 'name="model"' not in html
 
 
@@ -133,17 +177,20 @@ def test_plan_chat_form_dropdown_after_graduation(chat_root):
         "plan": True, "graduated": True,
         "planner_model": "acme/p", "implementer_model": "acme/i", "model": "acme/n",
     }
-    html = chats.render_chat_form(chat_root, info)
+    html = chats.render_chat_form(chat_root, info, _SENT)
     assert 'name="model"' in html
     # Continuation defaults to the implementer model.
     assert 'value="acme/i" selected' in html
+    # A graduated plan chat notes that plan mode is now locked.
+    assert "chat-plan-locked" in html
 
 
 def test_nonplan_chat_form_has_dropdown(chat_root):
     info = {"plan": False, "model": "acme/n"}
-    html = chats.render_chat_form(chat_root, info)
+    html = chats.render_chat_form(chat_root, info, _SENT)
     assert 'name="model"' in html
     assert 'value="acme/n" selected' in html
+    assert "chat-plan-locked" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -191,3 +238,51 @@ def test_graduation_gate_matches_prewalk_swap():
     ]
     assert prewalk.swapped_already(turns) is True
     assert prewalk.swapped_already(turns[:1]) is False
+
+
+def test_post_message_locks_config_on_first_message(chat_root):  # noqa: F811
+    from crack_server import paths
+
+    chats.post_message(
+        chat_root, "do it", "acme/n",
+        plan=True, planner_model="acme/p2", implementer_model="acme/i2",
+    )
+    info = paths.chat_info_state(chat_root).read()
+    assert info["plan"] is True
+    assert info["planner_model"] == "acme/p2"
+    assert info["implementer_model"] == "acme/i2"
+    assert info["model"] == "acme/n"
+    # The nonplan pick is stored on the chat, not stamped as a per-exchange switch.
+    assert paths.chat_state(chat_root).read()["pending"][0].get("model") is None
+
+
+def test_chat_display_model_prefers_cached(chat_root):  # noqa: F811
+    # A graduated chat caches its display model on info — read it directly.
+    info = {"plan": True, "graduated": True, "display_model": "acme/cached",
+            "implementer_model": "acme/i"}
+    assert chats._chat_display_model(info, {}) == "acme/cached"
+
+
+# ---------------------------------------------------------------------------
+# vision dropdown: image-capable models only
+# ---------------------------------------------------------------------------
+
+
+def test_image_models_filters_to_image_capable(chat_root):  # noqa: F811
+    from crack_server import models as models_mod, paths
+
+    paths.models_cache_state().write({
+        "fetched_at": 9e18,  # far future → no refresh enqueued
+        "models": ["v/see", "v/blind"],
+        "info": {"v/see": {"images": True}, "v/blind": {"images": False}},
+    })
+    assert models_mod.image_models_for_render() == ["v/see"]
+
+
+def test_image_models_fallback_when_no_info(chat_root):  # noqa: F811
+    from crack_server import models as models_mod, paths, vision
+
+    paths.models_cache_state().write({
+        "fetched_at": 9e18, "models": ["v/x"], "info": {},
+    })
+    assert models_mod.image_models_for_render() == [vision.DEFAULT_VISION_MODEL]

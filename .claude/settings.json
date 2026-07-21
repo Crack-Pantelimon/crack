@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__chromium__new_page"
+    ]
+  }
+}

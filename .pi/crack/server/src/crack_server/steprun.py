@@ -150,6 +150,26 @@ class TurnPersister:
             )
         self.append(turn)
 
+    def stamp_reason(self, reason: str) -> None:
+        """Record *why* the hop that just ran ended (``swap`` / ``time_cap`` /
+        ``agent_end`` / ``sentinel`` / ``stopped`` / ``empty``) onto the last
+        turn it persisted, so the trajectory can explain why the next turn
+        exists. No-op when nothing was persisted this hop (e.g. an empty hop)."""
+        if not reason or not self.new:
+            return
+        self.new[-1]["reason"] = reason
+
+        def _write(state: dict) -> dict:
+            node = state
+            for part in self.subpath:
+                node = node[part]
+            node[self.key] = self.existing + self.new
+            if self.post is not None:
+                self.post(state)
+            return state
+
+        self.state.update(_write)
+
     def text(self) -> str:
         """Combined assistant text of the entries appended so far."""
         return "\n\n".join(t["text"] for t in self.new if t.get("text")).strip()

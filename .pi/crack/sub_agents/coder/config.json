@@ -1,5 +1,4 @@
 {
-  "model": "nvidia/nemotron-3-ultra-550b-a55b",
   "tool_description": "Spawn a Coder sub-agent to implement changes and document what it did in a report.",
   "tool_label": "Coder"
 }

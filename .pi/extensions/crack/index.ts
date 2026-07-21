@@ -25,15 +25,14 @@ const TODO_MAX = 12;
 
 const PARAMS = Type.Object({
 	instructions: Type.String({ description: "Task for the sub-agent" }),
-	plan: Type.Optional(
-		Type.Boolean({
-			description:
-				"Prewalk plan mode (default true). true: the run starts on a smarter planner " +
-				"model that explores and builds a todo list, then hands off to a cheaper " +
-				"implementer model the moment it lands its first edit — best for non-trivial " +
-				"changes. false: the whole task runs on one model — best for small, mechanical edits.",
-		}),
-	),
+	plan: Type.Boolean({
+		description:
+			"REQUIRED. Prewalk plan mode. true: the run starts on a smarter planner " +
+			"model that explores and builds a todo list, then hands off to a cheaper " +
+			"implementer model the moment it lands its first edit — best for non-trivial " +
+			"changes. false: the whole task runs on one model — best for small, mechanical " +
+			"edits. Decide deliberately every time; there is no default.",
+	}),
 });
 
 const TODO_PARAMS = Type.Object({
@@ -467,7 +466,7 @@ export default function crack(pi: ExtensionAPI) {
 									parent_kind: parentKind,
 									parent_id: parentId,
 									depth,
-									plan: params.plan ?? true,
+									plan: params.plan,
 								}),
 								signal: to,
 							},

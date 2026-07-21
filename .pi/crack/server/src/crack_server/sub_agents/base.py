@@ -56,17 +56,10 @@ class SubAgentPersona:
         return data if isinstance(data, dict) else {}
 
     def model_for(self) -> str:
-        override = self.config_dict().get("model")
-        return override or DEFAULT_MODEL
-
-    def set_model(self, model_id: str) -> None:
-        import json
-
-        path = self.config_path()
-        data = self.config_dict()
-        data["model"] = model_id
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        # Fallback display model only. A sub-agent's real model is chosen at
+        # spawn time from the global agent settings (planner→implementer for
+        # plan mode, the non-plan model otherwise) — never per-persona here.
+        return DEFAULT_MODEL
 
     def load_template(self, name: str) -> str:
         path = self.persona_dir() / Path(name).name
@@ -295,6 +288,8 @@ class SubAgentPersona:
             return state
 
         self.state_update(run_id, _bump)
+        # Record why this hop ended on its last persisted turn (trajectory note).
+        persister.stamp_reason(reason)
 
         if reason == "stopped":
             self._mark_stopped(run_id)

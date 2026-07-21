@@ -9,7 +9,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from crack_server import attachments, chats, paths, ui as _ui
-from crack_server.render import model_select, new_model_state, render_turn_msgs
+from crack_server.render import new_model_state, render_turn_msgs
 from crack_server.sub_agents import MAX_DEPTH, ask_user, registry, signals, wait
 from crack_server.sub_agents import runner
 
@@ -304,13 +304,6 @@ def api_run_retry(chat_id: str, run_id: str) -> HTMLResponse:
     return HTMLResponse(chats.render_inline_run_region(chat_id, chats.root_run_id(chat_id, run_id)))
 
 
-@router.post("/api/sub_agents/{slug}/model", response_class=HTMLResponse)
-def api_set_persona_model(slug: str, model: str = Form(...)) -> HTMLResponse:
-    persona = _persona_or_404(slug)
-    persona.set_model(model)
-    return HTMLResponse(_render_persona_row(persona))
-
-
 @router.put("/api/sub_agents/{slug}/templates/{filename}", response_class=HTMLResponse)
 def api_put_persona_template(
     slug: str, filename: str, content: str = Form(...)
@@ -353,21 +346,18 @@ def _render_persona_template_row(persona, filename: str, editing: bool = False) 
 
 
 def _render_persona_row(persona) -> str:
+    """Persona identity row. No model dropdown: every sub-agent is the same
+    persona, and its model is chosen at spawn time from the global agent
+    settings (planner→implementer for ``plan=true``, the non-plan model for
+    ``plan=false``) — not per-persona here."""
     esc = _ui._esc
-    select = model_select(
-        "model",
-        persona.model_for(),
-        f"/api/sub_agents/{persona.slug}/model",
-        target="closest .persona-row",
-        swap="outerHTML",
-        indent=" " * 10,
-    )
     return f"""
     <div class="persona-row part-row">
       <span class="part-label">{esc(persona.name)}</span>
       <code>{esc(persona.slug)}</code>
       <small>tool <code>{esc(persona.tool_name())}</code></small>
-{select}
+      <small class="muted">model chosen at spawn (plan on/off) from
+        <a href="/settings">Settings</a></small>
     </div>
     """
 

@@ -176,26 +176,45 @@ def _plain_model_select(name: str, current: str) -> str:
 
 
 def render_new_chat_form() -> str:
-    """New-chat creation form: plan checkbox (default on) + the three model
-    dropdowns (seeded from global settings). Models lock at creation."""
-    planner = _plain_model_select("planner_model", _settings.plan_planner_model())
-    implementer = _plain_model_select("implementer_model", _settings.plan_implementer_model())
-    nonplan = _plain_model_select("model", _settings.nonplan_model())
+    """New-chat button. Plan mode and the model choices are now picked *inside*
+    the chat — editable until the first message is sent — so the home page just
+    mints the chat with the global-settings defaults."""
+    return """
+      <form method="post" action="/api/chats" class="new-chat-form">
+        <button type="submit">New Chat</button>
+      </form>
+    """
+
+
+def render_chat_config_editor(info: dict) -> str:
+    """Editable plan/model controls shown at the top of a brand-new chat, before
+    its first message is sent (moved off the home page). Submits inside the send
+    form; :func:`post_message` locks the choices onto the chat when the first
+    message goes out."""
+    plan_on = bool(info.get("plan", True))
+    planner = _plain_model_select(
+        "planner_model", info.get("planner_model") or _settings.plan_planner_model()
+    )
+    implementer = _plain_model_select(
+        "implementer_model", info.get("implementer_model") or _settings.plan_implementer_model()
+    )
+    nonplan = _plain_model_select("model", info.get("model") or _settings.nonplan_model())
     return f"""
-      <form method="post" action="/api/chats" class="new-chat-form" data-plan-form>
+      <div class="chat-config" data-plan-form>
+        <p class="chat-config-hint"><small class="muted">Pick the models before your
+          first message — they lock once the chat starts.</small></p>
         <label class="new-chat-plan">
-          <input type="checkbox" name="plan" value="1" checked data-plan-toggle>
+          <input type="checkbox" name="plan" value="1"{" checked" if plan_on else ""} data-plan-toggle>
           Plan mode (prewalk)
         </label>
-        <div class="plan-fields" data-plan-fields>
+        <div class="plan-fields" data-plan-fields{"" if plan_on else " hidden"}>
           <label>Planner model {planner}</label>
           <label>Implementer model {implementer}</label>
         </div>
-        <div class="nonplan-fields" data-nonplan-fields hidden>
+        <div class="nonplan-fields" data-nonplan-fields{" hidden" if plan_on else ""}>
           <label>Model {nonplan}</label>
         </div>
-        <button type="submit">New Chat</button>
-      </form>
+      </div>
     """
 
 
@@ -299,28 +318,43 @@ def _chat_model_badge(info: dict) -> str:
     return f'<small class="muted">model <code>{esc(info.get("model") or DEFAULT_CHAT_MODEL)}</code></small>'
 
 
-def render_chat_form(chat_id: str, info: dict) -> str:
+def render_chat_form(chat_id: str, info: dict, state: dict | None = None) -> str:
     """Bottom form: multiline input + Send, plus the model control.
 
-    While a plan chat is resolving its first message the pairing is locked
-    (read-only badge). Once it graduates — and always for a non-plan chat — a
-    model dropdown lets the user continue on any model (default: the implementer
-    model for a graduated plan chat, else the chat's non-plan model)."""
+    Three shapes:
+
+    - *before the first message* (no exchanges / nothing queued): the editable
+      plan + model config (moved off the home page). The choices lock onto the
+      chat when the first message is sent.
+    - *a plan chat resolving its first message*: the pairing is a read-only badge.
+    - *graduated / non-plan*: a model dropdown continues the chat on any model
+      (default: the implementer model for a graduated plan chat, else the chat's
+      non-plan model), with a muted note that plan mode is now locked."""
     safe_id = _ui._esc(chat_id)
     strip = attachments.render_strip(
         "chats", chat_id, paths.chat_attachments_state(chat_id), "chat-attachments"
     )
     plan = bool(info.get("plan"))
     graduated = bool(info.get("graduated"))
-    if plan and not graduated:
+    if state is None:
+        state = paths.chat_state(chat_id).read()
+    pre_first = not (state.get("exchanges") or state.get("pending"))
+    if pre_first:
+        model_control = render_chat_config_editor(info)
+    elif plan and not graduated:
         model_control = f'<div class="chat-model-badge">{_chat_model_badge(info)}</div>'
     else:
         default_model = (
             info.get("implementer_model") if plan else info.get("model")
         ) or info.get("model") or DEFAULT_CHAT_MODEL
+        lock_note = (
+            '<small class="muted chat-plan-locked">Plan mode is locked for this '
+            "chat — start a new chat to plan again.</small>"
+            if plan else ""
+        )
         model_control = (
             '<label class="chat-model-pick">Model '
-            f"{_plain_model_select('model', default_model)}</label>"
+            f"{_plain_model_select('model', default_model)}</label>{lock_note}"
         )
     return f"""
     <form class="chat-form" hx-post="/api/chats/{safe_id}/messages"
@@ -446,6 +480,11 @@ def _chat_display_model(info: dict, state: dict) -> str:
     first message, else the continuation default."""
     from crack_server import prewalk
 
+    # Graduation caches the display model on info (see run_chat) — a direct read
+    # that skips the model_for_phase list-copy on every 2s poll.
+    cached = info.get("display_model")
+    if cached:
+        return cached
     plan = bool(info.get("plan"))
     if plan and not info.get("graduated"):
         exchanges = state.get("exchanges", [])
@@ -745,7 +784,7 @@ def render_chat_tail(chat_id: str) -> str:
     if ctx_line:
         parts.append(ctx_line)
 
-    parts.append(render_chat_form(chat_id, info))
+    parts.append(render_chat_form(chat_id, info, state))
     return "".join(parts)
 
 
@@ -827,18 +866,47 @@ def create_chat(
     return RedirectResponse(url=f"/chats/{chat_id}", status_code=303)
 
 
-def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
+def post_message(
+    chat_id: str,
+    msg: str,
+    model: str | None,
+    *,
+    plan: bool | None = None,
+    planner_model: str = "",
+    implementer_model: str = "",
+) -> HTMLResponse:
     """POST /api/chats/{id}/messages: queue the agent for a new user message.
 
     Always appends to ``pending`` and enqueues; human messages and child-report
     resumes serialize via the exclusive chat job (no B2 refuse-while-chatting).
 
-    Plan mode governs only the first message's resolution; once the chat has
-    graduated (see :func:`run_chat`) a human message runs unrestrained on the
-    ``model`` picked in the continuation dropdown (recorded on the exchange).
+    Before the first message the send form carries the editable plan + model
+    config (``plan``/``planner_model``/``implementer_model``/``model``); those
+    lock onto the chat's ``info`` here. Plan mode governs only the first
+    message's resolution; once the chat has graduated (see :func:`run_chat`) a
+    human message runs unrestrained on the ``model`` picked in the continuation
+    dropdown (recorded on the exchange).
     """
     check_chat_id(chat_id)
     msg = msg.strip()
+    st = paths.chat_state(chat_id).read()
+    pre_first = not (st.get("exchanges") or st.get("pending"))
+    if pre_first and plan is not None:
+        # Lock the in-chat model/plan choices onto the chat before it starts.
+        def _lock_config(info: dict) -> dict:
+            info["plan"] = bool(plan)
+            if planner_model:
+                info["planner_model"] = planner_model
+            if implementer_model:
+                info["implementer_model"] = implementer_model
+            if model:
+                info["model"] = model
+            return info
+
+        paths.chat_info_state(chat_id).update(_lock_config)
+        # The nonplan model is now stored on the chat; don't also stamp it as a
+        # per-exchange continuation switch.
+        model = None
     # One-shot attachments staged via paste/drop: weave them into this message,
     # then clear the manifest so they aren't resent on the next message. The
     # uploaded files stay on disk under attachments/ for history. A media list
@@ -1142,8 +1210,11 @@ async def run_chat(chat_id: str) -> None:
         # suspended on an ask_user). From here the continuation dropdown drives
         # the model and plan mode never re-triggers.
         if plan_active and not chat.read().get("pending_question"):
+            # Cache the post-graduation display model (the implementer) on info so
+            # the card/right-tree badge is a direct dict read, not a per-poll
+            # model_for_phase over the exchange turns.
             paths.chat_info_state(chat_id).update(
-                lambda s: {**s, "graduated": True}
+                lambda s: {**s, "graduated": True, "display_model": implementer_model}
             )
         if stop_check():
             def _halt(state: dict) -> dict:

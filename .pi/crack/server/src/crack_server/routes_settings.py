@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Form, HTTPException
 from fastapi.responses import HTMLResponse
 
+from crack_server import models as _models
 from crack_server import settings as _settings
 from crack_server import ui as _ui
 from crack_server import vision
@@ -21,11 +22,12 @@ def _render_vision_model_row() -> str:
         target="closest .part-row",
         swap="outerHTML",
         indent=" " * 10,
+        models=_models.image_models_for_render(),
     )
     return f"""
     <div class="part-row">
       <span class="part-label">Vision model</span>
-      <small>used by the <code>analyze_image</code> tool and prompt-image attachments</small>
+      <small>only image-capable models — used by the <code>analyze_image</code> tool and prompt-image attachments</small>
 {select}
     </div>
     """

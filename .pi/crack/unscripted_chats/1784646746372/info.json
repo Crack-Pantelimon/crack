@@ -1,0 +1,9 @@
+{
+  "id": "1784646746372",
+  "title": "",
+  "model": "nvidia/moonshotai/kimi-k2.6",
+  "plan": true,
+  "planner_model": "nvidia/z-ai/glm-5.2",
+  "implementer_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "created_at": 1784646746.3736591
+}
