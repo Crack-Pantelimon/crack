@@ -65,6 +65,53 @@ def verify_all():
         if "MISSION_42" not in content:
             errors.append("state_machine.md does not list final mission MISSION_42.")
 
+    # 4. Topological sorting / DAG validation of missions
+    print("Checking for circular dependencies and DAG validity...")
+    try:
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        import harness
+        
+        # Build adjacency list: node -> list of outgoing nodes
+        adj = {}
+        in_degree = {}
+        for m in harness.MISSIONS:
+            m_id = f"MISSION_{m['num']:02d}"
+            adj[m_id] = []
+            if m_id not in in_degree:
+                in_degree[m_id] = 0
+                
+        # Parse prerequisites
+        import re
+        for m in harness.MISSIONS:
+            curr_id = f"MISSION_{m['num']:02d}"
+            prereq_str = m['prereq']
+            matches = re.findall(r"Misiunea\s+(\d+)", prereq_str)
+            for match in matches:
+                parent_num = int(match)
+                parent_id = f"MISSION_{parent_num:02d}"
+                if parent_id in adj:
+                    adj[parent_id].append(curr_id)
+                    in_degree[curr_id] = in_degree.get(curr_id, 0) + 1
+                else:
+                    errors.append(f"{curr_id} has unregistered prerequisite: {parent_id}")
+                    
+        # Kahn's algorithm for cycle detection
+        queue = [node for node in adj if in_degree[node] == 0]
+        visited_count = 0
+        while queue:
+            node = queue.pop(0)
+            visited_count += 1
+            for neighbor in adj[node]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+                    
+        if visited_count != len(adj):
+            errors.append(f"Cycle detected in mission prerequisites! Only visited {visited_count} out of {len(adj)} missions.")
+            
+    except Exception as ex:
+        errors.append(f"Failed to perform topological DAG validation: {ex}")
+
     # Report results
     if errors:
         print("\nVerification FAILED with the following errors:")

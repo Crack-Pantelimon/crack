@@ -701,21 +701,26 @@ graph TD
         sm_content += f"    {node_id}[\"{node_id}: {node_title}\"]\n"
         
     sm_content += "\n"
-    # Links
-    for i in range(len(state_machine_data) - 1):
-        curr_id = state_machine_data[i]['id']
-        next_id = state_machine_data[i+1]['id']
-        sm_content += f"    {curr_id} --> {next_id}\n"
+    # Links dynamically built from prerequisites
+    import re
+    for m in state_machine_data:
+        curr_id = m['id']
+        prereq_str = m['prereq']
+        matches = re.findall(r"Misiunea\s+(\d+)", prereq_str)
+        for match in matches:
+            parent_num = int(match)
+            parent_id = f"MISSION_{parent_num:02d}"
+            sm_content += f"    {parent_id} --> {curr_id}\n"
         
     sm_content += """```
-
-## Stări Globale ale Jocului
-1. `STATE_NOT_STARTED`: Jucătorul nu a inițiat nicio misiune. Doar Free Roam în Pantelimon în taxi Logan.
-2. `STATE_MISSION_ACTIVE`: O misiune este în desfășurare. Obiectivele sunt afișate pe ecran (HUD). Salvarea jocului este dezactivată.
-3. `STATE_MISSION_FAILED`: Misiunea a eșuat (moartea protagonistului, distrugerea Loganului galben, eșecul obiectivelor). Respawn la Spitalul Sf. Pantelimon.
-4. `STATE_MISSION_SUCCESS`: Misiunea s-a încheiat cu succes. Se acordă bani, respect și se deblochează următoarea misiune în graf.
-5. `STATE_GAME_COMPLETED`: Toate cele 42 de misiuni au fost finalizate. Modul Free Roam este complet deblocat cu recompense speciale (Loganul de Aur).
-"""
+ 
+ ## Stări Globale ale Jocului
+ 1. `STATE_NOT_STARTED`: Jucătorul nu a inițiat nicio misiune. Doar Free Roam în Pantelimon în taxi Logan.
+ 2. `STATE_MISSION_ACTIVE`: O misiune este în desfășurare. Obiectivele sunt afișate pe ecran (HUD). Salvarea jocului este dezactivată.
+ 3. `STATE_MISSION_FAILED`: Misiunea a eșuat (moartea protagonistului, distrugerea Loganului galben, eșecul obiectivelor). Respawn la Spitalul Sf. Pantelimon.
+ 4. `STATE_MISSION_SUCCESS`: Misiunea s-a încheiat cu succes. Se acordă bani, respect și se deblochează următoarea misiune în graf.
+ 5. `STATE_GAME_COMPLETED`: Toate cele 42 de misiuni au fost finalizate. Modul Free Roam este complet deblocat cu recompense speciale (Loganul de Aur).
+ """
     with open(sm_path, "w", encoding="utf-8") as f:
         f.write(sm_content.strip() + "\n")
     print(f"Generated {sm_path}")
@@ -751,24 +756,198 @@ def generate_characters():
             f.write(content.strip() + "\n")
         print(f"Generated {file_path}")
 
-def run_hot_loop():
-    print("Starting sloppy CLI / agentic hot loop simulator...")
-    # This is a mock hot loop running command processing
-    try:
-        # Check if we can run antigravity-cli or similar
-        print("Checking for antigravity-cli...")
-        result = subprocess.run(["which", "antigravity-cli"], capture_output=True, text=True)
-        if result.returncode == 0:
-            print("Found antigravity-cli. Executing hot loop over cli...")
-            # We simulate executing the command
-            os.execv(result.stdout.strip(), ["antigravity-cli", "scrie capitolu 13 din umbre"])
+def generate_status():
+    print("\n=== NARRATIVE WORKSPACE STATUS ===")
+    missing_missions = []
+    draft_missions = []
+    critique_pending = []
+    completed_missions = []
+    
+    for m in MISSIONS:
+        m_num = m['num']
+        m_id = f"MISSION_{m_num:02d}"
+        file_path = os.path.join(MISSIONS_DIR, f"mission_{m_num:02d}.md")
+        critique_path = os.path.join(MISSIONS_DIR, f"mission_{m_num:02d}.critique.md")
+        
+        if not os.path.exists(file_path):
+            missing_missions.append(m_id)
         else:
-            print("antigravity-cli not found in system PATH. Simulating generator run...")
-            generate_missions()
-            generate_characters()
-            print("Simulation complete.")
-    except Exception as e:
-        print(f"Error in hot loop execution: {e}")
+            # Check structure
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            has_obj = "Rezumat și Obiective" in content
+            has_dial = "Dialoguri în Română" in content
+            has_story = "Storyboard" in content
+            has_state = "Mașina de Stări a Jocului" in content
+            
+            if os.path.exists(critique_path):
+                critique_pending.append(m_id)
+            elif not (has_obj and has_dial and has_story and has_state):
+                draft_missions.append(m_id)
+            else:
+                completed_missions.append(m_id)
+                
+    print(f"Total Missions: {len(MISSIONS)}")
+    print(f"  Completed: {len(completed_missions)}  ({len(completed_missions)}/42)")
+    if draft_missions:
+        print(f"  Draft/Incomplete: {len(draft_missions)}  {', '.join(draft_missions)}")
+    if critique_pending:
+        print(f"  Critique Pending: {len(critique_pending)}  {', '.join(critique_pending)}")
+    if missing_missions:
+        print(f"  Missing: {len(missing_missions)}  {', '.join(missing_missions)}")
+    
+    missing_chars = []
+    completed_chars = []
+    for char_id, info in CHARACTERS.items():
+        file_path = os.path.join(CHARACTERS_DIR, f"{char_id}.md")
+        if not os.path.exists(file_path):
+            missing_chars.append(info['name'])
+        else:
+            completed_chars.append(info['name'])
+            
+    print(f"\nTotal Characters: {len(CHARACTERS)}")
+    print(f"  Completed: {len(completed_chars)}  ({len(completed_chars)}/12)")
+    if missing_chars:
+        print(f"  Missing: {len(missing_chars)}  {', '.join(missing_chars)}")
+    print("==================================\n")
+
+def compile_context(mission_num):
+    # Find target mission
+    target_m = None
+    for m in MISSIONS:
+        if m['num'] == mission_num:
+            target_m = m
+            break
+    if not target_m:
+        print(f"Error: Mission {mission_num} not found.")
+        sys.exit(1)
+        
+    context_path = os.path.join(MISSIONS_DIR, f"mission_{mission_num:02d}.context.md")
+    
+    # Identify relevant characters
+    relevant_chars = []
+    search_text = (target_m['title'] + " " + target_m['desc'] + " " + 
+                   target_m['dialogue'] + " " + " ".join(target_m['storyboard'])).lower()
+    
+    for char_id, info in CHARACTERS.items():
+        first_name = info['name'].split()[0].lower()
+        if first_name in search_text or info['name'].lower() in search_text:
+            relevant_chars.append(info)
+            
+    # Parse prerequisite details
+    prereq_str = target_m['prereq']
+    import re
+    parent_nums = [int(n) for n in re.findall(r"Misiunea\s+(\d+)", prereq_str)]
+    prereq_details = []
+    for p_num in parent_nums:
+        for m in MISSIONS:
+            if m['num'] == p_num:
+                prereq_details.append(m)
+                
+    # Build context markdown content
+    content = f"# Focused Context for Mission {mission_num:02d}: {target_m['title']}\n"
+    content += "Use this context to draft the mission markdown file. Keep the tone authentic to HBO's Umbre series and use Pantelimon landmarks.\n\n"
+    
+    content += "## 1. Parent/Prerequisite Missions Status\n"
+    if prereq_details:
+        for p in prereq_details:
+            content += f"### Mission {p['num']:02d}: {p['title']}\n"
+            content += f"**Description**: {p['desc']}\n"
+            content += f"**Key Objectives achieved**:\n"
+            for obj in p['obj']:
+                content += f"- [x] {obj}\n"
+            content += "\n"
+    else:
+        content += "No prerequisite missions (this is the starting mission).\n\n"
+        
+    content += "## 2. Relevant Character Biographies\n"
+    if relevant_chars:
+        for rc in relevant_chars:
+            content += f"### {rc['name']} ({rc['role']})\n"
+            content += f"**Description**: {rc['description']}\n"
+            content += f"**Trivia**: {rc['trivia'].replace(chr(10), ' ')}\n\n"
+    else:
+        content += "No specific major characters detected in mission overview.\n\n"
+        
+    content += "## 3. Mission Objectives to Implement\n"
+    for obj in target_m['obj']:
+        content += f"- [ ] {obj}\n"
+    content += "\n"
+    
+    content += "## 4. Expected Dialogues (Guideline)\n"
+    content += f"```slang\n{target_m['dialogue']}\n```\n\n"
+    
+    content += "## 5. Storyboard Guidance\n"
+    for frame in target_m['storyboard']:
+        content += f"- {frame}\n"
+        
+    os.makedirs(MISSIONS_DIR, exist_ok=True)
+    with open(context_path, "w", encoding="utf-8") as f:
+        f.write(content.strip() + "\n")
+    print(f"Context compiled successfully at: {context_path}")
+
+def run_critique(mission_num):
+    file_path = os.path.join(MISSIONS_DIR, f"mission_{mission_num:02d}.md")
+    critique_path = os.path.join(MISSIONS_DIR, f"mission_{mission_num:02d}.critique.md")
+    
+    if not os.path.exists(file_path):
+        print(f"Error: Mission file {file_path} does not exist.")
+        sys.exit(1)
+        
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+        
+    errors = []
+    warnings = []
+    
+    # 1. Structure check
+    expected_headings = [
+        "Rezumat și Obiective",
+        "Dialoguri în Română",
+        "Storyboard",
+        "Mașina de Stări a Jocului"
+    ]
+    for h in expected_headings:
+        if h not in content:
+            errors.append(f"Missing required heading/section: '{h}'")
+            
+    # 2. Slang keyword check
+    slang_keywords = ["gabor", "șmecher", "barosan", "logan", "mici", "afaceri", "recuperare", "bătaie", "ban", "pumn", "puiu", "căpitan"]
+    found_keywords = [kw for kw in slang_keywords if kw in content.lower()]
+    if len(found_keywords) < 2:
+        warnings.append(f"Low usage of authentic Pantelimon slang (found only: {found_keywords}). Recommend adding local jargon like 'gabori', 'mici', or 'barosane'.")
+        
+    # 3. Storyboard layout check
+    if "## Storyboard" in content:
+        story_part = content.split("## Storyboard")[1].split("##")[0]
+        if "- **[Cadru" not in story_part and "- **" not in story_part:
+            errors.append("Storyboard panels do not follow the expected '- **[Cadru X] ...' or '- **...' list format.")
+            
+    # Write report
+    if errors or warnings:
+        critique_content = f"# Critique Report for Mission {mission_num:02d}\n\n"
+        if errors:
+            critique_content += "## ❌ Blockers (Must Fix)\n"
+            for err in errors:
+                critique_content += f"- {err}\n"
+            critique_content += "\n"
+        if warnings:
+            critique_content += "## ⚠️ Suggestions (Highly Recommended)\n"
+            for warn in warnings:
+                critique_content += f"- {warn}\n"
+            critique_content += "\n"
+            
+        with open(critique_path, "w", encoding="utf-8") as f:
+            f.write(critique_content.strip() + "\n")
+            
+        print(f"Critique finished with {len(errors)} errors and {len(warnings)} warnings.")
+        print(f"Report written to: {critique_path}")
+        if errors:
+            sys.exit(1)
+    else:
+        if os.path.exists(critique_path):
+            os.remove(critique_path)
+        print(f"CRITIQUE PASSED: Mission {mission_num:02d} matches all style and structure rules perfectly!")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -776,11 +955,29 @@ if __name__ == "__main__":
         if cmd == "generate":
             generate_missions()
             generate_characters()
-        elif cmd == "hotloop":
-            run_hot_loop()
+        elif cmd == "status":
+            generate_status()
+        elif cmd == "context" and len(sys.argv) > 2:
+            try:
+                m_num = int(sys.argv[2])
+                compile_context(m_num)
+            except ValueError:
+                print("Error: Mission number must be an integer.")
+                sys.exit(1)
+        elif cmd == "critique" and len(sys.argv) > 2:
+            try:
+                m_num = int(sys.argv[2])
+                run_critique(m_num)
+            except ValueError:
+                print("Error: Mission number must be an integer.")
+                sys.exit(1)
+        elif cmd == "verify":
+            sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+            import verify_storyline
+            verify_storyline.verify_all()
         else:
             print(f"Unknown command: {cmd}")
-            print("Usage: python harness.py [generate|hotloop]")
+            print("Usage: python harness.py [generate|status|context <num>|critique <num>|verify]")
     else:
         generate_missions()
         generate_characters()

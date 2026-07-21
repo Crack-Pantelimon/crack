@@ -91,10 +91,10 @@ graph TD
     MISSION_40 --> MISSION_41
     MISSION_41 --> MISSION_42
 ```
-
-## Stări Globale ale Jocului
-1. `STATE_NOT_STARTED`: Jucătorul nu a inițiat nicio misiune. Doar Free Roam în Pantelimon în taxi Logan.
-2. `STATE_MISSION_ACTIVE`: O misiune este în desfășurare. Obiectivele sunt afișate pe ecran (HUD). Salvarea jocului este dezactivată.
-3. `STATE_MISSION_FAILED`: Misiunea a eșuat (moartea protagonistului, distrugerea Loganului galben, eșecul obiectivelor). Respawn la Spitalul Sf. Pantelimon.
-4. `STATE_MISSION_SUCCESS`: Misiunea s-a încheiat cu succes. Se acordă bani, respect și se deblochează următoarea misiune în graf.
-5. `STATE_GAME_COMPLETED`: Toate cele 42 de misiuni au fost finalizate. Modul Free Roam este complet deblocat cu recompense speciale (Loganul de Aur).
+ 
+ ## Stări Globale ale Jocului
+ 1. `STATE_NOT_STARTED`: Jucătorul nu a inițiat nicio misiune. Doar Free Roam în Pantelimon în taxi Logan.
+ 2. `STATE_MISSION_ACTIVE`: O misiune este în desfășurare. Obiectivele sunt afișate pe ecran (HUD). Salvarea jocului este dezactivată.
+ 3. `STATE_MISSION_FAILED`: Misiunea a eșuat (moartea protagonistului, distrugerea Loganului galben, eșecul obiectivelor). Respawn la Spitalul Sf. Pantelimon.
+ 4. `STATE_MISSION_SUCCESS`: Misiunea s-a încheiat cu succes. Se acordă bani, respect și se deblochează următoarea misiune în graf.
+ 5. `STATE_GAME_COMPLETED`: Toate cele 42 de misiuni au fost finalizate. Modul Free Roam este complet deblocat cu recompense speciale (Loganul de Aur).
