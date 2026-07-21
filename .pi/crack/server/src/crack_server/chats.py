@@ -18,7 +18,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from crack_server import ui as _ui
 from crack_server import attachments, chat_engine, context_stats
-from crack_server import paths, pi_runner, queue, titles
+from crack_server import paths, pi_runner, queue, settings as _settings, titles
+from crack_server.chat_engine import MAX_CHAT_HOPS
 from crack_server.state import chat_state_mtime
 
 logger = logging.getLogger("uvicorn.error")
@@ -158,6 +159,41 @@ def _render_chat_list(ids: list[str]) -> str:
     return "<ul>" + "".join(items) + "</ul>"
 
 
+def _plain_model_select(name: str, current: str) -> str:
+    """A plain <select> of the model cache (no htmx save-on-change) for the
+    new-chat form. The saved/default value is always kept as an option."""
+    from crack_server import models as models_mod
+
+    esc = _ui._esc
+    options = models_mod.models_for_render()
+    if current not in options:
+        options = [current] + options
+    opts = "".join(
+        f'<option value="{esc(m)}"{" selected" if m == current else ""}>{esc(m)}</option>'
+        for m in options
+    )
+    return f'<select name="{esc(name)}">{opts}</select>'
+
+
+def render_new_chat_form() -> str:
+    """New-chat creation form: plan checkbox (default on) + the three model
+    dropdowns (seeded from global settings). Models lock at creation."""
+    planner = _plain_model_select("planner_model", _settings.plan_planner_model())
+    implementer = _plain_model_select("implementer_model", _settings.plan_implementer_model())
+    nonplan = _plain_model_select("model", _settings.nonplan_model())
+    return f"""
+      <form method="post" action="/api/chats" class="new-chat-form">
+        <label class="new-chat-plan">
+          <input type="checkbox" name="plan" value="1" checked> Plan mode (prewalk)
+        </label>
+        <label>Planner model (plan mode) {planner}</label>
+        <label>Implementer model (plan mode) {implementer}</label>
+        <label>Model (non-plan) {nonplan}</label>
+        <button type="submit">New Chat</button>
+      </form>
+    """
+
+
 def render_home_section() -> str:
     """Chats-only home body: New Chat + recent chats + links."""
     ids = paths.list_chat_ids()
@@ -175,9 +211,7 @@ def render_home_section() -> str:
     </header>
     <section id="unscripted-chats" class="section-spaced">
       <h2>Chats</h2>
-      <form method="post" action="/api/chats">
-        <button type="submit">New Chat</button>
-      </form>
+      {render_new_chat_form()}
       {recent}
       {rest}
     </section>
@@ -242,22 +276,30 @@ def render_chat_answer(chat_id: str, turns: list[dict]) -> list[str]:
     return out
 
 
+def _chat_model_badge(info: dict) -> str:
+    """Read-only summary of a chat's locked model choice(s)."""
+    esc = _ui._esc
+    if info.get("plan"):
+        planner = esc(info.get("planner_model") or DEFAULT_CHAT_MODEL)
+        impl = esc(info.get("implementer_model") or DEFAULT_CHAT_MODEL)
+        return (
+            f'<small class="muted">plan · planner <code>{planner}</code> '
+            f'→ implementer <code>{impl}</code></small>'
+        )
+    return f'<small class="muted">model <code>{esc(info.get("model") or DEFAULT_CHAT_MODEL)}</code></small>'
+
+
 def render_chat_form(chat_id: str, info: dict) -> str:
-    """Bottom form: cached-model dropdown (saves on change) + multiline input + Send."""
-    current = info.get("model") or DEFAULT_CHAT_MODEL
+    """Bottom form: locked-model badge + multiline input + Send. Models are
+    chosen at creation and cannot change (prewalk needs a stable pairing)."""
     safe_id = _ui._esc(chat_id)
-    select = _render().model_select(
-        "model", current, f"/api/chats/{chat_id}/model", swap="none", indent=" " * 8
-    )
     strip = attachments.render_strip(
         "chats", chat_id, paths.chat_attachments_state(chat_id), "chat-attachments"
     )
     return f"""
     <form class="chat-form" hx-post="/api/chats/{safe_id}/messages"
           hx-target="#chat-content" hx-swap="outerHTML">
-      <label>Model
-{select}
-      </label>
+      <div class="chat-model-badge">{_chat_model_badge(info)}</div>
       {strip}
       <label>Message
         <textarea name="msg" rows="4" required placeholder="Type a message…"></textarea>
@@ -410,8 +452,6 @@ def _subtree_active(chat_id: str, run_id: str, cmap: dict[str, list[str]]) -> bo
 def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, list[str]]) -> str:
     """One bordered sub-agent card: collapsible header + full transcript +
     context meter + nested children. Open while active, collapsed when done."""
-    from crack_server.questions import render_questions_form
-
     esc = _ui._esc
     render = _render()
     state = paths.run_state(chat_id, run_id).read()
@@ -442,21 +482,6 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
     form_html = ""
     if phase == "awaiting_user" and state.get("pending_question"):
         form_html = render_user_question_form(chat_id, run_id, state["pending_question"])
-    if phase == "awaiting_answers" and state.get("pending_questions"):
-        form_html = render_questions_form(
-            f"/api/chats/{chat_id}/sub_agents/runs/{run_id}/answers",
-            "closest .subagent-run-region",
-            int(state.get("round", 1)),
-            None,
-            state["pending_questions"],
-            meta=f"Planner round {state.get('round', 1)} — answer to continue:",
-        )
-        form_html += (
-            f'<form class="ask-user-form" '
-            f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/continue" '
-            f'hx-target="closest .subagent-run-region" hx-swap="outerHTML">'
-            f'<button type="submit">Continue to plan (skip more questions)</button></form>'
-        )
 
     turns = state.get("turns") or []
     errors = state.get("errors") or []
@@ -715,11 +740,23 @@ def render_chat_page_body(chat_id: str) -> str:
 # -- route handlers (registered in app.py) -------------------------------------
 
 
-def create_chat() -> RedirectResponse:
-    """POST /api/chats: create a chat and redirect into its page."""
+def create_chat(
+    plan: bool = True,
+    planner_model: str = "",
+    implementer_model: str = "",
+    model: str = "",
+) -> RedirectResponse:
+    """POST /api/chats: create a prewalk-coder chat with its locked model
+    choices, then redirect into its page."""
     chat_id = paths.generate_chat_id()
-    paths.create_chat(chat_id, DEFAULT_CHAT_MODEL)
-    logger.info("chats: created %s", chat_id)
+    paths.create_chat(
+        chat_id,
+        model or _settings.nonplan_model(),
+        plan=plan,
+        planner_model=planner_model or _settings.plan_planner_model(),
+        implementer_model=implementer_model or _settings.plan_implementer_model(),
+    )
+    logger.info("chats: created %s (plan=%s)", chat_id, plan)
     return RedirectResponse(url=f"/chats/{chat_id}", status_code=303)
 
 
@@ -728,14 +765,9 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
 
     Always appends to ``pending`` and enqueues; human messages and child-report
     resumes serialize via the exclusive chat job (no B2 refuse-while-chatting).
+    The chat's models are locked at creation, so ``model`` is ignored.
     """
     check_chat_id(chat_id)
-    if model:
-        def _set_model(info: dict) -> dict:
-            info["model"] = model
-            return info
-
-        paths.chat_info_state(chat_id).update(_set_model)
     msg = msg.strip()
     # One-shot attachments staged via paste/drop: weave them into this message,
     # then clear the manifest so they aren't resent on the next message. The
@@ -860,18 +892,6 @@ def delete_chat(chat_id: str) -> HTMLResponse:
     return HTMLResponse("")
 
 
-def set_model(chat_id: str, model: str) -> HTMLResponse:
-    """POST /api/chats/{id}/model: persist the dropdown selection."""
-    check_chat_id(chat_id)
-
-    def _set(info: dict) -> dict:
-        info["model"] = model
-        return info
-
-    paths.chat_info_state(chat_id).update(_set)
-    return HTMLResponse("")
-
-
 # -- worker entry point ---------------------------------------------------------
 
 
@@ -989,7 +1009,11 @@ async def run_chat(chat_id: str) -> None:
                 continue
             return
 
-        model = paths.chat_info_state(chat_id).read().get("model") or DEFAULT_CHAT_MODEL
+        info = paths.chat_info_state(chat_id).read()
+        plan = bool(info.get("plan"))
+        model = info.get("model") or DEFAULT_CHAT_MODEL
+        planner_model = info.get("planner_model") or model
+        implementer_model = info.get("implementer_model") or model
         is_first = len(chat.read().get("exchanges", [])) == 1
         await chat_engine.run_exchange(
             state=chat,
@@ -998,6 +1022,10 @@ async def run_chat(chat_id: str) -> None:
             record_template="",
             log_prefix="unscripted-chat",
             model=model,
+            plan=plan,
+            planner_model=planner_model,
+            implementer_model=implementer_model,
+            max_hops=MAX_CHAT_HOPS,
             session_id=f"unscripted-{chat_id}",
             sessions_dir=paths.chat_sessions_dir(chat_id),
             tools=None,

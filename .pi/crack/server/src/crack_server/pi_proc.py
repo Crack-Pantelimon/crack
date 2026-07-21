@@ -578,6 +578,9 @@ class _StreamSink:
         self.persist_offset = 0
         self.manifest_path: Path | None = None
         self.manifest: dict = {}
+        # Prewalk swap watch: seeded from run state (a todo list may already
+        # exist from an earlier hop), flipped true when this hop sees a todo.
+        self.todo_seen = p.todo_already
 
     def persist(self, turn: dict) -> None:
         self.persisted += 1
@@ -663,6 +666,22 @@ def _process_stream_line(sink: _StreamSink, line: str, terminate: Callable[[], N
         sink.persist(sink.acc.current_turn)
         logger.info("%s hop %d: completed turn (persisted %d this attempt)",
                     p.log_prefix, p.hop, sink.persisted)
+
+    # Prewalk swap point: during a planning hop, end the moment a turn lands its
+    # first edit/write *after* a todo list exists. The frontier model has shown
+    # the pattern once, in place; the caller resumes the same session on the
+    # cheap model. bash edits deliberately don't count (prompt-forbidden).
+    if p.swap_after_edit and etype == "turn_end":
+        names = [str(b.get("name", "")) for b in sink.acc.current_turn.get("tool_blocks", [])]
+        if "todo" in names:
+            sink.todo_seen = True
+        if sink.todo_seen and any(n in ("edit", "write") for n in names):
+            logger.info("%s hop %d: first edit after todo — prewalk swap", p.log_prefix, p.hop)
+            sink.reason = "swap"
+            sink.terminated_by_us = True
+            sink.terminal = True
+            terminate()
+            return True
 
     _tick_wait_credit(p, sink)
     if _active_elapsed(p, sink) > p.timeout_seconds:
@@ -781,6 +800,14 @@ class _HopParams(NamedTuple):
     stop_check: Callable[[], bool] | None
     env_extra: dict[str, str] | None
     waiting_check: Callable[[], bool] | None
+    # Prewalk: a system-prompt append delivered as a launch flag (never a
+    # session turn) so omitting it on a later resume prunes it from context.
+    append_system_prompt: str | None = None
+    # Prewalk swap watch: while true, the hop ends with reason "swap" the first
+    # time a turn calls edit/write after a todo list has been created.
+    swap_after_edit: bool = False
+    # Seed for the swap watch when a todo list already exists from a prior hop.
+    todo_already: bool = False
 
 
 def _build_cmd(p: _HopParams, msg: str) -> list[str]:
@@ -789,6 +816,8 @@ def _build_cmd(p: _HopParams, msg: str) -> list[str]:
         cmd += ["-e", str(CRACK_EXT)]
     if p.tools is not None:
         cmd += ["--tools", p.tools]
+    if p.append_system_prompt:
+        cmd += ["--append-system-prompt", p.append_system_prompt]
     cmd += ["--session-id", p.session_id, "--session-dir", str(p.sessions_dir), msg]
     return cmd
 
@@ -1160,6 +1189,9 @@ async def arun_agent_hop(
     error_budget: Callable[[], int] | None = None,
     env_extra: dict[str, str] | None = None,
     waiting_check: Callable[[], bool] | None = None,
+    append_system_prompt: str | None = None,
+    swap_after_edit: bool = False,
+    todo_already: bool = False,
 ) -> str:
     """Run one hop of a tool-using agent and stream its JSON events (async).
 
@@ -1167,11 +1199,16 @@ async def arun_agent_hop(
     ``tools=None`` omits ``--tools`` so pi runs with every tool it has. A hop
     has no turn cap: it ends only when the model stops on its own, on the
     sentinel (matched *on its own line* in assistant text), on the time cap, on
-    an external stop, or on an unrecoverable error. The pi session is persisted
-    under ``sessions_dir`` so the next hop/step resumes it via the same
-    --session-id. ``persist_turn(current_turn, hop)`` is called for every
+    the prewalk swap point (``swap_after_edit``: first edit/write after a todo
+    exists), on an external stop, or on an unrecoverable error. The pi session
+    is persisted under ``sessions_dir`` so the next hop/step resumes it via the
+    same --session-id. ``persist_turn(current_turn, hop)`` is called for every
     completed non-empty turn. Returns the stop reason: "sentinel", "time_cap",
-    "agent_end", "empty", or "stopped".
+    "agent_end", "empty", "swap", or "stopped".
+
+    Prewalk (``append_system_prompt`` / ``swap_after_edit`` / ``todo_already``):
+    the append is a launch flag, never a session turn, so a later resume that
+    omits it prunes the planning instruction from the cheap model's context.
 
     ``pid_file`` (optional): the pi subprocess is started in its own session and
     its PID written here so another process (e.g. a web STOP handler) can kill
@@ -1214,7 +1251,8 @@ async def arun_agent_hop(
                    sessions_dir=sessions_dir, tools=tools, start=start, sentinel=sentinel,
                    timeout_seconds=timeout_seconds, persist_turn=persist_turn, hop=hop,
                    pid_file=pid_file, stop_check=stop_check, env_extra=env_extra,
-                   waiting_check=waiting_check)
+                   waiting_check=waiting_check, append_system_prompt=append_system_prompt,
+                   swap_after_edit=swap_after_edit, todo_already=todo_already)
     p.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     if record_prompt is not None:

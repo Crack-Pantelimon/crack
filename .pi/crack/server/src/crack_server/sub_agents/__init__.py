@@ -1,4 +1,4 @@
-"""Sub-agent personas for unscripted chats (explorer, planner, coder, tester)."""
+"""Sub-agent personas for unscripted chats — a single generic prewalk ``coder``."""
 
 from __future__ import annotations
 

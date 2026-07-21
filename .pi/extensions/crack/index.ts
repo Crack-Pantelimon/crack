@@ -15,16 +15,58 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateTail } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
 const BASE = `http://127.0.0.1:${process.env.CRACK_PI_PORT ?? "9847"}`;
 const MAX_DEPTH = 3;
+const TODO_MAX = 12;
 
 const PARAMS = Type.Object({
 	instructions: Type.String({ description: "Task for the sub-agent" }),
+	plan: Type.Optional(
+		Type.Boolean({
+			description:
+				"Prewalk plan mode (default true). true: the run starts on a smarter planner " +
+				"model that explores and builds a todo list, then hands off to a cheaper " +
+				"implementer model the moment it lands its first edit — best for non-trivial " +
+				"changes. false: the whole task runs on one model — best for small, mechanical edits.",
+		}),
+	),
 });
+
+const TODO_PARAMS = Type.Object({
+	action: Type.String({
+		description:
+			'"write" replaces the whole list with `items`; "toggle" flips item `id` done/undone; "list" re-shows it.',
+	}),
+	items: Type.Optional(
+		Type.Array(Type.String(), {
+			description: `Full replacement list of todo texts (action=write). Each becomes an unchecked step. Max ${TODO_MAX}.`,
+		}),
+	),
+	id: Type.Optional(
+		Type.Number({ description: "Item number to toggle done/undone (action=toggle)." }),
+	),
+});
+
+interface Todo {
+	id: number;
+	text: string;
+	done: boolean;
+}
+
+interface TodoDetails {
+	todos: Todo[];
+}
+
+function renderTodos(todos: Todo[]): string {
+	if (todos.length === 0) return "Todo list is empty.";
+	const done = todos.filter((t) => t.done).length;
+	const lines = todos.map((t) => `[${t.done ? "x" : " "}] #${t.id} ${t.text}`);
+	return `Todo list (${done}/${todos.length} done):\n${lines.join("\n")}`;
+}
 
 const WAIT_PARAMS = Type.Object({
 	target: Type.Optional(
@@ -225,6 +267,66 @@ function findSubAgentsDir(): string | null {
 
 export default function crack(pi: ExtensionAPI) {
 	try {
+		// Todo list — the plan the prewalk swap and nudges key off. State is
+		// reconstructed from the session tree (branch-safe) and always echoed as
+		// plain text so crack-server can read it out of the persisted tool_block.
+		let todos: Todo[] = [];
+		const reconstructTodos = (ctx: ExtensionContext) => {
+			todos = [];
+			for (const entry of ctx.sessionManager.getBranch()) {
+				if (entry.type !== "message") continue;
+				const msg = entry.message;
+				if (msg.role !== "toolResult" || msg.toolName !== "todo") continue;
+				const details = msg.details as TodoDetails | undefined;
+				if (details?.todos) todos = details.todos;
+			}
+		};
+		pi.on("session_start", async (_event, ctx) => reconstructTodos(ctx));
+		pi.on("session_tree", async (_event, ctx) => reconstructTodos(ctx));
+
+		pi.registerTool({
+			name: "todo",
+			label: "Todo list",
+			description:
+				"Manage your plan as a todo list. action=write replaces the whole list with `items` " +
+				`(use it once, right after you finish planning; keep it to ~${TODO_MAX} concrete, ` +
+				"independently-verifiable steps). action=toggle flips item `id` done/undone as you " +
+				"complete it. action=list re-shows it. Keep it updated as you work — it is your " +
+				"checklist, not a file to write.",
+			parameters: TODO_PARAMS,
+			executionMode: "parallel",
+			async execute(_id, params) {
+				const action = String(params.action || "").toLowerCase();
+				if (action === "write") {
+					todos = (params.items ?? [])
+						.slice(0, TODO_MAX)
+						.map((t, i) => ({ id: i + 1, text: String(t), done: false }));
+				} else if (action === "toggle") {
+					const t = todos.find((x) => x.id === params.id);
+					if (!t) {
+						return {
+							content: [
+								{ type: "text" as const, text: `No todo #${params.id}.\n${renderTodos(todos)}` },
+							],
+						};
+					}
+					t.done = !t.done;
+				} else if (action !== "list") {
+					return {
+						content: [
+							{
+								type: "text" as const,
+								text: `Unknown action ${JSON.stringify(params.action)}. Use write | toggle | list.`,
+							},
+						],
+					};
+				}
+				return {
+					content: [{ type: "text" as const, text: renderTodos(todos) }],
+					details: { todos: [...todos] } as TodoDetails,
+				};
+			},
+		});
 		pi.registerTool({
 			name: "wait_join",
 			label: "Wait for sub-agents",
@@ -365,6 +467,7 @@ export default function crack(pi: ExtensionAPI) {
 									parent_kind: parentKind,
 									parent_id: parentId,
 									depth,
+									plan: params.plan ?? true,
 								}),
 								signal: to,
 							},

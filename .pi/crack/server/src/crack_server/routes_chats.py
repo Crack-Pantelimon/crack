@@ -47,9 +47,20 @@ async def api_chat_dots_wait(since: float = Query(default=0.0)) -> JSONResponse:
 
 
 @router.post("/api/chats")
-def api_create_chat() -> Response:
-    """Create a new unscripted chat and redirect (303) into its chat page."""
-    return chats.create_chat()
+def api_create_chat(
+    plan: str = Form(default=""),
+    planner_model: str = Form(default=""),
+    implementer_model: str = Form(default=""),
+    model: str = Form(default=""),
+) -> Response:
+    """Create a new prewalk-coder chat with its locked model choices and
+    redirect (303) into its chat page. ``plan`` is the checkbox (present ⇒ on)."""
+    return chats.create_chat(
+        plan=bool(plan),
+        planner_model=planner_model,
+        implementer_model=implementer_model,
+        model=model,
+    )
 
 
 @router.get("/chats/{chat_id}", response_class=HTMLResponse)
@@ -119,12 +130,6 @@ def api_chat_message(
 def api_chat_ask_answer(chat_id: str, answer: str = Form(...)) -> HTMLResponse:
     """Answer a chat ask_user question; records the Q&A and resumes the agent."""
     return chats.answer_chat_question(chat_id, answer)
-
-
-@router.post("/api/chats/{chat_id}/model", response_class=HTMLResponse)
-def api_chat_model(chat_id: str, model: str = Form(...)) -> HTMLResponse:
-    """Persist the chat's model selection (dropdown saves on change)."""
-    return chats.set_model(chat_id, model)
 
 
 @router.post("/api/chats/{chat_id}/stop", response_class=HTMLResponse)

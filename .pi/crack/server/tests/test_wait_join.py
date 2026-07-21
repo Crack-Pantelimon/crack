@@ -60,7 +60,7 @@ def _json_request(body: dict, path: str):
 async def test_wait_drains_chat_inbox_then_drain_job_noops(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     a = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="A",
+        chat_id=chat_root, persona_slug="coder", instructions="A",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     b = runner.spawn(
@@ -92,7 +92,7 @@ async def test_wait_drains_chat_inbox_then_drain_job_noops(chat_root, fake_pi):
 async def test_wait_run_parent_drain_no_duplicate_child_results(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     parent = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="P",
+        chat_id=chat_root, persona_slug="coder", instructions="P",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     child = runner.spawn(
@@ -133,7 +133,7 @@ async def test_wait_run_parent_drain_no_duplicate_child_results(chat_root, fake_
 async def test_wait_target_resolution(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     a = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="A",
+        chat_id=chat_root, persona_slug="coder", instructions="A",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     b = runner.spawn(
@@ -194,7 +194,7 @@ async def test_notified_gap_not_misread_as_delivered(chat_root, fake_pi):
     """notified=true with no inbox entry (the finish() two-write gap) is
     pending, never silently treated as delivered."""
     state = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="G",
+        chat_id=chat_root, persona_slug="coder", instructions="G",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     run_id = state["run_id"]
@@ -218,7 +218,7 @@ async def test_wait_route_long_poll_wakes_on_notify(chat_root, fake_pi):
     from crack_server.routes_sub_agents import api_wait_sub_agents
 
     state = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="W",
+        chat_id=chat_root, persona_slug="coder", instructions="W",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     run_id = state["run_id"]
@@ -270,7 +270,7 @@ async def test_wait_route_validation(chat_root, fake_pi):
 @pytest.mark.anyio
 async def test_orphan_check_skips_waiting_parent(chat_root, fake_pi):
     state = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="S",
+        chat_id=chat_root, persona_slug="coder", instructions="S",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     run_id = state["run_id"]
@@ -286,6 +286,6 @@ async def test_orphan_check_skips_waiting_parent(chat_root, fake_pi):
     old = time.time() - 3600
     os.utime(state_obj.path, (old, old))
 
-    persona = sub_registry.get("explorer")
+    persona = sub_registry.get("coder")
     assert persona.check_orphaned(run_id) is False
     assert state_obj.read()["phase"] == "running"

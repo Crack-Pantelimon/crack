@@ -99,6 +99,7 @@ async def api_spawn_sub_agent(chat_id: str, request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail="persona and instructions are required")
     if parent_kind not in ("chat", "run") or not parent_id:
         raise HTTPException(status_code=400, detail="parent_kind and parent_id are required")
+    plan = bool(body.get("plan", True))
 
     try:
         state = runner.spawn(
@@ -108,6 +109,7 @@ async def api_spawn_sub_agent(chat_id: str, request: Request) -> JSONResponse:
             parent_kind=parent_kind,
             parent_id=parent_id,
             depth=depth,
+            plan=plan,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -278,33 +280,6 @@ def run_media(chat_id: str, run_id: str, filename: str):
     except ValueError as e:
         raise HTTPException(status_code=404, detail="not found") from e
     return attachments.serve_file(directory, filename)
-
-
-@router.post("/api/chats/{chat_id}/sub_agents/runs/{run_id}/answers", response_class=HTMLResponse)
-async def api_run_answers(chat_id: str, run_id: str, request: Request) -> HTMLResponse:
-    chats.check_chat_id(chat_id)
-    state = paths.run_state(chat_id, run_id).read()
-    if not state:
-        raise HTTPException(status_code=404, detail="run not found")
-    persona = _persona_or_404(state.get("persona", ""))
-    if not hasattr(persona, "submit_answers"):
-        raise HTTPException(status_code=400, detail="persona does not accept answers")
-    form = await request.form()
-    persona.submit_answers(run_id, form)
-    return HTMLResponse(chats.render_inline_run_region(chat_id, chats.root_run_id(chat_id, run_id)))
-
-
-@router.post("/api/chats/{chat_id}/sub_agents/runs/{run_id}/continue", response_class=HTMLResponse)
-def api_run_continue(chat_id: str, run_id: str) -> HTMLResponse:
-    chats.check_chat_id(chat_id)
-    state = paths.run_state(chat_id, run_id).read()
-    if not state:
-        raise HTTPException(status_code=404, detail="run not found")
-    persona = _persona_or_404(state.get("persona", ""))
-    if not hasattr(persona, "continue_to_write"):
-        raise HTTPException(status_code=400, detail="persona does not support continue")
-    persona.continue_to_write(run_id)
-    return HTMLResponse(chats.render_inline_run_region(chat_id, chats.root_run_id(chat_id, run_id)))
 
 
 @router.post("/api/chats/{chat_id}/sub_agents/runs/{run_id}/stop", response_class=HTMLResponse)

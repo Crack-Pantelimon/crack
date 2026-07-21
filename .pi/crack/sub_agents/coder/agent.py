@@ -8,7 +8,7 @@ class CoderPersona(SubAgentPersona):
         "An implementation report listing every file changed, why, how to build/test, "
         "and any follow-ups. Do not claim work you did not perform."
     )
-    templates = ["system.md", "nudge.md"]
+    templates = ["system.md", "plan_instruction.md", "nudge.md"]
 
 
 PERSONA = CoderPersona()

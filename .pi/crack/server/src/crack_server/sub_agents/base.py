@@ -7,7 +7,7 @@ import time
 import uuid
 from pathlib import Path
 
-from crack_server import paths, pi_runner, queue
+from crack_server import paths, pi_runner, prewalk, queue
 from crack_server.ratelimit import MAX_TOTAL_ERRORS, RESUME_MESSAGE
 from crack_server.state import JsonState
 from crack_server.sub_agents.constants import ORPHAN_PHASE_GRACE_SECONDS, SUBAGENT_JOB_SLUG, SUBAGENT_TIMEOUT_SECONDS
@@ -23,9 +23,10 @@ logger = logging.getLogger("uvicorn.error")
 TERMINAL_PHASES = frozenset({"done", "error", "stopped"})
 ACTIVE_PHASES = frozenset({"running", "resuming", "writing"})
 MAX_NUDGES = 3
-MAX_HOPS = 5
+# A prewalk coder run may take many edit/verify hops before the report lands.
+MAX_HOPS = 25
 
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
+DEFAULT_MODEL = prewalk.DEFAULT_MODEL
 
 
 class SubAgentPersona:
@@ -178,9 +179,14 @@ class SubAgentPersona:
         if form and form.get("resume"):
             return RESUME_MESSAGE, ""
         if form and form.get("nudge"):
-            template = "nudge.md"
-            text = self._fill_template(template, state)
-            return text, template
+            # Todo-aware nudge: names the still-open items when a todo list
+            # exists, else a generic "keep going" (prewalk.nudge_text). A
+            # sub-agent must end by writing its report, so remind it of the path.
+            text = prewalk.nudge_text(state.get("turns", []))
+            report = state.get("report_path", "")
+            if report:
+                text += f"\n\nWhen the work is complete, write your report to: {report}"
+            return text, "nudge"
         if state.get("hops_completed", 0) > 0:
             return RESUME_MESSAGE, ""
         template = "system.md"
@@ -228,10 +234,18 @@ class SubAgentPersona:
         )
         record = prompt_recorder(persister, f"hop {hop_n}", template, message)
 
+        # Prewalk: pick this hop's model (planner while planning, implementer
+        # after the swap, or the single model in non-plan mode) and, while
+        # planning, inject the hidden instruction + watch for the first-edit
+        # swap. Phase derives from the persisted turns, so a resume is correct.
+        turns = state.get("turns", [])
+        hop_model = prewalk.model_for_phase(state, turns)
+        pw_kwargs = prewalk.hop_prewalk_kwargs(state, turns, self.slug)
+
         try:
             reason = await pi_runner.arun_agent_hop(
                 log_prefix=f"sub_agent/{self.slug}/{run_id}",
-                model=self.model_for(),
+                model=hop_model,
                 session_id=f"subagent-{run_id}",
                 sessions_dir=paths.run_sessions_dir(chat_id, run_id),
                 tools=None,
@@ -250,6 +264,7 @@ class SubAgentPersona:
                 ),
                 env_extra=self._subagent_env(state),
                 waiting_check=lambda: bool(self.state_read(run_id).get("waiting_on")),
+                **pw_kwargs,
             )
         except pi_runner.PiStopped:
             self._mark_stopped(run_id)
@@ -285,6 +300,13 @@ class SubAgentPersona:
 
             runner.finish(run_id, "stopped")
             return None
+
+        if reason == "swap":
+            # First edit landed under the planner: resume the same session on
+            # the implementer model. The phase now derives to "implementing"
+            # from the persisted edit turn, pruning the planning instruction.
+            started_token = self.state_read(run_id).get("started_token")
+            return ("run", {"run_id": run_id, "started_token": started_token, "resume": True})
 
         return await self._after_hop(run_id, reason, persister)
 

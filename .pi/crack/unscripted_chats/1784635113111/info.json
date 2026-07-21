@@ -1,0 +1,9 @@
+{
+  "id": "1784635113111",
+  "title": "Create run.sh and README.md for TINY DEMO",
+  "model": "nvidia/z-ai/glm-5.2",
+  "plan": true,
+  "planner_model": "nvidia/z-ai/glm-5.2",
+  "implementer_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "created_at": 1784635113.1115332
+}

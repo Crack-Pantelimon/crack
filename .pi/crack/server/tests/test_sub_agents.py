@@ -1,4 +1,4 @@
-"""Sub-agent spawn/run/resume/nudge/planner tests against fake_pi.sh."""
+"""Sub-agent spawn/run/resume/nudge tests against fake_pi.sh (single coder)."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def chat_root(tmp_path, monkeypatch, fake_pi) -> str:
 
 def test_personas_discovered(chat_root):
     slugs = [p.slug for p in sub_registry.list_personas()]
-    assert slugs == ["coder", "explorer", "planner", "tester"]
+    assert slugs == ["coder"]
 
 
 
@@ -80,7 +80,7 @@ async def test_spawn_run_report_parent_resume(chat_root, fake_pi):
     fake_pi.set_script(["write_report", "turns:1"])
     state = runner.spawn(
         chat_id=chat_root,
-        persona_slug="explorer",
+        persona_slug="coder",
         instructions="Investigate the foo module.",
         parent_kind="chat",
         parent_id=chat_root,
@@ -131,7 +131,7 @@ async def test_nudge_exhaustion_errors_and_resumes_parent(chat_root, fake_pi):
     fake_pi.set_script(["turns:1"])
     state = runner.spawn(
         chat_id=chat_root,
-        persona_slug="tester",
+        persona_slug="coder",
         instructions="Test Y.",
         parent_kind="chat",
         parent_id=chat_root,
@@ -152,7 +152,7 @@ async def test_depth_limit_rejects_spawn_beyond_max(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     parent = runner.spawn(
         chat_id=chat_root,
-        persona_slug="explorer",
+        persona_slug="coder",
         instructions="L1",
         parent_kind="chat",
         parent_id=chat_root,
@@ -172,7 +172,7 @@ async def test_depth_limit_rejects_spawn_beyond_max(chat_root, fake_pi):
     with pytest.raises(ValueError, match="exceeds maximum"):
         runner.spawn(
             chat_id=chat_root,
-            persona_slug="explorer",
+            persona_slug="coder",
             instructions="too deep",
             parent_kind="run",
             parent_id=parent["run_id"],
@@ -186,7 +186,7 @@ async def test_parallel_children_both_delivered(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     a = runner.spawn(
         chat_id=chat_root,
-        persona_slug="explorer",
+        persona_slug="coder",
         instructions="A",
         parent_kind="chat",
         parent_id=chat_root,
@@ -217,7 +217,7 @@ async def test_reclaim_orphans_requeues(chat_root, fake_pi):
     fake_pi.set_script(["write_report"])
     state = runner.spawn(
         chat_id=chat_root,
-        persona_slug="explorer",
+        persona_slug="coder",
         instructions="resume me",
         parent_kind="chat",
         parent_id=chat_root,
@@ -237,69 +237,11 @@ async def test_reclaim_orphans_requeues(chat_root, fake_pi):
 
 
 
-@pytest.mark.anyio
-async def test_planner_qa_round_then_write(chat_root, fake_pi):
-    # grill → questions; after answers+continue → write_report
-    fake_pi.set_script(["questions", "write_report"])
-    state = runner.spawn(
-        chat_id=chat_root,
-        persona_slug="planner",
-        instructions="Plan the feature.",
-        parent_kind="chat",
-        parent_id=chat_root,
-        depth=0,
-    )
-    run_id = state["run_id"]
-    await _drain_jobs()
-    run = paths.run_state(chat_root, run_id).read()
-    assert run["phase"] == "awaiting_answers"
-    assert run.get("pending_questions")
-
-    persona = sub_registry.get("planner")
-    assert persona is not None
-
-    class _Form(dict):
-        def getlist(self, key):
-            v = self.get(key)
-            if v is None:
-                return []
-            if isinstance(v, list):
-                return v
-            return [v]
-
-    persona.submit_answers(run_id, _Form(q1="A"))
-    run = paths.run_state(chat_root, run_id).read()
-    assert run["phase"] == "resuming"
-    await _drain_jobs()
-
-    # After followup with no new questions (script line repeats write_report? —
-    # second invocation is write_report only if we continue_to_write).
-    # questions behavior on followup would ask again; force continue.
-    run = paths.run_state(chat_root, run_id).read()
-    if run["phase"] == "awaiting_answers":
-        persona.continue_to_write(run_id)
-        await _drain_jobs()
-    elif run["phase"] not in ("done", "writing"):
-        persona.continue_to_write(run_id)
-        await _drain_jobs()
-
-    run = paths.run_state(chat_root, run_id).read()
-    # Followup may have consumed write_report; ensure done or drive write.
-    if run["phase"] != "done":
-        fake_pi.set_script(["write_report"])
-        persona.continue_to_write(run_id)
-        await _drain_jobs()
-        run = paths.run_state(chat_root, run_id).read()
-    assert run["phase"] == "done"
-    assert Path(run["report_path"]).is_file()
-    assert run.get("rounds")
-
-
 def test_api_list_personas(chat_root):
     from crack_server.routes_sub_agents import api_list_sub_agents
 
     data = api_list_sub_agents()
-    assert {p["slug"] for p in data} == {"coder", "explorer", "planner", "tester"}
+    assert {p["slug"] for p in data} == {"coder"}
     assert all("tool_name" in p for p in data)
 
 
@@ -312,7 +254,7 @@ async def test_api_spawn(chat_root, fake_pi):
     fake_pi.set_script(["write_report", "turns:1"])
 
     body = json.dumps({
-        "persona": "explorer",
+        "persona": "coder",
         "instructions": "look around",
         "parent_kind": "chat",
         "parent_id": chat_root,

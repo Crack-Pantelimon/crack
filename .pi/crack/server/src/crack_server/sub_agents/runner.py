@@ -86,12 +86,17 @@ def spawn(
     parent_kind: str,
     parent_id: str,
     depth: int,
+    plan: bool = True,
 ) -> dict:
     """Create a run directory, link it to the parent, and enqueue run_start.
 
     ``depth`` is the *caller's* depth (0 for a chat). The child run is stored at
     ``depth + 1``. Spawning is rejected when the child would exceed ``MAX_DEPTH``.
+
+    ``plan`` selects prewalk plan mode (planner→swap→implementer) vs. a single
+    model; the models come from the global agent settings.
     """
+    from crack_server import settings as _settings
     if parent_kind not in ("chat", "run"):
         raise ValueError("parent_kind must be 'chat' or 'run'")
     persona = registry.get(persona_slug)
@@ -133,6 +138,10 @@ def spawn(
         "depth": child_depth,
         "instructions": instructions,
         "report_path": str(report_path),
+        "plan": bool(plan),
+        "planner_model": _settings.plan_planner_model(),
+        "implementer_model": _settings.plan_implementer_model(),
+        "model": _settings.nonplan_model(),
         "phase": "running",
         "started_token": token,
         "stop_requested": False,

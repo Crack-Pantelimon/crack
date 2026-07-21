@@ -24,7 +24,7 @@ async def test_ask_user_suspends_run_then_answer_resumes(chat_root, fake_pi):
     # hop 2 (the answer resume) writes the report.
     fake_pi.set_script(["sleepy:1", "write_report"])
     state = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="investigate",
+        chat_id=chat_root, persona_slug="coder", instructions="investigate",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     run_id = state["run_id"]
@@ -65,7 +65,7 @@ async def test_ask_user_suspends_run_then_answer_resumes(chat_root, fake_pi):
 @pytest.mark.anyio
 async def test_ask_user_orphan_sweep_skips_awaiting_user(chat_root, fake_pi):
     state = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="wait",
+        chat_id=chat_root, persona_slug="coder", instructions="wait",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     run_id = state["run_id"]
@@ -79,7 +79,7 @@ async def test_ask_user_orphan_sweep_skips_awaiting_user(chat_root, fake_pi):
     old = time.time() - 3600  # overnight-style: hours old, no queued job
     os.utime(state_obj.path, (old, old))
 
-    persona = sub_registry.get("explorer")
+    persona = sub_registry.get("coder")
     assert persona.check_orphaned(run_id) is False
     assert state_obj.read()["phase"] == "awaiting_user"
     # The sweep itself must also leave it alone.
@@ -90,7 +90,7 @@ async def test_ask_user_orphan_sweep_skips_awaiting_user(chat_root, fake_pi):
 @pytest.mark.anyio
 async def test_ask_user_answer_requires_awaiting_phase(chat_root, fake_pi):
     state = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="x",
+        chat_id=chat_root, persona_slug="coder", instructions="x",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     queue.complete(queue.claim_next())
@@ -148,7 +148,7 @@ async def test_user_answer_route(chat_root, fake_pi):
     from crack_server.routes_sub_agents import api_run_user_answer
 
     state = runner.spawn(
-        chat_id=chat_root, persona_slug="explorer", instructions="x",
+        chat_id=chat_root, persona_slug="coder", instructions="x",
         parent_kind="chat", parent_id=chat_root, depth=0,
     )
     run_id = state["run_id"]

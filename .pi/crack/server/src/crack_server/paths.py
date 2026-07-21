@@ -122,11 +122,29 @@ def chat_sessions_dir(chat_id: str, root: Path | None = None) -> Path:
     return chat_dir(chat_id, root) / "sessions"
 
 
-def create_chat(chat_id: str, model: str, root: Path | None = None) -> dict:
-    """Create a new chat directory with info.json + chat.json; returns the info dict."""
+def create_chat(
+    chat_id: str,
+    model: str,
+    root: Path | None = None,
+    *,
+    plan: bool = False,
+    planner_model: str = "",
+    implementer_model: str = "",
+) -> dict:
+    """Create a new chat directory with info.json + chat.json; returns the info
+    dict. ``plan``/``planner_model``/``implementer_model`` are the prewalk model
+    choices locked at creation (``model`` is the non-plan / fallback model)."""
     directory = chat_dir(chat_id, root)
     directory.mkdir(parents=True, exist_ok=False)
-    info = {"id": chat_id, "title": "", "model": model, "created_at": time.time()}
+    info = {
+        "id": chat_id,
+        "title": "",
+        "model": model,
+        "plan": bool(plan),
+        "planner_model": planner_model or model,
+        "implementer_model": implementer_model or model,
+        "created_at": time.time(),
+    }
     chat_info_state(chat_id, root).write(info)
     chat_state(chat_id, root).write({
         "phase": "idle",

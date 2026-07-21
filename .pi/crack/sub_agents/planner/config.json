@@ -1,5 +1,0 @@
-{
-  "model": "nvidia/z-ai/glm-5.2",
-  "tool_description": "Spawn a Planner sub-agent to debate trade-offs with the human and produce a plan report.",
-  "tool_label": "Planner"
-}
