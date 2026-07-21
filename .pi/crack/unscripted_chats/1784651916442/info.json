@@ -1,0 +1,9 @@
+{
+  "id": "1784651916442",
+  "title": "Add docstrings to fix build warning in _bootstrap_keys.rs",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "plan": false,
+  "planner_model": "cursor-agent/gpt-5.6-terra-medium",
+  "implementer_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "created_at": 1784651916.4436128
+}

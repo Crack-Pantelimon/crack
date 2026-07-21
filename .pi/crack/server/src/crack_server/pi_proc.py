@@ -67,6 +67,12 @@ STREAM_LINE_LIMIT = 16 * 1024 * 1024
 # partial checkouts don't break) and pin the subprocess cwd to the project root
 # (pi dedupes `-e` against auto-discovery — no double registration).
 CRACK_EXT = project_root() / ".pi" / "extensions" / "crack" / "index.ts"
+# Shared tool-usage guidance appended to the system prompt of every tool-bearing
+# hop (unscripted chats + all sub-agents, plan and non-plan). It teaches weak
+# models the exact JSON shapes for the hash-anchored read/edit/write/grep tools.
+# Only the tool hops load it — the title/vision one-off runs go through
+# `arun_pi_text` with `--no-tools` and never touch `_build_cmd`, so they skip it.
+CRACK_SYSTEM_MD = project_root() / ".pi" / "SYSTEM.md"
 
 
 class PiError(RuntimeError):
@@ -816,6 +822,11 @@ def _build_cmd(p: _HopParams, msg: str) -> list[str]:
         cmd += ["-e", str(CRACK_EXT)]
     if p.tools is not None:
         cmd += ["--tools", p.tools]
+    # Load the shared tool-usage guidance for every tool-bearing hop. A path arg
+    # makes pi read the file's contents; it stacks with the prewalk append below
+    # (`--append-system-prompt` may repeat).
+    if CRACK_SYSTEM_MD.exists():
+        cmd += ["--append-system-prompt", str(CRACK_SYSTEM_MD)]
     if p.append_system_prompt:
         cmd += ["--append-system-prompt", p.append_system_prompt]
     cmd += ["--session-id", p.session_id, "--session-dir", str(p.sessions_dir), msg]

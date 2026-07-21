@@ -1,3 +1,40 @@
+//! Bootstrap secret keys for the net_crackpipe network.
+//!
+//! This module contains hardcoded bootstrap secret keys used to establish
+//! the initial bootstrap nodes for the net_crackpipe network. These keys
+//! are used to derive the bootstrap node identities that clients can connect
+//! to for initial network discovery.
+//!
+//! The keys are hardcoded to ensure all clients connect to the same
+//! bootstrap nodes on first connection, enabling network bootstrapping.
+
+/// Hardcoded bootstrap secret keys for the net_crackpipe bootstrap nodes.
+///
+/// This array contains 5 Ed25519 secret keys (32 bytes each) that correspond
+/// to the 5 hardcoded bootstrap nodes. These keys are used to derive the
+/// corresponding NodeIds that clients use for initial network bootstrap.
+///
+/// The keys are hardcoded to ensure all clients bootstrap from the same
+/// set of bootstrap nodes. In a production deployment, these would typically
+/// be replaced with keys controlled by the network operators.
+///
+/// # Security
+///
+/// These are public bootstrap keys - they are not secret in the traditional
+/// sense since their corresponding public keys (NodeIds) are publicly known
+/// and distributed with the client software. The "secret" naming is a
+/// convention indicating they are the private half of the bootstrap node
+/// identity keypairs.
+///
+/// # Example
+///
+/// ```
+/// use net_crackpipe::_bootstrap_keys::BOOTSTRAP_SECRET_KEYS;
+///
+/// // Get the first bootstrap node's secret key
+/// let first_key = &BOOTSTRAP_SECRET_KEYS[0];
+/// assert_eq!(first_key.len(), 32);
+/// ```
 pub const BOOTSTRAP_SECRET_KEYS: [[u8; 32]; 5] = [
     [
         165, 48, 79, 186, 71, 176, 49, 168, 36, 74, 114, 142, 97, 104, 107, 16, 184, 0, 60, 202,
