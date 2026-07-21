@@ -4,13 +4,17 @@ pub use iroh::NodeId;
 pub use iroh_gossip::proto::TopicId;
 use serde::{Deserialize, Serialize};
 
+/// Ticket encoding a gossip topic and bootstrap node set for joining a room.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ChatTicket {
+    /// Gossip topic identifier derived from the topic string.
     pub topic_id: TopicId,
+    /// Bootstrap node IDs used to discover the topic swarm.
     pub bootstrap: BTreeSet<NodeId>,
 }
 
 impl ChatTicket {
+    /// Creates a ticket from a topic string and bootstrap node set.
     pub fn new_str_bs(topic_id: &str, bs: BTreeSet<NodeId>) -> Self {
         let mut topic_bytes = [0; 32];
         let topic_str = topic_id.as_bytes().to_vec();

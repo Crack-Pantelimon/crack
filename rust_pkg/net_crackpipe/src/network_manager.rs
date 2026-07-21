@@ -78,10 +78,12 @@ impl NetworkManager {
         })
     }
 
+    /// Returns a clone of the global matchmaker.
     pub fn matchmaker(&self) -> GlobalMatchmaker {
         self.mm.clone()
     }
 
+    /// Returns the global chat controller, if the matchmaker has joined it.
     pub async fn global_chat_controller(&self) -> Option<ChatController<GlobalChatRoomType>> {
         self.mm.global_chat_controller().await
     }
@@ -126,6 +128,7 @@ impl NetworkManager {
         Ok(controller)
     }
 
+    /// Aborts joined-room tasks and shuts down the matchmaker.
     pub async fn shutdown(&self) -> Result<()> {
         self.tasks.write().await.clear();
         self.mm.shutdown().await

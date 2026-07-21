@@ -47,6 +47,7 @@ impl PresenceFlag {
     }
 }
 
+/// Snapshot of peers currently tracked in a chat room.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PresenceList<P>(pub Vec<PresenceListItem<P>>);
 
@@ -56,22 +57,30 @@ impl<P> Default for PresenceList<P> {
     }
 }
 
+/// One peer entry in a presence snapshot.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PresenceListItem<P> {
+    /// Active, idle, or expired status derived from last seen time.
     pub presence_flag: PresenceFlag,
+    /// Millisecond timestamp of the last presence update.
     pub last_seen: i64,
+    /// Node identity of the peer.
     pub identity: NodeIdentity,
+    /// Optional room-specific presence payload.
     pub payload: Option<P>,
+    /// Optional round-trip time in milliseconds.
     pub rtt: Option<u16>,
 }
 
 impl<T: IChatRoomType> ChatPresence<T> {
+    /// Creates empty presence tracking for a chat room.
     pub fn new() -> Self {
         Self {
             presence: Arc::new(RwLock::new(ChatPresenceData::default())),
             notify: Arc::new(Notify::new()),
         }
     }
+    /// Returns a future that completes when the presence list changes.
     pub fn notified(&self) -> tokio::sync::futures::Notified<'_> {
         self.notify.notified()
     }
@@ -110,6 +119,7 @@ impl<T: IChatRoomType> ChatPresence<T> {
         }
         was_added
     }
+    /// Records round-trip time for a peer already in the presence list.
     pub async fn update_ping(&self, identity: &NodeIdentity, rtt: u16) {
         let identity = *identity;
         let mut w = self.presence.write().await;
@@ -118,6 +128,7 @@ impl<T: IChatRoomType> ChatPresence<T> {
         };
         entry.3 = Some(rtt);
     }
+    /// Builds a sorted snapshot of all tracked peers.
     pub async fn get_presence_list(&self) -> PresenceList<T::P> {
         let p_map = self.presence.read().await.map.clone();
         let p = p_map.clone();
@@ -143,6 +154,7 @@ impl<T: IChatRoomType> ChatPresence<T> {
 
         PresenceList(v)
     }
+    /// Removes a peer from the presence list.
     pub async fn remove_presence(&self, identity: &NodeIdentity) {
         let identity = *identity;
         let mut w = self.presence.write().await;

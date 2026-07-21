@@ -1,0 +1,14 @@
+{
+  "pid": 9046,
+  "started_at": 1784659174.6862311,
+  "output_path": "/workspace/.pi/crack/unscripted_chats/1784656357069/agent.hop.jsonl",
+  "offset": 2109013,
+  "session_id": "unscripted-1784656357069",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "tools": null,
+  "message": "Continue where you left off.",
+  "hop": 2,
+  "timeout": 3600,
+  "status": "done",
+  "detached_pids": []
+}

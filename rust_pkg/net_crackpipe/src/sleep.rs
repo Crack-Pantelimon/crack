@@ -11,14 +11,17 @@ pub struct SleepManager {
 }
 
 impl SleepManager {
+    /// Creates a new sleep manager.
     pub fn new() -> Self {
         Self {
             inner: Arc::new(SleepManagerInner::new()),
         }
     }
+    /// Sleeps for the given duration, but can be woken early by calling `wake_up()`.
     pub async fn sleep(&self, duration: Duration) {
         self.inner.sleep(duration).await;
     }
+    /// Wakes up all current and future sleep calls immediately.
     pub fn wake_up(&self) {
         self.inner.wake_up();
     }

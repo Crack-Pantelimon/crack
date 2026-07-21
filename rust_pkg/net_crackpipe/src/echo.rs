@@ -14,7 +14,9 @@ pub struct Echo {
 }
 
 impl Echo {
+    /// ALPN identifier for the echo protocol used by bootstrap nodes.
     pub const ALPN: &[u8] = b"sparganothis/global-matchmaker-echo/0";
+    /// Creates an echo handler that responds with the local node ID.
     pub fn new(own_endpoint_node_id: NodeId, sleep_manager: SleepManager) -> Self {
         Self {
             own_endpoint_node_id,

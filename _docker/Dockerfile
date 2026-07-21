@@ -34,6 +34,8 @@ COPY blender_mcp_addon.py /opt/blender_mcp_addon.py
 RUN pi install npm:pi-antigravity
 RUN pi install npm:pi-cursor-agent && pi uninstall npm:pi-cursor-sdk  
 RUN pi install npm:pi-readseek 
+RUN   git config --global user.email "127537716+johnny-smitherson@users.noreply.github.com"
+RUN  git config --global user.name "johnny-smitherson"
 
 VOLUME /root
 WORKDIR /workspace

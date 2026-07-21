@@ -107,9 +107,11 @@ pub struct BootstrapNodeInfo {
 }
 
 impl GlobalMatchmaker {
+    /// Interruptible sleep: pauses the matchmaker's clock for `duration`, honouring the shared [`SleepManager`].
     pub async fn sleep(&self, duration: Duration) {
         self.sleep_manager.sleep(duration).await;
     }
+    /// Tears down both (optional) bootstrap node chat and the own/own-bootstrap endpoints, failing closed.
     pub async fn shutdown(&self) -> Result<()> {
         info!("GlobalMatchmaker shutdown");
         let sleep = self.sleep_manager.clone();
@@ -122,9 +124,11 @@ impl GlobalMatchmaker {
         Ok(())
     }
 
+    /// Returns a shared handle to the user's signing identity secrets (keys + identity).
     pub fn user_secrets(&self) -> std::sync::Arc<UserIdentitySecrets> {
         self.user_secrets.clone()
     }
+    /// Builds the [`NodeIdentity`] pairing our user identity with our own node public key (no bootstrap slot).
     pub fn own_node_identity(&self) -> NodeIdentity {
         NodeIdentity::new(
             *self.user_secrets().user_identity(),
@@ -132,16 +136,20 @@ impl GlobalMatchmaker {
             None,
         )
     }
+    /// Returns our own user identity (nickname, user id, ...).
     pub fn user(&self) -> UserIdentity {
         *self.own_node_identity().user_identity()
     }
 
+    /// Clones our global-chat controller (client side), if we are connected to the global chat yet.
     pub async fn global_chat_controller(&self) -> Option<ChatController<GlobalChatRoomType>> {
         self.inner.read().await.global_chat_controller.clone()
     }
+    /// Clones the bootstrap node's global-chat controller, if this node is currently hosting a bootstrap node.
     pub async fn bs_global_chat_controller(&self) -> Option<ChatController<GlobalChatRoomType>> {
         self.inner.read().await.bs_global_chat_controller.clone()
     }
+    /// Renders a human-readable debug summary: user, own/bootstrap node ids, peer count, known bootstrap nodes.
     pub async fn display_debug_info(&self) -> Result<String> {
         let user_nickname = self.user_secrets().user_identity().nickname().to_string();
         let user_id = self.user_secrets().user_identity().user_id().to_string();
@@ -222,9 +230,11 @@ impl GlobalMatchmaker {
         }
         Ok(mm)
     }
+    /// Returns our user identity (nickname, user id, ...).
     pub fn user_identity(&self) -> UserIdentity {
         *self.user_secrets.user_identity()
     }
+    /// Collects all known bootstrap node IDs (both `_bootstrap_id` and `own_id`) into a deduped set.
     pub async fn bootstrap_nodes_set(&self) -> BTreeSet<NodeId> {
         self.inner
             .read()
@@ -238,6 +248,7 @@ impl GlobalMatchmaker {
             .copied()
             .collect()
     }
+    /// Clones our own iroh [`Endpoint`] if our main node is running.
     pub async fn own_endpoint(&self) -> Option<Endpoint> {
         self.inner
             .read()
@@ -246,12 +257,15 @@ impl GlobalMatchmaker {
             .as_ref()
             .map(|endpoint| endpoint.endpoint().clone())
     }
+    /// Clones our own [`MainNode`] if it is running.
     pub async fn own_node(&self) -> Option<MainNode> {
         self.inner.read().await.own_main_node.clone()
     }
+    /// Clones the bootstrap node's [`MainNode`] if we are currently hosting one.
     pub async fn bs_node(&self) -> Option<MainNode> {
         self.inner.read().await.bootstrap_main_node.clone()
     }
+    /// Clones the bootstrap node's iroh [`Endpoint`] if we are currently hosting one.
     pub async fn bs_endpoint(&self) -> Option<Endpoint> {
         self.inner
             .read()
@@ -264,9 +278,11 @@ impl GlobalMatchmaker {
     //     self.own_private_key.clone()
     // }
 
+    /// Creates a new [`GlobalMatchmaker`] with default network config, retrying up to 3 times.
     pub async fn new(user_identity_secrets: Arc<UserIdentitySecrets>) -> Result<Self> {
         Self::new_with_config(user_identity_secrets, NetworkManagerConfig::default()).await
     }
+    /// Creates a new [`GlobalMatchmaker`] with custom [`NetworkManagerConfig`], retrying up to 3 times.
     pub async fn new_with_config(
         user_identity_secrets: Arc<UserIdentitySecrets>,
         config: NetworkManagerConfig,
@@ -419,16 +435,20 @@ impl GlobalMatchmaker {
         }
     }
 
+    /// Builds a global-chat [`ChatTicket`] from the current bootstrap node set (topic = `GLOBAL_CHAT_TOPIC_ID`).
     pub async fn get_global_chat_ticket(&self) -> Result<ChatTicket> {
         let nodes = self.bootstrap_nodes_set().await;
         let ticket = ChatTicket::new_str_bs(GLOBAL_CHAT_TOPIC_ID, nodes);
         Ok(ticket)
     }
 
+    /// Returns the full [`BootstrapNodeInfo`] map (index → info) for all currently known bootstrap nodes.
     pub async fn known_bootstrap_nodes(&self) -> BTreeMap<usize, BootstrapNodeInfo> {
         self.inner.read().await.known_bootstrap_nodes.clone()
     }
 
+    /// Spawns a fresh bootstrap endpoint on a free bootstrap slot, connects to it, and verifies uniqueness.
+    /// Returns `true` if a new bootstrap was successfully spawned and is unique; `false` if no slot was free or it failed uniqueness.
     pub async fn spawn_bootstrap_endpoint(&self) -> Result<bool> {
         let own_node = self
             .own_node()

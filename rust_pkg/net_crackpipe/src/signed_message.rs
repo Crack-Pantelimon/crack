@@ -10,6 +10,8 @@ use iroh::{PublicKey, SecretKey};
 use iroh_base::Signature;
 use serde::{Deserialize, Serialize};
 
+/// Marker trait for types that can be used in signed messages.
+/// Requires serde serialization, cloning, debug, equality, send, sync and 'static.
 pub trait AcceptableType:
     serde::Serialize
     + for<'a> serde::Deserialize<'a>
@@ -33,6 +35,7 @@ impl<T> AcceptableType for T where
 {
 }
 
+/// A signed message containing node/user public keys, data, and signatures.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedMessage {
     node_pubkey: PublicKey,
@@ -43,6 +46,7 @@ pub struct SignedMessage {
 }
 
 impl SignedMessage {
+    /// Verifies and decodes a signed message from bytes.
     pub fn verify_and_decode<T: AcceptableType>(bytes: &[u8]) -> Result<WireMessage<T>> {
         let signed_message: Self = postcard::from_bytes(bytes)?;
         let message: WireMessage<T> = postcard::from_bytes(&signed_message.data)?;
@@ -68,6 +72,7 @@ impl SignedMessage {
     }
 }
 
+/// Signer that holds node/user secrets and creates signed messages.
 #[derive(Debug, Clone)]
 pub struct MessageSigner {
     pub(crate) node_secret_key: Arc<SecretKey>,
@@ -76,6 +81,7 @@ pub struct MessageSigner {
 }
 
 impl MessageSigner {
+    /// Signs and encodes a message, returning the wire bytes and a preview.
     pub fn sign_and_encode<T: AcceptableType>(
         &self,
         message: T,
@@ -110,30 +116,55 @@ impl MessageSigner {
     }
 }
 
+/// A wire-format message carrying a timestamp, message ID, sender identity, and payload.
+/// Serialized and signed as part of [`SignedMessage`].
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct WireMessage<T> {
+    /// UTC timestamp when the message was signed.
     pub _timestamp: DateTime<Utc>,
+    /// Unique identifier for this wire message.
     pub _message_id: uuid::Uuid,
+    /// Identity of the sending node.
     pub from: NodeIdentity,
+    /// Signed payload for the chat room type.
     pub message: T,
 }
 
+/// A received chat message with sender/receiver timestamps and decoded payload.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ReceivedMessage<T: IChatRoomType> {
+    /// Timestamp from the wire message at send time.
     pub _sender_timestamp: DateTime<Utc>,
+    /// Local time when the message was received.
     pub _received_timestamp: DateTime<Utc>,
+    /// Unique identifier from the wire message.
     pub _message_id: uuid::Uuid,
+    /// Identity of the sending node.
     pub from: NodeIdentity,
+    /// Decoded message payload for the room type.
     pub message: T::M,
 }
 
+/// Chat room type describing message and presence payloads for signed gossip traffic.
 pub trait IChatRoomType: AcceptableType {
+    /// Message payload type for this room.
     type M: AcceptableType;
+    /// Presence payload type for this room.
     type P: AcceptableType;
+    /// Returns the default presence value for new joiners.
     fn default_presence() -> Self::P;
 }
+/// Chat gossip envelope carrying either a presence update or a text message.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum ChatMessage<T: IChatRoomType> {
-    Presence { presence: T::P },
-    Message { text: T::M },
+    /// Presence update for this room.
+    Presence {
+        /// Room-specific presence payload.
+        presence: T::P,
+    },
+    /// Text message for this room.
+    Message {
+        /// Decoded message text for this room.
+        text: T::M,
+    },
 }

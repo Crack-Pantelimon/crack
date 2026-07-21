@@ -19,6 +19,7 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
 #[allow(clippy::type_complexity)]
+/// Raw gossip-backed chat room that relays topic messages and direct messages.
 #[derive(Debug)]
 pub struct GossipChatRoom {
     own_node_id: NodeId,
@@ -30,6 +31,7 @@ pub struct GossipChatRoom {
 }
 
 impl GossipChatRoom {
+    /// Joins a gossip topic from `ticket`, wires direct-message delivery, and starts the receive loop.
     pub async fn new(node: &MainNode, ticket: &ChatTicket) -> Result<Self> {
         // first, subscribe to direct messages
         let direct_message_recv = node.direct_message_recv.activate_cloned();

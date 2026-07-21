@@ -254,17 +254,29 @@ impl<T: IChatRoomType> IChatController<T> for ChatController<T> {
 /// Variants: user message, presence update, or ping/pong response.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ChatMessage<T: IChatRoomType> {
+    /// Typed user message payload for the room.
     Message(T::M),
+    /// Presence update broadcast to peers; `None` when presence has not been set.
     Presence(Option<T::P>),
-    Pong { ping_sender_ts: DateTime<Utc> },
+    /// Round-trip latency probe response referencing the sender's ping timestamp.
+    Pong {
+        /// Timestamp from the original ping/presence message used to compute RTT.
+        ping_sender_ts: DateTime<Utc>,
+    },
 }
 
 #[async_trait::async_trait]
+/// Interface for chat room control: identity, send/receive, presence, and lifecycle.
 pub trait IChatController<T: IChatRoomType>: Send + Sync + 'static + std::fmt::Debug {
+    /// Returns this controller's node identity.
     fn node_identity(&self) -> NodeIdentity;
+    /// Returns a clone of the room's message sender.
     fn sender(&self) -> ChatSender<T>;
+    /// Returns a fresh receiver subscribed to incoming messages.
     async fn receiver(&self) -> ChatReceiver<T>;
+    /// Shuts down the underlying raw room and background tasks.
     async fn shutdown(&self) -> anyhow::Result<()>;
+    /// Returns the room's presence tracker.
     fn chat_presence(&self) -> ChatPresence<T>;
     /// Wait until the room's presence list (self always included) holds at
     /// least `min_nodes` distinct nodes. Use 2 for rooms where another node's
@@ -276,6 +288,7 @@ pub trait IChatController<T: IChatRoomType>: Send + Sync + 'static + std::fmt::D
 }
 
 #[derive(Clone, Debug)]
+/// Outbound handle for broadcasting and direct messaging in a chat room.
 pub struct ChatSender<T: IChatRoomType> {
     inner: Arc<dyn IChatRoomRaw>,
     message_signer: MessageSigner,
@@ -358,18 +371,24 @@ impl<T: IChatRoomType> ChatSender<T> {
 }
 
 #[async_trait::async_trait]
+/// Interface for sending signed messages and managing presence in a chat room.
 pub trait IChatSender<T: IChatRoomType>: Send + Sync + 'static + std::fmt::Debug {
+    /// Signs and broadcasts a typed message to all peers in the room.
     async fn broadcast_message(&self, message: T::M) -> anyhow::Result<ReceivedMessage<T>>;
+    /// Signs and sends a typed message directly to a single peer.
     async fn direct_message(
         &self,
         to: NodeIdentity,
         message: T::M,
     ) -> anyhow::Result<ReceivedMessage<T>>;
+    /// Requests the raw room to join additional peers for gossip relay.
     async fn join_peers(&self, peers: Vec<NodeId>) -> anyhow::Result<()>;
+    /// Updates local presence and broadcasts it to peers.
     async fn set_presence(&self, presence: &T::P);
 }
 
 #[derive(Clone, Debug)]
+/// Inbound handle that streams decoded messages received from the room.
 pub struct ChatReceiver<T: IChatRoomType> {
     msg_receiver: Arc<RwLock<async_broadcast::Receiver<ReceivedMessage<T>>>>,
     _p: PhantomData<T>,
@@ -383,16 +402,24 @@ impl<T: IChatRoomType> IChatReceiver<T> for ChatReceiver<T> {
 }
 
 #[async_trait::async_trait]
+/// Interface for receiving decoded messages from a chat room.
 pub trait IChatReceiver<T: IChatRoomType>: Send + Sync + 'static + std::fmt::Debug {
+    /// Waits for and returns the next received message, or `None` if the stream ended.
     async fn next_message(&self) -> Option<ReceivedMessage<T>>;
 }
 
 #[async_trait::async_trait]
+/// Low-level transport for a gossip-backed chat room (unsigned bytes on the wire).
 pub trait IChatRoomRaw: Send + Sync + 'static + std::fmt::Debug {
+    /// Broadcasts opaque signed message bytes to all peers in the room.
     async fn broadcast_message(&self, message: Vec<u8>) -> anyhow::Result<()>;
+    /// Sends opaque signed message bytes directly to one peer.
     async fn direct_message(&self, to: NodeIdentity, message: Vec<u8>) -> anyhow::Result<()>;
+    /// Returns the next raw message bytes from the room, if any.
     async fn next_message(&self) -> anyhow::Result<Option<Arc<Vec<u8>>>>;
+    /// Instructs the room to establish gossip relay to additional peers.
     async fn join_peers(&self, peers: Vec<NodeId>) -> anyhow::Result<()>;
+    /// Tears down the room transport.
     async fn shutdown(&self) -> anyhow::Result<()>;
 }
 

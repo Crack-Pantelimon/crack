@@ -1,0 +1,11 @@
+{
+  "id": "1784659739849",
+  "title": "Add docstrings, check documentation warnings",
+  "model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "plan": true,
+  "planner_model": "nvidia/stepfun-ai/step-3.7-flash",
+  "implementer_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "created_at": 1784659739.850917,
+  "graduated": true,
+  "display_model": "nvidia/nemotron-3-ultra-550b-a55b"
+}

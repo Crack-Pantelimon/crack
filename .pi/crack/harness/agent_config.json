@@ -1,4 +1,5 @@
 {
-  "nonplan": "nvidia/nemotron-3-ultra-550b-a55b",
-  "plan_planner": "cursor-agent/gpt-5.6-terra-medium"
+  "nonplan": "cursor-agent/composer-2.5",
+  "plan_planner": "cursor-agent/cursor-grok-4.5-low",
+  "plan_implementer": "cursor-agent/composer-2.5"
 }

@@ -14,11 +14,14 @@ use tokio::sync::RwLock;
 use tracing::info;
 use tracing::warn;
 
+/// ALPN identifier for the chat direct-message protocol.
 pub const CHAT_DIRECT_MESSAGE_ALPN: &[u8] = b"/chat-direct-message/0";
 
+/// Direct message payload: gossip topic ID and serialized message bytes.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChatDirectMessage(pub TopicId, pub Arc<Vec<u8>>);
 
+/// iroh protocol handler that routes direct messages to peers.
 #[derive(Debug, Clone)]
 pub struct DirectMessageProtocol<T> {
     received_message_broadcaster: async_broadcast::Sender<(PublicKey, T)>,
@@ -29,6 +32,7 @@ pub struct DirectMessageProtocol<T> {
 }
 
 impl<T: AcceptableType> DirectMessageProtocol<T> {
+    /// Stops dispatchers and the background sender task.
     pub async fn shutdown(&self) {
         self.message_dispatchers.shutdown().await;
         let mut task = self._task.write().await;
@@ -38,6 +42,7 @@ impl<T: AcceptableType> DirectMessageProtocol<T> {
             self.received_message_broadcaster.close();
         }
     }
+    /// Creates the protocol with a broadcast receiver, sleep manager, and endpoint.
     pub fn new(
         received_message_broadcaster: async_broadcast::Sender<(PublicKey, T)>,
         sleep_manager: SleepManager,
@@ -85,6 +90,7 @@ impl<T: AcceptableType> DirectMessageProtocol<T> {
         }
     }
 
+    /// Queues a direct message to the given peer public key.
     pub async fn send_direct_message(
         &self,
         iroh_target: PublicKey,

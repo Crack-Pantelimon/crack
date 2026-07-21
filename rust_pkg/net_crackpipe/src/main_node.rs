@@ -72,6 +72,7 @@ async fn create_endpoint(node_secret_key: Arc<SecretKey>) -> anyhow::Result<Endp
 }
 
 impl MainNode {
+    /// Spawns a main node with router, gossip, echo, and direct messaging.
     pub async fn spawn(
         node_identity: Arc<NodeIdentity>,
         node_secret_key: Arc<SecretKey>,
@@ -121,24 +122,30 @@ impl MainNode {
         })
     }
 
+    /// Returns this node's combined user/node identity.
     pub fn user(&self) -> &NodeIdentity {
         &self.node_identity
     }
+    /// Returns the underlying iroh endpoint.
     pub fn endpoint(&self) -> &Endpoint {
         self.router.endpoint()
     }
+    /// Returns this node's iroh node ID.
     pub fn node_id(&self) -> NodeId {
         self.router.endpoint().node_id()
     }
+    /// Returns connection info for all remote peers.
     pub fn remote_info(&self) -> Vec<RemoteInfo> {
         self.router
             .endpoint()
             .remote_info_iter()
             .collect::<Vec<_>>()
     }
+    /// Returns this node's combined user/node identity.
     pub fn node_identity(&self) -> &NodeIdentity {
         &self.node_identity
     }
+    /// Shuts down the router, direct messaging, gossip, and endpoint.
     pub async fn shutdown(&self) -> Result<()> {
         info!("MainNode shutdown");
         let _ = self.router.shutdown().await;
