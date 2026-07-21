@@ -16,6 +16,7 @@ pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(255, 149, 0);
 /// Slightly softer amber for secondary highlights.
 pub const ACCENT_DIM: egui::Color32 = egui::Color32::from_rgb(200, 120, 20);
 
+/// egui theme plugin.
 pub struct EguiThemePlugin;
 
 impl Plugin for EguiThemePlugin {

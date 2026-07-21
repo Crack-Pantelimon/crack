@@ -5,6 +5,7 @@ use bevy::tasks::AsyncComputeTaskPool;
 use bevy::tasks::futures_lite::future;
 use game_logic::api::{FetchArgs, FetchMapManifest};
 
+/// spawn manifest task.
 pub fn spawn_manifest_task(
     map_tree: Res<MapTree>,
     mut tasks: ResMut<CrackTasks>,
@@ -23,6 +24,7 @@ pub fn spawn_manifest_task(
     }
 }
 
+/// poll manifest task.
 pub fn poll_manifest_task(
     mut tasks: ResMut<CrackTasks>,
     mut map_tree: ResMut<MapTree>,

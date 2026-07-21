@@ -11,6 +11,7 @@ use crate::plugins::pedestrians::spawn_pedestrian::ModelRoot;
 /// Toggles skeleton gizmo drawing.
 #[derive(Resource, Default)]
 pub struct SkeletonDebug {
+/// show field.
     pub show: bool,
 }
 
@@ -33,6 +34,7 @@ pub fn bone_color(label: BoneLabel) -> Color {
     }
 }
 
+/// draw skeletons system.
 pub fn draw_skeletons_system(
     skeleton_debug: Res<SkeletonDebug>,
     mut gizmos: Gizmos,

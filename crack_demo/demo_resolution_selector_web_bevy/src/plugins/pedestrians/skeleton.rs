@@ -5,45 +5,73 @@
 
 use bevy::prelude::*;
 
+/// bone label.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BoneLabel {
+/// head variant.
     Head,
+/// neck variant.
     Neck,
+/// spine variant.
     Spine,
+/// midgroin variant.
     Midgroin,
+/// left shoulder variant.
     LeftShoulder,
+/// right shoulder variant.
     RightShoulder,
+/// left arm variant.
     LeftArm,
+/// right arm variant.
     RightArm,
+/// left hand variant.
     LeftHand,
+/// right hand variant.
     RightHand,
+/// left leg variant.
     LeftLeg,
+/// right leg variant.
     RightLeg,
+/// left foot variant.
     LeftFoot,
+/// right foot variant.
     RightFoot,
 }
 
+/// arm side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArmSide {
+/// left variant.
     Left,
+/// right variant.
     Right,
 }
 
+/// pedestrian skeleton.
 #[derive(Component)]
 pub struct PedestrianSkeleton {
+/// joint labels field.
     pub joint_labels: std::collections::HashMap<Entity, BoneLabel>,
     /// The right-wrist bone entity (a good attach point for a held weapon), if found.
     pub right_hand: Option<Entity>,
+/// left shoulder field.
     pub left_shoulder: Option<Entity>,
+/// left elbow field.
     pub left_elbow: Option<Entity>,
+/// left wrist field.
     pub left_wrist: Option<Entity>,
+/// right shoulder field.
     pub right_shoulder: Option<Entity>,
+/// right elbow field.
     pub right_elbow: Option<Entity>,
+/// right wrist field.
     pub right_wrist: Option<Entity>,
+/// spine field.
     pub spine: Option<Entity>,
 }
 
 impl PedestrianSkeleton {
+/// arm chain.
     pub fn arm_chain(&self, arm: ArmSide) -> Option<(Entity, Entity, Entity)> {
         match arm {
             ArmSide::Left => Some((self.left_shoulder?, self.left_elbow?, self.left_wrist?)),
@@ -52,13 +80,19 @@ impl PedestrianSkeleton {
     }
 }
 
+/// joint data.
 pub struct JointData {
+/// entity field.
     pub entity: Entity,
+/// name field.
     pub _name: String,
+/// pos field.
     pub pos: Vec3,
+/// parent field.
     pub parent: Option<Entity>,
 }
 
+/// traverse hierarchy raw.
 pub fn traverse_hierarchy_raw(
     entity: Entity,
     children_query: &Query<&Children>,
@@ -91,6 +125,7 @@ pub fn traverse_hierarchy_raw(
     }
 }
 
+/// classify skeleton.
 pub fn classify_skeleton(
     root_entity: Entity,
     joints: &[JointData],
@@ -264,6 +299,7 @@ pub fn classify_skeleton(
     )
 }
 
+/// find parent of.
 pub fn find_parent_of(entity: Entity, joints: &[JointData]) -> Option<Entity> {
     for joint in joints {
         if joint.entity == entity {
@@ -273,6 +309,7 @@ pub fn find_parent_of(entity: Entity, joints: &[JointData]) -> Option<Entity> {
     None
 }
 
+/// find pos of.
 pub fn find_pos_of(entity: Entity, joints: &[JointData]) -> Option<Vec3> {
     for joint in joints {
         if joint.entity == entity {
@@ -282,6 +319,7 @@ pub fn find_pos_of(entity: Entity, joints: &[JointData]) -> Option<Vec3> {
     None
 }
 
+/// classify limb path.
 pub fn classify_limb_path(
     tip_entity: Option<Entity>,
     spine_path: &[Entity],

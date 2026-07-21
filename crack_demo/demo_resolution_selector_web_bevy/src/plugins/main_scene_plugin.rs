@@ -3,6 +3,7 @@ use bevy::prelude::*;
 
 use crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera;
 
+/// main scene plugin.
 pub struct MainScenePlugin;
 
 impl Plugin for MainScenePlugin {

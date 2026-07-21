@@ -7,10 +7,12 @@ pub const MOVE_ANIM_THRESHOLD: f32 = 0.25;
 pub const JOG_SPEED: f32 = 4.0;
 /// Sprint ramps from `1 * JOG_SPEED` up to `SPRINT_MAX_MULT * JOG_SPEED` while Shift is held.
 pub const SPRINT_MAX_MULT: f32 = 2.25;
+/// sprint ramp time constant.
 pub const SPRINT_RAMP_TIME: f32 = 2.5;
 
 /// Walk ramp starts at this speed and reaches [`JOG_SPEED`] over [`WALK_RAMP_TIME`].
 pub const WALK_START_SPEED: f32 = 1.0;
+/// walk ramp time constant.
 pub const WALK_RAMP_TIME: f32 = 1.5;
 
 /// Walk band midpoint: `Walk_Loop` below, `Jog_Fwd_Loop` at/above (within non-sprint locomotion).

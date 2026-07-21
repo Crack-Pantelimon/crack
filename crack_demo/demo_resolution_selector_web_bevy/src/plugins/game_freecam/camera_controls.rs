@@ -5,15 +5,23 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
+/// camera controls plugin.
 pub struct CameraControlsPlugin;
 
+/// active camera animation.
 #[derive(Resource)]
 pub struct ActiveCameraAnimation {
+/// start pos field.
     pub start_pos: Vec3,
+/// start rot field.
     pub start_rot: Quat,
+/// target pos field.
     pub target_pos: Vec3,
+/// target rot field.
     pub target_rot: Quat,
+/// elapsed field.
     pub elapsed: f32,
+/// duration field.
     pub duration: f32,
 }
 

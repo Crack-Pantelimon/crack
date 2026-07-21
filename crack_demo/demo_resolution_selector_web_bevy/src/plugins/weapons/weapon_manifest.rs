@@ -7,27 +7,39 @@ use bevy::prelude::*;
 pub struct GunInfo {
     /// Full loadable URL/Path of the model.
     pub path: String,
+/// clip size field.
     pub clip_size: u32,
+/// bullet type field.
     pub bullet_type: String,
+/// damage field.
     pub damage: f32,
+/// range field.
     pub range: f32,
+/// rpm field.
     pub rpm: f32,
+/// automatic field.
     pub automatic: bool,
+/// reload secs field.
     pub reload_secs: f32,
 }
 
 /// Melee stats parsed from the manifest.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MeleeInfo {
+/// path field.
     pub path: String,
+/// rpm field.
     pub rpm: f32,
 }
 
 /// A selectable weapon.
 #[derive(Clone, Debug, PartialEq)]
 pub enum WeaponId {
+/// unarmed variant.
     Unarmed,
+/// Documented public item.
     Melee(MeleeInfo),
+/// Documented public item.
     Gun(GunInfo),
 }
 
@@ -62,12 +74,15 @@ fn resolve_gun_reload_secs(path: &str, csv_secs: f32) -> f32 {
 }
 
 impl WeaponId {
+/// is unarmed.
     pub fn is_unarmed(&self) -> bool {
         matches!(self, WeaponId::Unarmed)
     }
+/// is gun.
     pub fn is_gun(&self) -> bool {
         matches!(self, WeaponId::Gun(_))
     }
+/// is melee.
     pub fn is_melee(&self) -> bool {
         matches!(self, WeaponId::Melee(_))
     }
@@ -108,6 +123,7 @@ impl WeaponId {
             Some(p) => p.rsplit('/').next().unwrap_or(p).replace(".glb", ""),
         }
     }
+/// from label.
     pub fn from_label(label: &str, manifest: &WeaponManifest) -> Self {
         for w in &manifest.all {
             if w.label() == label {
@@ -121,23 +137,30 @@ impl WeaponId {
 /// Public manifest resource: the parsed weapon lists plus a combined `all` list (Unarmed first).
 #[derive(Resource, Default)]
 pub struct WeaponManifest {
+/// guns field.
     pub guns: Vec<WeaponId>,
+/// melee field.
     pub melee: Vec<WeaponId>,
     /// `[Unarmed]` + guns + melee, in that order — the order the UI/mouse-wheel cycles through.
     pub all: Vec<WeaponId>,
+/// loaded field.
     pub loaded: bool,
 }
 
+/// weapon manifest tasks.
 #[derive(Resource, Default)]
 pub struct WeaponManifestTasks {
+/// manifest task field.
     pub manifest_task:
         Option<bevy::tasks::Task<anyhow::Result<game_logic::weapon::WeaponManifestResult>>>,
 }
 
+/// start weapon manifest load.
 pub fn start_weapon_manifest_load(mut commands: Commands) {
     commands.init_resource::<WeaponManifestTasks>();
 }
 
+/// spawn weapon manifest task.
 pub fn spawn_weapon_manifest_task(
     mut tasks: ResMut<WeaponManifestTasks>,
     manifest: Res<WeaponManifest>,
@@ -160,6 +183,7 @@ pub fn spawn_weapon_manifest_task(
     }
 }
 
+/// poll weapon manifest task.
 pub fn poll_weapon_manifest_task(
     mut tasks: ResMut<WeaponManifestTasks>,
     mut manifest: ResMut<WeaponManifest>,

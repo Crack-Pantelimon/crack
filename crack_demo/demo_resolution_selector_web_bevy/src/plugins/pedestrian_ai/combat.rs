@@ -28,9 +28,11 @@ use crate::plugins::cars_driving::driving_plugin::spawn_car::{CarHealth, CarPass
 const SHOT_INTERVAL: f32 = 0.25;
 const AIM_SPREAD_DEG: f32 = 3.0;
 const MELEE_RANGE: f32 = 2.0;
+/// sword damage constant.
 pub const SWORD_DAMAGE: f32 = 35.0;
 const SWING_INTERVAL: f32 = 0.8;
 const PUNCH_RANGE: f32 = 1.5;
+/// punch damage constant.
 pub const PUNCH_DAMAGE: f32 = 12.0;
 const PUNCH_INTERVAL: f32 = 0.6;
 /// How long a shot tracer stays visible.
@@ -45,8 +47,11 @@ const REFLECT_LEN: f32 = 0.5;
 /// Inflict `amount` damage on `target`.
 #[derive(Event)]
 pub struct DamageEvent {
+/// target field.
     pub target: Entity,
+/// amount field.
     pub amount: f32,
+/// source field.
     #[allow(dead_code)]
     pub source: Entity,
 }

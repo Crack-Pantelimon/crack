@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 
 static OSM_CACHE: RwLock<Option<Arc<OsmDataResult>>> = RwLock::const_new(None);
 
+/// Fetches OSM features for the map extent and projects them to world space.
 pub async fn fetch_osm_data(args: FetchArgs) -> anyhow::Result<OsmDataResult> {
     {
         let guard = OSM_CACHE.read().await;

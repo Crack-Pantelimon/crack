@@ -1,21 +1,31 @@
 use serde::{Deserialize, Serialize};
 
+/// SQL statement text plus bound parameter values.
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct SQLAndParams {
+    /// SQL text to execute.
     pub sql: String,
+    /// Values bound to `?` placeholders in order.
     pub params: Vec<DbValue>,
 }
 
+/// SQLite column type used in schema definitions.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DbValueType {
+    /// SQLite NULL column type.
     Null,
+    /// Signed integer column type.
     Integer,
+    /// Floating-point column type.
     Real,
+    /// UTF-8 text column type.
     Text,
+    /// Binary blob column type.
     Blob,
 }
 
 impl DbValueType {
+    /// Return the SQLite type keyword for this column type.
     pub fn to_sql_str(&self) -> &'static str {
         match self {
             Self::Null => "NULL",
@@ -27,6 +37,7 @@ impl DbValueType {
     }
 }
 
+/// Tagged value representing a single SQLite column value.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum DbValue {
     /// The value is a `NULL` value.
@@ -41,6 +52,7 @@ pub enum DbValue {
     Blob(Vec<u8>),
 }
 impl DbValue {
+    /// Map `None` to [`DbValue::Null`], preserving present values.
     pub fn fold_option(value: Option<DbValue>) -> DbValue {
         match value {
             None => Self::Null,
@@ -164,14 +176,19 @@ impl From<DbValue> for rusqlite::types::Value {
     }
 }
 
+/// Tabular query result with column names and row values.
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct SqlResultSet {
+    /// Result column names in query order.
     pub column_names: Vec<String>,
+    /// Result rows, one per returned record.
     pub rows: Vec<SqlResultRow>,
 }
 
+/// One result row as a list of column values.
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct SqlResultRow {
+    /// Column values for this row, in query order.
     pub cols: Vec<DbValue>,
 }
 

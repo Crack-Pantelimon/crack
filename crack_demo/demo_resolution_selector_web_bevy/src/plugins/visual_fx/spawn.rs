@@ -2,21 +2,28 @@ use super::materials::{AdditiveFxMaterial, BillboardParams, BlendFxMaterial};
 use bevy::camera::visibility::NoFrustumCulling;
 use bevy::prelude::*;
 
+/// vfx lifetime.
 #[derive(Component, Debug)]
 pub struct VfxLifetime {
+/// despawn at field.
     pub despawn_at: f64, // seconds, absolute time elapsed
 }
 
+/// vfx drift.
 #[derive(Component, Debug)]
 pub struct VfxDrift {
+/// velocity field.
     pub velocity: Vec3,
 }
 
+/// vfx meshes.
 #[derive(Resource, Debug)]
 pub struct VfxMeshes {
+/// quad field.
     pub quad: Handle<Mesh>,
 }
 
+/// spawn additive billboard fx.
 pub fn spawn_additive_billboard_fx(
     commands: &mut Commands,
     mats: &mut Assets<AdditiveFxMaterial>,
@@ -41,6 +48,7 @@ pub fn spawn_additive_billboard_fx(
         .id()
 }
 
+/// spawn blend billboard fx.
 pub fn spawn_blend_billboard_fx(
     commands: &mut Commands,
     mats: &mut Assets<BlendFxMaterial>,
@@ -63,6 +71,7 @@ pub fn spawn_blend_billboard_fx(
         .id()
 }
 
+/// despawn expired fx.
 pub fn despawn_expired_fx(
     mut commands: Commands,
     time: Res<Time>,
@@ -78,6 +87,7 @@ pub fn despawn_expired_fx(
     }
 }
 
+/// tick vfx drift.
 pub fn tick_vfx_drift(time: Res<Time>, mut q: Query<(&mut Transform, &VfxDrift)>) {
     let dt = time.delta_secs();
     for (mut tf, drift) in &mut q {
@@ -85,6 +95,7 @@ pub fn tick_vfx_drift(time: Res<Time>, mut q: Query<(&mut Transform, &VfxDrift)>
     }
 }
 
+/// setup vfx meshes.
 pub fn setup_vfx_meshes(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     // Create a 1x1 quad in XY plane, centered at 0,0
     let quad = Rectangle::new(1.0, 1.0);

@@ -3,6 +3,7 @@ use crate::ui_egui::UiState;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
+/// vfx controls window.
 pub fn vfx_controls_window(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<UiState>,

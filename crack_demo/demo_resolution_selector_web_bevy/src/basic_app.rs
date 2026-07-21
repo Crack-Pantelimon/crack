@@ -22,8 +22,10 @@ netwatch=error,portmapper=error,net_report=error,swarm_discovery=error,\
 quinn=error,quinn_proto=error,quinn_udp=error,\
 hickory_proto=error,hickory_resolver=error,pkarr=error,mainline=error";
 
+/// memory dir.
 #[derive(Resource, Clone, Default)]
 pub struct MemoryDir {
+/// dir field.
     pub dir: bevy::asset::io::memory::Dir,
 }
 

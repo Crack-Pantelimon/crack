@@ -37,13 +37,22 @@ impl IChatRoomType for GameplaySyncRoomType {
     }
 }
 
+/// Chat message payloads exchanged on the gameplay sync topic.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GameplayChatMessageContent {
-    GameSync { id: i64, payload: Vec<u8> },
+    /// Opaque gameplay state delta tagged with a monotonic id.
+    GameSync {
+        /// Sender-assigned monotonic message id.
+        id: i64,
+        /// Serialized gameplay sync payload bytes.
+        payload: Vec<u8>,
+    },
 }
 
+/// Presence metadata advertised by peers in the gameplay sync room.
 #[derive(Clone, Debug, PartialEq, PartialOrd, Serialize, Deserialize, Default)]
 pub struct GameplayPresence {
+    /// Public URL of this peer's gameplay endpoint.
     pub url: String,
 }
 

@@ -52,6 +52,7 @@ fn make_ground_shadow_params(s: &CloudSkySettings) -> GroundShadowUniform {
     }
 }
 
+/// setup cloud sky.
 pub fn setup_cloud_sky(
     mut commands: Commands,
     settings: Res<CloudSkySettings>,

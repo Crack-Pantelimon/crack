@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use crate::plugins::game_freecam::camera_controls::ActiveCameraAnimation;
 use crate::plugins::states::OsmDatabaseLoadFinished;
 
+/// geo json plugin.
 pub struct GeoJsonPlugin;
 
 impl Plugin for GeoJsonPlugin {
@@ -40,26 +41,37 @@ impl Plugin for GeoJsonPlugin {
 
 pub use game_logic::osm::{FeatureGeometry, GeoJsonFeature};
 
+/// geo json database.
 #[derive(Resource, Default)]
 pub struct GeoJsonDatabase {
+/// categories field.
     pub categories: BTreeMap<String, Vec<GeoJsonFeature>>,
+/// parsed field.
     pub parsed: bool,
 }
 
+/// geo json search state.
 #[derive(Resource, Default)]
 pub struct GeoJsonSearchState {
+/// query field.
     pub query: String,
 }
 
+/// geo json selection.
 #[derive(Resource, Default)]
 pub struct GeoJsonSelection {
+/// selected field.
     pub selected: Option<(String, usize)>,
 }
 
+/// game loading status.
 #[derive(Resource, Debug, Default)]
 pub struct GameLoadingStatus {
+/// map loaded field.
     pub map_loaded: bool,
+/// geojson loaded field.
     pub geojson_loaded: bool,
+/// geojson loading started field.
     pub geojson_loading_started: bool,
 }
 
@@ -944,15 +956,24 @@ fn geojson_gizmos_system(
 // OSM Overlays Debug Settings
 // ----------------------------------------------------
 
+/// osm overlay state.
 #[derive(Resource, Debug, Clone)]
 pub struct OsmOverlayState {
+/// show window field.
     pub show_window: bool,
+/// show roads field.
     pub show_roads: bool,
+/// show bus routes field.
     pub show_bus_routes: bool,
+/// show businesses field.
     pub show_businesses: bool,
+/// show railways field.
     pub show_railways: bool,
+/// show waterways field.
     pub show_waterways: bool,
+/// show buildings field.
     pub show_buildings: bool,
+/// show lanes field.
     pub show_lanes: bool,
 }
 
@@ -1315,13 +1336,18 @@ fn osm_overlay_gizmos_system(
 // Bus 335 Path Following Animation
 // ----------------------------------------------------
 
+/// bus335 marker.
 #[derive(Component)]
 pub struct Bus335Marker;
 
+/// moving bus.
 #[derive(Component)]
 pub struct MovingBus {
+/// points field.
     pub points: Vec<Vec3>,
+/// current index field.
     pub current_index: usize,
+/// speed field.
     pub speed: f32,
 }
 

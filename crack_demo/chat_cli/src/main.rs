@@ -1,3 +1,8 @@
+//! Interactive CLI for the crack demo global chat network.
+//!
+//! Connects via `NetworkManager`, sends stdin lines, and prints received
+//! messages to stdout.
+
 use anyhow::Context;
 use net_crackpipe::{
     chat::chat_controller::{IChatController, IChatReceiver, IChatSender},

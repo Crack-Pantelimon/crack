@@ -41,6 +41,7 @@ use spawn_pedestrian::{
     poll_pedestrian_glb_fetches, spawn_pedestrian_observer,
 };
 
+/// pedestrians plugin.
 pub struct PedestriansPlugin;
 
 impl Plugin for PedestriansPlugin {

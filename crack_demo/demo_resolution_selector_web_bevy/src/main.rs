@@ -1,3 +1,5 @@
+//! Main binary: runs the full Pantelimon game with MainGamePlugin.
+
 use demo_resolution_selector_web_bevy::main_game_plugin::MainGamePlugin;
 
 fn main() {

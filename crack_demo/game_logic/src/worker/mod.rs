@@ -1,13 +1,20 @@
 use crate::api::*;
 use api_asscrack::implement_api_group2;
 
+/// Shared HTTP helpers for worker asset fetches (native and wasm).
 pub mod http;
 pub(crate) mod lru;
+/// Map manifest parquet ingestion and fake horizon tile generation.
 pub mod manifest_impl;
+/// Worker database models and migration entry point.
 pub mod models;
+/// OSM GeoJSON fetch, projection, and caching.
 pub mod osm_impl;
+/// Pedestrian manifest and GLB fetch handlers.
 pub mod pedestrian_impl;
+/// Map tile GLB fetch, collider extraction, and tile LRU cache.
 pub mod tile_impl;
+/// Weapon manifest and GLB fetch handlers.
 pub mod weapon_impl;
 
 implement_api_group2! { GameLogicApiGroup, [

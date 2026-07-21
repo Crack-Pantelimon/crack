@@ -9,10 +9,14 @@ use bevy::tasks::futures_lite::future;
 use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use std::collections::{BTreeSet, HashMap};
 
+/// tree map tile.
 #[derive(Component)]
 pub struct TreeMapTile {
+/// node path field.
     pub node_path: MapTreeNodePath,
+/// asset id field.
     pub asset_id: MapTileAssetId,
+/// bbox field.
     pub bbox: game_logic::map::BBox,
 }
 
@@ -65,6 +69,7 @@ fn spawn_node_tiles(
     spawned
 }
 
+/// spawn root map tiles.
 pub fn spawn_root_map_tiles(
     mut commands: Commands,
     data_res: Res<MapTree>,
@@ -120,9 +125,12 @@ pub fn spawn_root_map_tiles(
     }
 }
 
+/// tile should merge.
 #[derive(Component, Debug)]
 pub struct TileShouldMerge {
+/// drop children field.
     pub drop_children: BTreeSet<MapTreeNodePath>,
+/// load parent field.
     pub load_parent: (
         MapTreeNodePath,
         Vec<(
@@ -134,8 +142,10 @@ pub struct TileShouldMerge {
     ),
 }
 
+/// tile should split.
 #[derive(Component, Debug)]
 pub struct TileShouldSplit {
+/// load children field.
     pub load_children: Vec<(
         MapTreeNodePath,
         Vec<(
@@ -145,50 +155,76 @@ pub struct TileShouldSplit {
             game_logic::map::BBox,
         )>,
     )>,
+/// drop parent field.
     pub drop_parent: MapTreeNodePath,
 }
 
+/// tile swap requests.
 #[derive(Resource, Default)]
 pub struct TileSwapRequests {
+/// split requests field.
     pub split_requests: Vec<game_logic::lod::SplitRequestSummary>,
+/// merge requests field.
     pub merge_requests: Vec<game_logic::lod::MergeRequestSummary>,
+/// culled nodes field.
     pub culled_nodes: Vec<game_logic::lod::CulledNodeSummary>,
 }
 
 const TILE_REVEAL_DELAY_FRAMES: u8 = 2;
 
+/// pending tile reveal.
 #[derive(Component)]
 pub struct PendingTileReveal {
+/// new tiles field.
     pub new_tiles: Vec<Entity>,
+/// drop parent field.
     pub drop_parent: Option<MapTreeNodePath>,
+/// drop descendants of field.
     pub drop_descendants_of: Vec<MapTreeNodePath>,
+/// countdown field.
     pub countdown: u8,
 }
 
+/// tile group fetch purpose.
 #[derive(Debug, Clone)]
 pub enum TileGroupFetchPurpose {
+/// root variant.
     Root {
+/// Documented public item.
         asset_to_node: HashMap<MapTileAssetId, MapTreeNodePath>,
     },
+/// split variant.
     Split {
+/// Documented public item.
         split_summary: game_logic::lod::SplitRequestSummary,
     },
+/// merge variant.
     Merge {
+/// Documented public item.
         drop_children: BTreeSet<MapTreeNodePath>,
+/// Documented public item.
         parent_path: MapTreeNodePath,
+/// Documented public item.
         merge_summary: game_logic::lod::MergeRequestSummary,
     },
 }
 
+/// pending tile group fetch.
 #[derive(Component)]
 pub struct PendingTileGroupFetch {
+/// purpose field.
     pub purpose: TileGroupFetchPurpose,
+/// tasks field.
     pub tasks: Vec<Option<bevy::tasks::Task<anyhow::Result<game_logic::tile::FetchTileResponse>>>>,
+/// asset ids field.
     pub asset_ids: Vec<MapTileAssetId>,
+/// results field.
     pub results: Vec<(MapTileAssetId, game_logic::tile::FetchTileResponse)>,
+/// asset bboxes field.
     pub asset_bboxes: HashMap<MapTileAssetId, game_logic::map::BBox>,
 }
 
+/// start tile swap requests.
 pub fn start_tile_swap_requests(
     mut commands: Commands,
     mut res_tiles: ResMut<TileSwapRequests>,
@@ -311,6 +347,7 @@ pub fn start_tile_swap_requests(
         .retain(|x| !merge_done.contains(&x.parent_path));
 }
 
+/// poll tile group fetches.
 pub fn poll_tile_group_fetches(
     mut commands: Commands,
     mut q_fetches: Query<(Entity, &mut PendingTileGroupFetch)>,
@@ -456,6 +493,7 @@ pub fn poll_tile_group_fetches(
 const SPLIT_PER_FRAME: usize = 1;
 const MERGE_PER_FRAME: usize = 2;
 
+/// do split requests.
 pub fn do_split_requests(
     mut commands: Commands,
     q_split: Query<(&TileShouldSplit, Entity)>,
@@ -528,6 +566,7 @@ pub fn do_split_requests(
     }
 }
 
+/// do merge requests.
 pub fn do_merge_requests(
     mut commands: Commands,
     q_merge: Query<(&TileShouldMerge, Entity)>,
@@ -593,6 +632,7 @@ pub fn do_merge_requests(
     }
 }
 
+/// reveal pending tiles.
 pub fn reveal_pending_tiles(
     mut commands: Commands,
     mut q_pending: Query<(Entity, &mut PendingTileReveal)>,
@@ -630,6 +670,7 @@ pub fn reveal_pending_tiles(
     }
 }
 
+/// check map loaded status.
 pub fn check_map_loaded_status(
     tiles_query: Query<&TreeMapTile>,
     lod_state: Res<MapLODState>,

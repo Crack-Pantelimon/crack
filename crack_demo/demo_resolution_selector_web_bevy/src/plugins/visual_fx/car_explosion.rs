@@ -3,22 +3,31 @@ use super::settings::VfxSettings;
 use super::spawn::{VfxDrift, VfxMeshes, spawn_additive_billboard_fx, spawn_blend_billboard_fx};
 use bevy::prelude::*;
 
+/// car explosion event.
 #[derive(Event, Debug, Clone)]
 pub struct CarExplosionEvent {
+/// position field.
     pub position: Vec3,
 }
 
+/// explosion flash.
 pub struct ExplosionFlash {
+/// position field.
     pub position: Vec3,
+/// elapsed field.
     pub elapsed: f32,
+/// lifetime field.
     pub lifetime: f32,
 }
 
+/// explosion flashes.
 #[derive(Resource, Default)]
 pub struct ExplosionFlashes {
+/// flashes field.
     pub flashes: Vec<ExplosionFlash>,
 }
 
+/// draw explosion flashes.
 pub fn draw_explosion_flashes(
     mut gizmos: Gizmos,
     time: Res<Time>,
@@ -43,6 +52,7 @@ pub fn draw_explosion_flashes(
     });
 }
 
+/// car explosion observer.
 pub fn car_explosion_observer(
     trigger: On<CarExplosionEvent>,
     mut commands: Commands,

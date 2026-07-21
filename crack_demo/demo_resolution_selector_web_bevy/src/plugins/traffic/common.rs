@@ -2,18 +2,27 @@ use super::road_graph::{RerouteMode, TrafficRoadGraph, pick_continuation, quanti
 use avian3d::prelude::{SpatialQuery, SpatialQueryFilter};
 use bevy::prelude::*;
 
+/// traffic agent state.
 #[derive(Clone, Debug)]
 pub struct TrafficAgentState {
+/// path field.
     pub path: Vec<Vec3>,
+/// next idx field.
     pub next_idx: usize,
+/// current seg field.
     pub current_seg: usize,
+/// stuck timer field.
     pub stuck_timer: f32,
+/// still timer field.
     pub still_timer: f32, // Accumulator for still (no movement) time
+/// out of view timer field.
     pub out_of_view_timer: f32,
+/// last visible field.
     pub last_visible: bool,
 }
 
 impl TrafficAgentState {
+/// new.
     pub fn new(path: Vec<Vec3>, current_seg: usize) -> Self {
         Self {
             path,
@@ -27,6 +36,7 @@ impl TrafficAgentState {
     }
 }
 
+/// walk up to root.
 pub fn walk_up_to_root(
     hit_entity: Entity,
     root_entity: Entity,
@@ -45,6 +55,7 @@ pub fn walk_up_to_root(
     }
 }
 
+/// update visibility.
 pub fn update_visibility(
     camera: &Camera,
     cam_gt: &GlobalTransform,
@@ -97,6 +108,7 @@ pub fn update_visibility(
     }
 }
 
+/// should despawn.
 pub fn should_despawn(dist_to_camera: f32, spawn_radius: f32, state: &TrafficAgentState) -> bool {
     if dist_to_camera > spawn_radius * super::OUT_OF_RANGE_FACTOR && !state.last_visible {
         return true;
@@ -113,6 +125,7 @@ pub fn should_despawn(dist_to_camera: f32, spawn_radius: f32, state: &TrafficAge
     false
 }
 
+/// build path from.
 pub fn build_path_from(
     graph: &TrafficRoadGraph,
     pos: Vec3,
@@ -180,6 +193,7 @@ pub fn build_path_from(
     Some((closest_seg_idx, path_points))
 }
 
+/// pick spawn candidate.
 pub fn pick_spawn_candidate(
     graph: &TrafficRoadGraph,
     camera: &Camera,

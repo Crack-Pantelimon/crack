@@ -12,9 +12,12 @@ use std::collections::BTreeMap;
 
 const MAX_HORIZON_RINGS: u8 = 4;
 
+/// cosmetic map tile.
 #[derive(Component)]
 pub struct CosmeticMapTile {
+/// octant path field.
     pub octant_path: String,
+/// bbox field.
     pub bbox: BBox,
 }
 
@@ -46,6 +49,7 @@ struct FakeHorizonState {
     complete: bool,
 }
 
+/// fake map plugin.
 pub struct FakeMapPlugin;
 
 impl Plugin for FakeMapPlugin {

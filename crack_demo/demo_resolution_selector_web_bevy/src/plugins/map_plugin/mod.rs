@@ -1,6 +1,9 @@
 pub mod bvh_minimap;
+/// fake map submodule.
 pub mod fake_map;
+/// map lod submodule.
 pub mod map_lod;
+/// map material edit submodule.
 pub mod map_material_edit;
 mod map_plugin_ui;
 
@@ -19,6 +22,7 @@ use crate::plugins::map_plugin::map_plugin_ui::{
 };
 use crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera;
 
+/// map plugin.
 pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
@@ -90,27 +94,41 @@ pub use game_logic::map::{
     MapTreeData, MapTreeNodeInfo, MapTreeNodePath,
 };
 
+/// map tree.
 #[derive(Resource, Default, Debug)]
 pub struct MapTree {
+/// bbox field.
     pub bbox: BBox,
+/// roots field.
     pub roots: Vec<MapRootNodeSummary>,
+/// parsed field.
     pub parsed: bool,
 }
 
+/// map lodstate.
 #[derive(Resource, Default, Debug)]
 pub struct MapLODState {
     // pub rendered_nodes: BTreeSet<String>,
+/// selected node field.
     pub selected_node: Option<String>,
+/// reference points field.
     pub reference_points: Vec<Vec3>,
+/// lod budget field.
     pub lod_budget: u32,
+/// lod timer field.
     pub lod_timer: Option<Timer>,
+/// max lod field.
     pub max_lod: i32,
     /// Detail floor: below this level tiles always split (no visibility rays).
     pub min_tiles_per_diagonal: f32,
     /// Detail ceiling: between min and max, splits require BVH visibility.
     pub max_tiles_per_diagonal: f32,
+/// enable visibility cull field.
     pub enable_visibility_cull: bool,
+/// sample radius freecam field.
     pub sample_radius_freecam: f32,
+/// sample radius car field.
     pub sample_radius_car: f32,
+/// sample radius pedestrian field.
     pub sample_radius_pedestrian: f32,
 }

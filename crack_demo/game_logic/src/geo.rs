@@ -1,19 +1,27 @@
 use crate::map::{BBox, MapTreeData, MapTreeNodeInfo};
 use glam::Vec3;
 
+/// Latitude/longitude bounding box in WGS84 degrees.
 #[derive(Clone, Copy, Debug)]
 pub struct GeoBBox {
+    /// Northern latitude bound in degrees.
     pub north: f64,
+    /// Southern latitude bound in degrees.
     pub south: f64,
+    /// Western longitude bound in degrees.
     pub west: f64,
+    /// Eastern longitude bound in degrees.
     pub east: f64,
 }
 
 impl GeoBBox {
+    /// Returns true when `(lat, lon)` lies inside this box.
     pub fn contains(&self, lat: f64, lon: f64) -> bool {
         lat >= self.south && lat <= self.north && lon >= self.west && lon <= self.east
     }
 }
+
+/// Decodes a map octant path into its geographic bounding box.
 
 pub fn octant_path_to_geobbox(path: &str) -> Option<GeoBBox> {
     if path.len() < 2 {
@@ -100,6 +108,8 @@ pub fn octant_path_to_geobbox(path: &str) -> Option<GeoBBox> {
     Some(box_)
 }
 
+/// Finds the deepest map-tree node whose geo bbox contains `(lat, lon)`.
+
 pub fn find_tile_for_lat_lon<'a>(
     lat: f64,
     lon: f64,
@@ -174,11 +184,16 @@ pub fn find_tile_for_lat_lon<'a>(
     map_tree.all_nodes.get(&current_node_path)
 }
 
+/// ECEF reference point and ENU rotation used for lat/lon projection.
 #[derive(Debug, Clone)]
 pub struct ProjectionRef {
+    /// ECEF origin for local tangent-plane projection.
     pub ref_point: Vec3,
+    /// East-north-up basis as three column vectors.
     pub rot_matrix: [Vec3; 3],
 }
+
+/// Builds the ENU rotation matrix for an ECEF reference point.
 
 pub fn get_enu_rotation_matrix(ref_point: Vec3) -> [Vec3; 3] {
     let rx = ref_point.x as f64;
@@ -201,6 +216,8 @@ pub fn get_enu_rotation_matrix(ref_point: Vec3) -> [Vec3; 3] {
     [e, n, u]
 }
 
+/// Converts WGS84 lat/lon (degrees) to ECEF meters.
+
 pub fn lat_lon_to_ecef(lat_deg: f32, lon_deg: f32) -> Vec3 {
     let lat = (lat_deg as f64).to_radians();
     let lon = (lon_deg as f64).to_radians();
@@ -212,6 +229,8 @@ pub fn lat_lon_to_ecef(lat_deg: f32, lon_deg: f32) -> Vec3 {
     let z = n * (1.0 - e2) * lat.sin();
     Vec3::new(x as f32, y as f32, z as f32)
 }
+
+/// Projects lat/lon into Bevy world space relative to a tangent frame.
 
 pub fn lat_lon_to_bevy(
     lat_deg: f32,
@@ -259,6 +278,7 @@ pub fn parse_geo_bbox_from_txt(text: &str) -> Option<GeoBBox> {
     })
 }
 
+/// Returns the geographic center `(lat, lon)` from a `zone-bbox.txt` file.
 pub fn parse_bbox_from_txt(text: &str) -> Option<(f32, f32)> {
     let geo = parse_geo_bbox_from_txt(text)?;
     Some((
@@ -266,6 +286,8 @@ pub fn parse_bbox_from_txt(text: &str) -> Option<(f32, f32)> {
         ((geo.west + geo.east) / 2.0) as f32,
     ))
 }
+
+/// Returns the geographic center `(lat, lon)` from a `zone-bbox.txt` file.
 
 /// Y extent from the union of root-tile xyz bboxes in the manifest.
 fn root_tile_y_extent(tree: &MapTreeData) -> (f32, f32) {
@@ -322,6 +344,8 @@ pub fn apply_geo_extent_bbox(tree: &mut MapTreeData, geo_bbox: &GeoBBox) {
         max: Vec3::new(max_x, max_y, max_z),
     };
 }
+
+/// Projects one lat/lon point into world space using the map tree when possible.
 
 pub fn project_point(
     lat: f64,

@@ -1,3 +1,6 @@
+//! Demo binary: spawns an in-process worker and executes SQL from stdin.
+//!
+//! Connects over the worker RPC pipe and prints each `ExecuteSQL2` result.
 use crack::api_asscrack::anyhow;
 use crack::api_asscrack::api::{api_client::ApiClient, api_worker_declarations::WorkerPing};
 use crack::native_thread_worker::dioxus_logger;

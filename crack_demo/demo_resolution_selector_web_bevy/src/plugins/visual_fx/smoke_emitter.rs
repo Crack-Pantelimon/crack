@@ -3,12 +3,16 @@ use super::settings::VfxSettings;
 use super::spawn::{VfxDrift, VfxMeshes, spawn_blend_billboard_fx};
 use bevy::prelude::*;
 
+/// smoke emitter.
 #[derive(Component, Debug, Clone)]
 pub struct SmokeEmitter {
+/// next spawn time field.
     pub next_spawn_time: f32, // elapsed seconds when next smoke puff should spawn
+/// active until field.
     pub active_until: f32,    // elapsed seconds when this emitter should stop
 }
 
+/// tick smoke emitters.
 pub fn tick_smoke_emitters(
     mut commands: Commands,
     time: Res<Time>,

@@ -26,23 +26,34 @@ pub const CAR_SEAT_OFFSETS: [Vec3; 4] = [
     Vec3::new(0.4, 0.3, -0.2),  // rear right
 ];
 
+/// car passenger.
 #[derive(Component)]
 pub struct CarPassenger {
+/// seat index field.
     pub seat_index: usize,
+/// car field.
     pub car: Entity,
 }
 
+/// spawn car passenger.
 #[derive(Clone)]
 pub struct SpawnCarPassenger {
+/// url field.
     pub url: Option<PedestrianUrl>, // None = random from manifest
+/// weapon field.
     pub weapon: Option<WeaponId>,   // None = random from manifest
+/// faction field.
     pub faction: Faction,
 }
 
+/// spawn car request event.
 #[derive(Event)]
 pub struct SpawnCarRequestEvent {
+/// position field.
     pub position: Vec3,
+/// car type field.
     pub car_type: String,
+/// rotation field.
     pub rotation: Option<Quat>,
     /// Optional passengers to spawn in the car's seats.
     /// Index 0 = driver, 1 = front passenger, 2 = rear left, 3 = rear right.
@@ -50,11 +61,14 @@ pub struct SpawnCarRequestEvent {
     pub passengers: Vec<Option<SpawnCarPassenger>>,
 }
 
+/// wheel assets.
 #[derive(Resource)]
 pub struct WheelAssets {
+/// wheels field.
     pub wheels: Vec<Handle<WorldAsset>>,
 }
 
+/// preload wheels.
 pub fn preload_wheels(mut commands: Commands, asset_server: Res<AssetServer>) {
     let wheel_names = ["car-wheel_00003_", "car-wheel_00005_"];
     let wheels = wheel_names
@@ -64,14 +78,19 @@ pub fn preload_wheels(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(WheelAssets { wheels });
 }
 
+/// car.
 #[derive(Component)]
 pub struct Car {
+/// car type field.
     pub _car_type: String,
 }
 
+/// car health.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct CarHealth {
+/// current field.
     pub current: f32,
+/// max field.
     pub max: f32,
 }
 
@@ -83,6 +102,7 @@ pub struct DisabledCar;
 /// HP at/below which a car becomes a [`DisabledCar`].
 pub const CAR_DISABLE_HP: f32 = 100.0;
 
+/// select car wheel.
 pub fn select_car_wheel(
     car_type: &str,
     wheel_assets: &WheelAssets,
@@ -99,6 +119,7 @@ pub fn select_car_wheel(
     }
 }
 
+/// spawn physics car.
 pub fn spawn_physics_car(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
@@ -188,6 +209,7 @@ pub fn spawn_physics_car(
     car_entity
 }
 
+/// spawn car request event observer.
 pub fn spawn_car_request_event_observer(
     spawn_car_event: On<SpawnCarRequestEvent>,
     mut commands: Commands,
@@ -272,12 +294,15 @@ pub fn spawn_car_request_event_observer(
     next_state.set(GameControlState::DrivingCar);
 }
 
+/// need car bounds compute.
 #[derive(Component)]
 pub struct NeedCarBoundsCompute;
 
+/// active player vehicle.
 #[derive(Component)]
 pub struct ActivePlayerVehicle;
 
+/// init cars system.
 pub fn init_cars_system(
     mut commands: Commands,
     query: Query<(Entity, &NeedCarBoundsCompute, &Children)>,

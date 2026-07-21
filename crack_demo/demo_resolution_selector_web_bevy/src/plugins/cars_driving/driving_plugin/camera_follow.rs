@@ -3,8 +3,10 @@ use crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera;
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
+/// driving aim.
 #[derive(Resource, Default)]
 pub struct DrivingAim {
+/// aiming field.
     pub aiming: bool,
 }
 
@@ -23,6 +25,7 @@ pub fn update_driving_aim(
     aim.aiming = capture_state.is_captured && !egui_focused && mouse.pressed(MouseButton::Right);
 }
 
+/// camera follows car.
 pub fn camera_follows_car(
     time: Res<Time>,
     mut camera_query: Query<&mut Transform, (With<MainCamera>, Without<ActivePlayerVehicle>)>,

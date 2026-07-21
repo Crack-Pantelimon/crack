@@ -1,5 +1,8 @@
+//! Composes the default Pantelimon gameplay plugin stack.
+
 use bevy::prelude::*;
 
+/// Registers map, traffic, pedestrians, weapons, audio, and network plugins.
 pub struct MainGamePlugin;
 
 impl Plugin for MainGamePlugin {

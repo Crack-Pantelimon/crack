@@ -21,8 +21,10 @@ pub struct SkyParamsUniform {
 }
 
 // Sky dome material: blue gradient + sun + 3 cloud layers, fully procedural.
+/// sky dome material.
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct SkyDomeMaterial {
+/// params field.
     #[uniform(0)]
     pub params: SkyParamsUniform,
 }
@@ -65,8 +67,10 @@ impl Material for SkyDomeMaterial {
 
 // Camera-following overlay quad for rain/snow. No depth testing so the
 // precipitation also draws in front of the world geometry.
+/// precip overlay material.
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct PrecipOverlayMaterial {
+/// params field.
     #[uniform(0)]
     pub params: SkyParamsUniform,
 }
@@ -104,6 +108,7 @@ impl Material for PrecipOverlayMaterial {
     }
 }
 
+/// ground shadow uniform.
 #[derive(Clone, Copy, ShaderType, Debug)]
 pub struct GroundShadowUniform {
     /// x = intensity, y = uv scale, z/w = unused.
@@ -114,10 +119,13 @@ pub struct GroundShadowUniform {
 
 // Flat decal multiplying the ground with scrolling cloud shadows.
 // The texture is generated on the CPU once at startup (see systems.rs).
+/// cloud ground shadow material.
 #[derive(Asset, TypePath, AsBindGroup, Clone, Debug)]
 pub struct CloudGroundShadowMaterial {
+/// params field.
     #[uniform(0)]
     pub params: GroundShadowUniform,
+/// texture field.
     #[texture(1)]
     #[sampler(2)]
     pub texture: Handle<Image>,

@@ -1,3 +1,9 @@
+//! Browser wasm dedicated-worker entry point for the crack demo.
+//!
+//! On `#[wasm_bindgen(start)]` it initializes logging, runs network
+//! bootstrap, and registers worker RPC handlers for storage, ping,
+//! and game-logic API groups.
+
 use std::sync::Arc;
 
 use crack::api_asscrack::{
@@ -50,6 +56,9 @@ fn init_worker() -> std::result::Result<(), JsValue> {
     Ok(())
 }
 
+/// Runs standalone bootstrap networking when no peers are configured.
+///
+/// Uses game-logic bootstrap topics for the demo network mesh.
 pub async fn run_bootstrap_if_needed() -> anyhow::Result<()> {
     crack::net_crackpipe::network_manager::run_standalone_bootstrap_if_needed(
         game_logic::network::bootstrap_topics(),

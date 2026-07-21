@@ -2,6 +2,7 @@ use crate::ui_egui::UiState;
 use avian3d::prelude::*;
 use bevy::prelude::*;
 
+/// physics plugin.
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin {
@@ -14,6 +15,7 @@ impl Plugin for PhysicsPlugin {
     }
 }
 
+/// sync physics debug config.
 pub fn sync_physics_debug_config(
     ui_state: Res<UiState>,
     mut gizmo_store: ResMut<GizmoConfigStore>,

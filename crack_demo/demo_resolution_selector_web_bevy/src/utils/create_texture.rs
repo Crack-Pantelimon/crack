@@ -4,6 +4,7 @@ use bevy::{
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 
+/// create grayscale texture.
 pub fn create_grayscale_texture(gray1: u8, gray2: u8) -> Image {
     let mut texture_data = vec![0; 32 * 32 * 4];
     for y in 0..32 {

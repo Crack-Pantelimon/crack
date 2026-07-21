@@ -14,27 +14,39 @@ use crate::plugins::pedestrians::skeleton::{
 /// Public spawn request: spawn the pedestrian at `url` at `position`.
 #[derive(Event, Clone)]
 pub struct SpawnPedestrianEvent {
+/// url field.
     pub url: PedestrianUrl,
+/// position field.
     pub position: Vec3,
+/// controller field.
     pub controller: Entity,
+/// parent field.
     pub parent: Entity,
 }
 
+/// model root.
 #[derive(Component)]
 pub struct ModelRoot {
+/// index field.
     pub index: usize,
+/// name field.
     pub name: String,
+/// size field.
     pub size: Vec3,
 }
 
+/// pedestrian gltf.
 #[derive(Component)]
 pub struct PedestrianGltf {
+/// handle field.
     pub handle: Handle<bevy::gltf::Gltf>,
 }
 
+/// need alignment.
 #[derive(Component)]
 pub struct NeedAlignment;
 
+/// model controller.
 #[derive(Component)]
 pub struct ModelController(pub Entity);
 
@@ -57,13 +69,18 @@ fn parse_url_to_rpc_args(url: &str) -> (String, String) {
     (glb_path, asset_id)
 }
 
+/// pending pedestrian glb fetch.
 #[derive(Component)]
 pub struct PendingPedestrianGlbFetch {
+/// task field.
     pub task: bevy::tasks::Task<anyhow::Result<game_logic::glb::FetchGlbResponse>>,
+/// controller field.
     pub controller: Entity,
+/// model name field.
     pub model_name: String,
 }
 
+/// spawn pedestrian observer.
 pub fn spawn_pedestrian_observer(
     trigger: On<SpawnPedestrianEvent>,
     mut commands: Commands,
@@ -106,6 +123,7 @@ pub fn spawn_pedestrian_observer(
     ));
 }
 
+/// poll pedestrian glb fetches.
 pub fn poll_pedestrian_glb_fetches(
     mut commands: Commands,
     mut q_fetches: Query<(Entity, &mut PendingPedestrianGlbFetch)>,
@@ -182,6 +200,7 @@ pub fn poll_pedestrian_glb_fetches(
     }
 }
 
+/// link pedestrian model.
 pub fn link_pedestrian_model(
     mut commands: Commands,
     mut controlled: Option<
@@ -231,6 +250,7 @@ fn get_mesh_descendants(
     }
 }
 
+/// init pedestrians system.
 pub fn init_pedestrians_system(
     mut commands: Commands,
     query: Query<(Entity, &NeedAlignment, &Children)>,

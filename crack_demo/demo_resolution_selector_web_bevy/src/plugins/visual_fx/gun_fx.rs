@@ -4,24 +4,35 @@ use super::spawn::{VfxDrift, VfxMeshes, spawn_additive_billboard_fx, spawn_blend
 use crate::plugins::weapons::weapon_attach::{WeaponExtents, WeaponModelState};
 use bevy::prelude::*;
 
+/// gun fx event.
 #[derive(Event, Debug, Clone)]
 pub struct GunFxEvent {
+/// muzzle field.
     pub muzzle: Vec3,
+/// impact field.
     pub impact: Vec3,
+/// is person field.
     pub is_person: bool,
+/// is miss field.
     pub is_miss: bool,
+/// shooter field.
     pub shooter: Entity,
 }
 
+/// gun fx counter.
 #[derive(Resource, Default)]
 pub struct GunFxCounter(pub u32);
 
+/// gun smoke emitter.
 #[derive(Component, Debug, Clone)]
 pub struct GunSmokeEmitter {
+/// next spawn time field.
     pub next_spawn_time: f32,
+/// active until field.
     pub active_until: f32,
 }
 
+/// gun fx observer.
 pub fn gun_fx_observer(
     trigger: On<GunFxEvent>,
     mut commands: Commands,
@@ -196,6 +207,7 @@ pub fn gun_fx_observer(
     }
 }
 
+/// tick gun smoke emitters.
 pub fn tick_gun_smoke_emitters(
     mut commands: Commands,
     time: Res<Time>,

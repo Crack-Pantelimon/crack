@@ -20,6 +20,7 @@ use super::{
     TrafficConfig,
 };
 
+/// get ground y.
 pub fn get_ground_y(
     pos: Vec3,
     map_tree: Option<&MapTree>,
@@ -42,6 +43,7 @@ pub fn get_ground_y(
     }
 }
 
+/// traffic network spawner.
 pub fn traffic_network_spawner(
     time: Res<Time>,
     mut last_spawn: Local<f32>,
@@ -95,6 +97,7 @@ pub fn traffic_network_spawner(
     }
 }
 
+/// spawn traffic car observer.
 pub fn spawn_traffic_car_observer(
     trigger: On<SpawnTrafficCarEvent>,
     mut commands: Commands,

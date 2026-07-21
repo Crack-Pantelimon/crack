@@ -1,3 +1,5 @@
+//! Chat UI demo binary with egui and network hooks.
+
 use bevy_egui::EguiPlugin;
 use demo_resolution_selector_web_bevy::{
     basic_app::make_basic_app,

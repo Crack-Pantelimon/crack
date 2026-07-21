@@ -20,6 +20,7 @@ implement_api_group2! {
     ]
 }
 
+/// Execute raw SQL without bound parameters.
 pub async fn execute_sql2(sql: String) -> anyhow::Result<SqlResultSet> {
     crate::impl_rusqulite::sql_query(SQLAndParams {
         sql,
@@ -28,6 +29,7 @@ pub async fn execute_sql2(sql: String) -> anyhow::Result<SqlResultSet> {
     .await
 }
 
+/// Execute SQL with typed parameter bindings.
 pub async fn execute_sql_params(req: SQLAndParams) -> anyhow::Result<SqlResultSet> {
     crate::impl_rusqulite::sql_query(req).await
 }

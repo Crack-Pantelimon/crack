@@ -11,16 +11,22 @@ pub struct PedestrianUrl(pub String);
 /// Public manifest resource: the list of available pedestrian URLs and whether loading finished.
 #[derive(Resource, Default)]
 pub struct PedestrianManifest {
+/// urls field.
     pub urls: Vec<PedestrianUrl>,
+/// loaded field.
     pub loaded: bool,
 }
 
+/// pedestrian manifest tasks.
 #[derive(Resource, Default)]
 pub struct PedestrianManifestTasks {
+/// manifest task field.
     pub manifest_task:
         Option<bevy::tasks::Task<anyhow::Result<game_logic::pedestrian::PedestrianManifestResult>>>,
+/// first glb task field.
     pub first_glb_task:
         Option<bevy::tasks::Task<anyhow::Result<game_logic::glb::FetchGlbResponse>>>,
+/// first gltf field.
     pub first_gltf: Option<Handle<bevy::gltf::Gltf>>,
 }
 
@@ -39,10 +45,12 @@ fn parse_url_to_rpc_args(url: &str) -> (String, String) {
     (glb_path, asset_id)
 }
 
+/// start manifest load.
 pub fn start_manifest_load(mut commands: Commands) {
     commands.init_resource::<PedestrianManifestTasks>();
 }
 
+/// spawn pedestrian manifest task.
 pub fn spawn_pedestrian_manifest_task(
     mut tasks: ResMut<PedestrianManifestTasks>,
     manifest: Res<PedestrianManifest>,
@@ -69,6 +77,7 @@ pub fn spawn_pedestrian_manifest_task(
     }
 }
 
+/// poll pedestrian manifest task.
 pub fn poll_pedestrian_manifest_task(
     mut tasks: ResMut<PedestrianManifestTasks>,
     mut manifest: ResMut<PedestrianManifest>,
@@ -120,6 +129,7 @@ pub fn poll_pedestrian_manifest_task(
     }
 }
 
+/// poll pedestrian first glb task.
 pub fn poll_pedestrian_first_glb_task(
     mut tasks: ResMut<PedestrianManifestTasks>,
     memory_dir: ResMut<MemoryDir>,
@@ -151,6 +161,7 @@ pub fn poll_pedestrian_first_glb_task(
     }
 }
 
+/// load pedestrian manifest system.
 pub fn load_pedestrian_manifest_system(
     mut bootstrap: ResMut<PedestrianManifestTasks>,
     mut manifest: ResMut<PedestrianManifest>,
@@ -222,11 +233,14 @@ pub fn load_pedestrian_manifest_system(
     manifest.loaded = true;
 }
 
+/// text asset.
 #[derive(Asset, bevy::reflect::TypePath, Debug, Clone)]
 pub struct TextAsset {
+/// text field.
     pub text: String,
 }
 
+/// text asset loader.
 #[derive(Default, bevy::reflect::TypePath)]
 pub struct TextAssetLoader;
 

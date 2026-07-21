@@ -1,8 +1,10 @@
 use api_asscrack::declare_api_group2;
 use serde::{Deserialize, Serialize};
 
+/// Base URL arguments shared by manifest and asset fetch RPCs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchArgs {
+    /// HTTP origin (scheme + host + port) of the worker content server.
     pub base_url: String,
 }
 

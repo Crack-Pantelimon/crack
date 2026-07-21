@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
+/// Priority score for the LOD heap (higher `0` means split sooner).
 #[derive(Clone, Copy, PartialEq)]
 pub struct Score(pub f32);
 
@@ -19,19 +20,29 @@ impl PartialOrd for Score {
     }
 }
 
+/// Camera pose and motion used for visibility sampling.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CameraReference {
+    /// World-space camera position.
     pub center: Vec3,
+    /// World-space velocity in meters per second.
     pub velocity: Vec3,
+    /// Horizontal sampling radius for visibility rays.
     pub sample_radius: f32,
 }
 
+/// Input to one LOD recompute: spawned nodes, cameras, and detail band.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LodComputeRequest {
+    /// Octree nodes currently spawned on the client.
     pub spawned_nodes: BTreeSet<MapTreeNodePath>,
+    /// Reference points for distance-based LOD scoring.
     pub reference_points: Vec<Vec3>,
+    /// Active cameras used for visibility gating.
     pub cameras: Vec<CameraReference>,
+    /// Maximum simultaneous tile asset budget.
     pub lod_budget: u32,
+    /// Deepest octree level the client may refine to.
     pub max_lod: i32,
     /// Detail floor: nodes coarser than this level split unconditionally,
     /// without any visibility rays. Establishes the base map distribution.
@@ -39,34 +50,51 @@ pub struct LodComputeRequest {
     /// Detail ceiling: between min and max a node splits only if the BVH
     /// occluder test says it is visible from a camera.
     pub max_tiles_per_diagonal: f32,
+    /// When true, split candidates between min/max detail require visibility.
     pub enable_visibility_cull: bool,
+    /// Worker content server origin for occluder GLB fetches.
     pub base_url: String,
 }
 
+/// One proposed node split with child summaries for the client to spawn.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SplitRequestSummary {
+    /// Octant path of the parent node being split.
     pub parent_path: MapTreeNodePath,
+    /// Child nodes and assets to spawn in place of the parent.
     pub children: Vec<crate::map::MapRootNodeSummary>,
 }
 
+/// One proposed node merge collapsing children back into a parent tile.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MergeRequestSummary {
+    /// Octant path of the parent node to restore.
     pub parent_path: MapTreeNodePath,
+    /// Parent-level assets to spawn after the merge.
     pub parent_assets: Vec<crate::map::MapTileAssetInfoSummary>,
+    /// Child paths the client should despawn.
     pub drop_children: BTreeSet<MapTreeNodePath>,
+    /// World bounds of the merged parent node.
     pub bbox: BBox,
 }
 
+/// Node withheld from splitting because visibility tests failed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CulledNodeSummary {
+    /// Octant path of the culled node.
     pub path: MapTreeNodePath,
+    /// World bounds of the culled node.
     pub bbox: BBox,
 }
 
+/// LOD recompute result: splits, merges, and visibility-culled nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LodComputeResponse {
+    /// Nodes the client should split into finer children.
     pub split_requests: Vec<SplitRequestSummary>,
+    /// Nodes the client should merge into coarser parents.
     pub merge_requests: Vec<MergeRequestSummary>,
+    /// Nodes blocked from splitting by visibility culling.
     pub culled_nodes: Vec<CulledNodeSummary>,
 }
 
@@ -81,6 +109,7 @@ enum SplitClass {
     Mandatory,
 }
 
+/// Blended distance from point `p` to an AABB (surface + center average).
 #[inline]
 pub fn compute_distance_to_aabb(bbox: &BBox, p: Vec3) -> f32 {
     let cx =
@@ -139,6 +168,7 @@ async fn insert_occluders_chunked(
     }
 }
 
+/// Computes split/merge/cull requests for one LOD convergence step.
 pub async fn compute_lod_changes(
     data_res: &MapTreeData,
     req: &LodComputeRequest,

@@ -45,59 +45,91 @@ pub use game_logic::network::{GameplayChatMessageContent, GameplayPresence, Game
 // Game-side Update Payloads
 // ---------------------------------------------------------------------------------------------
 
+/// game update.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GameUpdate {
     /// Sender's monotonic time in seconds, for interpolation/extrapolation.
     pub t: f64,
+/// state field.
     pub state: PlayerStateMsg,
     /// One-shot events accumulated since the previous update (never dropped by rate limiting).
     pub events: Vec<PlayerEventMsg>,
 }
 
+/// player state msg.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum PlayerStateMsg {
     /// GameControlState::MapFreecam — show a camera gizmo at this pose on other clients.
     Camera { pos: [f32; 3], rot: [f32; 4] },
     /// GameControlState::ControllingPedestrian
     OnFoot {
-        model_url: String, // PedestrianUrl.0 of the controlled character
-        scale: f32,        // CharacterScale
+        /// Pedestrian model URL for the controlled character.
+        model_url: String,
+        /// Character scale multiplier.
+        scale: f32,
+/// Documented public item.
         pos: [f32; 3],
+/// Documented public item.
         rot: [f32; 4],
+/// Documented public item.
         vel: [f32; 3], // LinearVelocity, for extrapolation + anim speed
+/// Documented public item.
         grounded: bool,
+/// Documented public item.
         aiming: bool,   // crosshair/aim state (GameControlState + weapon raised)
+/// Documented public item.
         weapon: String, // WeaponId label/serialized id
+/// Documented public item.
         ammo: u32,      // GunState clip, for HUD-over-head later; cheap to include
+/// Documented public item.
         health: f32,    // current HP (victim-authoritative)
     },
     /// GameControlState::DrivingCar
     InCar {
+/// Documented public item.
         car_type: String, // car_info car type name -> resolves glb via get_car_asset
+/// Documented public item.
         pos: [f32; 3],
+/// Documented public item.
         rot: [f32; 4],
+/// Documented public item.
         vel: [f32; 3],
+/// Documented public item.
         speed_kmh: f32,
+/// Documented public item.
         steer: f32,  // CarDriveState.current_steer_integrated -> front wheel pose
+/// Documented public item.
         health: f32, // CarHealth.current
     },
 }
 
+/// player event msg.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum PlayerEventMsg {
     /// A gunshot: replayed on remote clients for tracer VFX + victim-side hit test.
     Shoot {
+/// Documented public item.
         origin: [f32; 3],
+/// Documented public item.
         dir: [f32; 3],
+/// Documented public item.
         damage: f32,
     },
+/// reload variant.
     Reload,
+/// jump variant.
     Jump,
+/// climb start variant.
     ClimbStart,
+/// roll variant.
     Roll,
+/// melee variant.
     Melee {
+/// Documented public item.
         origin: [f32; 3],
+/// Documented public item.
         rotation: [f32; 4],
+/// Documented public item.
         is_melee: bool,
     },
 }
@@ -106,23 +138,35 @@ pub enum PlayerEventMsg {
 // Bevy Resources / Component Types
 // ---------------------------------------------------------------------------------------------
 
+/// game sync channels.
 #[derive(Resource)]
 pub struct GameSyncChannels {
+/// outgoing tx field.
     pub outgoing_tx: async_channel::Sender<Vec<u8>>,
+/// incoming rx field.
     pub incoming_rx: async_channel::Receiver<GameSyncInbound>,
 }
 
+/// game sync inbound.
 pub struct GameSyncInbound {
+/// from node id field.
     pub from_node_id: PublicKey,
+/// nickname field.
     pub nickname: String,
+/// color field.
     pub color: (u8, u8, u8),
+/// id field.
     pub id: i64,
+/// payload field.
     pub payload: Vec<u8>,
 }
 
+/// multiplayer config.
 #[derive(Resource)]
 pub struct MultiplayerConfig {
+/// send hz field.
     pub send_hz: f32,
+/// window open field.
     pub window_open: bool,
 }
 
@@ -135,18 +179,23 @@ impl Default for MultiplayerConfig {
     }
 }
 
+/// outbound events.
 #[derive(Resource, Default)]
 pub struct OutboundEvents(pub Vec<PlayerEventMsg>);
 
 // NOTE: If a reconnect or lifecycle disconnect flow is added in the future,
 // this resource must be cleared/reset on disconnect to avoid leftover state.
+/// seen msg ids.
 #[derive(Resource, Default)]
 pub struct SeenMsgIds {
+/// ids field.
     pub ids: HashSet<i64>,
+/// ring field.
     pub ring: VecDeque<i64>,
 }
 
 impl SeenMsgIds {
+/// is new.
     pub fn is_new(&mut self, id: i64) -> bool {
         if self.ids.contains(&id) {
             false
@@ -165,26 +214,51 @@ impl SeenMsgIds {
 
 // NOTE: If a reconnect or lifecycle disconnect flow is added in the future,
 // this resource must be cleared/reset on disconnect to avoid leftover state.
+/// remote players.
 #[derive(Resource, Default)]
 pub struct RemotePlayers(pub HashMap<PublicKey, RemotePlayer>);
 
+/// remote player.
 pub struct RemotePlayer {
+/// nickname field.
     pub nickname: String,
+/// color field.
     pub color: (u8, u8, u8),
+/// prev local t field.
     pub prev_local_t: f64,
+/// latest local t field.
     pub latest_local_t: f64,
+/// prev field.
     pub prev: Option<GameUpdate>,
+/// latest field.
     pub latest: Option<GameUpdate>,
+/// avatar field.
     pub avatar: RemoteAvatar,
+/// pending events field.
     pub pending_events: Vec<PlayerEventMsg>,
 }
 
+/// remote avatar.
 #[derive(Clone, Debug, PartialEq)]
 pub enum RemoteAvatar {
+/// none variant.
     None,
+/// camera variant.
     Camera,
-    OnFoot { root: Entity, model_url: String },
-    InCar { root: Entity, car_type: String },
+    /// Remote pedestrian avatar with spawned root entity.
+    OnFoot {
+        /// Scene root entity for the remote pedestrian.
+        root: Entity,
+        /// Model URL used to spawn the avatar mesh.
+        model_url: String,
+    },
+    /// Remote player driving a vehicle.
+    InCar {
+        /// Scene root entity for the remote car.
+        root: Entity,
+        /// Car type identifier from the spawn manifest.
+        car_type: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -195,29 +269,45 @@ enum AvatarKind {
     InCar { car_type: String },
 }
 
+/// remote avatar marker.
 #[derive(Component)]
 pub struct RemoteAvatarMarker {
+/// node id field.
     pub node_id: PublicKey,
 }
 
 // NOTE: If a reconnect or lifecycle disconnect flow is added in the future,
 // this resource must be cleared/reset on disconnect to avoid leftover state.
+/// multiplayer stats.
 #[derive(Resource, Default)]
 pub struct MultiplayerStats {
+/// connected field.
     pub connected: bool,
+/// msgs sent field.
     pub msgs_sent: u64,
+/// msgs recv field.
     pub msgs_recv: u64,
+/// bytes sent field.
     pub bytes_sent: u64,
+/// bytes recv field.
     pub bytes_recv: u64,
+/// dup drops field.
     pub dup_drops: u64,
+/// decode errors field.
     pub decode_errors: u64,
+/// channel full drops field.
     pub channel_full_drops: u64,
 
     // Per-second window tracking
+/// window start field.
     pub window_start: f64,
+/// window msgs sent field.
     pub window_msgs_sent: u64,
+/// window msgs recv field.
     pub window_msgs_recv: u64,
+/// rate msgs sent field.
     pub rate_msgs_sent: f64,
+/// rate msgs recv field.
     pub rate_msgs_recv: f64,
 }
 
@@ -240,6 +330,7 @@ fn tick_multiplayer_stats_window(time: Res<Time>, mut stats: ResMut<MultiplayerS
 // Bevy Plugin Implementation
 // ---------------------------------------------------------------------------------------------
 
+/// multiplayer plugin.
 pub struct MultiplayerPlugin;
 
 impl Plugin for MultiplayerPlugin {

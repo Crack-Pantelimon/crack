@@ -5,6 +5,7 @@ use super::{CAR_TOP_FUDGE, TrafficCar, TrafficConfig, VIEW_RAYCAST_HZ};
 use crate::plugins::cars_driving::driving_plugin::CarDriveState;
 use crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera;
 
+/// despawn traffic cars.
 pub fn despawn_traffic_cars(
     time: Res<Time>,
     config: Res<TrafficConfig>,

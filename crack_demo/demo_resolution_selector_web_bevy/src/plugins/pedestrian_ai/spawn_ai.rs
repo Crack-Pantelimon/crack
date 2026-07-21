@@ -25,7 +25,9 @@ use crate::plugins::cars_driving::driving_plugin::spawn_car::{CAR_SEAT_OFFSETS, 
 /// Spawn an AI-driven pedestrian at `position` with the given `faction`.
 #[derive(Event)]
 pub struct SpawnAiPedestrianEvent {
+/// position field.
     pub position: Vec3,
+/// faction field.
     pub faction: Faction,
     /// `None` picks a random model from the manifest.
     pub url: Option<PedestrianUrl>,
@@ -35,6 +37,7 @@ pub struct SpawnAiPedestrianEvent {
     pub car_seat: Option<(Entity, usize)>,
 }
 
+/// spawn ai pedestrian observer.
 pub fn spawn_ai_pedestrian_observer(
     trigger: On<SpawnAiPedestrianEvent>,
     mut commands: Commands,

@@ -39,9 +39,13 @@ pub fn locomotion_clip(speed: f32, crouch: bool, _sprint: bool) -> &'static [&'s
 /// Metadata about a single animation clip, exposed for UI listing.
 #[derive(Clone, Debug)]
 pub struct AnimationInfo {
+/// name field.
     pub name: String,
+/// duration field.
     pub duration: f32,
+/// frames field.
     pub frames: u32,
+/// node field.
     pub node: AnimationNodeIndex,
 }
 
@@ -49,9 +53,13 @@ pub struct AnimationInfo {
 /// pedestrian asset is loaded.
 #[derive(Resource, Default)]
 pub struct PedestrianAnimations {
+/// graph handle field.
     pub graph_handle: Handle<AnimationGraph>,
+/// nodes field.
     pub nodes: std::collections::HashMap<String, AnimationNodeIndex>,
+/// catalog field.
     pub catalog: std::collections::BTreeMap<String, AnimationInfo>,
+/// ready field.
     pub ready: bool,
 }
 
@@ -69,8 +77,11 @@ impl PedestrianAnimations {
 /// Control event: make `ped` play `animation` at `speed`.
 #[derive(Event, Clone)]
 pub struct PedestrianAnimationControlEvent {
+/// ped field.
     pub ped: Entity,
+/// animation field.
     pub animation: String,
+/// speed field.
     pub speed: f32,
 }
 
@@ -80,13 +91,16 @@ pub struct PedestrianAnimationControlEvent {
 #[derive(Component)]
 pub struct ManualAnimation;
 
+/// play once animation.
 #[derive(Component)]
 pub struct PlayOnceAnimation;
 
 /// Tracks a transient one-shot animation playing on this player.
 #[derive(Component)]
 pub struct ActiveOneShot {
+/// node field.
     pub node: AnimationNodeIndex,
+/// name field.
     pub name: String,
 }
 
@@ -94,17 +108,22 @@ pub struct ActiveOneShot {
 /// [`play_animations_system`].
 #[derive(Component, Clone)]
 pub struct TargetAnimation {
+/// name field.
     pub name: String,
+/// speed field.
     pub speed: f32,
 }
 
 /// Tracks what is currently playing on an animation player, to avoid redundant restarts.
 #[derive(Component)]
 pub struct CurrentPlayingAnimation {
+/// name field.
     pub name: String,
+/// speed field.
     pub speed: f32,
 }
 
+/// pedestrian animation control observer.
 pub fn pedestrian_animation_control_observer(
     trigger: On<PedestrianAnimationControlEvent>,
     mut commands: Commands,
@@ -128,6 +147,7 @@ pub fn pedestrian_animation_control_observer(
     }
 }
 
+/// setup animation players system.
 pub fn setup_animation_players_system(
     mut commands: Commands,
     anims: Res<PedestrianAnimations>,
@@ -143,6 +163,7 @@ pub fn setup_animation_players_system(
     }
 }
 
+/// play animations system.
 pub fn play_animations_system(
     mut commands: Commands,
     anims: Res<PedestrianAnimations>,

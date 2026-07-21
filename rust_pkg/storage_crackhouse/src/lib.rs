@@ -1,9 +1,18 @@
+//! SQLite-backed storage for crackhouse with native and wasm backends.
+//!
+//! Exposes SQL execution, schema migration helpers, and value types.
+
+/// Public API bindings for remote callers.
 pub mod api;
+/// Rusqlite connection pool and query execution.
 pub mod impl_rusqulite;
+/// Table model traits, migrations, and schema macros.
 pub mod models;
+/// Shared SQL parameter and result value types.
 pub mod types;
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+/// Install the OPFS SAH-pool SQLite VFS in the browser.
 pub async fn install_opfs_sahpool() -> anyhow::Result<()> {
     tracing::info!("install_opfs_sahpool() ...");
     use sqlite_wasm_vfs::sahpool::{OpfsSAHPoolCfg, install};
@@ -17,6 +26,7 @@ pub async fn install_opfs_sahpool() -> anyhow::Result<()> {
 }
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+/// Install the relaxed IndexedDB SQLite VFS in the browser.
 pub async fn install_relaxed_idb() -> anyhow::Result<()> {
     tracing::info!("install_relaxed_idb() ...");
     use sqlite_wasm_vfs::relaxed_idb::{RelaxedIdbCfg, install};

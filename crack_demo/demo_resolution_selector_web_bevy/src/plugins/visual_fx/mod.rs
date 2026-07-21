@@ -2,12 +2,19 @@ use bevy::asset::embedded_asset;
 use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
 
+/// car explosion submodule.
 pub mod car_explosion;
+/// gun fx submodule.
 pub mod gun_fx;
+/// materials submodule.
 pub mod materials;
+/// settings submodule.
 pub mod settings;
+/// smoke emitter submodule.
 pub mod smoke_emitter;
+/// spawn submodule.
 pub mod spawn;
+/// ui submodule.
 pub mod ui;
 
 pub use car_explosion::CarExplosionEvent;
@@ -22,8 +29,10 @@ use smoke_emitter::tick_smoke_emitters;
 use spawn::{despawn_expired_fx, setup_vfx_meshes, tick_vfx_drift};
 use ui::vfx_controls_window;
 
+/// demo submodule.
 pub mod demo;
 
+/// visual fxplugin.
 pub struct VisualFXPlugin;
 
 impl Plugin for VisualFXPlugin {

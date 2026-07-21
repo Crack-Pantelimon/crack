@@ -1,20 +1,32 @@
 use serde::{Deserialize, Serialize};
 
+/// One weapon definition from the worker weapon manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WeaponEntry {
+    /// Relative path to the weapon `.glb` model.
     pub path: String,
+    /// True when the weapon fires projectiles (gun) vs melee/other.
     pub is_gun: bool,
+    /// Magazine capacity in rounds.
     pub clip_size: u32,
+    /// Ammunition type identifier.
     pub bullet_type: String,
+    /// Base damage per hit.
     pub damage: f32,
+    /// Effective range in world units.
     pub range: f32,
+    /// Rounds per minute fire rate.
     pub rpm: f32,
+    /// True when holding fire repeats shots automatically.
     pub automatic: bool,
+    /// Seconds to complete a reload animation.
     pub reload_secs: f32,
 }
 
+/// Weapon manifest listing every downloadable weapon model and stats.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WeaponManifestResult {
+    /// All weapons available to clients.
     pub weapons: Vec<WeaponEntry>,
 }
 

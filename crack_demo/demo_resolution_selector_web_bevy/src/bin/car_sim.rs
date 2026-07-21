@@ -1,3 +1,5 @@
+//! Car physics sandbox binary for tuning spawn and driving feel.
+
 use avian3d::prelude::{
     CoefficientCombine, Collider, CollisionEventsEnabled, CollisionLayers, LinearVelocity,
     MassPropertiesBundle, Restitution, RigidBody,

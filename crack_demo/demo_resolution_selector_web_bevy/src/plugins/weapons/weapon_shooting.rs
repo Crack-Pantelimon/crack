@@ -17,8 +17,11 @@ const REFLECT_LEN: f32 = 0.5;
 /// Ammo state for a character holding a gun. Inserted on gun equip, removed otherwise.
 #[derive(Component, Clone, Debug)]
 pub struct GunState {
+/// rounds field.
     pub rounds: u32,
+/// clip size field.
     pub clip_size: u32,
+/// gunshot sound idx field.
     pub gunshot_sound_idx: usize,
     /// Seconds remaining in an active reload (0 = idle).
     pub reload_timer: f32,
@@ -30,6 +33,7 @@ pub struct GunState {
 #[derive(Component, Default)]
 pub struct WeaponCooldown(pub f32);
 
+/// tick weapon cooldown.
 pub fn tick_weapon_cooldown(time: Res<Time>, mut q: Query<&mut WeaponCooldown>) {
     let dt = time.delta_secs();
     for mut cd in &mut q {
@@ -39,6 +43,7 @@ pub fn tick_weapon_cooldown(time: Res<Time>, mut q: Query<&mut WeaponCooldown>) 
     }
 }
 
+/// tick reload.
 pub fn tick_reload(time: Res<Time>, mut q: Query<&mut GunState>) {
     let dt = time.delta_secs();
     for mut gun in &mut q {
@@ -56,20 +61,26 @@ pub fn tick_reload(time: Res<Time>, mut q: Query<&mut GunState>) {
 /// Fire the shooter's gun once (ammo permitting).
 #[derive(Event)]
 pub struct FireGunEvent {
+/// shooter field.
     pub shooter: Entity,
 }
 
 /// Refill the shooter's clip.
 #[derive(Event)]
 pub struct ReloadGunEvent {
+/// shooter field.
     pub shooter: Entity,
 }
 
+/// shot tracer.
 pub struct ShotTracer {
+/// from field.
     pub from: Vec3,
+/// to field.
     pub to: Vec3,
     /// End point of the short ricochet segment, when the shot hit something.
     pub reflect_to: Option<Vec3>,
+/// ttl field.
     pub ttl: f32,
 }
 
@@ -77,10 +88,15 @@ pub struct ShotTracer {
 #[derive(Resource, Default)]
 pub struct ShotTracers(pub Vec<ShotTracer>);
 
+/// bullet spark.
 pub struct BulletSpark {
+/// position field.
     pub position: Vec3,
+/// velocity field.
     pub velocity: Vec3,
+/// is person field.
     pub is_person: bool,
+/// lifetime field.
     pub lifetime: f32,
 }
 
@@ -88,15 +104,21 @@ pub struct BulletSpark {
 #[derive(Resource, Default)]
 pub struct BulletSparks(pub Vec<BulletSpark>);
 
+/// melee debug box.
 pub struct MeleeDebugBox {
+/// position field.
     pub position: Vec3,
+/// rotation field.
     pub rotation: Quat,
+/// ttl field.
     pub ttl: f32,
 }
 
+/// melee debug boxes.
 #[derive(Resource, Default)]
 pub struct MeleeDebugBoxes(pub Vec<MeleeDebugBox>);
 
+/// draw melee debug boxes.
 pub fn draw_melee_debug_boxes(
     time: Res<Time>,
     mut gizmos: Gizmos,
@@ -141,6 +163,7 @@ pub(crate) fn is_person_entity(
     false
 }
 
+/// fire gun observer.
 pub fn fire_gun_observer(
     trigger: On<FireGunEvent>,
     mut shooters: Query<(&mut GunState, &EquippedWeapon, Option<&WeaponModelState>)>,
@@ -331,6 +354,7 @@ pub fn fire_gun_observer(
     }
 }
 
+/// reload gun observer.
 pub fn reload_gun_observer(
     trigger: On<ReloadGunEvent>,
     mut shooters: Query<(&mut GunState, &EquippedWeapon, &GlobalTransform)>,
@@ -426,12 +450,16 @@ pub fn draw_bullet_sparks(
     });
 }
 
+/// pending melee hit.
 #[derive(Component)]
 pub struct PendingMeleeHit {
+/// timer field.
     pub timer: f32,
+/// is melee field.
     pub is_melee: bool,
 }
 
+/// tick pending melee hits.
 pub fn tick_pending_melee_hits(
     mut commands: Commands,
     time: Res<Time>,

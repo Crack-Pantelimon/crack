@@ -5,20 +5,33 @@ use crate::plugins::cars_driving::driving_plugin::{
     CarDriveState, GamePhysicsLayer, spawn_car::Car,
 };
 
+/// num prediction steps constant.
 pub const NUM_PREDICTION_STEPS: usize = 8;
+/// step delta time constant.
 pub const STEP_DELTA_TIME: f32 = 0.030; // 30ms per step -> 240ms horizon
 
+/// speculative step data.
 #[derive(Clone, Debug)]
 pub struct SpeculativeStepData {
+/// predicted position field.
     pub predicted_position: Vec3,
+/// predicted ground pos field.
     pub predicted_ground_pos: Vec3,
+/// predicted rotation field.
     pub predicted_rotation: Quat,
+/// left hit point field.
     pub left_hit_point: Option<Vec3>,
+/// right hit point field.
     pub right_hit_point: Option<Vec3>,
+/// center hit point field.
     pub center_hit_point: Option<Vec3>,
+/// left ray origin field.
     pub left_ray_origin: Vec3,
+/// right ray origin field.
     pub right_ray_origin: Vec3,
+/// center ray origin field.
     pub center_ray_origin: Vec3,
+/// has ground contact field.
     pub has_ground_contact: bool,
 }
 
@@ -39,11 +52,14 @@ impl Default for SpeculativeStepData {
     }
 }
 
+/// car speculative contact data.
 #[derive(Component, Clone, Debug, Default)]
 pub struct CarSpeculativeContactData {
+/// steps field.
     pub steps: Vec<SpeculativeStepData>,
 }
 
+/// simulate rk4 future steps.
 pub fn simulate_rk4_future_steps(
     p0: Vec3,
     v0: Vec3,
@@ -125,6 +141,7 @@ pub fn simulate_rk4_future_steps(
     steps
 }
 
+/// update speculative contacts system.
 pub fn update_speculative_contacts_system(
     spatial_query: SpatialQuery,
     mut q_cars: Query<

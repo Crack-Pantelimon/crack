@@ -1,9 +1,15 @@
+/// camera follow submodule.
 pub mod camera_follow;
 pub mod car_disable;
+/// collision sparks submodule.
 pub mod collision_sparks;
+/// keybinds control submodule.
 pub mod keybinds_control;
+/// rk4 prediction submodule.
 pub mod rk4_prediction;
+/// spawn car submodule.
 pub mod spawn_car;
+/// speedometer ui submodule.
 pub mod speedometer_ui;
 
 pub use rk4_prediction::{
@@ -61,7 +67,9 @@ fn unpark_car(drive_state: &mut CarDriveState) {
     drive_state.park_timer = 0.0;
 }
 
+/// driving plugin.
 pub struct DrivingPlugin<S: States> {
+/// state field.
     pub state: S,
 }
 
@@ -113,28 +121,40 @@ impl<S: States> Plugin for DrivingPlugin<S> {
     }
 }
 
+/// configure gizmo depth.
 pub fn configure_gizmo_depth(mut gizmo_store: ResMut<GizmoConfigStore>) {
     let (config, _) = gizmo_store.config_mut::<DefaultGizmoConfigGroup>();
     config.depth_bias = -1.0;
 }
 
+/// game physics layer.
 #[derive(PhysicsLayer, Default, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum GamePhysicsLayer {
+/// map variant.
     #[default]
     Map,
+/// car variant.
     Car,
+/// wheel variant.
     Wheel,
 }
 
+/// wheel contact data.
 #[derive(Clone, Debug)]
 pub struct WheelContactData {
+/// ray distances field.
     pub ray_distances: [f32; 9],
     // Low-passed ray distances (~0.06s) that the hover controller reads; raw
     // distances stay available for gizmos so seam artifacts remain visible.
+/// smoothed distances field.
     pub smoothed_distances: [f32; 9],
+/// hit points field.
     pub hit_points: [Vec3; 9],
+/// ray origins field.
     pub ray_origins: [Vec3; 9],
+/// contact normal field.
     pub contact_normal: Vec3,
+/// hits count field.
     pub hits_count: u8,
 }
 
@@ -151,34 +171,52 @@ impl Default for WheelContactData {
     }
 }
 
+/// car wheels contact data.
 #[derive(Component, Clone, Debug, Default)]
 pub struct CarWheelsContactData {
     // 0: FL, 1: FR, 2: RL, 3: RR
+/// wheels field.
     pub wheels: [WheelContactData; 4],
 }
 
+/// drive.
 #[derive(EntityEvent, Clone, Debug)]
 pub struct Drive {
+/// entity field.
     pub entity: Entity,
+/// accelerate field.
     pub accelerate: f32, // 0.0 ..= 1.0
+/// brake field.
     pub brake: f32,      // 0.0 ..= 1.0
+/// steer field.
     pub steer: f32,      // -1.0 ..= 1.0
 }
 
+/// sim state.
 #[derive(Resource, Default)]
 pub struct SimState {
+/// time elapsed field.
     pub time_elapsed: f32,
+/// spawned field.
     pub spawned: bool,
+/// is sim field.
     pub is_sim: bool,
 }
 
+/// car drive state.
 #[derive(Component, Clone)]
 pub struct CarDriveState {
+/// history field.
     pub history: Vec<(f32, Drive)>,
+/// current steer integrated field.
     pub current_steer_integrated: f32,
+/// avg accelerate field.
     pub avg_accelerate: f32,
+/// avg brake field.
     pub avg_brake: f32,
+/// avg steer field.
     pub avg_steer: f32,
+/// is reverse field.
     pub is_reverse: bool,
     /// True when the car is settled at rest; hover holds ride height but drive forces are off.
     pub parked: bool,
@@ -186,11 +224,14 @@ pub struct CarDriveState {
     pub park_timer: f32,
 
     // Spawn position for reset functionality
+/// spawn position field.
     pub spawn_position: Option<Vec3>,
 
     // Ride height model: rays start just above the car's bottom bed and go down
     // max_ray_length; the car hovers at rest_length_pct% of that length.
+/// max ray length field.
     pub max_ray_length: f32,
+/// rest length pct field.
     pub rest_length_pct: f32,
     /// Derived each frame: max_ray_length * rest_length_pct.
     pub suspension_rest: f32,
@@ -202,28 +243,42 @@ pub struct CarDriveState {
     pub smoothed_wheel_height: [f32; 4],
 
     // Hover controller response times & grip.
+/// height response field.
     pub height_response: f32,
+/// tilt response field.
     pub tilt_response: f32,
+/// grip field.
     pub grip: f32,
 
+/// ray grid width frac field.
     pub ray_grid_width_frac: f32,
+/// ray grid length frac field.
     pub ray_grid_length_frac: f32,
+/// ray start y offset field.
     pub ray_start_y_offset: f32,
 
+/// car mass field.
     pub car_mass: f32,
 
+/// car half width field.
     pub car_half_width: f32,
+/// car half length field.
     pub car_half_length: f32,
+/// car half height field.
     pub car_half_height: f32,
 
     /// Nominal wheel radius (engine RPM calc + cosmetic wheel fallback until measured).
     pub wheel_radius: f32,
 
+/// car max speed field.
     pub car_max_speed: f32,
 
     // Hand-simulated engine and gearbox parameters
+/// horsepower field.
     pub horsepower: f32,
+/// current gear field.
     pub current_gear: usize,
+/// engine rpm field.
     pub engine_rpm: f32,
 }
 
@@ -272,6 +327,7 @@ impl Default for CarDriveState {
     }
 }
 
+/// cap car velocities.
 pub fn cap_car_velocities(
     mut q_car: Query<(&mut LinearVelocity, &mut AngularVelocity, &CarDriveState), With<Car>>,
 ) {
@@ -292,6 +348,7 @@ pub fn cap_car_velocities(
     }
 }
 
+/// car drive observer.
 pub fn car_drive_observer(
     trigger: On<Drive>,
     mut query: Query<&mut CarDriveState>,
@@ -360,6 +417,7 @@ pub fn car_drive_observer(
     drive_state.current_steer_integrated = drive_state.current_steer_integrated.clamp(-1.0, 1.0);
 }
 
+/// update vehicle physics from tuning.
 pub fn update_vehicle_physics_from_tuning(
     q_car: Query<(Entity, &CarDriveState), Changed<CarDriveState>>,
     mut q_body: Query<(&mut Mass, &mut AngularInertia, &mut CenterOfMass), With<Car>>,
@@ -722,6 +780,7 @@ pub fn apply_car_steering_and_drive(
     }
 }
 
+/// detect gear shifts.
 pub fn detect_gear_shifts(
     mut last_gears: Local<std::collections::HashMap<Entity, usize>>,
     query: Query<(Entity, &Transform, &CarDriveState), With<Car>>,
@@ -741,10 +800,14 @@ pub fn detect_gear_shifts(
     }
 }
 
+/// cosmetic wheel.
 #[derive(Component)]
 pub struct CosmeticWheel {
+/// wheel idx field.
     pub wheel_idx: usize,
+/// parent car field.
     pub parent_car: Entity,
+/// accumulated rotation field.
     pub accumulated_rotation: f32,
     /// World-space wheel radius measured from the loaded GLB (None until loaded).
     pub measured_radius: Option<f32>,
@@ -811,6 +874,7 @@ pub fn init_cosmetic_wheels_system(
     }
 }
 
+/// update cosmetic wheels.
 pub fn update_cosmetic_wheels(
     mut commands: Commands,
     mut q_wheels: Query<(Entity, &mut Transform, &mut CosmeticWheel)>,
@@ -915,6 +979,7 @@ pub fn update_cosmetic_wheels(
     }
 }
 
+/// update wheel contact normals.
 pub fn update_wheel_contact_normals(
     spatial_query: SpatialQuery,
     mut q_cars: Query<
@@ -1045,6 +1110,7 @@ pub fn update_wheel_contact_normals(
     }
 }
 
+/// draw car gizmos.
 pub fn draw_car_gizmos(
     mut gizmos: Gizmos,
     q_car: Query<

@@ -8,6 +8,7 @@ use bevy::audio::GlobalVolume;
 use bevy::audio::SpatialAudioSink;
 use bevy::prelude::*;
 
+/// gunshot sounds constant.
 pub const GUNSHOT_SOUNDS: &[&str] = &[
     "weapons/guns/gunshot-22lr-snap.mp3",
     "weapons/guns/gunshot-50cal.mp3",
@@ -17,6 +18,7 @@ pub const GUNSHOT_SOUNDS: &[&str] = &[
     "weapons/guns/gunshot-pistol-sharp.mp3",
 ];
 
+/// bullet impact sounds constant.
 pub const BULLET_IMPACT_SOUNDS: &[&str] = &[
     "weapons/guns/bullet-impact-1.mp3",
     "weapons/guns/bullet-impact-2.mp3",
@@ -24,49 +26,75 @@ pub const BULLET_IMPACT_SOUNDS: &[&str] = &[
     "weapons/guns/bullet-impact-ground.mp3",
 ];
 
+/// engine idle sounds constant.
 pub const ENGINE_IDLE_SOUNDS: &[&str] = &[
     "car-sounds/engine-idle-2.mp3",
     "car-sounds/engine-idle-3.mp3",
     "car-sounds/engine-truck-idle.mp3",
 ];
 
+/// car bump sounds constant.
 pub const CAR_BUMP_SOUNDS: &[&str] = &[
     "car-sounds/car-crash-bump.mp3",
     "car-sounds/car_crash_bump_2.mp3",
 ];
 
+/// car crash sounds constant.
 pub const CAR_CRASH_SOUNDS: &[&str] =
     &["car-sounds/car-crash-1.mp3", "car-sounds/car-crash-v2.mp3"];
 
+/// footstep sound constant.
 pub const FOOTSTEP_SOUND: &str = "pedestrian-sounds/barefoot_footsteps_on_gravel.mp3";
 
+/// audio fx event type.
 #[derive(Clone, Copy, Debug)]
 pub enum AudioFxEventType {
-    GunShot { sound_idx: usize }, // index into GUNSHOT_SOUNDS, chosen at equip
+    /// Gunshot using the sound index chosen at weapon equip time.
+    GunShot { sound_idx: usize },
+/// gun reload variant.
     GunReload,
+/// empty click variant.
     EmptyClick,
+/// bullet impact variant.
     BulletImpact, // random from BULLET_IMPACT_SOUNDS
+/// draw gun variant.
     DrawGun,      // get_weapon_from_holster
+/// draw melee variant.
     DrawMelee,    // sword-getout
+    /// Melee swing whoosh at the given linear volume.
     MeleeWhoosh { volume: f32 },
+/// melee hit meat variant.
     MeleeHitMeat, // sword_hit_meat
+/// melee clash variant.
     MeleeClash,
+/// punch hit variant.
     PunchHit,
-    CarCrash { rel_speed: f32 }, // observer picks bump vs crash-1/v2 by speed
+    /// Vehicle impact scaled by relative collision speed.
+    CarCrash { rel_speed: f32 },
+/// gear shift whoosh variant.
     GearShiftWhoosh,
+/// footstep loop variant.
     FootstepLoop,                    // looped, attached
-    EngineLoop { sound_idx: usize }, // looped, attached; index into ENGINE_IDLE_SOUNDS
+    /// Looping engine idle clip index from ENGINE_IDLE_SOUNDS.
+    EngineLoop { sound_idx: usize },
+/// climb variant.
     Climb,
+/// death thud variant.
     DeathThud, // played when a pedestrian dies
 }
 
+/// audio fx event.
 #[derive(Event, Clone, Copy, Debug)]
 pub struct AudioFxEvent {
+/// fx field.
     pub fx: AudioFxEventType,
+/// position field.
     pub position: Vec3,
+/// follow field.
     pub follow: Option<Entity>, // for loops
 }
 
+/// audio fx observer.
 pub fn audio_fx_observer(
     trigger: On<AudioFxEvent>,
     manifest: Res<SoundManifest>,
@@ -160,11 +188,14 @@ pub fn audio_fx_observer(
     }
 }
 
+/// engine sound emitter.
 #[derive(Component)]
 pub struct EngineSoundEmitter {
+/// emitter field.
     pub emitter: Entity,
 }
 
+/// spawn car engine sounds.
 pub fn spawn_car_engine_sounds(
     mut commands: Commands,
     query: Query<
@@ -204,6 +235,7 @@ pub fn spawn_car_engine_sounds(
     }
 }
 
+/// manage car engine sound pitch volume.
 pub fn manage_car_engine_sound_pitch_volume(
     query: Query<(&CarDriveState, &EngineSoundEmitter)>,
     mut sinks: Query<&mut SpatialAudioSink>,
@@ -240,11 +272,14 @@ pub fn manage_car_engine_sound_pitch_volume(
     }
 }
 
+/// footstep emitter.
 #[derive(Component)]
 pub struct FootstepEmitter {
+/// emitter field.
     pub emitter: Entity,
 }
 
+/// manage footsteps system.
 pub fn manage_footsteps_system(
     mut commands: Commands,
     query: Query<

@@ -14,18 +14,26 @@ use crate::plugins::{
     pedestrians::pedestrian_controller_plugin::{LocomotionInput, MainCamera},
 };
 
+/// pending traffic peds.
 #[derive(Resource, Default)]
 pub struct PendingTrafficPeds {
+/// pending field.
     pub pending: Vec<PendingTrafficPedEntry>,
 }
 
+/// pending traffic ped entry.
 pub struct PendingTrafficPedEntry {
+/// spawn pos field.
     pub spawn_pos: Vec3,
+/// path field.
     pub path: Vec<Vec3>,
+/// current seg field.
     pub current_seg: usize,
+/// offset sign field.
     pub offset_sign: f32,
 }
 
+/// traffic pedestrian spawner.
 pub fn traffic_pedestrian_spawner(
     time: Res<Time>,
     mut last_spawn: Local<f32>,
@@ -79,6 +87,7 @@ pub fn traffic_pedestrian_spawner(
     }
 }
 
+/// spawn traffic pedestrian observer.
 pub fn spawn_traffic_pedestrian_observer(
     trigger: On<SpawnTrafficPedestrianEvent>,
     mut commands: Commands,
@@ -142,6 +151,7 @@ pub fn spawn_traffic_pedestrian_observer(
     });
 }
 
+/// adopt traffic pedestrians.
 pub fn adopt_traffic_pedestrians(
     mut commands: Commands,
     mut pending: ResMut<PendingTrafficPeds>,
@@ -175,6 +185,7 @@ pub fn adopt_traffic_pedestrians(
     }
 }
 
+/// drive traffic pedestrians.
 pub fn drive_traffic_pedestrians(
     time: Res<Time>,
     graph: Res<TrafficRoadGraph>,
@@ -346,6 +357,7 @@ pub fn drive_traffic_pedestrians(
     }
 }
 
+/// despawn traffic pedestrians.
 pub fn despawn_traffic_pedestrians(
     time: Res<Time>,
     config: Res<TrafficConfig>,

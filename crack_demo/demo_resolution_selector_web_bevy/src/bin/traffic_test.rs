@@ -1,3 +1,5 @@
+//! Traffic simulation test binary with debug driving controls.
+
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use std::collections::BTreeMap;

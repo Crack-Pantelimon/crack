@@ -1,5 +1,15 @@
+//! WASM dedicated-worker backend for the async worker RPC framework.
+//!
+//! Runs inside a Web Worker, receives typed RPC messages from JavaScript,
+//! dispatches them via [`ApiImplMapping`], and returns serialized replies.
+//!
+//! [`ApiImplMapping`]: api_asscrack::crack_worker::api_worker::ApiImplMapping
+
+/// Re-export of the Dioxus logger for wasm worker initialization.
 pub extern crate dioxus_logger;
+/// Re-export of wasm-bindgen for JavaScript interop in worker code.
 pub extern crate wasm_bindgen;
+/// Schedules a future on the wasm local task queue from worker code.
 pub use wasm_bindgen_futures::spawn_local;
 
 use std::sync::{Arc, OnceLock};
@@ -9,6 +19,7 @@ use api_asscrack::crack_worker::api_worker::ApiImplMapping;
 
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
+/// Initializes the dedicated worker: logging and optional OPFS storage.
 #[wasm_bindgen(js_name = "initDedicatedWorker")]
 pub async fn _js_init_dedicated_worker() -> Result<(), JsValue> {
     tracing::info!("init_dedicated_worker");
@@ -27,6 +38,7 @@ pub async fn _js_init_dedicated_worker() -> Result<(), JsValue> {
     Ok(())
 }
 
+/// Handles one inbound worker message and returns the serialized reply.
 #[wasm_bindgen(js_name = "computePayloadReply")]
 pub async fn _js_compute_payload_reply(msg: JsValue) -> Result<JsValue, JsValue> {
     // tracing::info!("compute_payload_reply: msg={msg:?}");
@@ -118,6 +130,9 @@ async fn _compute_payload_2(msg: JsValue) -> anyhow::Result<JsValue> {
 
 static IMPL: OnceLock<Arc<ApiImplMapping>> = OnceLock::new();
 
+/// Registers the API implementation mapping before handling messages.
+///
+/// Must be called once; a second call returns an error.
 pub async fn web_worker_registration(
     mapping: Arc<ApiImplMapping>,
 ) -> std::result::Result<(), JsValue> {

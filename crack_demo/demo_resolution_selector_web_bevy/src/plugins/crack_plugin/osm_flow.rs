@@ -6,6 +6,7 @@ use bevy::tasks::AsyncComputeTaskPool;
 use bevy::tasks::futures_lite::future;
 use game_logic::api::{FetchArgs, FetchOsmData};
 
+/// spawn osm task.
 pub fn spawn_osm_task(
     mut loading_status: ResMut<GameLoadingStatus>,
     current_state: Res<State<OsmDatabaseLoadFinished>>,
@@ -29,6 +30,7 @@ pub fn spawn_osm_task(
     }
 }
 
+/// poll osm task.
 pub fn poll_osm_task(
     mut tasks: ResMut<CrackTasks>,
     mut database: ResMut<GeoJsonDatabase>,

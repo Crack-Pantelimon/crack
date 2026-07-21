@@ -7,6 +7,7 @@ use crate::plugins::cars_driving::driving_plugin::{CarDriveState, Drive};
 use avian3d::prelude::LinearVelocity;
 use bevy::prelude::*;
 
+/// drive traffic cars.
 pub fn drive_traffic_cars(
     time: Res<Time>,
     config: Res<TrafficConfig>,

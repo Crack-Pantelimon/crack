@@ -5,8 +5,11 @@ use crate::{
     types::{DbValue, DbValueType, SQLAndParams},
 };
 
+/// Group of related table models sharing a namespace prefix.
 pub trait ModelGroup: Send + Sync {
+    /// Stable group name used in generated table names.
     fn grp_name(&self) -> &'static str;
+    /// Model metadata entries owned by this group.
     fn model_infos(&self) -> &'static [&'static dyn ModelDef];
 }
 // impl ModelGroup for std::sync::Arc<dyn ModelGroup> {
@@ -19,19 +22,28 @@ pub trait ModelGroup: Send + Sync {
 //     }
 // }
 
+/// Static metadata describing one database table.
 pub trait ModelDef: Send + Sync {
+    /// Base table name without the group prefix.
     fn table_name(&self) -> &'static str;
+    /// Model group that owns this table.
     fn model_grp(&self) -> &'static str;
+    /// User-defined columns excluding primary keys.
     fn user_columns(&self) -> &'static [ModelColumnImpl];
+    /// Primary-key column names for this table.
     fn pk_names(&self) -> &'static [&'static str];
 }
 
+/// Serializable model row that converts to and from [`DbValue`].
 pub trait ModelSerial: ModelDef {
+    /// Build a row from query values in column order.
     fn from_values(values: Vec<DbValue>) -> anyhow::Result<Self>
     where
         Self: Sized;
+    /// Serialize this row into column values.
     fn to_values(&self) -> Vec<DbValue>;
 
+    /// Return primary-key column names paired with values.
     fn pk_values(&self) -> Vec<(String, DbValue)> {
         let mut ve = vec![];
 
@@ -47,6 +59,7 @@ pub trait ModelSerial: ModelDef {
         ve
     }
 
+    /// Build SQL that deletes this row by primary key.
     fn sql_for_delete_row(self) -> SQLAndParams
     where
         Self: Sized,
@@ -69,6 +82,7 @@ pub trait ModelSerial: ModelDef {
         SQLAndParams { sql, params }
     }
 
+    /// Build SQL that inserts this row, ignoring conflicts.
     fn sql_for_insert_row_or_ignore(&self) -> SQLAndParams {
         let table_name = format!("{}_{}", self.model_grp(), self.table_name());
 
@@ -94,6 +108,7 @@ pub trait ModelSerial: ModelDef {
         SQLAndParams { sql, params }
     }
 
+    /// Build SQL that inserts or replaces this row.
     fn sql_for_upsert_row(&self) -> SQLAndParams {
         let table_name = format!("{}_{}", self.model_grp(), self.table_name());
 
@@ -120,10 +135,14 @@ pub trait ModelSerial: ModelDef {
     }
 }
 
+/// Column definition used when generating `CREATE TABLE` SQL.
 #[derive(Clone, Debug)]
 pub struct ModelColumnImpl {
+    /// SQL column name.
     pub column_name: &'static str,
+    /// SQLite storage type for this column.
     pub column_type: DbValueType,
+    /// Whether the column allows SQL `NULL`.
     pub is_nullable: bool,
 }
 
@@ -172,6 +191,7 @@ fn sql_for_drop_table(model: &dyn ModelDef) -> SQLAndParams {
     }
 }
 
+/// Drop and recreate tables for every model in the given groups.
 pub async fn run_migrate_tables(
     groups: impl Iterator<Item = Arc<dyn ModelGroup>>,
 ) -> anyhow::Result<()> {
@@ -199,8 +219,11 @@ pub async fn run_migrate_tables(
     Ok(())
 }
 
+/// Maps a Rust type to a SQLite column type and nullability.
 pub trait DbTypeMapping {
+    /// SQLite type for this Rust type.
     const DB_TYPE: DbValueType;
+    /// Whether the column allows SQL `NULL`.
     const IS_NULLABLE: bool;
 }
 
@@ -225,6 +248,7 @@ impl<T: DbTypeMapping> DbTypeMapping for Option<T> {
     const IS_NULLABLE: bool = true;
 }
 
+/// Declare a model group with table structs and entity metadata.
 #[macro_export]
 macro_rules! declare_model_group {
     (

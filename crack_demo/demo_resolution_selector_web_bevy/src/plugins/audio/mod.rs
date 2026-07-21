@@ -6,6 +6,7 @@
 //! [`SoundManifestLoadFinished`](crate::plugins::states::SoundManifestLoadFinished) state flips to
 //! `Finished`.
 
+/// Footstep, weapon, vehicle, and ambient sound effect triggers.
 pub mod audio_fx;
 
 use bevy::audio::{
@@ -40,6 +41,7 @@ pub struct SoundEntry {
 /// Global resource holding every clip listed in the manifest.
 #[derive(Resource, Default)]
 pub struct SoundManifest {
+/// sounds field.
     pub sounds: Vec<SoundEntry>,
     /// True once the manifest text has been fetched and parsed.
     pub loaded: bool,
@@ -68,6 +70,7 @@ struct SoundManifestBootstrap {
 /// observer needs to spawn a 3D emitter (one-shot or looping/parented).
 #[derive(Event, Clone)]
 pub struct PlaySoundEvent {
+/// handle field.
     pub handle: Handle<AudioSource>,
     /// World-space location the sound plays at (ignored if follow is Some).
     pub position: Vec3,

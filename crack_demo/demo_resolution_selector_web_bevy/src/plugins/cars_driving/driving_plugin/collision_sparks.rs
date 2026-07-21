@@ -3,30 +3,45 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use std::collections::HashMap;
 
+/// max spark events per car per sec constant.
 pub const MAX_SPARK_EVENTS_PER_CAR_PER_SEC: usize = 3;
+/// max spark events global per sec constant.
 pub const MAX_SPARK_EVENTS_GLOBAL_PER_SEC: usize = 20;
 
 const GRAVITY: f32 = 9.81;
 
+/// spark rate limiter.
 #[derive(Resource, Default)]
 pub struct SparkRateLimiter {
+/// per car field.
     pub per_car: HashMap<Entity, Vec<f32>>,
+/// global field.
     pub global: Vec<f32>,
 }
 
+/// collision marker.
 #[derive(Component)]
 pub struct CollisionMarker {
+/// position field.
     pub position: Vec3,
+/// relative speed field.
     pub relative_speed: f32,
+/// spawn time field.
     pub spawn_time: f32,
+/// lifetime field.
     pub lifetime: f32,
 }
 
+/// spark particle.
 #[derive(Component)]
 pub struct SparkParticle {
+/// velocity field.
     pub velocity: Vec3,
+/// spawn time field.
     pub spawn_time: f32,
+/// lifetime field.
     pub lifetime: f32,
+/// history field.
     pub history: Vec<(Vec3, f32)>,
 }
 
@@ -49,6 +64,7 @@ fn find_car_entity(
     }
 }
 
+/// handle car collisions.
 pub fn handle_car_collisions(
     mut commands: Commands,
     mut collision_events: MessageReader<CollisionStart>,
@@ -197,6 +213,7 @@ pub fn handle_car_collisions(
     }
 }
 
+/// update and draw collision effects.
 pub fn update_and_draw_collision_effects(
     mut commands: Commands,
     time: Res<Time>,
@@ -278,6 +295,7 @@ pub fn update_and_draw_collision_effects(
     }
 }
 
+/// car pedestrian damage.
 pub fn car_pedestrian_damage(
     mut commands: Commands,
     mut collision_events: MessageReader<CollisionStart>,

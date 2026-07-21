@@ -17,9 +17,11 @@ fn _new_connection() -> Result<Connection> {
 }
 
 lazy_static::lazy_static! {
-pub static ref CONN: Arc<Mutex<Result<Connection>>> = Arc::new(Mutex::new(_new_connection()));
+    /// Shared SQLite connection guarded by an async mutex.
+    pub static ref CONN: Arc<Mutex<Result<Connection>>> = Arc::new(Mutex::new(_new_connection()));
 }
 
+/// Run a parameterized query and return rows as [`SqlResultSet`].
 pub async fn sql_query(sql: SQLAndParams) -> anyhow::Result<SqlResultSet> {
     let conn = CONN.lock().await;
     let conn = conn

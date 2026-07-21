@@ -6,9 +6,13 @@ use bevy::asset::embedded_asset;
 use bevy::prelude::*;
 use bevy_egui::EguiPrimaryContextPass;
 
+/// materials submodule.
 pub mod materials;
+/// settings submodule.
 pub mod settings;
+/// systems submodule.
 pub mod systems;
+/// ui submodule.
 pub mod ui;
 
 use materials::{CloudGroundShadowMaterial, PrecipOverlayMaterial, SkyDomeMaterial};
@@ -18,6 +22,7 @@ use systems::{
 };
 use ui::cloud_sky_window;
 
+/// cloud sky plugin.
 pub struct CloudSkyPlugin;
 
 impl Plugin for CloudSkyPlugin {

@@ -156,11 +156,17 @@ fn bbox_contains(candidate: &BBox, target: &BBox, epsilon: f32) -> bool {
 
 /// The spatial database built dynamically from currently spawned tiles and coarse horizon tiles.
 pub struct OccluderWorld {
+    /// BVH indexing occluder leaf ids by world-space bounds.
     pub bvh: Bvh,
+    /// Trimesh geometry keyed by occluder leaf id.
     pub trimeshes: HashMap<u32, Arc<TriMesh>>,
+    /// Leaf id to octant path lookup.
     pub id_to_path: HashMap<u32, MapTreeNodePath>,
+    /// Octant path to leaf id lookup.
     pub path_to_id: HashMap<MapTreeNodePath, u32>,
+    /// World bounds keyed by occluder leaf id.
     pub aabbs: HashMap<u32, BBox>,
+    /// Next leaf id assigned by `insert_occluder`.
     pub next_id: u32,
 }
 

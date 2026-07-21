@@ -5,6 +5,7 @@ use crate::plugins::cars_driving::{
 use avian3d::prelude::{AngularVelocity, LinearVelocity};
 use bevy::prelude::*;
 
+/// keybinds control car.
 pub fn keybinds_control_car(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut q_car: Query<

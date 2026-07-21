@@ -21,6 +21,7 @@ use crate::plugins::traffic::TrafficCar;
 use crate::plugins::weapons::weapon_attach::{EquippedWeapon, WeaponKind, WeaponModel};
 use crate::plugins::weapons::weapon_manifest::WeaponId;
 
+/// debug picker plugin.
 pub struct DebugPickerPlugin;
 
 impl Plugin for DebugPickerPlugin {
@@ -34,44 +35,74 @@ impl Plugin for DebugPickerPlugin {
     }
 }
 
+/// debug picker state.
 #[derive(Resource, Default)]
 pub struct DebugPickerState {
+/// show window field.
     pub show_window: bool,
+/// last pick field.
     pub last_pick: Option<PickResult>,
 }
 
+/// pick result.
 pub struct PickResult {
+/// hit point field.
     pub hit_point: Vec3,
+/// distance field.
     pub distance: f32,
+/// entity field.
     pub entity: Entity,
+/// kind field.
     pub kind: PickKind,
 }
 
+/// pick kind.
 pub enum PickKind {
+/// car variant.
     Car {
+/// Documented public item.
         car_type: String,
+/// Documented public item.
         player_driven: bool,
+/// Documented public item.
         ai_driven: bool,
+/// Documented public item.
         disabled: bool,
+/// Documented public item.
         health: Option<CarHealth>,
+/// Documented public item.
         has_driver: bool,
     },
+/// pedestrian variant.
     Pedestrian {
+/// Documented public item.
         player_controlled: bool,
+/// Documented public item.
         ai_controlled: bool,
+/// Documented public item.
         faction: Option<Faction>,
+/// Documented public item.
         weapon: Option<WeaponId>,
     },
+/// weapon variant.
     Weapon {
+/// Documented public item.
         kind: Option<WeaponKind>,
+/// Documented public item.
         weapon_id: Option<WeaponId>,
     },
+/// ground variant.
     Ground {
+/// Documented public item.
         octant_path: String,
+/// Documented public item.
         depth: usize,
+/// Documented public item.
         asset_id: String,
+/// Documented public item.
         bbox: game_logic::map::BBox,
     },
+/// unknown variant.
     Unknown,
 }
 

@@ -8,6 +8,7 @@ use super::{
 use crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera;
 use crate::ui_egui::UiState;
 
+/// traffic debug ui.
 pub fn traffic_debug_ui(
     mut contexts: EguiContexts,
     mut config: ResMut<TrafficConfig>,
@@ -127,6 +128,7 @@ pub fn traffic_debug_ui(
         });
 }
 
+/// draw traffic gizmos.
 pub fn draw_traffic_gizmos(
     mut gizmos: Gizmos,
     graph: Res<TrafficRoadGraph>,

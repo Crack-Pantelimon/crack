@@ -8,6 +8,7 @@ static MANIFEST_CACHE: RwLock<Option<Arc<WeaponManifestResult>>> = RwLock::const
 static WEAPON_CACHE: RwLock<Option<super::lru::LruCache<FetchGlbResponse>>> =
     RwLock::const_new(None);
 
+/// Fetches and caches the weapon stat manifest from the content server.
 pub async fn fetch_weapon_manifest(args: FetchArgs) -> anyhow::Result<WeaponManifestResult> {
     {
         let guard = MANIFEST_CACHE.read().await;
@@ -71,6 +72,7 @@ pub async fn fetch_weapon_manifest(args: FetchArgs) -> anyhow::Result<WeaponMani
     Ok((*arc).clone())
 }
 
+/// Fetches one weapon GLB model, using the worker LRU cache when possible.
 pub async fn fetch_weapon_model(req: FetchGlbRequest) -> anyhow::Result<FetchGlbResponse> {
     let t0 = _crack_utils::get_timestamp_now_ms();
 

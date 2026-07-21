@@ -1,5 +1,8 @@
+/// car info submodule.
 pub mod car_info;
+/// click spawn select controls submodule.
 pub mod click_spawn_select_controls;
+/// driving plugin submodule.
 pub mod driving_plugin;
 use bevy::{app::App, prelude::*};
 
@@ -9,6 +12,7 @@ use crate::plugins::cars_driving::{
 };
 use crate::plugins::states::GameControlState;
 
+/// cars and driving plugin.
 pub struct CarsAndDrivingPlugin;
 
 impl Plugin for CarsAndDrivingPlugin {

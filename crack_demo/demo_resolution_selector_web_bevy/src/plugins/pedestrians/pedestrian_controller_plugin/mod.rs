@@ -89,6 +89,7 @@ pub use spawn::{
 
 /// Capsule dimensions (radius + straight cylinder length). Total height = length + 2*radius.
 pub const CAPSULE_RADIUS: f32 = 0.35;
+/// capsule length constant.
 pub const CAPSULE_LENGTH: f32 = 1.0;
 /// Distance from capsule center to its bottom tip; used to sit the model's feet on the ground.
 pub const CAPSULE_HALF_HEIGHT: f32 = CAPSULE_LENGTH / 2.0 + CAPSULE_RADIUS;
@@ -98,6 +99,7 @@ pub const CAPSULE_TOTAL_HEIGHT: f32 = CAPSULE_LENGTH + 2.0 * CAPSULE_RADIUS;
 /// Character mesh scale range. Every spawn picks a scale in this range (or clamps the requested one);
 /// the mesh is scaled by an intermediate node so animations are unaffected.
 pub const SCALE_MIN: f32 = 0.8;
+/// scale max constant.
 pub const SCALE_MAX: f32 = 1.0;
 
 // Movement. Acceleration is deliberately high so the per-mode speed *caps* are the binding limit.
@@ -204,7 +206,9 @@ pub struct CharacterScale(pub f32);
 /// Held movement modifiers, updated from the keyboard each frame.
 #[derive(Component, Default)]
 pub struct MovementModifiers {
+/// crouch field.
     pub crouch: bool,
+/// sprint field.
     pub sprint: bool,
     /// Seconds the sprint has been held continuously (drives the sprint speed ramp).
     pub sprint_secs: f32,
@@ -215,10 +219,15 @@ pub struct MovementModifiers {
 /// Movement settings for a character controller.
 #[derive(Component)]
 pub struct CharacterMovementSettings {
+/// acceleration field.
     pub acceleration: Scalar,
+/// damping field.
     pub damping: Scalar,
+/// jump impulse field.
     pub jump_impulse: Scalar,
+/// gravity field.
     pub gravity: Vector,
+/// terminal velocity field.
     pub terminal_velocity: Scalar,
 }
 
@@ -237,8 +246,11 @@ impl Default for CharacterMovementSettings {
 /// Ground detection configuration for a character controller.
 #[derive(Component)]
 pub struct GroundDetection {
+/// max angle field.
     pub max_angle: Scalar,
+/// max distance field.
     pub max_distance: Scalar,
+/// cast shape field.
     pub cast_shape: Option<Collider>,
 }
 
@@ -261,16 +273,22 @@ pub struct Grounded;
 /// controller transform is tweened up-then-over onto the ledge.
 #[derive(Component)]
 pub struct Climbing {
+/// start field.
     pub start: Vec3,
+/// target field.
     pub target: Vec3,
+/// elapsed field.
     pub elapsed: f32,
+/// duration field.
     pub duration: f32,
 }
 
 /// An in-progress crouch roll (crouch + Space): a short forward dash with the Roll animation.
 #[derive(Component)]
 pub struct Rolling {
+/// elapsed field.
     pub elapsed: f32,
+/// duration field.
     pub duration: f32,
 }
 
@@ -278,19 +296,28 @@ pub struct Rolling {
 #[derive(Component, Default, Deref)]
 pub struct CharacterCollisions(Vec<CharacterCollision>);
 
+/// character collision.
 pub struct CharacterCollision {
+/// collider field.
     pub collider: Entity,
+/// point field.
     pub point: Vector,
+/// normal field.
     pub normal: Dir3,
+/// character velocity field.
     pub character_velocity: Vector,
 }
 
 /// Jump animation phase.
 #[derive(Clone, Copy, PartialEq)]
 pub enum JumpPhase {
+/// grounded variant.
     Grounded,
+/// start variant.
     Start,
+/// loop variant.
     Loop,
+/// land variant.
     Land,
 }
 
@@ -299,7 +326,9 @@ pub enum JumpPhase {
 pub struct AnimState {
     /// The graph node of the base locomotion clip currently playing.
     pub base_node: Option<AnimationNodeIndex>,
+/// phase field.
     pub phase: JumpPhase,
+/// timer field.
     pub timer: f32,
     /// True once we have taken over the model's `AnimationPlayer` (cleared its default clip).
     pub took_over: bool,
@@ -325,8 +354,10 @@ pub struct CombatState {
     pub kind: CombatKind,
 }
 
+/// combat kind.
 #[derive(Default, Clone, Copy, PartialEq)]
 pub enum CombatKind {
+/// none variant.
     #[default]
     None,
     /// A one-shot attack (punch / sword swing / gun shot); reverts when finished.
@@ -339,6 +370,7 @@ pub enum CombatKind {
 // Plugin
 // ---------------------------------------------------------------------------------------------
 
+/// pedestrian controller plugin.
 pub struct PedestrianControllerPlugin;
 
 impl Plugin for PedestrianControllerPlugin {

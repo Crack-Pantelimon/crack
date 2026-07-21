@@ -1,24 +1,32 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
+/// traffic road graph.
 #[derive(Resource, Default)]
 pub struct TrafficRoadGraph {
+/// segments field.
     pub segments: Vec<RoadSegment>,
     /// Quantized endpoint -> segment indices touching it
     pub node_index: HashMap<IVec2, Vec<usize>>,
+/// built field.
     pub built: bool,
 }
 
+/// road segment.
 #[derive(Clone, Debug)]
 pub struct RoadSegment {
+/// points field.
     pub points: Vec<Vec3>,
+/// length field.
     pub length: f32,
 }
 
+/// quantize.
 pub fn quantize(p: Vec3) -> IVec2 {
     IVec2::new(p.x.round() as i32, p.z.round() as i32)
 }
 
+/// build road graph.
 pub fn build_road_graph(
     database: Res<crate::plugins::geojson::GeoJsonDatabase>,
     mut graph: ResMut<TrafficRoadGraph>,
@@ -112,9 +120,12 @@ fn process_points(
     node_index.entry(last_node).or_default().push(seg_idx);
 }
 
+/// reroute mode.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RerouteMode {
+/// Documented public item.
     ClosestAngle(Vec3), // incoming forward dir
+/// random variant.
     Random,
 }
 

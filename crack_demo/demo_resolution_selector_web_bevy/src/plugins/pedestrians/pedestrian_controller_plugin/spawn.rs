@@ -23,9 +23,11 @@ use crate::plugins::{
 /// Tracks the currently controlled character and its (child) pedestrian model.
 #[derive(Resource, Default)]
 pub struct ControlledCharacter {
+/// controller field.
     pub controller: Option<Entity>,
     /// Intermediate node (child of controller, parent of the model) that applies the mesh scale.
     pub scale_node: Option<Entity>,
+/// ped field.
     pub ped: Option<Entity>,
     /// True after spawning a controller while we wait for the pedestrian model to appear.
     pub awaiting: bool,
@@ -34,8 +36,11 @@ pub struct ControlledCharacter {
 /// Pending freecam right-click "spawn pedestrian / spawn car" choice popup.
 #[derive(Resource, Default)]
 pub struct SpawnChoicePopup {
+/// active field.
     pub active: bool,
+/// world pos field.
     pub world_pos: Vec3,
+/// screen pos field.
     pub screen_pos: Vec2,
 }
 
@@ -43,18 +48,25 @@ pub struct SpawnChoicePopup {
 /// `url` picks a specific model; `None` spawns a random one from the manifest.
 #[derive(Event)]
 pub struct SpawnControlledPedestrianEvent {
+/// position field.
     pub position: Vec3,
+/// url field.
     pub url: Option<PedestrianUrl>,
     /// Mesh scale, clamped to `[SCALE_MIN, SCALE_MAX]`. `None` picks a random scale in that range.
     pub scale: Option<f32>,
+/// is exiting car field.
     pub is_exiting_car: bool,
+/// rotation field.
     pub rotation: Option<Quat>,
     /// Carried-over health (e.g. when getting out of a car). `None` spawns at full HP.
     pub health: Option<crate::plugins::pedestrian_ai::faction::Health>,
+/// weapon field.
     pub weapon: Option<crate::plugins::weapons::EquippedWeapon>,
+/// gun state field.
     pub gun_state: Option<crate::plugins::weapons::GunState>,
 }
 
+/// spawn controlled pedestrian observer.
 pub fn spawn_controlled_pedestrian_observer(
     trigger: On<SpawnControlledPedestrianEvent>,
     mut commands: Commands,
@@ -145,11 +157,14 @@ pub fn spawn_controlled_pedestrian_observer(
     next_state.set(GameControlState::ControllingPedestrian);
 }
 
+/// death prop.
 #[derive(Component)]
 pub struct DeathProp {
+/// timer field.
     pub timer: Timer,
 }
 
+/// tick death props.
 pub fn tick_death_props(
     time: Res<Time>,
     mut commands: Commands,
@@ -163,6 +178,7 @@ pub fn tick_death_props(
     }
 }
 
+/// setup death prop animations.
 pub fn setup_death_prop_animations(
     mut commands: Commands,
     q_models: Query<(Entity, &ModelController), Added<ModelRoot>>,

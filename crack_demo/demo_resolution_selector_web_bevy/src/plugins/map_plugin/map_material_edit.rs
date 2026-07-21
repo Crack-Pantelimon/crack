@@ -3,6 +3,7 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use crate::plugins::pedestrians::pedestrian_controller_plugin::MainCamera;
 
+/// map material edit plugin.
 pub struct MapMaterialEditPlugin;
 
 impl Plugin for MapMaterialEditPlugin {
@@ -25,18 +26,26 @@ impl Plugin for MapMaterialEditPlugin {
     }
 }
 
+/// map material edit state.
 #[derive(Resource, Debug, Clone)]
 pub struct MapMaterialEditState {
+/// show window field.
     pub show_window: bool,
 
     // Material settings
+/// metallic field.
     pub metallic: f32,
+/// roughness field.
     pub roughness: f32,
+/// reflectance field.
     pub reflectance: f32,
+/// ior field.
     pub ior: f32,
 
     // Lighting settings
+/// dir light illuminance field.
     pub dir_light_illuminance: f32,
+/// ambient light brightness field.
     pub ambient_light_brightness: f32,
 }
 

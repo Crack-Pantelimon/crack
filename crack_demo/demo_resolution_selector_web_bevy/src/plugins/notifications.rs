@@ -4,30 +4,46 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 /// Fire via commands.trigger(...) from anywhere. The plugin owns display.
 #[derive(Event, Clone, Debug)]
 pub enum NotificationEvent {
+/// map loaded variant.
     MapLoaded,
+/// geo json loaded variant.
     GeoJsonLoaded,
+/// network connected variant.
     NetworkConnected, // "network connected"
+/// game network ok variant.
     GameNetworkOk,    // "game network ok"
+/// player joined game variant.
     PlayerJoinedGame {
+/// Documented public item.
         nickname: String,
+/// Documented public item.
         color: (u8, u8, u8),
     },
+/// player left game variant.
     PlayerLeftGame {
+/// Documented public item.
         nickname: String,
+/// Documented public item.
         color: (u8, u8, u8),
     }, // cheap to add, symmetric
 }
 
+/// active notification.
 #[derive(Debug)]
 pub struct ActiveNotification {
+/// text field.
     pub text: String,
+/// stroke field.
     pub stroke: egui::Color32, // border color, keeps the existing per-kind styling
+/// remaining field.
     pub remaining: f32,        // seconds; default 3.0 like today
 }
 
+/// active notifications.
 #[derive(Resource, Default)]
 pub struct ActiveNotifications(pub Vec<ActiveNotification>);
 
+/// tooltip notification plugin.
 pub struct TooltipNotificationPlugin;
 
 impl Plugin for TooltipNotificationPlugin {

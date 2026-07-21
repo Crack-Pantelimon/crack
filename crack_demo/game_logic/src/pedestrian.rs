@@ -1,15 +1,22 @@
 use serde::{Deserialize, Serialize};
 
+/// Metadata for one skeletal animation clip in a pedestrian GLB.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnimationMeta {
+    /// Clip name inside the GLB.
     pub name: String,
+    /// Clip duration in seconds.
     pub duration: f32,
+    /// Number of keyframes in the clip.
     pub frames: u32,
 }
 
+/// Pedestrian model manifest listing downloadable GLBs and animations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PedestrianManifestResult {
+    /// Relative GLB paths for each pedestrian model.
     pub urls: Vec<String>,
+    /// Animation clips shared across pedestrian models.
     pub animations: Vec<AnimationMeta>,
 }
 

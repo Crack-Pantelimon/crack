@@ -4,6 +4,7 @@ use bevy::{diagnostic::FrameCount, prelude::*};
 
 use bevy_egui::*;
 
+/// ui egui plugin.
 pub struct UiEguiPlugin;
 
 impl Plugin for UiEguiPlugin {
@@ -19,27 +20,48 @@ impl Plugin for UiEguiPlugin {
     }
 }
 
+/// ui state.
 #[derive(Resource, Clone, Debug, PartialEq)]
 pub struct UiState {
+/// resolution field.
     pub resolution: i32,
+/// ui scale field.
     pub ui_scale: i32,
+/// smooth field.
     pub smooth: bool,
+/// show settings field.
     pub show_settings: bool,
+/// draw map bboxes field.
     pub draw_map_bboxes: bool,
+/// draw physics debug field.
     pub draw_physics_debug: bool,
+/// draw car rays field.
     pub draw_car_rays: bool,
+/// draw rk4 gizmos field.
     pub draw_rk4_gizmos: bool,
+/// draw spark origin gizmos field.
     pub draw_spark_origin_gizmos: bool,
+/// show lod configurator field.
     pub show_lod_configurator: bool,
+/// show bvh minimap field.
     pub show_bvh_minimap: bool,
+/// show geojson database field.
     pub show_geojson_database: bool,
+/// show traffic debug field.
     pub show_traffic_debug: bool,
+/// show pedestrian ai field.
     pub show_pedestrian_ai: bool,
+/// show vehicle tuning field.
     pub show_vehicle_tuning: bool,
+/// show multiplayer debug field.
     pub show_multiplayer_debug: bool,
+/// show sound settings field.
     pub show_sound_settings: bool,
+/// master volume field.
     pub master_volume: f32,
+/// show vfx shaders field.
     pub show_vfx_shaders: bool,
+/// show clouds sky field.
     pub show_clouds_sky: bool,
 }
 impl Default for UiState {
@@ -69,6 +91,7 @@ impl Default for UiState {
     }
 }
 impl UiState {
+/// with physics debug.
     pub fn with_physics_debug() -> Self {
         Self {
             resolution: 75,
@@ -490,6 +513,7 @@ fn update_web_loading_status(time: Res<FrameCount>) {
     }
 }
 
+/// web set loading status.
 pub fn web_set_loading_status(_show: bool, _message: &str) {
     #[cfg(feature = "web")]
     {

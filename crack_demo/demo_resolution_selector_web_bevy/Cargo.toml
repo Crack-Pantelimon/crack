@@ -66,3 +66,6 @@ features = [
 [features]
 default = []
 web = ["dep:web-sys", "getrandom/wasm_js"]
+
+[lints]
+workspace = true

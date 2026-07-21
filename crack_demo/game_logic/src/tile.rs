@@ -1,23 +1,35 @@
 use serde::{Deserialize, Serialize};
 
+/// Triangle mesh collider extracted from a map tile GLB.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MeshColliderData {
+    /// World-space vertex positions.
     pub vertices: Vec<[f32; 3]>,
+    /// Triangle index triples into `vertices`.
     pub indices: Vec<[u32; 3]>,
 }
 
+/// Request to fetch one map tile GLB and optional collider mesh.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FetchTileRequest {
+    /// HTTP origin of the worker serving tile assets.
     pub base_url: String,
+    /// Relative path to the tile `.glb` on the content server.
     pub glb_path: String,
+    /// Stable tile id used for worker-side caching.
     pub tile_id: String,
 }
 
+/// Map tile GLB bytes plus an extracted collider when available.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FetchTileResponse {
+    /// Tile id echoed from the request.
     pub tile_id: String,
+    /// Raw GLB file bytes.
     pub glb_bytes: Vec<u8>,
+    /// Collider mesh built from the GLB, if extraction succeeded.
     pub collider_mesh: Option<MeshColliderData>,
+    /// True when the response was served from the worker LRU cache.
     pub from_cache: bool,
 }
 

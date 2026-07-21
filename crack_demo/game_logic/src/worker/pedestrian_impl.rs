@@ -8,6 +8,7 @@ static MANIFEST_CACHE: RwLock<Option<Arc<PedestrianManifestResult>>> = RwLock::c
 static CHARACTER_CACHE: RwLock<Option<super::lru::LruCache<FetchGlbResponse>>> =
     RwLock::const_new(None);
 
+/// Fetches and caches the pedestrian manifest from the content server.
 pub async fn fetch_pedestrian_manifest(
     args: FetchArgs,
 ) -> anyhow::Result<PedestrianManifestResult> {
@@ -92,6 +93,7 @@ pub async fn fetch_pedestrian_manifest(
     Ok((*arc).clone())
 }
 
+/// Fetches one pedestrian GLB model, using the worker LRU cache when possible.
 pub async fn fetch_pedestrian_model(req: FetchGlbRequest) -> anyhow::Result<FetchGlbResponse> {
     let t0 = _crack_utils::get_timestamp_now_ms();
 

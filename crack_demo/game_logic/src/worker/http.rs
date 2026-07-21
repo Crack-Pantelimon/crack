@@ -15,18 +15,21 @@ fn get_client() -> &'static reqwest::Client {
 }
 
 #[cfg(not(target_family = "wasm"))]
+/// Fetches a URL and returns the response body as bytes.
 pub async fn http_get_bytes(url: &str) -> anyhow::Result<bytes::Bytes> {
     let resp = get_client().get(url).send().await?.error_for_status()?;
     Ok(resp.bytes().await?)
 }
 
 #[cfg(not(target_family = "wasm"))]
+/// Fetches a URL and returns the response body as UTF-8 text.
 pub async fn http_get_text(url: &str) -> anyhow::Result<String> {
     let resp = get_client().get(url).send().await?.error_for_status()?;
     Ok(resp.text().await?)
 }
 
 #[cfg(target_family = "wasm")]
+/// Fetches a URL and returns the response body as bytes.
 pub async fn http_get_bytes(url: &str) -> anyhow::Result<bytes::Bytes> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let url = url.to_string();
@@ -43,6 +46,7 @@ pub async fn http_get_bytes(url: &str) -> anyhow::Result<bytes::Bytes> {
 }
 
 #[cfg(target_family = "wasm")]
+/// Fetches a URL and returns the response body as UTF-8 text.
 pub async fn http_get_text(url: &str) -> anyhow::Result<String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     let url = url.to_string();

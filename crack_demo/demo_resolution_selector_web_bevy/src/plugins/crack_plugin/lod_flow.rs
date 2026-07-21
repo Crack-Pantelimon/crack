@@ -13,11 +13,15 @@ use std::collections::BTreeSet;
 /// Feeds the velocity-predictive occlusion sampling in the worker.
 #[derive(Resource, Default)]
 pub struct CameraKinematics {
+/// position field.
     pub position: Vec3,
+/// velocity field.
     pub velocity: Vec3,
+/// initialized field.
     pub initialized: bool,
 }
 
+/// track camera kinematics.
 pub fn track_camera_kinematics(
     time: Res<Time>,
     q_camera: Query<
@@ -49,6 +53,7 @@ pub fn track_camera_kinematics(
     kin.position = pos;
 }
 
+/// spawn lod task.
 pub fn spawn_lod_task(
     map_tree: Res<MapTree>,
     lod_state: Res<MapLODState>,
@@ -186,6 +191,7 @@ pub fn spawn_lod_task(
     tasks.lod = Some(task);
 }
 
+/// poll lod task.
 pub fn poll_lod_task(mut tasks: ResMut<CrackTasks>, mut res_tiles: ResMut<TileSwapRequests>) {
     if let Some(mut task) = tasks.lod.take() {
         if let Some(res) = future::block_on(future::poll_once(&mut task)) {

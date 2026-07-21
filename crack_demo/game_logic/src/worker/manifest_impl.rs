@@ -13,6 +13,7 @@ use tokio::sync::RwLock;
 
 static MANIFEST_CACHE: RwLock<Option<Arc<MapTreeData>>> = RwLock::const_new(None);
 
+/// Returns the cached map tree after `fetch_map_manifest` has run.
 pub async fn get_manifest_cache() -> anyhow::Result<Arc<MapTreeData>> {
     let guard = MANIFEST_CACHE.read().await;
     if let Some(cache) = &*guard {
@@ -61,6 +62,7 @@ fn map_tree_to_manifest_result(tree: &MapTreeData) -> MapManifestResult {
     }
 }
 
+/// Fetches and caches the map manifest parquet from the content server.
 pub async fn fetch_map_manifest(args: FetchArgs) -> anyhow::Result<MapManifestResult> {
     {
         let t0 = _crack_utils::get_timestamp_now_ms();
@@ -117,6 +119,7 @@ pub async fn fetch_map_manifest(args: FetchArgs) -> anyhow::Result<MapManifestRe
     Ok(res)
 }
 
+/// Builds fake coarse horizon tiles for clients outside the playable bbox.
 pub async fn fetch_fake_map_tiles(_args: FetchArgs) -> anyhow::Result<Vec<FakeMapTile>> {
     let tree = get_manifest_cache().await?;
     let tiles = tree

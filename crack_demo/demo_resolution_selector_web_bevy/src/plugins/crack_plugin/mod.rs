@@ -3,27 +3,38 @@ use bevy::prelude::*;
 use bevy::tasks::Task;
 use std::sync::{Arc, Mutex};
 
+/// lod flow submodule.
 pub mod lod_flow;
+/// manifest flow submodule.
 pub mod manifest_flow;
+/// osm flow submodule.
 pub mod osm_flow;
 
+/// crack client.
 #[derive(Resource, Clone)]
 pub struct CrackClient(pub ApiClient);
 
+/// crack client slot.
 #[derive(Resource, Clone)]
 pub struct CrackClientSlot(pub Arc<Mutex<Option<anyhow::Result<ApiClient>>>>);
 
+/// crack runtime.
 #[cfg(not(target_family = "wasm"))]
 #[derive(Resource, Clone)]
 pub struct CrackRuntime(pub Arc<tokio::runtime::Runtime>);
 
+/// crack tasks.
 #[derive(Resource, Default)]
 pub struct CrackTasks {
+/// manifest field.
     pub manifest: Option<Task<anyhow::Result<game_logic::map::MapManifestResult>>>,
+/// osm field.
     pub osm: Option<Task<anyhow::Result<game_logic::osm::OsmDataResult>>>,
+/// lod field.
     pub lod: Option<Task<anyhow::Result<game_logic::lod::LodComputeResponse>>>,
 }
 
+/// crack plugin.
 pub struct CrackPlugin;
 
 impl Plugin for CrackPlugin {

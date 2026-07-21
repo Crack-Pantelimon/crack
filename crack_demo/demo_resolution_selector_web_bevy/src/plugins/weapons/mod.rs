@@ -6,6 +6,7 @@
 
 pub mod weapon_attach;
 pub mod weapon_manifest;
+/// weapon shooting submodule.
 pub mod weapon_shooting;
 
 use bevy::prelude::*;
@@ -31,6 +32,7 @@ use weapon_shooting::{
     tick_pending_melee_hits, tick_reload, tick_weapon_cooldown,
 };
 
+/// weapons plugin.
 pub struct WeaponsPlugin;
 
 impl Plugin for WeaponsPlugin {

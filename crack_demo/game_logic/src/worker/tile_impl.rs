@@ -55,6 +55,7 @@ fn extract_collider_data(glb_bytes: &[u8]) -> anyhow::Result<MeshColliderData> {
     })
 }
 
+/// Fetches one map tile GLB, extracts collider geometry, and caches the result.
 pub async fn fetch_map_tile(req: FetchTileRequest) -> anyhow::Result<FetchTileResponse> {
     let t0 = _crack_utils::get_timestamp_now_ms();
 
@@ -125,6 +126,7 @@ pub async fn fetch_map_tile(req: FetchTileRequest) -> anyhow::Result<FetchTileRe
     Ok(response)
 }
 
+/// Returns a cached collider mesh for a tile id without fetching.
 pub async fn get_tile_collider(tile_id: &str) -> Option<crate::tile::MeshColliderData> {
     let mut guard = TILE_CACHE.write().await;
     let cache = guard.get_or_insert_with(|| LruCache::new(512));

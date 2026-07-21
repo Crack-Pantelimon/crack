@@ -6,6 +6,7 @@ use crate::plugins::cars_driving::driving_plugin::CarDriveState;
 use crate::plugins::cars_driving::driving_plugin::spawn_car::ActivePlayerVehicle;
 use crate::ui_egui::UiState;
 
+/// speedometer ui.
 pub fn speedometer_ui(
     mut contexts: EguiContexts,
     mut ui_state: ResMut<UiState>,
