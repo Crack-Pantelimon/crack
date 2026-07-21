@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "mcp__chromium__new_page"
+      "Bash(docker exec *)",
+      "mcp__chromium__new_page",
+      "mcp__chromium__resize_page",
+      "mcp__chromium__navigate_page",
+      "mcp__chromium__take_screenshot"
     ]
   }
 }

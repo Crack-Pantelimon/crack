@@ -1,0 +1,12 @@
+{"type":"session","version":3,"id":"unscripted-1784647639776","timestamp":"2026-07-21T15:28:03.227Z","cwd":"/workspace"}
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"user","content":[{"type":"text","text":"continue with the api_asscrack crate under rust_pkg"}],"timestamp":1784647980178}}
+{"type":"message_end","message":{"role":"user","content":[{"type":"text","text":"continue with the api_asscrack crate under rust_pkg"}],"timestamp":1784647980178}}
+{"type":"message_start","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"nvidia","model":"nvidia/nemotron-3-ultra-550b-a55b","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":1784647980202}}
+{"type":"message_end","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"nvidia","model":"nvidia/nemotron-3-ultra-550b-a55b","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":1784647980202,"errorMessage":"ResourceExhausted: Worker local total request limit reached (32/32)"}}
+{"type":"turn_end","message":{"role":"assistant","content":[],"api":"openai-completions","provider":"nvidia","model":"nvidia/nemotron-3-ultra-550b-a55b","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":1784647980202,"errorMessage":"ResourceExhausted: Worker local total request limit reached (32/32)"},"toolResults":[]}
+{"type":"agent_end","messages":[{"role":"user","content":[{"type":"text","text":"continue with the api_asscrack crate under rust_pkg"}],"timestamp":1784647980178},{"role":"assistant","content":[],"api":"openai-completions","provider":"nvidia","model":"nvidia/nemotron-3-ultra-550b-a55b","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":1784647980202,"errorMessage":"ResourceExhausted: Worker local total request limit reached (32/32)"}],"willRetry":true}
+{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":2000,"errorMessage":"ResourceExhausted: Worker local total request limit reached (32/32)"}
+{"type":"agent_start"}
+{"type":"turn_start"}

@@ -1,0 +1,11 @@
+{
+  "id": "1784647639776",
+  "title": "Document rust_pkg/_crack_utils crate with full docstrings",
+  "model": "nvidia/moonshotai/kimi-k2.6",
+  "plan": true,
+  "planner_model": "cursor/gpt-5.6-terra@272k:slow",
+  "implementer_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "created_at": 1784647639.7774158,
+  "graduated": true,
+  "display_model": "nvidia/nemotron-3-ultra-550b-a55b"
+}
