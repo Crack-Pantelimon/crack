@@ -9,7 +9,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from crack_server import attachments, chats, paths, ui as _ui
-from crack_server.render import model_select, render_turn_msgs
+from crack_server.render import model_select, new_model_state, render_turn_msgs
 from crack_server.sub_agents import MAX_DEPTH, ask_user, registry, signals, wait
 from crack_server.sub_agents import runner
 
@@ -414,7 +414,9 @@ def run_page(run_id: str) -> HTMLResponse:
     state = _run_or_404(run_id)
     esc = _ui._esc
     turns = state.get("turns") or []
-    msgs = "".join(render_turn_msgs(turns, errors=state.get("errors", [])))
+    msgs = "".join(render_turn_msgs(
+        turns, errors=state.get("errors", []), model_state=new_model_state()
+    ))
     question_html = ""
     if state.get("phase") == "awaiting_user" and state.get("pending_question"):
         q = state["pending_question"]

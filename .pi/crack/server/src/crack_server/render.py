@@ -107,6 +107,34 @@ def _tool_dot_class(block: dict) -> str:
     return "pending"
 
 
+# How many lines of a tool's output to show inline before the expand toggle.
+_OUTPUT_PREVIEW_LINES = 8
+
+
+def _render_tool_output(output: str) -> str:
+    """Inline output preview (first few lines) with a single expand icon for
+    the full result — replaces the old text ``output`` details/summary."""
+    esc = _ui._esc
+    truncated, marker = pi_runner.truncate_output(output)
+    lines = truncated.splitlines()
+    head = "\n".join(lines[:_OUTPUT_PREVIEW_LINES])
+    has_more = len(lines) > _OUTPUT_PREVIEW_LINES or bool(marker)
+    preview = f'<pre class="tool-out-preview">{esc(head)}</pre>'
+    if not has_more:
+        return f'<div class="tool-out">{preview}</div>'
+    full = f'<pre>{esc(truncated)}</pre>'
+    if marker:
+        full += f'<small class="trunc-marker">{esc(marker)}</small>'
+    # Preview stays visible; the details holds only the full output, so its
+    # single-icon summary expands the result in place.
+    return (
+        f'<div class="tool-out">{preview}'
+        '<details class="tool-out-more"><summary class="tool-out-toggle" '
+        'title="Show full output" aria-label="Show full output"></summary>'
+        f"{full}</details></div>"
+    )
+
+
 def _render_tool_action_row(block: dict) -> str:
     """Table row for one tool call: type, path/command, in/out char counts, output."""
     esc = _ui._esc
@@ -146,11 +174,7 @@ def _render_tool_action_row(block: dict) -> str:
         middle = f'<pre class="cmd">{esc(str(input_raw))}</pre>'
 
     if output:
-        truncated, marker = pi_runner.truncate_output(output)
-        body = f"<pre>{esc(truncated)}</pre>"
-        if marker:
-            body += f'<small class="trunc-marker">{esc(marker)}</small>'
-        middle += f"<details><summary>output</summary>{body}</details>"
+        middle += _render_tool_output(output)
 
     size = f"in {_fmt_chars(len(str(input_raw)))} / out {_fmt_chars(len(output))}"
     elapsed = block.get("elapsed")
@@ -203,6 +227,42 @@ def render_user_prompt_msg(entry: dict) -> str:
         f"<summary>{esc(summary)}{thumbs}</summary>"
         f'{"".join(body_parts)}</details>'
     )
+
+
+def _model_tag(model: str) -> str:
+    """Small per-turn badge naming the model that produced the turn."""
+    esc = _ui._esc
+    if not model:
+        return ""
+    return (
+        f'<div class="turn-model-row"><span class="turn-model" '
+        f'title="ran on {esc(model)}"><code>{esc(model)}</code></span></div>'
+    )
+
+
+def _model_switch_divider(prev: str, cur: str, prewalk_swap: bool) -> str:
+    """Full-width marker between turns whenever the model changes.
+
+    ``prewalk_swap`` (a todo list was written before this edit-turn switch)
+    labels the automatic planner→implementer handoff; otherwise it's a
+    user-initiated switch (a new message sent on a different model)."""
+    esc = _ui._esc
+    if prewalk_swap:
+        text = f"prewalk plan complete — implementing on <code>{esc(cur)}</code>"
+    else:
+        text = f"switched model → <code>{esc(cur)}</code>"
+    return (
+        '<div class="stage-msg model-switch">'
+        f'<span class="model-switch-line">⇄ {text} '
+        f'<small class="muted">(was <code>{esc(prev)}</code>)</small>'
+        "</span></div>"
+    )
+
+
+def new_model_state() -> dict:
+    """Mutable tracker threaded through :func:`render_turn_msgs` calls so model
+    switches are detected across exchanges (chats) or across a run's hops."""
+    return {"model": None, "seen_todo": False}
 
 
 def render_actions_table(turns: list[dict], include_text: bool = True) -> str:
@@ -288,12 +348,18 @@ def render_turn_msgs(
     turns: list[dict],
     errors: list[dict] | None = None,
     include_text: bool = True,
+    model_state: dict | None = None,
 ) -> list[str]:
     """One `.stage-msg` per turn / ``user_prompt`` entry (append-friendly).
 
     When ``errors`` is given, the durable error rows are interleaved by their
     ``at`` timestamps (see :func:`_merged_trajectory`). Error rows are UI-only:
-    agent context never reads them."""
+    agent context never reads them.
+
+    ``model_state`` (a :func:`new_model_state` dict) makes model switches
+    visible: each rendered turn carries a small model tag, and a divider row is
+    emitted whenever the model changes from the previous turn. Passing the same
+    dict across calls (e.g. per-exchange) detects cross-exchange switches too."""
     entries = _merged_trajectory(turns, errors) if errors else list(turns)
     out: list[str] = []
     for entry in entries:
@@ -307,8 +373,25 @@ def render_turn_msgs(
         if kind:
             continue
         table = render_actions_table([entry], include_text=include_text)
-        if table:
-            out.append(f'<div class="stage-msg">{table}</div>')
+        if not table:
+            continue
+        cur_model = str(entry.get("model") or "")
+        tag = ""
+        if model_state is not None and cur_model:
+            prev = model_state.get("model")
+            if prev and prev != cur_model:
+                swap = bool(model_state.get("seen_todo"))
+                out.append(_model_switch_divider(prev, cur_model, swap))
+                # A prewalk swap consumes the todo gate; a later change is a
+                # user switch, not another "plan complete".
+                model_state["seen_todo"] = False
+            model_state["model"] = cur_model
+            tag = _model_tag(cur_model)
+        if model_state is not None and any(
+            b.get("name") == "todo" for b in entry.get("tool_blocks") or []
+        ):
+            model_state["seen_todo"] = True
+        out.append(f'<div class="stage-msg">{tag}{table}</div>')
     return out
 
 

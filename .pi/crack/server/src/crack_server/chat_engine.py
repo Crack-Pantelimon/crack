@@ -178,6 +178,8 @@ async def _run_prewalk_loop(
         turns_now = _turns()
         hop_model = prewalk.model_for_phase(st, turns_now)
         pw_kwargs = prewalk.hop_prewalk_kwargs(st, turns_now, persona_slug)
+        # Stamp this hop's model onto every turn it persists (trajectory swaps).
+        persister.current_model = hop_model
 
         if hop == 1:
             record = prompt_recorder(persister, "chat", record_template, original=user_msg)

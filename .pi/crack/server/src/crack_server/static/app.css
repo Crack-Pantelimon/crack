@@ -1010,3 +1010,137 @@ main.container-fluid {
   padding: 0.05rem 0.4rem;
   font-size: 0.7rem;
 }
+
+/* ---------------------------------------------------------------------------
+ * Trajectory polish: bordered top-level chat frame, per-turn model tags,
+ * model-switch dividers, inline tool-output previews, table alignment.
+ * ------------------------------------------------------------------------- */
+
+/* Bordered, padded top-level chat trajectory — matches the sub-agent cards. */
+#chat-msgs {
+  border: 2px solid #888;
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  margin: 0.6rem 0;
+  background: rgba(0, 0, 0, 0.015);
+}
+.chat-content[data-stage-status="running"] #chat-msgs {
+  border-color: #4a90e2;
+}
+.chat-content[data-stage-status="error"] #chat-msgs {
+  border-color: #c44;
+}
+
+/* Table alignment: fixed narrow Type/Size columns, wrapping middle column. */
+.explore-actions {
+  table-layout: fixed;
+}
+.explore-actions td:first-child {
+  width: 7.5rem;
+  white-space: normal;
+}
+.explore-actions td:last-child {
+  width: 6.5rem;
+}
+.explore-actions td:nth-child(2) {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.explore-actions .tool-dot {
+  vertical-align: baseline;
+}
+
+/* Inline tool-output preview + single-icon expand toggle. */
+.tool-out {
+  margin-top: 0.2rem;
+}
+.tool-out-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.78rem;
+  max-height: 11.5em; /* ~8 lines */
+  overflow: hidden;
+  color: var(--pico-muted-color);
+}
+.tool-out-more {
+  display: inline;
+}
+.tool-out-more > summary.tool-out-toggle {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--pico-primary, #4a90e2);
+  margin-top: 0.1rem;
+}
+.tool-out-more > summary.tool-out-toggle::-webkit-details-marker {
+  display: none;
+}
+.tool-out-more > summary.tool-out-toggle::before {
+  content: "⤢ full output";
+}
+.tool-out-more[open] > summary.tool-out-toggle::before {
+  content: "⤡ collapse";
+}
+.tool-out-more[open] .tool-out-preview {
+  display: none; /* the full <pre> below replaces the clipped preview */
+}
+.tool-out-more > pre {
+  margin: 0.2rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.78rem;
+}
+
+/* Per-turn model tag (right-aligned, above each trajectory message's table). */
+.turn-model-row {
+  text-align: right;
+  line-height: 1;
+  margin-bottom: -0.4rem;
+}
+.turn-model {
+  font-size: 0.68rem;
+  opacity: 0.65;
+}
+.turn-model code {
+  background: transparent;
+  padding: 0;
+}
+
+/* Model-switch divider between turns (prewalk swap or user switch). */
+.stage-msg.model-switch {
+  padding: 0.25rem 0;
+}
+.model-switch-line {
+  display: block;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--pico-muted-color);
+  border-top: 1px dashed var(--pico-muted-border-color);
+  border-bottom: 1px dashed var(--pico-muted-border-color);
+  padding: 0.2rem 0;
+  background: rgba(74, 144, 226, 0.06);
+}
+.model-switch-line code {
+  font-size: 0.72rem;
+}
+
+/* New-chat form: plan vs non-plan model field groups. */
+.plan-fields,
+.nonplan-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.35rem 0;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--pico-muted-border-color);
+}
+.chat-model-pick {
+  font-size: 0.8rem;
+}
+.chat-model-pick select {
+  margin-bottom: 0.4rem;
+}

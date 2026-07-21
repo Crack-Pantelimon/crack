@@ -69,9 +69,12 @@ def attach_media_to_blocks(
     return out
 
 
-def make_turn(current_turn: dict, hop: int) -> dict:
-    """The one persisted-turn dict every stage records per completed agent turn."""
-    return {
+def make_turn(current_turn: dict, hop: int, model: str = "") -> dict:
+    """The one persisted-turn dict every stage records per completed agent turn.
+
+    ``model`` records which model produced this turn so the trajectory can show
+    prewalk swaps and user-initiated model switches (empty for legacy turns)."""
+    turn = {
         "hop": hop,
         "text": current_turn.get("text", ""),
         "thinking": current_turn.get("thinking", ""),
@@ -79,6 +82,9 @@ def make_turn(current_turn: dict, hop: int) -> dict:
         "elapsed": current_turn.get("elapsed"),
         "at": time.time(),
     }
+    if model:
+        turn["model"] = model
+    return turn
 
 
 class TurnPersister:
@@ -109,6 +115,9 @@ class TurnPersister:
         self.existing = list(existing) if existing is not None else self._snapshot()
         self.new: list[dict] = []
         self.post = post
+        # The model each about-to-run hop uses; stamped onto every persisted
+        # turn so the trajectory can render model switches (set before each hop).
+        self.current_model: str = ""
         self.media_dir = media_dir
         self.media_url_prefix = media_url_prefix
 
@@ -134,7 +143,7 @@ class TurnPersister:
 
     def persist(self, current_turn: dict, hop: int) -> None:
         """``persist_turn`` callback for pi_runner.run_agent_hop."""
-        turn = make_turn(current_turn, hop)
+        turn = make_turn(current_turn, hop, self.current_model)
         if self.media_dir is not None:
             turn["tool_blocks"] = attach_media_to_blocks(
                 turn["tool_blocks"], self.media_dir, self.media_url_prefix

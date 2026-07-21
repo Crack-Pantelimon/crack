@@ -218,8 +218,27 @@
     });
   }
 
+  function applyPlanToggle(form) {
+    if (!form) return;
+    const on = !!form.querySelector('[data-plan-toggle]:checked');
+    const planFields = form.querySelector('[data-plan-fields]');
+    const nonplanFields = form.querySelector('[data-nonplan-fields]');
+    if (planFields) planFields.hidden = !on;
+    if (nonplanFields) nonplanFields.hidden = on;
+  }
+
+  function initPlanToggle() {
+    document.body.addEventListener('change', function (evt) {
+      const input = evt.target;
+      if (!input.matches || !input.matches('[data-plan-toggle]')) return;
+      applyPlanToggle(input.closest('[data-plan-form]'));
+    });
+    document.querySelectorAll('[data-plan-form]').forEach(applyPlanToggle);
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     initOtherToggle();
+    initPlanToggle();
     watchDots();
 
     const chat = document.getElementById('chat-content');

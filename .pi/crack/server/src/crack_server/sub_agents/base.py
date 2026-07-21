@@ -241,6 +241,8 @@ class SubAgentPersona:
         turns = state.get("turns", [])
         hop_model = prewalk.model_for_phase(state, turns)
         pw_kwargs = prewalk.hop_prewalk_kwargs(state, turns, self.slug)
+        # Stamp this hop's model onto every turn it persists (trajectory swaps).
+        persister.current_model = hop_model
 
         try:
             reason = await pi_runner.arun_agent_hop(

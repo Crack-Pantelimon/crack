@@ -182,13 +182,18 @@ def render_new_chat_form() -> str:
     implementer = _plain_model_select("implementer_model", _settings.plan_implementer_model())
     nonplan = _plain_model_select("model", _settings.nonplan_model())
     return f"""
-      <form method="post" action="/api/chats" class="new-chat-form">
+      <form method="post" action="/api/chats" class="new-chat-form" data-plan-form>
         <label class="new-chat-plan">
-          <input type="checkbox" name="plan" value="1" checked> Plan mode (prewalk)
+          <input type="checkbox" name="plan" value="1" checked data-plan-toggle>
+          Plan mode (prewalk)
         </label>
-        <label>Planner model (plan mode) {planner}</label>
-        <label>Implementer model (plan mode) {implementer}</label>
-        <label>Model (non-plan) {nonplan}</label>
+        <div class="plan-fields" data-plan-fields>
+          <label>Planner model {planner}</label>
+          <label>Implementer model {implementer}</label>
+        </div>
+        <div class="nonplan-fields" data-nonplan-fields hidden>
+          <label>Model {nonplan}</label>
+        </div>
         <button type="submit">New Chat</button>
       </form>
     """
@@ -253,7 +258,9 @@ def _append_inside_stage_msg(msg_html: str, extra: str) -> str:
     return msg_html[:idx] + extra + msg_html[idx:]
 
 
-def render_chat_answer(chat_id: str, turns: list[dict]) -> list[str]:
+def render_chat_answer(
+    chat_id: str, turns: list[dict], model_state: dict | None = None
+) -> list[str]:
     """One exchange's agent output as stable per-turn msg fragments.
 
     Each persisted turn is one append-only fragment (tools + that turn's own
@@ -261,13 +268,16 @@ def render_chat_answer(chat_id: str, turns: list[dict]) -> list[str]:
     block — that re-indexes on every poll and duplicates under beforeend.
 
     A turn that spawned sub-agents gets those runs' full transcript cards
-    injected inline (self-polling regions) right under the spawning tool row."""
+    injected inline (self-polling regions) right under the spawning tool row.
+
+    ``model_state`` threads model-switch detection across exchanges (see
+    :func:`render.render_turn_msgs`)."""
     render = _render()
     agent_turns = [t for t in turns if t.get("kind") != "user_prompt"]
     known_runs = set(paths.list_run_ids(chat_id))
     out: list[str] = []
     for turn in agent_turns:
-        msgs = render.render_turn_msgs([turn], include_text=True)
+        msgs = render.render_turn_msgs([turn], include_text=True, model_state=model_state)
         run_ids = [rid for rid in _spawn_run_ids(turn) if rid in known_runs]
         if run_ids and msgs:
             cards = "".join(render_inline_run_region(chat_id, rid) for rid in run_ids)
@@ -290,16 +300,32 @@ def _chat_model_badge(info: dict) -> str:
 
 
 def render_chat_form(chat_id: str, info: dict) -> str:
-    """Bottom form: locked-model badge + multiline input + Send. Models are
-    chosen at creation and cannot change (prewalk needs a stable pairing)."""
+    """Bottom form: multiline input + Send, plus the model control.
+
+    While a plan chat is resolving its first message the pairing is locked
+    (read-only badge). Once it graduates — and always for a non-plan chat — a
+    model dropdown lets the user continue on any model (default: the implementer
+    model for a graduated plan chat, else the chat's non-plan model)."""
     safe_id = _ui._esc(chat_id)
     strip = attachments.render_strip(
         "chats", chat_id, paths.chat_attachments_state(chat_id), "chat-attachments"
     )
+    plan = bool(info.get("plan"))
+    graduated = bool(info.get("graduated"))
+    if plan and not graduated:
+        model_control = f'<div class="chat-model-badge">{_chat_model_badge(info)}</div>'
+    else:
+        default_model = (
+            info.get("implementer_model") if plan else info.get("model")
+        ) or info.get("model") or DEFAULT_CHAT_MODEL
+        model_control = (
+            '<label class="chat-model-pick">Model '
+            f"{_plain_model_select('model', default_model)}</label>"
+        )
     return f"""
     <form class="chat-form" hx-post="/api/chats/{safe_id}/messages"
           hx-target="#chat-content" hx-swap="outerHTML">
-      <div class="chat-model-badge">{_chat_model_badge(info)}</div>
+      {model_control}
       {strip}
       <label>Message
         <textarea name="msg" rows="4" required placeholder="Type a message…"></textarea>
@@ -400,6 +426,41 @@ def _persona_model(persona_slug: str) -> str:
     return persona.model_for() if persona is not None else ""
 
 
+def _run_display_model(state: dict) -> str:
+    """The model this run's *next* hop uses — planner while planning, implementer
+    after the prewalk swap, or the single model in non-plan mode. Keeps the card
+    and right-tree badges in sync with what actually runs (a persona's config
+    default is only the fallback)."""
+    from crack_server import prewalk
+
+    model = prewalk.model_for_phase(state, state.get("turns") or [])
+    if model and model != prewalk.DEFAULT_MODEL:
+        return model
+    # Non-plan run with no explicit model: fall back to the persona's config.
+    return model or _persona_model(str(state.get("persona") or ""))
+
+
+def _chat_display_model(info: dict, state: dict) -> str:
+    """The chat root's current effective model, mirroring what its next hop
+    would run on: planner→implementer while a plan chat is still resolving its
+    first message, else the continuation default."""
+    from crack_server import prewalk
+
+    plan = bool(info.get("plan"))
+    if plan and not info.get("graduated"):
+        exchanges = state.get("exchanges", [])
+        turns = exchanges[-1].get("turns", []) if exchanges else []
+        synth = {
+            "plan": True,
+            "planner_model": info.get("planner_model") or info.get("model"),
+            "implementer_model": info.get("implementer_model") or info.get("model"),
+            "model": info.get("model"),
+        }
+        return prewalk.model_for_phase(synth, turns) or DEFAULT_CHAT_MODEL
+    default = info.get("implementer_model") if plan else info.get("model")
+    return default or info.get("model") or DEFAULT_CHAT_MODEL
+
+
 def _children_map(chat_id: str) -> dict[str, list[str]]:
     """``parent_run_id -> [child_run_id...]`` for run-parented runs (newest first)."""
     run_ids = paths.list_run_ids(chat_id)
@@ -460,7 +521,7 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
     depth = state.get("depth", "?")
     safe_run = esc(run_id)
     phase_cls = _run_phase_class(str(phase))
-    model = _persona_model(str(persona))
+    model = _run_display_model(state)
 
     actions = ""
     if phase not in _RUN_TERMINAL:
@@ -485,7 +546,9 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
 
     turns = state.get("turns") or []
     errors = state.get("errors") or []
-    transcript = "".join(render.render_turn_msgs(turns, errors=errors, include_text=True))
+    transcript = "".join(render.render_turn_msgs(
+        turns, errors=errors, include_text=True, model_state=render.new_model_state()
+    ))
     if not transcript:
         transcript = '<p class="muted"><small>No turns yet.</small></p>'
 
@@ -549,7 +612,7 @@ def _render_sidebar_node(chat_id: str, run_id: str, cmap: dict[str, list[str]]) 
     phase = str(state.get("phase") or "?")
     persona = str(state.get("persona") or "?")
     phase_cls = _run_phase_class(phase)
-    model = _persona_model(persona)
+    model = _run_display_model(state)
     dot = f'<span class="run-status-dot phase-{esc(phase_cls)}" aria-hidden="true"></span>'
     stop = ""
     if phase not in _RUN_TERMINAL:
@@ -596,7 +659,7 @@ def render_sidebar_tree(chat_id: str) -> str:
         f'hx-post="/api/chats/{esc(chat_id)}/stop" '
         f'hx-swap="none">Stop all</button>'
     )
-    chat_model = info.get("model") or DEFAULT_CHAT_MODEL
+    chat_model = _chat_display_model(info, state)
     nodes = "".join(_render_sidebar_node(chat_id, rid, cmap) for rid in roots)
     tree = f"<ul>{nodes}</ul>" if nodes else '<p class="muted"><small>No sub-agents yet.</small></p>'
     poll_attrs = ""
@@ -635,9 +698,13 @@ def _tag_chat_msg(index: int, html: str) -> str:
 def render_chat_msgs(chat_id: str) -> list[str]:
     render = _render()
     state = paths.chat_state(chat_id).read()
+    # One tracker for the whole chat so a model switch shows once, at the turn
+    # where it happens (a prewalk swap mid-exchange or a user switch between
+    # exchanges).
+    model_state = render.new_model_state()
     return render.render_exchanges(
         state.get("exchanges", []),
-        lambda turns: render_chat_answer(chat_id, turns),
+        lambda turns: render_chat_answer(chat_id, turns, model_state),
     )
 
 
@@ -765,7 +832,10 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
 
     Always appends to ``pending`` and enqueues; human messages and child-report
     resumes serialize via the exclusive chat job (no B2 refuse-while-chatting).
-    The chat's models are locked at creation, so ``model`` is ignored.
+
+    Plan mode governs only the first message's resolution; once the chat has
+    graduated (see :func:`run_chat`) a human message runs unrestrained on the
+    ``model`` picked in the continuation dropdown (recorded on the exchange).
     """
     check_chat_id(chat_id)
     msg = msg.strip()
@@ -791,6 +861,8 @@ def post_message(chat_id: str, msg: str, model: str | None) -> HTMLResponse:
     if msg:
         def _begin(state: dict) -> dict:
             item: dict = {"user": msg, "source": "human"}
+            if model:
+                item["model"] = model
             if media:
                 item["media"] = media
             state.setdefault("pending", []).append(item)
@@ -975,6 +1047,7 @@ def _pop_pending(chat_id: str) -> dict | None:
             **({"run_id": taken["run_id"]} if taken.get("run_id") else {}),
             **({"media": taken["media"]} if taken.get("media") else {}),
             **({"qa": taken["qa"]} if taken.get("qa") else {}),
+            **({"model": taken["model"]} if taken.get("model") else {}),
         })
         state["phase"] = "chatting"
         return state
@@ -1010,11 +1083,25 @@ async def run_chat(chat_id: str) -> None:
             return
 
         info = paths.chat_info_state(chat_id).read()
-        plan = bool(info.get("plan"))
-        model = info.get("model") or DEFAULT_CHAT_MODEL
-        planner_model = info.get("planner_model") or model
-        implementer_model = info.get("implementer_model") or model
-        is_first = len(chat.read().get("exchanges", [])) == 1
+        planner_model = info.get("planner_model") or info.get("model") or DEFAULT_CHAT_MODEL
+        implementer_model = info.get("implementer_model") or info.get("model") or DEFAULT_CHAT_MODEL
+        # Plan mode governs only the first user message's resolution (its
+        # ask_user follow-ups included). Once the chat graduates, every later
+        # message runs unrestrained (plan off) on the model the user picked in
+        # the continuation dropdown, defaulting to the implementer model.
+        plan_active = bool(info.get("plan")) and not bool(info.get("graduated"))
+        exchanges = chat.read().get("exchanges", [])
+        is_first = len(exchanges) == 1
+        cur_exchange = exchanges[-1] if exchanges else {}
+        if plan_active:
+            model = planner_model  # first hop; chat_engine swaps to implementer
+        else:
+            model = (
+                cur_exchange.get("model")
+                or info.get("implementer_model")
+                or info.get("model")
+                or DEFAULT_CHAT_MODEL
+            )
         await chat_engine.run_exchange(
             state=chat,
             ident=chat_id,
@@ -1022,7 +1109,7 @@ async def run_chat(chat_id: str) -> None:
             record_template="",
             log_prefix="unscripted-chat",
             model=model,
-            plan=plan,
+            plan=plan_active,
             planner_model=planner_model,
             implementer_model=implementer_model,
             max_hops=MAX_CHAT_HOPS,
@@ -1051,6 +1138,13 @@ async def run_chat(chat_id: str) -> None:
             media_dir=paths.chat_dir(chat_id) / "media",
             media_url_prefix=f"/chats/{chat_id}/media",
         )
+        # Graduate the chat once the first plan resolution finishes cleanly (not
+        # suspended on an ask_user). From here the continuation dropdown drives
+        # the model and plan mode never re-triggers.
+        if plan_active and not chat.read().get("pending_question"):
+            paths.chat_info_state(chat_id).update(
+                lambda s: {**s, "graduated": True}
+            )
         if stop_check():
             def _halt(state: dict) -> dict:
                 state["phase"] = "idle"
