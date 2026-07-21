@@ -1,36 +1,18 @@
-"""Shared stage HTML renderers: the agent-trajectory actions table, per-turn
-message fragments, and the volatile-tail widgets (error card, spinner, retry /
-stop / message buttons) every stage reuses.
+"""Shared HTML renderers for agent trajectories, tool rows, and chat tails.
 
-Also home of ``model_select``, the one model <select> markup shared by the
-stage config screen and the unscripted-chat form. Options always come from the
-render-safe models cache (``models.models_for_render``, B21) — rendering never
-shells out to ``pi --list-models``.
-
-Stage-typed helpers take the stage duck-type (``action_url``,
-``stage_content_id``, ``status``, ``state_read``) and only import
-``stages.base`` under TYPE_CHECKING, so this module sits between ui.py (leaf)
-and base.py in the import graph with no cycle.
+Moved out of the deleted stages package so chats and sub-agents can render
+turns without depending on the harness pipeline.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 from crack_server import models as models_mod
-from crack_server import paths
 from crack_server import pi_runner
 from crack_server import ui as _ui
-
-if TYPE_CHECKING:
-    from crack_server.stages.base import Stage
-
-# ---------------------------------------------------------------------------
-# Shared agent-trajectory rendering — one compact actions table, identical to
-# the Explore stage's look (moved here so Plan and Plan Review render the same).
-# ---------------------------------------------------------------------------
 
 # Control signalling the agent emits inline (questions blocks / sentinels) is not
 # content — strip it from displayed trajectory text so raw JSON never leaks.
@@ -114,6 +96,17 @@ def _render_media_thumbs(block: dict) -> str:
     return f'<span class="tool-thumbs">{thumbs}</span>' if thumbs else ""
 
 
+def _tool_dot_class(block: dict) -> str:
+    """Classify a tool block: err / ok / pending."""
+    if block.get("is_error") is True:
+        return "err"
+    # Result present (is_error False or output set) → ok.
+    if block.get("is_error") is False or block.get("output") not in (None, ""):
+        return "ok"
+    # toolCall with no result yet → pending.
+    return "pending"
+
+
 def _render_tool_action_row(block: dict) -> str:
     """Table row for one tool call: type, path/command, in/out char counts, output."""
     esc = _ui._esc
@@ -121,6 +114,7 @@ def _render_tool_action_row(block: dict) -> str:
     input_raw = block.get("input", "")
     output = str(block.get("output", ""))
     args = _parse_tool_args(input_raw)
+    dot = _tool_dot_class(block)
 
     if name == "read":
         action_type = "read"
@@ -162,7 +156,11 @@ def _render_tool_action_row(block: dict) -> str:
     elapsed = block.get("elapsed")
     if elapsed is not None:
         size += f" · {elapsed:.1f}s"
-    return f"<tr><td>{action_type}</td><td>{middle}</td><td>{size}</td></tr>"
+    type_cell = (
+        f'<span class="tool-dot tool-dot--{dot}" aria-hidden="true"></span>'
+        f"{action_type}"
+    )
+    return f"<tr><td>{type_cell}</td><td>{middle}</td><td>{size}</td></tr>"
 
 
 def render_user_prompt_msg(entry: dict) -> str:
@@ -326,8 +324,7 @@ def render_exchanges(
     """Shared chat-exchange walk (plan 4.3 A3): one user-prompt bubble per
     exchange (the recorded ``user_prompt`` entry preferred, else synthesized
     from the raw user text), then the exchange's agent turns via the caller's
-    renderer (chats render an Assistant bubble; the Finished stage renders the
-    plain trajectory)."""
+    renderer (typically :func:`render_turn_msgs`)."""
     msgs: list[str] = []
     for exchange in exchanges:
         user_text = exchange.get("user", "")
@@ -359,8 +356,9 @@ def render_exchanges(
     return msgs
 
 
+
 # ---------------------------------------------------------------------------
-# Volatile-tail widgets: errors, spinner, retry/stop buttons, message form.
+# Volatile-tail widgets: errors, spinner (chat tails).
 # ---------------------------------------------------------------------------
 
 
@@ -380,9 +378,7 @@ def render_error_msg(error: str, detail: str = "") -> str:
 
 
 def render_fatal_error_banner(state: dict) -> str:
-    """Prominent "something is likely wrong" banner for the error tail, shown
-    once the durable error budget is spent (over_budget flag, or the recorded
-    error rows reaching the budget). Empty string otherwise."""
+    """Prominent banner when the durable error budget is spent. Empty otherwise."""
     over = bool(state.get("error_over_budget")) or len(state.get("errors", [])) >= int(
         state.get("error_budget", pi_runner.MAX_TOTAL_ERRORS)
     )
@@ -401,65 +397,8 @@ def render_spinner(label: str) -> str:
     return f'<p class="stage-spinner" aria-busy="true">{esc(label)}</p>'
 
 
-def render_retry_button(stage: "Stage", task_id: str, error_step: str | None) -> str:
-    """Continue-from-error button next to a stage's re-run button."""
-    if not error_step:
-        return ""
-    esc = _ui._esc
-    content_id = stage.stage_content_id()
-    return (
-        f'<button hx-post="{esc(stage.action_url(task_id, "retry_error"))}" '
-        f'hx-target="#{content_id}" hx-swap="outerHTML" class="secondary retry-error-btn">'
-        "Continue from last error</button>"
-    )
-
-
-def _should_show_stop(stage: "Stage", task_id: str) -> bool:
-    """Tolerant STOP visibility for stages that have (or had) a stoppable run."""
-    if stage.status(task_id) == "running":
-        return True
-    try:
-        state = stage.state_read(task_id)
-    except NotImplementedError:
-        return False
-    if "stop_requested" in state:
-        return stage.status(task_id) in ("running", "stopped")
-    return paths.stage_pid_file(task_id, stage.slug).is_file()
-
-
-def render_stop_button(stage: "Stage", task_id: str) -> str:
-    """STOP button (tail). Omitted when the stage has no stop support yet."""
-    if not _should_show_stop(stage, task_id):
-        return ""
-    esc = _ui._esc
-    return (
-        f'<button hx-post="{esc(stage.action_url(task_id, "stop"))}" '
-        f'hx-target="#{stage.stage_content_id()}" hx-swap="outerHTML" '
-        'class="contrast">STOP</button>'
-    )
-
-
-def render_running_tail(stage: "Stage", task_id: str, label: str) -> str:
-    """Spinner + STOP side-by-side for a running stage's tail."""
-    return f'<div class="stage-running">{render_spinner(label)}{render_stop_button(stage, task_id)}</div>'
-
-
-def render_message_form(stage: "Stage", task_id: str) -> str:
-    """Resume-with-message form for stopped/error tails (chat-form look)."""
-    esc = _ui._esc
-    return f"""
-    <form class="stage-message chat-form" hx-post="{esc(stage.action_url(task_id, "message"))}"
-          hx-target="#{stage.stage_content_id()}" hx-swap="outerHTML">
-      <label>Send a message to resume the agent
-        <textarea name="msg" rows="3" required placeholder="Type a message…"></textarea>
-      </label>
-      <button type="submit">Send</button>
-    </form>
-    """
-
-
 # ---------------------------------------------------------------------------
-# Model <select> (stage part rows + unscripted-chat form)
+# Model <select> (settings + unscripted-chat form)
 # ---------------------------------------------------------------------------
 
 

@@ -9,10 +9,8 @@ the trajectory in time order so the append-only delta-swap stays consistent.
 
 from __future__ import annotations
 
-import crack_server.app  # noqa: F401  (must load before stages — app↔stages import cycle)
-from crack_server import ratelimit
+from crack_server import ratelimit, render, steprun
 from crack_server.state import JsonState
-from crack_server.stages import render, steprun
 
 
 def _entry(**kw) -> dict:

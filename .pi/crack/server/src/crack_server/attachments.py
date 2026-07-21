@@ -1,8 +1,7 @@
-"""Prompt-image attachments: images pasted/dropped into the task prompt editor
-or the chat message box, saved server-side under ``attachments/``, described at
-upload time by the vision model, and woven into the compiled prompt (tasks:
-persistent, prepended by ``paths.read_all_prompts_joined``; chats: one-shot,
-prepended to the next message by ``chats.post_message`` then cleared).
+"""Prompt-image attachments: images pasted/dropped into the chat message box,
+saved server-side under ``attachments/``, described at upload time by the
+vision model, and woven into the next chat message by ``chats.post_message``
+(one-shot: cleared after send).
 
 The manifest is a ``JsonState`` at ``attachments/images.json`` holding
 ``{"images": [{id, filename, saved_path, description, uploaded_at}]}``; the id

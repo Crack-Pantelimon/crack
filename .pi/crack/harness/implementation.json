@@ -1,6 +1,0 @@
-{
-  "models": {
-    "primary": "nvidia/nemotron-3-ultra-550b-a55b",
-    "fallback": "nvidia/z-ai/glm-5.2"
-  }
-}

@@ -1,5 +1,0 @@
-{
-  "models": {
-    "critic": "nvidia/z-ai/glm-5.2"
-  }
-}

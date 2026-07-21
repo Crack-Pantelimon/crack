@@ -1,9 +1,8 @@
-"""Shared Q&A helpers (used by Plan and Plan Review interviewing stages).
+"""Shared Q&A helpers for planner sub-agents (and any chat run that asks).
 
-The draft/review agents emit clarifying questions as a fenced ```questions
-JSON block; these helpers parse that block, render the questions form and the
-answered-rounds history, collect the htmx form submission into answers, and
-format answered rounds back into prompt text.
+Agents emit clarifying questions as a fenced ```questions JSON block; these
+helpers parse that block, render the questions form, collect htmx submissions,
+and format answered rounds back into prompt text.
 """
 
 from __future__ import annotations

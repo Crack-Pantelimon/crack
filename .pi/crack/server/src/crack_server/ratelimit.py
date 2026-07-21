@@ -47,7 +47,7 @@ HARD_RETRY_DELAYS = [1.0, 3.0, 6.0, 9.0, 16.0, 27.0]
 # Durable error budget: a hop raises PiError(over_budget=True) once the
 # caller's error recorder reports this many recorded errors. A manual
 # "continue from last error" grants another MAX_TOTAL_ERRORS on top of the
-# rows recorded so far (see stages.steprun.grant_error_budget).
+# rows recorded so far (see steprun.grant_error_budget).
 MAX_TOTAL_ERRORS = 20
 
 _TRANSIENT_MARKERS = (

@@ -1,8 +1,0 @@
-{
-  "models": {
-    "summary": "nvidia/nemotron-3-ultra-550b-a55b",
-    "turn_zero": "nvidia/nemotron-3-ultra-550b-a55b",
-    "gate": "nvidia/nemotron-3-ultra-550b-a55b",
-    "agent": "nvidia/z-ai/glm-5.2"
-  }
-}

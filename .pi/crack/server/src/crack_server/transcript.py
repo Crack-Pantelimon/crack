@@ -64,9 +64,11 @@ def apply_event_to_turn(event: dict, current_turn: dict) -> None:
         tool_call_id = message.get("toolCallId")
         # Merge the result into the matching toolCall block, if present.
         merged = False
+        is_error = bool(message.get("isError"))
         for block in current_turn.get("tool_blocks", []):
             if block.get("id") == tool_call_id:
                 block["output"] = output
+                block["is_error"] = is_error
                 merged = True
                 break
         if not merged:
@@ -76,6 +78,7 @@ def apply_event_to_turn(event: dict, current_turn: dict) -> None:
                     "name": message.get("toolName", "tool"),
                     "input": "",
                     "output": output,
+                    "is_error": is_error,
                 }
             )
         return

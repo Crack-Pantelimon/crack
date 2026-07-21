@@ -10,14 +10,13 @@ from pathlib import Path
 from crack_server import paths, pi_runner, queue
 from crack_server.ratelimit import MAX_TOTAL_ERRORS, RESUME_MESSAGE
 from crack_server.state import JsonState
-from crack_server.stages.base import ORPHAN_PHASE_GRACE_SECONDS
-from crack_server.stages.steprun import (
+from crack_server.sub_agents.constants import ORPHAN_PHASE_GRACE_SECONDS, SUBAGENT_JOB_SLUG, SUBAGENT_TIMEOUT_SECONDS
+from crack_server.steprun import (
     TurnPersister,
     error_recorder,
     grant_error_budget,
     prompt_recorder,
 )
-from crack_server.sub_agents.constants import SUBAGENT_JOB_SLUG, SUBAGENT_TIMEOUT_SECONDS
 
 logger = logging.getLogger("uvicorn.error")
 

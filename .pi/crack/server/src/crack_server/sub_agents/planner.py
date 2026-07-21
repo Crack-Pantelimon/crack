@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from crack_server import paths
-from crack_server.stages.qa import (
+from crack_server.questions import (
     collect_answers,
     format_qa_for_prompt,
     parse_questions,
@@ -114,7 +114,7 @@ class PlannerPersona(SubAgentPersona):
         self, run_id: str, message: str, template: str, *, step_label: str
     ) -> tuple[str, dict | None] | None:
         """One pi hop with a fixed message; post-process for planner control flow."""
-        from crack_server.stages.steprun import (
+        from crack_server.steprun import (
             TurnPersister,
             error_recorder,
             prompt_recorder,

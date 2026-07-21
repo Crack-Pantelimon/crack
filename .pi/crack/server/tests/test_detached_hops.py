@@ -167,10 +167,10 @@ def _write_manifest(pid_file, **fields):
 def test_recover_detached_hops(tmp_path, monkeypatch):
     monkeypatch.setenv("CRACK_PI_PROJECT_ROOT", str(tmp_path))
 
-    def make_pid_file(tid):
-        directory = paths.task_dir(tid)
+    def make_pid_file(cid):
+        directory = paths.chat_dir(cid)
         directory.mkdir(parents=True)
-        return directory / "explore.agent.pid"
+        return directory / "agent.pid"
 
     # 1. Live, fresh detached hop → left running for re-attach. (python3 keeps
     # its argv — including the fake session id — in /proc/<pid>/cmdline.)
@@ -178,24 +178,24 @@ def test_recover_detached_hops(tmp_path, monkeypatch):
         ["python3", "-c", "import time; time.sleep(30)", "s-live"],
         start_new_session=True,
     )
-    pid_file1 = make_pid_file("t1")
+    pid_file1 = make_pid_file("1000000000001")
     pid_file1.write_text(str(live.pid), encoding="utf-8")
     _write_manifest(pid_file1, pid=live.pid, session_id="s-live")
 
     # 2. Dead pid, fresh manifest → left for the resumed job to drain.
     dead = subprocess.Popen(["true"])
     dead.wait()
-    pid_file2 = make_pid_file("t2")
+    pid_file2 = make_pid_file("1000000000002")
     pid_file2.write_text(str(dead.pid), encoding="utf-8")
     _write_manifest(pid_file2, pid=dead.pid)
 
     # 3. Dead pid, stale manifest → cleaned up.
-    pid_file3 = make_pid_file("t3")
+    pid_file3 = make_pid_file("1000000000003")
     pid_file3.write_text(str(dead.pid), encoding="utf-8")
     _write_manifest(pid_file3, pid=dead.pid, started_at=time.time() - 10000)
 
     # 4. Stale pid file with no manifest → legacy kill + unlink.
-    pid_file4 = make_pid_file("t4")
+    pid_file4 = make_pid_file("1000000000004")
     pid_file4.write_text(str(dead.pid), encoding="utf-8")
 
     try:

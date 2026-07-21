@@ -1,35 +1,13 @@
 /**
- * Task / chat page behaviour: long-poll watch loop, incremental msg append,
- * scroll-on-new-content (near bottom only), details open-state restore, and
- * the Q&A "Other" toggle. htmx still handles forms/buttons; polling hx-trigger
- * attributes are gone (plan 4.2).
+ * Chat page behaviour: long-poll watch loop, incremental msg append,
+ * scroll-on-new-content (near bottom only), details open-state restore,
+ * Q&A "Other" toggle, and sidebar/home chat status dots.
  */
 
 (function () {
   function sleep(ms) {
     return new Promise(function (resolve) {
       setTimeout(resolve, ms);
-    });
-  }
-
-  function refreshTabColors() {
-    document.querySelectorAll('[data-stage-status]').forEach(function (wrapper) {
-      const slug = wrapper.getAttribute('data-stage-slug');
-      const status = wrapper.getAttribute('data-stage-status');
-      if (!slug) return;
-      const tab = document.querySelector('#stage-tabs .tab[data-slug="' + slug + '"]');
-      if (!tab) return;
-      tab.classList.remove('tab--running', 'tab--done', 'tab--idle', 'tab--disabled', 'tab--error');
-      const cls = {
-        running: 'tab--running',
-        awaiting: 'tab--running',
-        done: 'tab--done',
-        idle: 'tab--idle',
-        disabled: 'tab--disabled',
-        error: 'tab--error',
-        stopped: 'tab--error',
-      }[status] || 'tab--idle';
-      tab.classList.add(cls);
     });
   }
 
@@ -72,7 +50,6 @@
     if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  // Belt-and-braces: remember open <details> inside msg nodes across swaps.
   const openDetails = Object.create(null);
 
   function rememberDetails(root) {
@@ -100,67 +77,6 @@
       Array.prototype.indexOf.call(d.parentNode.children, d));
     if (key) openDetails[key] = d.open;
   }, true);
-
-  async function fetchStatusDelta(taskId, slug) {
-    const content = document.getElementById(slug + '-content');
-    const prevCount = parseInt((content && content.getAttribute('data-msg-count')) || '0', 10);
-    const after = lastMsgIndex(slug);
-    const url = '/tasks/' + encodeURIComponent(taskId) +
-      '/stages/' + encodeURIComponent(slug) + '/status?after=' + after;
-    rememberDetails(document.getElementById(slug + '-msgs'));
-    await htmx.ajax('GET', url, {
-      target: '#' + slug + '-msgs',
-      swap: 'beforeend',
-    });
-    applyStatusMeta(slug);
-    restoreDetails(document.getElementById(slug + '-msgs'));
-    restoreDetails(document.getElementById(slug + '-tail'));
-    refreshTabColors();
-    scrollIfNearBottom(slug, prevCount);
-  }
-
-  function maybeRefreshTitle(taskId) {
-    const pending = document.querySelector('.title-input-pending, [data-title-pending]');
-    if (!pending) return;
-    htmx.ajax('GET', '/tasks/' + encodeURIComponent(taskId) + '/title-regen-status', {
-      target: '#title-slot-' + taskId,
-      swap: 'innerHTML',
-    });
-  }
-
-  async function watchTask(taskId, slug) {
-    const content = document.getElementById(slug + '-content');
-    let since = (content && content.dataset.stateMtime) || '0';
-    for (;;) {
-      try {
-        const r = await fetch(
-          '/tasks/' + encodeURIComponent(taskId) +
-          '/wait?since=' + encodeURIComponent(since) +
-          '&slug=' + encodeURIComponent(slug)
-        );
-        if (!r.ok) {
-          await sleep(2000);
-          continue;
-        }
-        const j = await r.json().catch(function () { return null; });
-        if (!j) {
-          await sleep(2000);
-          continue;
-        }
-        if (j.redirect) {
-          location.assign(j.redirect);
-          return;
-        }
-        since = j.since;
-        if (j.changed) {
-          await fetchStatusDelta(taskId, slug);
-          maybeRefreshTitle(taskId);
-        }
-      } catch (e) {
-        await sleep(2000);
-      }
-    }
-  }
 
   function lastChatMsgIndex() {
     return lastMsgIndex('chat');
@@ -209,19 +125,64 @@
     }
   }
 
+  function applyDot(el, status) {
+    if (!el || !status) return;
+    const phase = status.phase || 'idle';
+    const tool = status.tool || 'none';
+    el.className = 'chat-dot dot-' + phase;
+    el.setAttribute('title', phase + ' / tool:' + tool);
+    let inner = el.querySelector('.chat-dot-inner');
+    if (!inner) {
+      inner = document.createElement('span');
+      inner.className = 'chat-dot-inner';
+      el.appendChild(inner);
+    }
+    inner.className = 'chat-dot-inner tool-' + tool;
+  }
+
+  function applyDots(dots) {
+    if (!dots) return;
+    Object.keys(dots).forEach(function (cid) {
+      document.querySelectorAll('[data-chat-id="' + cid + '"].chat-dot').forEach(function (el) {
+        applyDot(el, dots[cid]);
+      });
+    });
+  }
+
+  async function watchDots() {
+    let since = '0';
+    for (;;) {
+      try {
+        const r = await fetch(
+          '/api/chats/dots/wait?since=' + encodeURIComponent(since)
+        );
+        if (!r.ok) {
+          await sleep(2000);
+          continue;
+        }
+        const j = await r.json().catch(function () { return null; });
+        if (!j) {
+          await sleep(2000);
+          continue;
+        }
+        since = j.since;
+        applyDots(j.dots);
+      } catch (e) {
+        await sleep(2000);
+      }
+    }
+  }
+
   function onAfterSwap(evt) {
     const editor = evt.target.querySelector?.('textarea[name="content"]:not([readonly])');
     if (editor) editor.focus();
 
-    // Sync status meta after any full content swap (forms/buttons).
     const content = evt.target.closest?.('[data-stage-status]') ||
       (evt.target.matches?.('[data-stage-status]') ? evt.target : null);
     if (content) {
       const slug = content.getAttribute('data-stage-slug');
       if (slug) applyStatusMeta(slug);
     }
-    refreshTabColors();
-    // Do not unconditional-scroll here — watch loop handles new-msg scrolls.
   }
 
   function initOtherToggle() {
@@ -250,14 +211,8 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    refreshTabColors();
     initOtherToggle();
-
-    const taskId = document.body.getAttribute('data-task-id');
-    const stage = document.querySelector('[data-stage-status][data-stage-slug]');
-    if (taskId && stage) {
-      watchTask(taskId, stage.getAttribute('data-stage-slug'));
-    }
+    watchDots();
 
     const chat = document.getElementById('chat-content');
     if (chat && chat.dataset.chatId) {
@@ -271,7 +226,6 @@
     console.error('htmx error:', evt.detail);
   });
 
-  // -- Image lightbox: click any .tool-thumb to expand full size -------------
   document.body.addEventListener('click', function (evt) {
     const img = evt.target.closest && evt.target.closest('img.tool-thumb');
     if (!img) return;
@@ -287,15 +241,7 @@
     dlg.showModal();
   });
 
-  // -- Paste/drop image attachments (task prompt editor + chat message box) --
   function attachmentEndpointFor(ta) {
-    const taskId = document.body.getAttribute('data-task-id');
-    if (ta.name === 'content' && taskId) {
-      return {
-        url: '/api/tasks/' + encodeURIComponent(taskId) + '/attachments',
-        strip: 'task-attachments',
-      };
-    }
     if (ta.name === 'msg') {
       const form = ta.closest('form');
       const hx = (form && form.getAttribute('hx-post')) || '';
@@ -331,8 +277,6 @@
   function uploadAttachment(ep, file) {
     const fd = new FormData();
     fd.append('file', file, file.name || 'pasted-image.png');
-    // Placeholder chip with a spinner: the upload + vision-model description
-    // is slow, so show progress immediately (Pico styles [aria-busy="true"]).
     const strip = document.getElementById(ep.strip);
     let placeholder = null;
     if (strip) {

@@ -1,4 +1,4 @@
-"""Unscripted chats: free-form pi chat sessions outside the task pipeline.
+"""Unscripted chats: free-form pi chat sessions with recursive sub-agents.
 
 Chats live under ``.pi/crack/unscripted_chats/<chat_id>/`` (``info.json``,
 ``chat.json``, ``sessions/``) with a ms-epoch id. The web process only writes
@@ -36,8 +36,8 @@ CHAT_SLUG = "chat"
 
 
 def _render():
-    """Lazy import to avoid app ↔ chats ↔ stages circular imports at load time."""
-    from crack_server.stages import render as render_mod
+    """Lazy import to avoid app ↔ chats ↔ render circular imports at load time."""
+    from crack_server import render as render_mod
 
     return render_mod
 
@@ -71,6 +71,68 @@ def list_chat_links() -> list[tuple[str, str]]:
     return links
 
 
+def _tool_status_from_block(block: dict) -> str:
+    if block.get("is_error") is True:
+        return "err"
+    if block.get("is_error") is False or block.get("output") not in (None, ""):
+        return "ok"
+    return "pending"
+
+
+def chat_status_dot(chat_id: str) -> dict:
+    """``{"phase": chatting|awaiting|idle|error, "tool": ok|err|pending|none}``."""
+    state = paths.chat_state(chat_id).read()
+    phase_raw = state.get("phase") or "idle"
+    if phase_raw == "chatting":
+        phase = "chatting"
+    elif phase_raw == "error" or state.get("error"):
+        phase = "error"
+    elif state.get("pending_question") or state.get("waiting_on"):
+        phase = "awaiting"
+    else:
+        # Any active sub-agent run counts as chatting for the outer dot.
+        active_run = False
+        awaiting_run = False
+        for run_id in paths.list_run_ids(chat_id):
+            rp = paths.run_state(chat_id, run_id).read().get("phase") or ""
+            if rp in ("awaiting_user", "awaiting_answers"):
+                awaiting_run = True
+            elif rp not in ("done", "error", "stopped", ""):
+                active_run = True
+        if awaiting_run and not active_run and phase_raw != "chatting":
+            phase = "awaiting"
+        elif active_run:
+            phase = "chatting"
+        else:
+            phase = "idle"
+
+    tool = "none"
+    exchanges = state.get("exchanges") or []
+    if exchanges:
+        turns = exchanges[-1].get("turns") or []
+        for turn in reversed(turns):
+            if turn.get("kind"):
+                continue
+            blocks = turn.get("tool_blocks") or []
+            if blocks:
+                tool = _tool_status_from_block(blocks[-1])
+                break
+    return {"phase": phase, "tool": tool}
+
+
+def render_chat_dot(chat_id: str, status: dict | None = None) -> str:
+    """Outer phase symbol + inner tool-colored dot for sidebar/home cards."""
+    esc = _ui._esc
+    status = status or chat_status_dot(chat_id)
+    phase = status.get("phase") or "idle"
+    tool = status.get("tool") or "none"
+    return (
+        f'<span class="chat-dot dot-{esc(phase)}" data-chat-id="{esc(chat_id)}" '
+        f'title="{esc(phase)} / tool:{esc(tool)}">'
+        f'<span class="chat-dot-inner tool-{esc(tool)}"></span></span>'
+    )
+
+
 def _render_chat_list(ids: list[str]) -> str:
     if not ids:
         return '<p class="muted">No chats yet.</p>'
@@ -87,6 +149,7 @@ def _render_chat_list(ids: list[str]) -> str:
         )
         items.append(
             f'<li class="chat-list-item">'
+            f'{render_chat_dot(cid)}'
             f'<a href="/chats/{_ui._esc(cid)}">{_ui._esc(title)}</a> '
             f'<small class="muted">({_ui._esc(cid)}{" · " + when if when else ""})</small>'
             f"{delete_btn}</li>"
@@ -95,7 +158,7 @@ def _render_chat_list(ids: list[str]) -> str:
 
 
 def render_home_section() -> str:
-    """The 'Unscripted Chats' block appended to the home page body."""
+    """Chats-only home body: New Chat + recent chats + links."""
     ids = paths.list_chat_ids()
     recent = _render_chat_list(ids[:RECENT_CHATS])
     rest = ""
@@ -105,38 +168,39 @@ def render_home_section() -> str:
             f"{_render_chat_list(ids)}</details>"
         )
     return f"""
-    <hr>
+    <header>
+      <h1>Crack</h1>
+      <p class="muted">Unscripted chats and recursive sub-agents.</p>
+    </header>
     <section id="unscripted-chats" class="section-spaced">
-      <h2>Unscripted Chats</h2>
+      <h2>Chats</h2>
       <form method="post" action="/api/chats">
         <button type="submit">New Chat</button>
       </form>
       {recent}
       {rest}
     </section>
+    <p><a href="/sub_agents">Sub-agents</a> · <a href="/settings">Settings</a></p>
     """
+
+
+def render_home_page() -> str:
+    """Full HTML for ``GET /``."""
+    return _ui._render_base("Crack", render_home_section())
 
 
 # -- chat page ----------------------------------------------------------------
 
 
 def render_chat_answer(turns: list[dict]) -> list[str]:
-    """One exchange's agent output as a list of msg fragments."""
-    render = _render()
-    parts: list[str] = []
+    """One exchange's agent output as stable per-turn msg fragments.
+
+    Each persisted turn is one append-only fragment (tools + that turn's own
+    text). Do not combine assistant texts into a single growing ``Clanker:``
+    block — that re-indexes on every poll and duplicates under beforeend.
+    """
     agent_turns = [t for t in turns if t.get("kind") != "user_prompt"]
-    parts.extend(render.render_turn_msgs(agent_turns, include_text=False))
-    answer = "\n\n".join(
-        cleaned
-        for turn in agent_turns
-        if (cleaned := render._clean_turn_text(turn.get("text", "")))
-    )
-    if answer:
-        parts.append(
-            '<div class="stage-msg chat-assistant"><strong>Clanker:</strong>'
-            f"{_ui._render_markdown(answer)}</div>"
-        )
-    return parts
+    return _render().render_turn_msgs(agent_turns, include_text=True)
 
 
 def render_chat_form(chat_id: str, info: dict) -> str:
@@ -186,10 +250,94 @@ def render_user_question_form(chat_id: str, run_id: str, question: dict) -> str:
     """
 
 
-def render_run_tree(chat_id: str) -> str:
-    """Live fragment listing sub-agent runs for this chat (statuses, planner forms)."""
-    from crack_server.stages.qa import render_questions_form
+def _run_phase_class(phase: str) -> str:
+    if phase in ("running", "resuming", "revising", "awaiting_answers", "writing"):
+        return "running"
+    if phase == "done":
+        return "done"
+    if phase == "awaiting_user":
+        return "awaiting"
+    if phase in ("error", "stopped"):
+        return "error"
+    return phase or "idle"
 
+
+def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, list[str]]) -> str:
+    """One bordered sub-agent card with full transcript and nested children."""
+    from crack_server.questions import render_questions_form
+
+    esc = _ui._esc
+    render = _render()
+    state = paths.run_state(chat_id, run_id).read()
+    phase = state.get("phase") or "?"
+    persona = state.get("persona", "?")
+    depth = state.get("depth", "?")
+    safe_run = esc(run_id)
+    phase_cls = _run_phase_class(str(phase))
+
+    actions = ""
+    if phase not in ("done", "error", "stopped"):
+        actions += (
+            f' <button class="contrast compact-btn" '
+            f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/stop" '
+            f'hx-target="#subagent-run-tree" hx-swap="outerHTML">Stop</button>'
+        )
+    if phase in ("error", "stopped"):
+        actions += (
+            f' <button class="secondary compact-btn" '
+            f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/retry" '
+            f'hx-target="#subagent-run-tree" hx-swap="outerHTML">Retry</button>'
+        )
+    error = ""
+    if phase == "error" and state.get("error"):
+        error = f'<p class="error"><small>{esc(str(state["error"]))}</small></p>'
+
+    form_html = ""
+    if phase == "awaiting_user" and state.get("pending_question"):
+        form_html = render_user_question_form(chat_id, run_id, state["pending_question"])
+    if phase == "awaiting_answers" and state.get("pending_questions"):
+        form_html = render_questions_form(
+            f"/api/chats/{chat_id}/sub_agents/runs/{run_id}/answers",
+            "#subagent-run-tree",
+            int(state.get("round", 1)),
+            None,
+            state["pending_questions"],
+            meta=f"Planner round {state.get('round', 1)} — answer to continue:",
+        )
+        form_html += (
+            f'<form class="ask-user-form" '
+            f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/continue" '
+            f'hx-target="#subagent-run-tree" hx-swap="outerHTML">'
+            f'<button type="submit">Continue to plan (skip more questions)</button></form>'
+        )
+
+    turns = state.get("turns") or []
+    errors = state.get("errors") or []
+    transcript = "".join(render.render_turn_msgs(turns, errors=errors, include_text=True))
+    if not transcript:
+        transcript = '<p class="muted"><small>No turns yet.</small></p>'
+
+    child_html = "".join(
+        _render_run_card(chat_id, child_id, children_by_parent)
+        for child_id in children_by_parent.get(run_id, [])
+    )
+    status_dot = f'<span class="run-status-dot phase-{esc(phase_cls)}" aria-hidden="true"></span>'
+    return (
+        f'<div class="subagent-card phase-{esc(phase_cls)}" data-run-id="{safe_run}">'
+        f'<div class="subagent-card-header">'
+        f"{status_dot}"
+        f"<strong>{esc(persona)}</strong> "
+        f'<small class="muted">depth {esc(str(depth))} · <code>{esc(phase)}</code> · '
+        f'<a href="/sub_agents/runs/{safe_run}">{safe_run}</a></small>'
+        f"{actions}</div>"
+        f"{error}{form_html}"
+        f'<div class="subagent-transcript">{transcript}</div>'
+        f"{child_html}</div>"
+    )
+
+
+def render_run_tree(chat_id: str) -> str:
+    """Recursive bordered sub-agent cards nested under this chat."""
     esc = _ui._esc
     run_ids = paths.list_run_ids(chat_id)
     if not run_ids:
@@ -198,57 +346,27 @@ def render_run_tree(chat_id: str) -> str:
             f'data-chat-id="{esc(chat_id)}"></div>'
         )
 
-    rows: list[str] = []
+    children_by_parent: dict[str, list[str]] = {}
+    roots: list[str] = []
     active = False
-    for run_id in sorted(run_ids, reverse=True):
+    for run_id in run_ids:
         state = paths.run_state(chat_id, run_id).read()
         phase = state.get("phase") or "?"
         if phase not in ("done", "error", "stopped"):
             active = True
-        persona = state.get("persona", "?")
-        depth = state.get("depth", "?")
-        safe_run = esc(run_id)
-        link = f'<a href="/sub_agents/runs/{safe_run}">{safe_run}</a>'
-        actions = ""
-        if phase not in ("done", "error", "stopped"):
-            actions += (
-                f' <button class="contrast compact-btn" '
-                f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/stop" '
-                f'hx-target="#subagent-run-tree" hx-swap="outerHTML">Stop</button>'
-            )
-        if phase in ("error", "stopped"):
-            actions += (
-                f' <button class="secondary compact-btn" '
-                f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/retry" '
-                f'hx-target="#subagent-run-tree" hx-swap="outerHTML">Retry</button>'
-            )
-        error = ""
-        if phase == "error" and state.get("error"):
-            error = f'<br><small class="error">{esc(str(state["error"]))}</small>'
-        form_html = ""
-        if phase == "awaiting_user" and state.get("pending_question"):
-            form_html = render_user_question_form(chat_id, run_id, state["pending_question"])
-        if phase == "awaiting_answers" and state.get("pending_questions"):
-            form_html = render_questions_form(
-                f"/api/chats/{chat_id}/sub_agents/runs/{run_id}/answers",
-                "#subagent-run-tree",
-                int(state.get("round", 1)),
-                None,
-                state["pending_questions"],
-                meta=f"Planner round {state.get('round', 1)} — answer to continue:",
-            )
-            form_html += (
-                f'<form class="ask-user-form" '
-                f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/continue" '
-                f'hx-target="#subagent-run-tree" hx-swap="outerHTML">'
-                f'<button type="submit">Continue to plan (skip more questions)</button></form>'
-            )
-        rows.append(
-            f'<li class="subagent-run phase-{esc(phase)}">'
-            f'<strong>{esc(persona)}</strong> depth {esc(str(depth))} · '
-            f'<code>{esc(phase)}</code> · {link}{actions}{error}{form_html}</li>'
-        )
+        parent_kind = state.get("parent_kind")
+        parent_id = state.get("parent_id")
+        if parent_kind == "run" and parent_id in run_ids:
+            children_by_parent.setdefault(str(parent_id), []).append(run_id)
+        else:
+            roots.append(run_id)
 
+    # Stable newest-first among siblings.
+    roots.sort(reverse=True)
+    for kids in children_by_parent.values():
+        kids.sort(reverse=True)
+
+    cards = "".join(_render_run_card(chat_id, rid, children_by_parent) for rid in roots)
     poll_attrs = ""
     if active:
         poll_attrs = (
@@ -258,7 +376,7 @@ def render_run_tree(chat_id: str) -> str:
     return (
         f'<div id="subagent-run-tree" class="subagent-run-tree" '
         f'data-chat-id="{esc(chat_id)}"{poll_attrs}>'
-        f'<h3>Sub-agent runs</h3><ul>{"".join(rows)}</ul></div>'
+        f"<h3>Sub-agent runs</h3>{cards}</div>"
     )
 
 

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from crack_server import attachments, chats, paths, ui as _ui
-from crack_server.stages.render import model_select, render_turn_msgs
+from crack_server.render import model_select, render_turn_msgs
 from crack_server.sub_agents import MAX_DEPTH, ask_user, registry, signals, wait
 from crack_server.sub_agents import runner
 

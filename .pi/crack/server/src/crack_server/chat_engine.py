@@ -20,7 +20,7 @@ from typing import Callable
 
 from crack_server import pi_runner
 from crack_server.state import JsonState
-from crack_server.stages.steprun import (
+from crack_server.steprun import (
     error_recorder,
     prompt_recorder,
     record_chat_errors,
@@ -72,7 +72,7 @@ async def run_exchange(
     when the hop was externally stopped ("idle" for unscripted chats,
     "stopped" for the Finished stage). ``media_dir`` / ``media_url_prefix``
     (optional) enable image-thumbnail persistence for read/analyze_image tool
-    calls (see ``stages.steprun.attach_media_to_blocks``).
+    calls (see ``steprun.attach_media_to_blocks``).
     """
     start = time.monotonic()
     with record_chat_errors(state, log_message=f"{log_prefix}: exchange failed for {ident}"):

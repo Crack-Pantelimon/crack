@@ -1,7 +1,0 @@
-{
-  "models": {
-    "draft": "nvidia/z-ai/glm-5.2",
-    "final": "nvidia/nemotron-3-ultra-550b-a55b",
-    "write": "nvidia/nemotron-3-ultra-550b-a55b"
-  }
-}

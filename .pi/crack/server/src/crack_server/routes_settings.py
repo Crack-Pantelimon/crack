@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 
 from crack_server import ui as _ui
 from crack_server import vision
-from crack_server.stages.render import model_select
+from crack_server.render import model_select
 
 router = APIRouter()
 

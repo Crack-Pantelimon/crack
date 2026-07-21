@@ -2,12 +2,8 @@
 
 Covers: arun_pi_text's ``@<path>`` image args, the /api/vision/analyze
 validation + happy path, media-route sanitization and 404s, the
-turn-persistence media hook (skip invalid silently, attach ``media`` for valid
-images), attachment upload validation + manifest, the
-read_all_prompts_joined prepend, and chats.post_message's prepend-then-clear.
-
-A 1x1 PNG (base64) stands in for real image content; imagemagick ``identify``
-(present in the container) is the validity gate, so no Pillow needed.
+turn-persistence media hook, attachment upload validation + manifest, and
+chats.post_message's prepend-then-clear.
 """
 
 from __future__ import annotations
@@ -22,11 +18,10 @@ import pytest
 from fastapi import HTTPException
 from starlette.datastructures import UploadFile
 
-from crack_server import attachments, chats, paths, pi_runner, routes_chats, routes_tasks, routes_sub_agents, vision
+from crack_server import attachments, chats, paths, pi_runner, render, routes_chats, routes_sub_agents, steprun, vision
 from crack_server.routes_vision import api_vision_analyze
 from crack_server.state import JsonState
-from crack_server.stages import render, steprun
-from crack_server.stages.steprun import TurnPersister
+from crack_server.steprun import TurnPersister
 from tests.test_plan41 import fake_pi  # noqa: F401  (fixture)
 from tests.test_wait_join import _json_request
 
@@ -152,22 +147,6 @@ async def test_vision_analyze_resolves_relative_paths(root, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_task_media_route(root):
-    paths.create_task("t1", "T")
-    _write_png(paths.task_media_dir("t1") / "abc123.png")
-    assert routes_tasks.task_media("t1", "abc123.png").status_code == 200
-    with pytest.raises(HTTPException) as excinfo:
-        routes_tasks.task_media("t1", "missing.png")
-    assert excinfo.value.status_code == 404
-    # Path traversal is rejected by the basename check.
-    with pytest.raises(HTTPException) as excinfo:
-        routes_tasks.task_media("t1", "../../info.json")
-    assert excinfo.value.status_code == 404
-    # Malformed task id → 400 from _check_task_id.
-    with pytest.raises(HTTPException) as excinfo:
-        routes_tasks.task_media("bad id!!", "abc123.png")
-    assert excinfo.value.status_code == 400
-
 
 def test_chat_media_route(root):
     paths.create_chat(CHAT_ID, "moonshotai/x")
@@ -244,8 +223,9 @@ def test_persister_without_media_dir_leaves_blocks_alone(root):
 
 def test_add_attachment_validates_and_describes(root, monkeypatch):
     monkeypatch.setattr(vision, "analyze", _fake_describe("a screenshot"))
-    state = paths.task_attachments_state("t1")
-    directory = paths.task_attachments_dir("t1")
+    paths.create_chat(CHAT_ID, "moonshotai/x")
+    state = paths.chat_attachments_state(CHAT_ID)
+    directory = paths.chat_attachments_dir(CHAT_ID)
     entry = asyncio.run(attachments.add_attachment(state, directory, PNG_BYTES, "shot.png"))
     assert entry["description"] == "a screenshot"
     assert Path(entry["saved_path"]).is_file()
@@ -310,16 +290,6 @@ def test_format_block_shape():
     )
 
 
-def test_read_all_prompts_joined_prepends_attachments(root):
-    paths.create_task("t1", "T")
-    paths.write_prompt("t1", "prompt.md", "do the thing")
-    assert paths.read_all_prompts_joined("t1") == "do the thing"
-
-    _seed_manifest(paths.task_attachments_state("t1"))
-    joined = paths.read_all_prompts_joined("t1")
-    assert joined.startswith("User attached 1 image:\n- /abs/x.png\n  - shot\n")
-    assert joined.endswith("----\n\ndo the thing")
-
 
 def test_chat_post_message_weaves_then_clears(root):
     paths.create_chat(CHAT_ID, "moonshotai/x")
@@ -379,11 +349,11 @@ def test_render_user_prompt_msg_renders_media_thumbs():
         "kind": "user_prompt",
         "compiled": "do it",
         "label": "chat",
-        "media": [{"url": "/tasks/t1/attachments/x.png", "src": "/abs/x.png",
+        "media": [{"url": "/chats/c1/attachments/x.png", "src": "/abs/x.png",
                    "description": "shot"}],
     })
     assert 'class="tool-thumb"' in html
-    assert 'src="/tasks/t1/attachments/x.png"' in html
+    assert 'src="/chats/c1/attachments/x.png"' in html
     assert 'title="/abs/x.png"' in html
     # No media → no thumb strip.
     assert "tool-thumb" not in render.render_user_prompt_msg(
@@ -394,7 +364,7 @@ def test_render_user_prompt_msg_renders_media_thumbs():
 def test_prompt_recorder_attaches_media_list_and_callable(tmp_path):
     state = JsonState(tmp_path / "state.json")
     persister = TurnPersister(state)
-    rows = [{"url": "/tasks/t1/attachments/x.png", "src": "/a/x.png",
+    rows = [{"url": "/chats/c1/attachments/x.png", "src": "/a/x.png",
              "description": "shot"}]
 
     steprun.prompt_recorder(persister, "hop 1", "t.md", media=rows)(
@@ -412,12 +382,3 @@ def test_prompt_recorder_attaches_media_list_and_callable(tmp_path):
     assert "media" not in turns[2]
 
 
-def test_task_prompt_media_reads_task_manifest(root):
-    paths.create_task("t1", "T")
-    assert steprun.task_prompt_media("t1") == []
-    _seed_manifest(paths.task_attachments_state("t1"))
-    assert steprun.task_prompt_media("t1") == [{
-        "url": "/tasks/t1/attachments/abcdef123456.png",
-        "src": "/abs/x.png",
-        "description": "shot",
-    }]

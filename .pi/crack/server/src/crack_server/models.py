@@ -2,7 +2,7 @@
 
 Page renders read the cache only (B21): when it is stale (>24h) or missing,
 the render path enqueues a ``__models__`` refresh job on the worker queue
-(mirroring the ``TITLE_JOB_SLUG`` pattern) instead of shelling out mid-render
+(mirroring the chat/sub-agent job pattern) instead of shelling out mid-render
 — a page load can never block on the 60s ``pi --list-models`` subprocess. The
 worker's refresh writes the cache; on fetch failure the stale cache (or a
 two-model fallback list) is kept.

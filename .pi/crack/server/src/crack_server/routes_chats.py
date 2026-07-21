@@ -16,6 +16,36 @@ from crack_server.ui import _esc, _render_base
 router = APIRouter()
 
 
+@router.get("/", response_class=HTMLResponse)
+def home() -> HTMLResponse:
+    """Chats-only home page."""
+    return HTMLResponse(chats.render_home_page())
+
+
+@router.get("/api/chats/dots")
+def api_chat_dots() -> JSONResponse:
+    """Status dots for the last 5 chats (sidebar/home)."""
+    ids = paths.list_chat_ids()[: chats.RECENT_CHATS]
+    return JSONResponse({cid: chats.chat_status_dot(cid) for cid in ids})
+
+
+@router.get("/api/chats/dots/wait")
+async def api_chat_dots_wait(since: float = Query(default=0.0)) -> JSONResponse:
+    """Long-poll until any of the last 5 chats' state mtimes advance."""
+    ids = paths.list_chat_ids()[: chats.RECENT_CHATS]
+    deadline = time.monotonic() + 25.0
+    while True:
+        mtimes = [chat_state_mtime(cid) for cid in ids]
+        latest = max(mtimes) if mtimes else 0.0
+        if latest > since:
+            dots = {cid: chats.chat_status_dot(cid) for cid in ids}
+            return JSONResponse({"since": latest, "changed": True, "dots": dots})
+        if time.monotonic() >= deadline:
+            dots = {cid: chats.chat_status_dot(cid) for cid in ids}
+            return JSONResponse({"since": since, "changed": False, "dots": dots})
+        await asyncio.sleep(0.3)
+
+
 @router.post("/api/chats")
 def api_create_chat() -> Response:
     """Create a new unscripted chat and redirect (303) into its chat page."""
