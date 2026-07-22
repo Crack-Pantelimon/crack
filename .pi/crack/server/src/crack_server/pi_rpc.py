@@ -115,10 +115,22 @@ async def _launch_rpc_proc(
     )
 
 
+class _StdinClosed(RuntimeError):
+    """Raised when the RPC child's stdin is already gone (e.g. Stop killed it)."""
+
+
 async def _send_line(proc: asyncio.subprocess.Process, payload: dict) -> None:
     assert proc.stdin is not None
-    proc.stdin.write((json.dumps(payload) + "\n").encode())
-    await proc.stdin.drain()
+    try:
+        proc.stdin.write((json.dumps(payload) + "\n").encode())
+        await proc.stdin.drain()
+    except (BrokenPipeError, ConnectionResetError) as e:
+        raise _StdinClosed(str(e)) from e
+    except RuntimeError as e:
+        # uvloop: "unable to perform operation on <WriteUnixTransport closed=True…>"
+        if "closed" in str(e).lower():
+            raise _StdinClosed(str(e)) from e
+        raise
 
 
 async def _send_abort(proc: asyncio.subprocess.Process) -> None:
@@ -271,6 +283,7 @@ async def _run_single_rpc_attempt(
     todo_already: bool,
     sandbox: str | None,
     env_extra: dict[str, str] | None,
+    on_first_byte: Callable[[float], None] | None = None,
 ) -> _RpcAttemptResult:
     sessions_dir.mkdir(parents=True, exist_ok=True)
     argv = _build_rpc_cmd(
@@ -287,6 +300,7 @@ async def _run_single_rpc_attempt(
     logger.info("%s hop %d: full prompt:\n%s", log_prefix, hop, message)
 
     await async_wait_for_rate_limit(model)
+    launch_at = time.monotonic()
     proc = await _launch_rpc_proc(argv, sandbox=sandbox, env=env_extra)
 
     if pid_file is not None and proc.pid:
@@ -307,23 +321,54 @@ async def _run_single_rpc_attempt(
     prompt_message = message
     pi_failure: PiError | None = None
     infrastructure_failure = False
+    first_byte_reported = False
+
+    def _note_first_byte() -> None:
+        nonlocal first_byte_reported
+        if first_byte_reported or on_first_byte is None:
+            return
+        first_byte_reported = True
+        try:
+            on_first_byte(time.monotonic() - launch_at)
+        except Exception:
+            logger.exception("%s hop %d: on_first_byte raised", log_prefix, hop)
+
+    def _stopped_result() -> _RpcAttemptResult:
+        return _RpcAttemptResult(
+            reason="stopped",
+            settled=True,
+            persisted=0,
+            pi_failure=None,
+            infrastructure_failure=False,
+            stderr_tail="\n".join(stderr_tail),
+        )
 
     try:
-        retry_resp = await _rpc_command(
-            proc,
-            {"type": "set_auto_retry", "enabled": True},
-            expect_command="set_auto_retry",
-            timeout=15.0,
-        )
+        try:
+            retry_resp = await _rpc_command(
+                proc,
+                {"type": "set_auto_retry", "enabled": True},
+                expect_command="set_auto_retry",
+                timeout=15.0,
+            )
+        except _StdinClosed:
+            if stop_check is not None and stop_check():
+                return _stopped_result()
+            raise
         if retry_resp is not None and not retry_resp.get("success"):
             err = str(retry_resp.get("error") or retry_resp.get("message") or "set_auto_retry failed")
             pi_failure = PiError("pi rejected set_auto_retry", detail=err)
 
         if pi_failure is None:
-            await _send_line(
-                proc,
-                {"id": "p1", "type": "prompt", "message": prompt_message},
-            )
+            try:
+                await _send_line(
+                    proc,
+                    {"id": "p1", "type": "prompt", "message": prompt_message},
+                )
+            except _StdinClosed:
+                if stop_check is not None and stop_check():
+                    return _stopped_result()
+                raise
 
         acc = _TurnAccumulator()
         reason = "agent_end"
@@ -348,7 +393,10 @@ async def _run_single_rpc_attempt(
                 return
             reason = new_reason
             abort_sent = True
-            await _send_abort(proc)
+            try:
+                await _send_abort(proc)
+            except _StdinClosed:
+                pass
 
         if pi_failure is None:
             assert proc.stdout is not None
@@ -356,6 +404,7 @@ async def _run_single_rpc_attempt(
                 line_b = await proc.stdout.readline()
                 if not line_b:
                     break
+                _note_first_byte()
                 line = line_b.decode("utf-8", errors="replace").strip()
                 if not line:
                     continue
@@ -537,6 +586,7 @@ async def arun_agent_hop_rpc(
     todo_already: bool = False,
     sandbox: str | None = None,
     resume_session: bool = False,
+    on_first_byte: Callable[[float], None] | None = None,
     **_ignored,
 ) -> str:
     """Run one agent hop over pi's RPC protocol (async).
@@ -589,6 +639,7 @@ async def arun_agent_hop_rpc(
             todo_already=todo_already,
             sandbox=sandbox,
             env_extra=env_extra,
+            on_first_byte=on_first_byte,
         )
 
         if result.pi_failure is None:

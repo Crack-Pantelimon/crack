@@ -74,6 +74,23 @@ def test_reason_note_shown_for_notable_reasons():
     assert "turn-reason" in html
 
 
+def test_terminal_reason_row_labels():
+    assert "Stopped by user" in render.render_terminal_reason_row("stopped")
+    assert "wait_join" in render.render_terminal_reason_row("waiting_children")
+    assert "Agent finished" in render.render_terminal_reason_row("agent_end")
+    assert render.render_terminal_reason_row("swap") == ""
+    assert render.render_terminal_reason_row("time_cap") == ""
+
+
+def test_prep_timing_row_shows_elapsed():
+    html = render.render_prep_timing_row({
+        "id": "sandbox", "label": "sandbox ready", "elapsed": 1.234, "at": 1.0,
+    })
+    assert "prep-timing" in html
+    assert "1.23s" in html
+    assert "sandbox ready" in html
+
+
 # ---------------------------------------------------------------------------
 # trajectory rendering: tag + divider
 # ---------------------------------------------------------------------------

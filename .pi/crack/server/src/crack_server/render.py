@@ -324,6 +324,51 @@ def _reason_note(reason: str) -> str:
     return f'<div class="turn-reason"><small class="muted">⏱ {_ui._esc(label)}</small></div>'
 
 
+# Terminal reason for a whole exchange (why the agent stopped hopping). Rendered
+# as a dedicated trajectory row at the bottom of the exchange so the user can see
+# *why* the run ended — most importantly a user interruption, which otherwise
+# leaves no trace in the trajectory at all.
+def render_terminal_reason_row(reason: str) -> str:
+    """A trajectory row explaining why the exchange's agent stopped. Empty for
+    reasons that are not terminal (``swap``/``time_cap`` continue the run) or that
+    already surface elsewhere (``empty`` shows an error card)."""
+    esc = _ui._esc
+    if reason == "waiting_children":
+        return (
+            '<div class="stage-msg terminal-reason terminal-reason--waiting">'
+            '<span class="terminal-reason-line">⏳ Agent ended its turn with sub-agents '
+            "still running — waiting for them (implicit wait_join).</span></div>"
+        )
+    if reason == "stopped":
+        return (
+            '<div class="stage-msg terminal-reason terminal-reason--stopped">'
+            '<span class="terminal-reason-line">⏹ Stopped by user — run interrupted.'
+            "</span></div>"
+        )
+    if reason in ("agent_end", "sentinel"):
+        return (
+            '<div class="stage-msg terminal-reason">'
+            '<span class="terminal-reason-line"><small class="muted">■ Agent finished '
+            "its turn — no pending tools or sub-agents.</small></span></div>"
+        )
+    return ""
+
+
+def render_prep_timing_row(entry: dict) -> str:
+    """UI-only debug line for a preparatory stage (sandbox / first byte / …)."""
+    esc = _ui._esc
+    label = str(entry.get("label") or entry.get("id") or "prep")
+    elapsed = entry.get("elapsed")
+    elapsed_s = f"{float(elapsed):.2f}s" if elapsed is not None else "?"
+    at = entry.get("at")
+    ago = f" · {_ui._format_ago(float(at))}" if at else ""
+    return (
+        '<div class="stage-msg prep-timing">'
+        f'<span class="prep-timing-line"><small class="muted">⏱ {esc(label)}: '
+        f"{esc(elapsed_s)}{esc(ago)}</small></span></div>"
+    )
+
+
 def new_model_state() -> dict:
     """Mutable tracker threaded through :func:`render_turn_msgs` calls so model
     switches are detected across exchanges (chats) or across a run's hops."""
@@ -486,6 +531,14 @@ def render_turn_msgs(
         if kind == "ask_user_qa":
             from crack_server import chats
             out.append(chats.render_answered_question(entry.get("qa") or {}))
+            continue
+        if kind == "terminal_reason":
+            row = render_terminal_reason_row(str(entry.get("reason") or ""))
+            if row:
+                out.append(row)
+            continue
+        if kind == "prep_timing":
+            out.append(render_prep_timing_row(entry))
             continue
         if kind and kind != "turn":
             continue

@@ -129,6 +129,12 @@ async def run_exchange(
             if reason == "empty":
                 s["error"] = "model returned empty responses"
                 s["error_detail"] = ""
+            # Record why this exchange's agent stopped so the trajectory can show a
+            # terminal row (user interruption vs. natural end). ``idx`` addresses the
+            # exchange we just ran; guard against a concurrent truncation.
+            exs = s.get("exchanges") or []
+            if 0 <= idx < len(exs):
+                exs[idx]["stop_reason"] = reason
             return s
 
         state.update(_finish)

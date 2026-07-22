@@ -45,7 +45,7 @@ def _write_png(path: Path) -> Path:
 
 
 def _fake_describe(text: str = "a screenshot"):
-    async def fake_analyze(prompt, image_paths):
+    async def fake_analyze(prompt, image_paths, **_kw):
         return text
 
     return fake_analyze

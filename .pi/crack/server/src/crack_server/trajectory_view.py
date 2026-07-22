@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -275,6 +276,7 @@ def merge_exchange_sidecars(
     prompt_meta: dict[str, dict] = {}
     error_rows: list[dict] = []
     qa_rows: list[dict] = []
+    terminal_rows: list[dict] = []
     for i, exchange in enumerate(exchanges):
         prompt_entry = next(
             (t for t in (exchange.get("turns") or []) if t.get("kind") == "user_prompt"),
@@ -308,6 +310,23 @@ def merge_exchange_sidecars(
             e["kind"] = "error"
             e["id"] = f"err-{i}-{j}"
             error_rows.append(e)
+        stop_reason = exchange.get("stop_reason")
+        if stop_reason:
+            # Place after the exchange's last turn (or at "now" when stopped
+            # before any trajectory landed).
+            at = None
+            for t in reversed(exchange.get("turns") or []):
+                if t.get("at") is not None:
+                    at = t["at"]
+                    break
+            if at is None:
+                at = time.time()
+            terminal_rows.append({
+                "kind": "terminal_reason",
+                "id": f"stop-{i}",
+                "reason": stop_reason,
+                "at": at,
+            })
 
     out: list[dict] = []
     # The session ndjson is the sole source of user-prompt rows: a prompt shows
@@ -346,7 +365,7 @@ def merge_exchange_sidecars(
         else:
             last = ep
         keyed.append((ep, 0, idx, row))
-    for idx, side in enumerate(error_rows + qa_rows):
+    for idx, side in enumerate(error_rows + qa_rows + terminal_rows):
         ep = _row_epoch(side)
         keyed.append((ep if ep is not None else last, 1, idx, side))
     keyed.sort(key=lambda item: (item[0], item[1], item[2]))

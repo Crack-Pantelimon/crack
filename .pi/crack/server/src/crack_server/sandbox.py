@@ -390,3 +390,20 @@ async def destroy_sandbox(conv_id: str) -> None:
         logger.warning("podman rm -f %s failed (rc=%d): %s", name, rc, err or out)
     else:
         logger.info("destroyed sandbox %s", name)
+
+
+def container_exists_sync(name: str) -> bool:
+    rc, _, _ = _podman_sync("container", "exists", name)
+    return rc == 0
+
+
+async def path_is_file(name: str, path: str) -> bool:
+    """True when ``path`` is a regular file inside the sandbox."""
+    rc, _, _ = await _podman("exec", name, "test", "-f", path)
+    return rc == 0
+
+
+async def identify_ok(name: str, path: str) -> bool:
+    """True when imagemagick ``identify`` accepts ``path`` inside the sandbox."""
+    rc, _, _ = await _podman("exec", name, "identify", path, timeout=20)
+    return rc == 0

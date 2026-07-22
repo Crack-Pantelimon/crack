@@ -57,16 +57,23 @@ def set_vision_model(model_id: str) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-async def analyze(prompt: str, image_paths: list[Path]) -> str:
+async def analyze(
+    prompt: str,
+    image_paths: list[Path],
+    *,
+    sandbox: str | None = None,
+) -> str:
     """Ask the vision model ``prompt`` about ``image_paths``; return its text.
 
     Paths must be validated by the caller (existence + real image) — this is a
-    thin wrapper over the one-off pi text runner.
+    thin wrapper over the one-off pi text runner. When ``sandbox`` is set the
+    vision ``pi`` runs inside that container so sandbox-only paths resolve.
     """
     text, _elapsed = await pi_proc.arun_pi_text(
         prompt,
         log_prefix="vision",
         model=vision_model(),
         image_paths=image_paths,
+        sandbox=sandbox,
     )
     return text

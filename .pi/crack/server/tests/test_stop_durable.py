@@ -20,6 +20,24 @@ def test_stop_chat_sets_stop_requested(chat_root, monkeypatch):
     assert paths.chat_state(chat_root).read()["stop_requested"] is True
 
 
+def test_stop_chat_stamps_terminal_reason_and_clears_phase(chat_root, monkeypatch):
+    monkeypatch.setattr(chats.pi_runner, "kill_pid_file", lambda _p: False)
+    chat = paths.chat_state(chat_root)
+
+    def _seed(s: dict) -> dict:
+        s["phase"] = "chatting"
+        s["exchanges"] = [{"user": "hi", "turns": []}]
+        return s
+
+    chat.update(_seed)
+    html = chats.stop_chat(chat_root).body.decode()
+    state = chat.read()
+    assert state["phase"] == "idle"
+    assert state["exchanges"][-1]["stop_reason"] == "stopped"
+    assert "Stopped by user" in html
+    assert "stage-spinner" not in html
+
+
 def test_pop_pending_drains_queue_while_stopped(chat_root):
     chat = paths.chat_state(chat_root)
 

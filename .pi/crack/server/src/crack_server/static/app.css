@@ -665,6 +665,28 @@ main.container-fluid {
   padding: 0;
 }
 
+.prep-timing {
+  padding: 0.15rem 0;
+}
+
+.prep-timing-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.terminal-reason {
+  padding: 0.4rem 0;
+  border-top: 1px dashed var(--pico-muted-border-color, #ddd);
+  margin-top: 0.5rem;
+}
+
+.terminal-reason--stopped .terminal-reason-line {
+  color: var(--pico-del-color, #a00);
+}
+
+.terminal-reason--waiting .terminal-reason-line {
+  color: var(--pico-primary, #0172ad);
+}
+
 .stage-message.chat-form,
 .finished-chat.chat-form,
 .chat-form {

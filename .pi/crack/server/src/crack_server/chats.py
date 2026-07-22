@@ -797,6 +797,9 @@ def render_chat_msgs(chat_id: str) -> list[str]:
     exchanges = state.get("exchanges") or []
     rows = trajectory_view.merge_exchange_sidecars(projected, exchanges)
     out: list[str] = []
+    # UI-only prep timings (sandbox / first byte / …) — not part of chat history.
+    for entry in state.get("ui_prep") or []:
+        out.append(render.render_prep_timing_row(entry))
     known_runs = set(paths.list_run_ids(chat_id))
     for row in rows:
         kind = row.get("kind")
@@ -1033,6 +1036,8 @@ def post_message(
             state.pop("pending_question", None)
             state.pop("error", None)
             state.pop("error_detail", None)
+            # Fresh prep strip for the new exchange.
+            state["ui_prep"] = []
             return state
 
         paths.chat_state(chat_id).update(_begin)
@@ -1106,6 +1111,12 @@ def stop_chat(chat_id: str) -> HTMLResponse:
         if state.get("phase") == "chatting":
             state["phase"] = "idle"
         state["pending"] = []
+        # Stamp a terminal reason on the open exchange immediately so the Stop
+        # response (and the next poll) show "Stopped by user" without waiting
+        # for the worker to finish tearing down the hop.
+        exs = state.get("exchanges") or []
+        if exs and not exs[-1].get("stop_reason"):
+            exs[-1]["stop_reason"] = "stopped"
         return state
 
     chat.update(_halt)
@@ -1228,14 +1239,55 @@ def _pop_pending(chat_id: str) -> dict | None:
     return taken
 
 
+def _clear_ui_prep(chat_id: str) -> None:
+    """Drop previous prep timings so a new exchange starts a fresh debug strip."""
+
+    def _clear(state: dict) -> dict:
+        state["ui_prep"] = []
+        return state
+
+    paths.chat_state(chat_id).update(_clear)
+
+
+def _append_ui_prep(chat_id: str, stage_id: str, label: str, elapsed: float) -> None:
+    """Append one completed prep stage (UI-only; bumps chat.json mtime for poll)."""
+
+    def _append(state: dict) -> dict:
+        rows = list(state.get("ui_prep") or [])
+        # Replace an existing stage with the same id (idempotent re-entry).
+        rows = [r for r in rows if r.get("id") != stage_id]
+        rows.append({
+            "id": stage_id,
+            "label": label,
+            "elapsed": round(float(elapsed), 3),
+            "at": time.time(),
+        })
+        state["ui_prep"] = rows
+        return state
+
+    paths.chat_state(chat_id).update(_append)
+
+
 async def run_chat(chat_id: str) -> None:
     """Worker side of a CHAT_JOB_SLUG job: drain child reports, then process
     pending exchanges FIFO until the queue is empty."""
     chat = paths.chat_state(chat_id)
     sandbox_name: str | None = None
     if sandbox.sandbox_enabled():
+        t0 = time.monotonic()
         sandbox_name = await sandbox.ensure_sandbox(chat_id)
+        _append_ui_prep(
+            chat_id, "sandbox",
+            "sandbox ready (frozen git tree + overlay)",
+            time.monotonic() - t0,
+        )
+        t1 = time.monotonic()
         await patch.capture_baseline(sandbox_name, paths.chat_dir(chat_id))
+        _append_ui_prep(
+            chat_id, "baseline",
+            "git baseline captured",
+            time.monotonic() - t1,
+        )
 
     def stop_check() -> bool:
         return bool(chat.read().get("stop_requested"))
@@ -1262,12 +1314,39 @@ async def run_chat(chat_id: str) -> None:
                 return
             if sandbox.sandbox_enabled() and sandbox_name:
                 if await patch.finalize_chat_sandbox(chat_id, sandbox_name):
+                    t0 = time.monotonic()
                     sandbox_name = await sandbox.ensure_sandbox(chat_id)
+                    _append_ui_prep(
+                        chat_id, "sandbox",
+                        "sandbox ready (frozen git tree + overlay)",
+                        time.monotonic() - t0,
+                    )
+                    t1 = time.monotonic()
                     await patch.capture_baseline(sandbox_name, paths.chat_dir(chat_id))
+                    _append_ui_prep(
+                        chat_id, "baseline",
+                        "git baseline captured",
+                        time.monotonic() - t1,
+                    )
                     continue
             elif sandbox.sandbox_enabled():
                 await sandbox.destroy_sandbox(chat_id)
             return
+
+        # Fresh prep strip per exchange (sandbox timings from above stay if this
+        # is the first hop of the job; otherwise we only add pi_first_byte).
+        if not (chat.read().get("ui_prep") or []):
+            pass  # sandbox timings already recorded at job start
+        else:
+            # Keep sandbox/baseline lines; drop a previous hop's first-byte line.
+            def _trim(state: dict) -> dict:
+                state["ui_prep"] = [
+                    r for r in (state.get("ui_prep") or [])
+                    if r.get("id") != "pi_first_byte"
+                ]
+                return state
+
+            chat.update(_trim)
 
         info = paths.chat_info_state(chat_id).read()
         planner_model = info.get("planner_model") or info.get("model") or DEFAULT_CHAT_MODEL
@@ -1288,6 +1367,14 @@ async def run_chat(chat_id: str) -> None:
                 or info.get("model")
                 or DEFAULT_CHAT_MODEL
             )
+
+        def _on_first_byte(elapsed: float) -> None:
+            _append_ui_prep(
+                chat_id, "pi_first_byte",
+                "pi spawned · first byte",
+                elapsed,
+            )
+
         await chat_engine.run_exchange(
             state=chat,
             ident=chat_id,
@@ -1308,6 +1395,7 @@ async def run_chat(chat_id: str) -> None:
                 "stop_check": stop_check,
                 "waiting_check": lambda: bool(chat.read().get("waiting_on")),
                 "sandbox": sandbox_name,
+                "on_first_byte": _on_first_byte,
             },
             pre_stop_check=stop_check,
             on_first_exchange=(
@@ -1325,6 +1413,23 @@ async def run_chat(chat_id: str) -> None:
             media_dir=paths.chat_dir(chat_id) / "media",
             media_url_prefix=f"/chats/{chat_id}/media",
         )
+
+        # If the agent finished while children are still running, surface that as
+        # an implicit wait_join rather than a plain "agent finished" row.
+        def _maybe_waiting(state: dict) -> dict:
+            exs = state.get("exchanges") or []
+            if not exs:
+                return state
+            last = exs[-1]
+            if (
+                last.get("stop_reason") in ("agent_end", "sentinel")
+                and _has_active_runs(chat_id)
+            ):
+                last["stop_reason"] = "waiting_children"
+            return state
+
+        chat.update(_maybe_waiting)
+
         if plan_active and not chat.read().get("pending_question"):
             paths.chat_info_state(chat_id).update(
                 lambda s: {**s, "graduated": True, "display_model": implementer_model}

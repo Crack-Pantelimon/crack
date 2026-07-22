@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -41,19 +42,35 @@ def test_recover_detached_hops_kills_orphan_pid_files(tmp_path, monkeypatch):
 
 
 def test_kill_pid_file_uses_meta_for_sandbox(tmp_path, monkeypatch):
-    """Sandbox STOP uses the meta sidecar, not hop manifests."""
+    """Sandbox STOP uses the meta sidecar, not hop manifests.
+
+    Importantly it must NOT fall through to a host-side killpg: the pid in the
+    file is the podman-exec child, which shares the in-process worker/uvicorn
+    process group — killpg would SIGTERM the server itself.
+    """
     from crack_server import pi_proc
 
     calls: list[tuple[str, str]] = []
+    killed_pgids: list[int] = []
 
     def fake_kill(sbx, sid):
         calls.append((sbx, sid))
 
+    real_killpg = os.killpg
+
+    def spy_killpg(pgid, sig):
+        killed_pgids.append(pgid)
+        return real_killpg(pgid, sig)
+
     monkeypatch.setattr(
         "crack_server.sandbox.kill_session_sync", fake_kill,
     )
+    monkeypatch.setattr(os, "killpg", spy_killpg)
     pid_file = tmp_path / "agent.pid"
     pid_file.write_text("99999", encoding="utf-8")
     _write_meta(pid_file, sandbox="crack-sbx-test", session_id="unscripted-x")
-    pi_proc.kill_pid_file(pid_file)
+    assert pi_proc.kill_pid_file(pid_file) is True
     assert calls == [("crack-sbx-test", "unscripted-x")]
+    assert killed_pgids == []
+    assert not pid_file.exists()
+    assert not pid_file.with_name("agent.meta.json").exists()

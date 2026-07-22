@@ -170,6 +170,18 @@ function crackContext(): { chatId: string; parentKind: string; parentId: string 
 	};
 }
 
+/** Conversation id whose sandbox this tool call is running in. */
+function sandboxConvId(): string | undefined {
+	const chatId = process.env.CRACK_CHAT_ID;
+	if (!chatId) return undefined;
+	// Sub-agent hops set PARENT_KIND=run and PARENT_ID=<their run_id>; the
+	// sandbox is named after that run. Main chats use the chat id.
+	if ((process.env.CRACK_PARENT_KIND ?? "chat") === "run") {
+		return process.env.CRACK_PARENT_ID || chatId;
+	}
+	return chatId;
+}
+
 async function hasRunningChildren(): Promise<boolean> {
 	const { chatId, parentKind, parentId } = crackContext();
 	const url =
@@ -478,6 +490,7 @@ export default function crack(pi: ExtensionAPI) {
 				const to = signal
 					? AbortSignal.any([signal, AbortSignal.timeout(600_000)])
 					: AbortSignal.timeout(600_000);
+				const convId = sandboxConvId();
 				let res: Response;
 				try {
 					res = await fetch(`${BASE}/api/vision/analyze`, {
@@ -486,6 +499,7 @@ export default function crack(pi: ExtensionAPI) {
 						body: JSON.stringify({
 							prompt: params.prompt,
 							image_paths: params.image_paths,
+							...(convId ? { conv_id: convId } : {}),
 						}),
 						signal: to,
 					});

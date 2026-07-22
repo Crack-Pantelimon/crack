@@ -112,8 +112,14 @@ async def arun_pi_text(
     stop_check: Callable[[], bool] | None = None,
     image_paths: list[Path] | None = None,
     record_error=None,
+    sandbox: str | None = None,
 ) -> tuple[str, float]:
-    """Run `pi` non-interactively with a single text prompt (async)."""
+    """Run `pi` non-interactively with a single text prompt (async).
+
+    When ``sandbox`` is set, the process runs inside that container (so image
+    paths resolve against the sandbox's ``/workspace``), matching how agent hops
+    already execute.
+    """
     if max_input_chars is not None and len(prompt) > max_input_chars:
         logger.info("%s: truncating prompt from %d to %d chars", log_prefix, len(prompt), max_input_chars)
         prompt = prompt[:max_input_chars]
@@ -124,7 +130,10 @@ async def arun_pi_text(
 
     logger.info("%s: full prompt:\n%s", log_prefix, prompt)
     logger.info("%s: timeout=%ss", log_prefix, PI_TIMEOUT_SECONDS)
-    logger.info("+ %s", shlex.join(cmd))
+    if sandbox:
+        logger.info("+ podman exec %s %s", sandbox, shlex.join(cmd))
+    else:
+        logger.info("+ %s", shlex.join(cmd))
 
     if record_prompt is not None:
         try:
@@ -149,7 +158,7 @@ async def arun_pi_text(
         await async_wait_for_rate_limit(model)
         start = time.monotonic()
         try:
-            result = await _arun_text_attempt(cmd, log_prefix, pid_file)
+            result = await _arun_text_attempt(cmd, log_prefix, pid_file, sandbox=sandbox)
         except subprocess.TimeoutExpired as e:
             elapsed = time.monotonic() - start
             logger.error("%s: pi timed out after %.2fs (attempt %d)", log_prefix, elapsed, attempt + 1)
@@ -204,13 +213,29 @@ def run_pi_text(*args, **kwargs) -> tuple[str, float]:
 
 
 async def _arun_text_attempt(
-    cmd: list[str], log_prefix: str, pid_file: Path | None
+    cmd: list[str],
+    log_prefix: str,
+    pid_file: Path | None,
+    *,
+    sandbox: str | None = None,
 ) -> subprocess.CompletedProcess:
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        start_new_session=True, cwd=str(project_root()),
-        limit=STREAM_LINE_LIMIT,
-    )
+    if sandbox:
+        from crack_server import sandbox as sandbox_mod
+
+        proc = await sandbox_mod.exec_in(
+            sandbox,
+            cmd,
+            cwd="/workspace",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            limit=STREAM_LINE_LIMIT,
+        )
+    else:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            start_new_session=True, cwd=str(project_root()),
+            limit=STREAM_LINE_LIMIT,
+        )
     if pid_file is not None:
         try:
             pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -264,12 +289,22 @@ def kill_pid_file(pid_file: Path) -> bool:
     sbx = meta.get("sandbox")
     session_id = meta.get("session_id")
     if sbx and session_id:
+        # Sandbox hop: the pid in ``pid_file`` is the host-side ``podman exec``
+        # process, which — because ``sandbox.exec_in`` does NOT start a new
+        # session — shares the in-process worker/uvicorn process group. A
+        # host-side ``killpg`` here would SIGTERM the whole crack-server (the
+        # worker runs in the uvicorn event loop), taking the UI down with it.
+        # Kill only the pi *inside* the sandbox; the podman-exec process exits on
+        # its own once its stdio peer dies. Do NOT fall through to the killpg.
         from crack_server import sandbox as sandbox_mod
 
         sandbox_mod.kill_session_sync(str(sbx), str(session_id))
         delivered = True
         with contextlib.suppress(OSError):
             meta_path.unlink()
+        with contextlib.suppress(OSError):
+            pid_file.unlink()
+        return delivered
 
     try:
         pid = int(pid_file.read_text(encoding="utf-8").strip())
@@ -371,6 +406,7 @@ async def arun_agent_hop(
     todo_already: bool = False,
     sandbox: str | None = None,
     resume_session: bool = False,
+    on_first_byte: Callable[[float], None] | None = None,
 ) -> str:
     """Run one hop of a tool-using agent via pi RPC (async).
 
@@ -409,6 +445,7 @@ async def arun_agent_hop(
         todo_already=todo_already,
         sandbox=sandbox,
         resume_session=resume_session,
+        on_first_byte=on_first_byte,
     )
 
 

@@ -137,6 +137,32 @@ def test_merge_exchange_sidecars_interleaves_errors_by_time():
     assert kinds[err_idx + 1] == "user_prompt"
 
 
+def test_merge_exchange_sidecars_appends_terminal_reason():
+    projected = [
+        {
+            "kind": "session_user",
+            "id": "u1",
+            "text": "hello",
+            "timestamp": "2026-01-01T10:00:00Z",
+        },
+        {
+            "kind": "turn",
+            "id": "t1",
+            "text": "working",
+            "timestamp": "2026-01-01T10:01:00Z",
+        },
+    ]
+    exchanges = [{
+        "user": "hello",
+        "turns": [{"at": 1767261660.0}],
+        "stop_reason": "stopped",
+    }]
+    rows = trajectory_view.merge_exchange_sidecars(projected, exchanges)
+    kinds = [r["kind"] for r in rows]
+    assert kinds[-1] == "terminal_reason"
+    assert rows[-1]["reason"] == "stopped"
+
+
 def test_host_worktree_dirty_detects_untracked(tmp_path: Path):
     import subprocess
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
