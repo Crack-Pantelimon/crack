@@ -290,7 +290,13 @@ class SubAgentPersona:
         if sandbox.sandbox_enabled():
             from crack_server import patch as patch_mod
 
-            sandbox_name = await sandbox.ensure_sandbox(run_id)
+            parent_conv = (
+                state.get("parent_id") if state.get("parent_kind") == "run"
+                else state.get("chat_id")
+            )
+            sandbox_name = await sandbox.ensure_sandbox(
+                run_id, parent_conv=str(parent_conv) if parent_conv else None,
+            )
             run_directory = paths.run_dir(chat_id, run_id)
             # First hop only (no baseline yet): replay the parent's uncommitted
             # tree into the fresh child sandbox so it starts from the parent's

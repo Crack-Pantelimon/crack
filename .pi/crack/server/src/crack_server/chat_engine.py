@@ -217,11 +217,24 @@ async def _run_prewalk_loop(
             message = RESUME_MESSAGE
             continue
 
-        # Natural end of the model's turn (agent_end/time_cap/sentinel). If the
-        # todo list still has open items, nudge (bounded); otherwise done.
+        # Natural end of the model's turn (agent_end/time_cap/sentinel). Resume
+        # when either the todo list still has open items *or* the last persisted
+        # turn of this exchange made tool calls (continue-if-tools). Bounded by
+        # MAX_CHAT_NUDGES / max_hops so a chatty tool-caller can't loop forever.
         opens = prewalk.open_todos(_turns())
-        if opens and nudge_count < MAX_CHAT_NUDGES and hop < max_hops:
-            message = prewalk.nudge_text(_turns())
+        last_turn = next(
+            (t for t in reversed(_turns()) if not t.get("kind")),
+            None,
+        )
+        last_had_tools = bool(last_turn and (last_turn.get("tool_blocks") or []))
+        if (
+            (opens or last_had_tools)
+            and nudge_count < MAX_CHAT_NUDGES
+            and hop < max_hops
+        ):
+            message = (
+                prewalk.nudge_text(_turns()) if opens else RESUME_MESSAGE
+            )
             nudge_count += 1
             continue
         break

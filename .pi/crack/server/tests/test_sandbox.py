@@ -100,7 +100,19 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
             return 0, "container-id\n", ""
         return 0, "", ""
 
-    with patch.object(s, "_podman", side_effect=fake_podman):
+    def fake_snapshot(root=None):
+        return "a" * 40
+
+    def fake_materialise(tree, dest, *, repo=None):
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "README").write_text("x")
+        (dest.parent / "tree").write_text(tree + "\n")
+
+    with (
+        patch.object(s, "_podman", side_effect=fake_podman),
+        patch.object(s, "snapshot_host_tree", side_effect=fake_snapshot),
+        patch.object(s, "materialise_frozen_base", side_effect=fake_materialise),
+    ):
         name = await s.ensure_sandbox("new")
 
     assert name == "crack-sbx-new"
@@ -110,7 +122,9 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
     assert "--network" in run_args and s.CRACK_NET in run_args
     assert "upperdir=/host/vol/crack-harness-data/overlays/new/upper" in joined
     assert "workdir=/host/vol/crack-harness-data/overlays/new/work" in joined
-    assert f"{repo}:/workspace:O" in joined
+    # Frozen base lower (not the live host repo).
+    assert "/overlays/new/base:/workspace:O" in joined
+    assert "/crack-host-git-objects:ro" in joined
     assert "CRACK_PI_HOST=crack-dev" in joined
     assert "/workspace/_docker/_sandbox_start.sh" in joined
 

@@ -387,6 +387,34 @@ def _merged_trajectory(turns: list[dict], errors: list[dict]) -> list[dict]:
     return [payload for _, _, _, payload in keyed]
 
 
+def render_annotation_row(row: dict) -> str:
+    """Thin badge row for session / model_change / thinking_level_change."""
+    esc = _ui._esc
+    label = esc(str(row.get("label") or row.get("ann") or "note"))
+    return (
+        f'<div class="stage-msg traj-annotation" data-traj-id="{esc(str(row.get("id") or ""))}">'
+        f'<small class="muted">{label}</small></div>'
+    )
+
+
+def render_unknown_event_row(row: dict) -> str:
+    """Faithful unknown-event row: type label + Expand revealing raw JSON."""
+    esc = _ui._esc
+    label = esc(str(row.get("label") or "event"))
+    raw = row.get("raw")
+    try:
+        pretty = json.dumps(raw, indent=2, ensure_ascii=False) if raw is not None else ""
+    except (TypeError, ValueError):
+        pretty = str(raw)
+    return (
+        f'<div class="stage-msg traj-unknown" data-traj-id="{esc(str(row.get("id") or ""))}">'
+        f'<details class="traj-expand">'
+        f"<summary><code>{label}</code> · Expand</summary>"
+        f'<pre class="traj-raw">{esc(pretty)}</pre>'
+        f"</details></div>"
+    )
+
+
 def render_error_row(entry: dict) -> str:
     """A durable `.stage-msg` error row in the trajectory (sibling of the turn
     rows): the ``render_error_msg`` markup plus attempt # and relative time."""
@@ -437,8 +465,29 @@ def render_turn_msgs(
         if kind == "error":
             out.append(render_error_row(entry))
             continue
-        if kind:
+        if kind == "annotation":
+            # Real model_change events drive the handover divider.
+            if entry.get("ann") == "model_change" and model_state is not None:
+                cur_model = str(entry.get("model") or "")
+                prev = model_state.get("model")
+                if prev and cur_model and prev != cur_model:
+                    swap = bool(model_state.get("seen_todo"))
+                    out.append(_model_switch_divider(prev, cur_model, swap))
+                    model_state["seen_todo"] = False
+                if cur_model:
+                    model_state["model"] = cur_model
+            out.append(render_annotation_row(entry))
             continue
+        if kind == "unknown":
+            out.append(render_unknown_event_row(entry))
+            continue
+        if kind == "ask_user_qa":
+            from crack_server import chats
+            out.append(chats.render_answered_question(entry.get("qa") or {}))
+            continue
+        if kind and kind != "turn":
+            continue
+        # Plain agent turn (kind absent or "turn").
         table = render_actions_table([entry], include_text=include_text)
         if not table:
             continue
@@ -449,8 +498,6 @@ def render_turn_msgs(
             if prev and prev != cur_model:
                 swap = bool(model_state.get("seen_todo"))
                 out.append(_model_switch_divider(prev, cur_model, swap))
-                # A prewalk swap consumes the todo gate; a later change is a
-                # user switch, not another "plan complete".
                 model_state["seen_todo"] = False
             model_state["model"] = cur_model
             tag = _model_tag(cur_model)
@@ -459,7 +506,9 @@ def render_turn_msgs(
         ):
             model_state["seen_todo"] = True
         reason_note = _reason_note(str(entry.get("reason") or ""))
-        out.append(f'<div class="stage-msg">{tag}{table}{reason_note}</div>')
+        traj_id = _ui._esc(str(entry.get("id") or ""))
+        id_attr = f' data-traj-id="{traj_id}"' if traj_id else ""
+        out.append(f'<div class="stage-msg"{id_attr}>{tag}{table}{reason_note}</div>')
     return out
 
 

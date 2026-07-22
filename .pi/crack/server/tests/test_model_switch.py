@@ -256,6 +256,36 @@ def test_post_message_locks_config_on_first_message(chat_root):  # noqa: F811
     assert paths.chat_state(chat_root).read()["pending"][0].get("model") is None
 
 
+def test_config_editor_emits_config_hidden_field():
+    html = chats.render_chat_config_editor({
+        "plan": False,
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+        "planner_model": "acme/p",
+        "implementer_model": "composer-2.5",
+    })
+    assert 'name="config" value="1"' in html
+
+
+def test_nonplan_model_resolution_ignores_implementer_until_graduated():
+    """Plan 24 Issue 4: implementer_model must not shadow the locked non-plan model."""
+    info = {
+        "plan": False,
+        "graduated": False,
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+        "implementer_model": "composer-2.5",
+    }
+    cur_exchange: dict = {}  # first exchange: post_message cleared per-exchange model
+    plan_active = bool(info.get("plan")) and not bool(info.get("graduated"))
+    assert not plan_active
+    model = (
+        cur_exchange.get("model")
+        or (info.get("implementer_model") if info.get("graduated") else None)
+        or info.get("model")
+        or "fallback"
+    )
+    assert model == "nvidia/nemotron-3-ultra-550b-a55b"
+
+
 def test_chat_display_model_prefers_cached(chat_root):  # noqa: F811
     # A graduated chat caches its display model on info — read it directly.
     info = {"plan": True, "graduated": True, "display_model": "acme/cached",

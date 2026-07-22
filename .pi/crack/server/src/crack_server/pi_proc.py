@@ -44,7 +44,7 @@ from crack_server.ratelimit import (
     _async_transient_backoff_sleep,
     async_wait_for_rate_limit, is_transient,
 )
-from crack_server.transcript import apply_event_to_turn, turn_has_content
+from crack_server.transcript import apply_event_to_turn, text_from_content, turn_has_content
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -99,10 +99,28 @@ def _tail_text(text: str, n: int = OUTPUT_TAIL_LINES) -> str:
     return "\n".join(lines[-n:])
 
 
+def _scrub_nuls(text: str) -> str:
+    """Drop NUL bytes that sparse/corrupt hop files inject into tails."""
+    return text.replace("\x00", "") if text else text
+
+
+def _is_nul_junk(line: str) -> bool:
+    """True when a hop-output line is all/mostly NUL (sparse-file garbage)."""
+    if not line:
+        return False
+    nul = line.count("\x00")
+    if nul == 0:
+        return False
+    cleaned = line.replace("\x00", "").strip()
+    return not cleaned or nul / max(len(line), 1) > 0.5
+
+
 def _compose_detail(output_tail: str, stderr_tail: str) -> str:
     """Build a PiError detail blob: prefer the raw stderr tail (what usually
     explains the crash), fall back to the JSON-event/stdout tail otherwise.
     Each blob is labeled so the UI shows which tail it is."""
+    stderr_tail = _scrub_nuls(stderr_tail)
+    output_tail = _scrub_nuls(output_tail)
     if stderr_tail.strip():
         return "last stderr:\n" + stderr_tail
     if output_tail.strip():
@@ -155,13 +173,42 @@ MANIFEST_MESSAGE_MAX_CHARS = 4000
 
 
 def _hop_paths(p: "_HopParams") -> tuple[Path, Path]:
-    """(manifest, output) paths for the detached-hop machinery: derived from
-    the pid file when one is given (all production callers), else from the
-    sessions dir (pid-less test callers)."""
+    """(manifest, legacy-output) paths for the detached-hop machinery: derived
+    from the pid file when one is given (all production callers), else from the
+    sessions dir (pid-less test callers).
+
+    Live attempts use :func:`_attempt_output_path` (unique per hop/attempt) so a
+    lingering detached writer can never share a path with a new attempt."""
     if p.pid_file is not None:
         return paths_mod.hop_manifest_path(p.pid_file), paths_mod.hop_output_path(p.pid_file)
     base = p.sessions_dir.parent / p.sessions_dir.name
     return Path(str(base) + ".hop.json"), Path(str(base) + ".hop.jsonl")
+
+
+def _attempt_output_path(p: "_HopParams", attempt_idx: int) -> Path:
+    """Per-attempt hop stdout+stderr file: ``*.hop.<hop>.<attempt>.jsonl``."""
+    if p.pid_file is not None:
+        stem = p.pid_file.name.removesuffix(".pid")
+        return p.pid_file.with_name(f"{stem}.hop.{p.hop}.{attempt_idx}.jsonl")
+    base = p.sessions_dir.parent / p.sessions_dir.name
+    return Path(str(base) + f".hop.{p.hop}.{attempt_idx}.jsonl")
+
+
+def _sweep_attempt_outputs(p: "_HopParams", *, keep: Path | None = None) -> None:
+    """Remove stale per-attempt hop output files for this hop (teardown)."""
+    if p.pid_file is not None:
+        pattern = f"{p.pid_file.name.removesuffix('.pid')}.hop.{p.hop}.*.jsonl"
+        parent = p.pid_file.parent
+    else:
+        base = p.sessions_dir.parent / p.sessions_dir.name
+        pattern = f"{base.name}.hop.{p.hop}.*.jsonl"
+        parent = base.parent
+    keep_resolved = keep.resolve() if keep is not None else None
+    for path in parent.glob(pattern):
+        if keep_resolved is not None and path.resolve() == keep_resolved:
+            continue
+        with contextlib.suppress(OSError):
+            path.unlink()
 
 
 def _read_hop_manifest(path: Path) -> dict:
@@ -713,6 +760,13 @@ def _process_stream_line(sink: _StreamSink, line: str, terminate: Callable[[], N
     and the terminal checks (sentinel / time cap / agent_end). Returns True
     when the hop is over."""
     p = sink.p
+    # Sparse-file corruption from a truncated shared hop output leaves runs of
+    # NUL bytes; drop them rather than filing them as stderr "detail".
+    if _is_nul_junk(line):
+        return False
+    line = _scrub_nuls(line)
+    if not line.strip():
+        return False
     # Keep a rolling tail of the raw output (JSON or not) so a crash is
     # diagnosable inline in the UI, not just from server logs.
     sink.output_tail.append(line[:500])
@@ -731,6 +785,21 @@ def _process_stream_line(sink: _StreamSink, line: str, terminate: Callable[[], N
 
     sink.acc.apply(event)
     etype = event.get("type")
+
+    # Structured error signals — prefer these over the harness's generic
+    # "empty turns" / "exited N" strings when recording the error row.
+    if etype == "auto_retry_end" and not event.get("success"):
+        sink.ended_in_error = (
+            _scrub_nuls(str(event.get("finalError") or "")) or "auto_retry exhausted"
+        )
+    elif etype == "error":
+        err = event.get("error") or event.get("message") or event.get("text") or "error event"
+        sink.ended_in_error = _scrub_nuls(str(err))
+    elif etype == "message_end":
+        msg = event.get("message")
+        if isinstance(msg, dict) and msg.get("role") == "error":
+            err_text = text_from_content(msg.get("content")) or "error message"
+            sink.ended_in_error = _scrub_nuls(err_text)
 
     text_lines = sink.acc.current_turn.get("text", "").splitlines()
     if (p.sentinel is not None and etype == "message_end"
@@ -780,11 +849,6 @@ def _process_stream_line(sink: _StreamSink, line: str, terminate: Callable[[], N
         sink.terminal = True
         terminate()
         return True
-
-    # pi's own "I gave up retrying" signal (distinct from per-attempt
-    # agent_end errorMessage). More precise than inferring from stopReason.
-    if etype == "auto_retry_end" and not event.get("success"):
-        sink.ended_in_error = event.get("finalError") or "auto_retry exhausted"
 
     if etype == "agent_end" and event.get("willRetry"):
         # pi is continuing its own internal agent loop (auto-retry,
@@ -938,7 +1002,10 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
         logger.info("+ %s", shlex.join(pi_argv))
 
     await async_wait_for_rate_limit(p.model)
-    manifest_path, output_path = _hop_paths(p)
+    manifest_path, _ = _hop_paths(p)
+    # Unique per-attempt output so a lingering detached writer on a prior path
+    # can never corrupt this attempt's file (null-byte sparse truncation).
+    output_path = _attempt_output_path(p, attempt_idx)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     prior = _read_hop_manifest(manifest_path)
     detached_pids = _sweep_detached_pids(
@@ -979,6 +1046,7 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
         "tools": p.tools,
         "message": attempt_message[:MANIFEST_MESSAGE_MAX_CHARS],
         "hop": p.hop,
+        "attempt": attempt_idx,
         "timeout": p.timeout_seconds,
         "status": "running",
         "detached_pids": detached_pids,
@@ -990,6 +1058,7 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
     sink.manifest = manifest
     _write_hop_manifest(manifest_path, sink.manifest)
 
+    crashed = False
     detached = False
     try:
         await _tail_events(
@@ -1045,18 +1114,11 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
                     p.pid_file.unlink()
                 except OSError:
                     pass
-            if p.sandbox:
-                crashed = (
-                    not sink.terminated_by_us
-                    and not sink.terminal
-                )
-            else:
-                crashed = (
-                    not sink.terminated_by_us
-                    and not sink.terminal
-                    and proc is not None
-                    and proc.returncode not in (0, None)
-                )
+            # Incomplete stream (no terminal event) is a crash — including
+            # sandbox hops where ``proc is None`` so returncode is always None.
+            crashed = not sink.terminated_by_us and not sink.terminal
+            if crashed and not sink.terminated_by_us:
+                sink.reason = "crashed"
             sink.manifest.update({
                 "offset": sink.offset,
                 "status": "crashed" if crashed else "done",
@@ -1068,13 +1130,14 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
             if p.stop_check():
                 sink.reason = "stopped"
                 sink.terminated_by_us = True
+                crashed = False
         except Exception:
             logger.exception("%s hop %d: stop_check raised", p.log_prefix, p.hop)
 
     elapsed = time.monotonic() - p.start
     rc = proc.returncode if proc is not None else None
-    logger.info("%s hop %d: attempt %d finished reason=%s persisted=%d total_elapsed=%.2fs rc=%s",
-                p.log_prefix, p.hop, attempt_idx + 1, sink.reason, sink.persisted, elapsed, rc)
+    logger.info("%s hop %d: attempt %d finished reason=%s persisted=%d total_elapsed=%.2fs rc=%s crashed=%s",
+                p.log_prefix, p.hop, attempt_idx + 1, sink.reason, sink.persisted, elapsed, rc, crashed)
     return {
         "reason": sink.reason,
         "terminated_by_us": sink.terminated_by_us,
@@ -1082,6 +1145,7 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
         "returncode": rc,
         "persisted": sink.persisted,
         "ended_in_error": sink.ended_in_error,
+        "crashed": crashed,
         "detail": _compose_detail("\n".join(sink.output_tail), "\n".join(sink.stderr_tail)),
     }
 
@@ -1129,17 +1193,21 @@ async def _reattach_attempt(
     _write_hop_manifest(manifest_path, sink.manifest)
 
     # Same STOP classification as a freshly-spawned attempt.
+    crashed = not sink.terminated_by_us and not sink.terminal
+    if crashed:
+        sink.reason = "crashed"
     if not sink.terminated_by_us and p.stop_check is not None:
         try:
             if p.stop_check():
                 sink.reason = "stopped"
                 sink.terminated_by_us = True
+                crashed = False
         except Exception:
             logger.exception("%s hop %d: stop_check raised", p.log_prefix, p.hop)
 
     elapsed = time.monotonic() - p.start
-    logger.info("%s hop %d: re-attached attempt %d finished reason=%s persisted=%d elapsed=%.2fs",
-                p.log_prefix, p.hop, attempt_idx + 1, sink.reason, sink.persisted, elapsed)
+    logger.info("%s hop %d: re-attached attempt %d finished reason=%s persisted=%d elapsed=%.2fs crashed=%s",
+                p.log_prefix, p.hop, attempt_idx + 1, sink.reason, sink.persisted, elapsed, crashed)
     return {
         "reason": sink.reason,
         "terminated_by_us": sink.terminated_by_us,
@@ -1149,6 +1217,7 @@ async def _reattach_attempt(
         "returncode": None if sink.terminal else -1,
         "persisted": sink.persisted,
         "ended_in_error": sink.ended_in_error,
+        "crashed": crashed,
         "detail": _compose_detail("\n".join(sink.output_tail), "\n".join(sink.stderr_tail)),
     }
 
@@ -1223,31 +1292,43 @@ async def _run_hop_with_retries(
         # A terminal stream (agent_end / sentinel / time_cap) is a clean hop
         # end even when the process linger-detaches (rc None) or exits nonzero
         # during teardown — never treat that as a crash to retry.
-        failed = (
+        # Sandbox hops always have returncode None (proc is None), so we must
+        # also honour the crashed flag computed from the incomplete stream.
+        crashed = bool(res.get("crashed")) or res.get("reason") == "crashed"
+        failed = crashed or (
             not res["terminated_by_us"]
             and not res["terminal"]
             and res["returncode"] not in (0, None)
         )
-        if not failed:
-            # Unrecoverable pi-internal error on the last turn (e.g. exhausted
-            # 429 auto-retries): retry even if earlier turns in this attempt
-            # persisted — otherwise the hop looks "done" and the chat goes idle.
-            if res["ended_in_error"]:
-                last_message = f"pi gave up: {res['ended_in_error']}"
-                last_detail = res["detail"]
-                last_rc = res["returncode"]
-            elif res["persisted"] > 0 or res["reason"] != "agent_end":
+        if not failed and not res["ended_in_error"]:
+            if res["persisted"] > 0 or res["reason"] != "agent_end":
+                # Clean hop end — sweep older per-attempt hop files, keep current.
+                try:
+                    cur_out = _read_hop_manifest(_hop_paths(p)[0]).get("output_path")
+                    keep = Path(str(cur_out)) if cur_out else None
+                except Exception:
+                    keep = None
+                _sweep_attempt_outputs(p, keep=keep)
                 return res["reason"]
-            else:
-                # Clean exit with no real turns: content-less responses only —
-                # retried like a hard failure, surfaced as "empty" at streak end.
-                last_message = "pi returned only empty turns"
-                last_detail = res["detail"]
-                last_rc = res["returncode"]
-        else:
-            last_message = f"pi exited {res['returncode']}"
+            # Clean exit with no real turns: content-less responses only —
+            # retried like a hard failure, surfaced as "empty" at streak end.
+            last_message = "pi returned only empty turns"
             last_detail = res["detail"]
             last_rc = res["returncode"]
+        else:
+            # Prefer pi's structured error text; then a concrete exit code;
+            # sandbox crashes (rc always None) fall through to "crashed mid-turn".
+            if res.get("ended_in_error"):
+                last_message = f"pi gave up: {res['ended_in_error']}"
+            elif res["returncode"] not in (0, None):
+                last_message = f"pi exited {res['returncode']}"
+            elif crashed:
+                last_message = "pi crashed mid-turn"
+            else:
+                last_message = f"pi exited {res['returncode']}"
+            last_detail = res["detail"]
+            last_rc = res["returncode"]
+            failed = True
 
         local_errors += 1
         total_errors = local_errors

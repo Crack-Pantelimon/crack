@@ -65,6 +65,91 @@ def _overlay_dirs(conv_id: str) -> tuple[Path, Path]:
     return base / "upper", base / "work"
 
 
+def _overlay_root(conv_id: str) -> Path:
+    return _harness_data_dir() / "overlays" / conv_id
+
+
+def overlay_base_dir(conv_id: str) -> Path:
+    """Frozen tracked-tree materialisation used as the sandbox ``:O`` lower."""
+    return _overlay_root(conv_id) / "base"
+
+
+def overlay_tree_path(conv_id: str) -> Path:
+    """File holding the frozen ``git write-tree`` id for this sandbox."""
+    return _overlay_root(conv_id) / "tree"
+
+
+def snapshot_host_tree(root: Path | None = None) -> str:
+    """``git write-tree`` on the host checkout (clean gate ⇒ equals HEAD^{tree})."""
+    repo = root or project_root()
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo), "write-tree"],
+            capture_output=True, text=True, check=False, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError(f"git write-tree failed: {e}") from e
+    if proc.returncode != 0:
+        raise RuntimeError(f"git write-tree failed: {(proc.stderr or proc.stdout).strip()}")
+    tree = proc.stdout.strip()
+    if not tree:
+        raise RuntimeError("git write-tree returned empty tree id")
+    return tree
+
+
+def materialise_frozen_base(tree: str, dest: Path, *, repo: Path | None = None) -> None:
+    """Materialise tracked files from ``tree`` into ``dest`` (no gitignored junk).
+
+    Also seeds a minimal ``.git`` whose object alternates point at the host
+    object store bind-mounted into sandboxes at ``/crack-host-git-objects``,
+    so in-sandbox ``git write-tree`` / ``git diff`` can resolve the frozen
+    base tree while new blobs land in the writable overlay upper.
+    """
+    repo = repo or project_root()
+    if (dest / ".git" / "objects" / "info" / "alternates").is_file() and any(dest.iterdir()):
+        # Already materialised (idempotent re-ensure).
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    arch = subprocess.Popen(
+        ["git", "-C", str(repo), "archive", tree],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert arch.stdout is not None
+    tar = subprocess.run(
+        ["tar", "-x", "-C", str(dest)],
+        stdin=arch.stdout, capture_output=True, check=False,
+    )
+    arch_stderr = arch.communicate()[1]
+    if arch.returncode != 0 or tar.returncode != 0:
+        raise RuntimeError(
+            f"git archive|tar failed for {tree[:12]}: "
+            f"{(arch_stderr or b'').decode('utf-8', 'replace')[:200]} "
+            f"{(tar.stderr or b'').decode('utf-8', 'replace')[:200]}"
+        )
+    init = subprocess.run(
+        ["git", "init", str(dest)],
+        capture_output=True, text=True, check=False,
+    )
+    if init.returncode != 0:
+        raise RuntimeError(f"git init in frozen base failed: {init.stderr or init.stdout}")
+    alt = dest / ".git" / "objects" / "info" / "alternates"
+    alt.parent.mkdir(parents=True, exist_ok=True)
+    # Sandbox-visible path of the host object store (mounted in ensure_sandbox).
+    alt.write_text("/crack-host-git-objects\n", encoding="utf-8")
+    # Record the frozen tree id next to the base for callers.
+    (dest.parent / "tree").write_text(tree + "\n", encoding="utf-8")
+    logger.info("materialised frozen base %s → %s", tree[:12], dest)
+
+
+def frozen_tree_for(conv_id: str) -> str | None:
+    """Return the recorded frozen tree id for ``conv_id``, or None."""
+    path = overlay_tree_path(conv_id)
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8").strip() or None
+
+
 def _podman_sync(*args: str, timeout: float = _DEFAULT_EXEC_TIMEOUT) -> tuple[int, str, str]:
     """Sync podman for stop handlers and startup recovery (no event loop)."""
     cmd = ("podman", *args)
@@ -127,8 +212,14 @@ async def ensure_network() -> None:
         logger.info("created podman network %s", CRACK_NET)
 
 
-async def ensure_sandbox(conv_id: str) -> str:
-    """Idempotently create+start the sandbox; return its name. Safe to call every hop."""
+async def ensure_sandbox(conv_id: str, *, parent_conv: str | None = None) -> str:
+    """Idempotently create+start the sandbox; return its name. Safe to call every hop.
+
+    The ``:O`` lower is a **frozen git-tree snapshot** (tracked files only), not
+    the live host tree — so concurrent chats and hand-edits cannot mutate each
+    other's lower. Sub-agents pass ``parent_conv`` to reuse the parent's frozen
+    base (same tree id) instead of re-snapshotting the host.
+    """
     name = sandbox_name(conv_id)
     rc, *_ = await _podman("container", "exists", name)
     if rc == 0:
@@ -142,9 +233,24 @@ async def ensure_sandbox(conv_id: str) -> str:
     upper.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
 
+    if parent_conv and overlay_base_dir(parent_conv).is_dir():
+        # Share the parent's immutable lower (overlay lower is read-only).
+        lower_host = f"{vol}/overlays/{parent_conv}/base"
+        tree = frozen_tree_for(parent_conv)
+        if tree:
+            _overlay_root(conv_id).mkdir(parents=True, exist_ok=True)
+            overlay_tree_path(conv_id).write_text(tree + "\n", encoding="utf-8")
+    else:
+        tree = snapshot_host_tree()
+        base = overlay_base_dir(conv_id)
+        materialise_frozen_base(tree, base)
+        lower_host = f"{ovl}/base"
+
+    host_git_objects = f"{_host_repo()}/.git/objects"
     rc, out, err = await _podman(
         "run", "-d", "--name", name, "--network", CRACK_NET,
-        "-v", f"{_host_repo()}:/workspace:O,upperdir={ovl}/upper,workdir={ovl}/work",
+        "-v", f"{lower_host}:/workspace:O,upperdir={ovl}/upper,workdir={ovl}/work",
+        "-v", f"{host_git_objects}:/crack-host-git-objects:ro",
         "-v", "crack-dev-target-dir:/workspace/target:O",
         "-v", "crack-dev-root-dir:/root:O",
         "-v", f"{HARNESS_VOLUME}:/crack-harness-data",
@@ -157,7 +263,10 @@ async def ensure_sandbox(conv_id: str) -> str:
     )
     if rc != 0:
         raise RuntimeError(f"podman run {name} failed: {err or out}")
-    logger.info("started sandbox %s for conv %s", name, conv_id)
+    logger.info(
+        "started sandbox %s for conv %s (frozen tree %s)",
+        name, conv_id, (tree or "?")[:12],
+    )
     return name
 
 

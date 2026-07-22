@@ -150,8 +150,20 @@ def _write_tree_sync(sandbox_name: str) -> str:
 
 
 async def capture_baseline(sandbox_name: str, artifact_dir: Path) -> str:
-    """``git add -A`` + ``write-tree``; persist tree id to ``base_tree``."""
+    """Persist the sandbox's frozen tree id as ``base_tree``.
+
+    Prefers the tree recorded at sandbox creation (no in-sandbox git round-trip).
+    Falls back to ``git add -A`` + ``write-tree`` inside the sandbox when no
+    frozen tree is on record (legacy / tests).
+    """
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    # Derive conv id from sandbox name ``crack-sbx-<conv>``.
+    conv_id = sandbox_name.removeprefix("crack-sbx-") if sandbox_name.startswith("crack-sbx-") else ""
+    frozen = sandbox.frozen_tree_for(conv_id) if conv_id else None
+    if frozen:
+        base_tree_path(artifact_dir).write_text(frozen + "\n", encoding="utf-8")
+        logger.info("patch: baseline %s (frozen) for %s", frozen[:12], artifact_dir.name)
+        return frozen
     rc, _, err = await _git_in_sandbox(sandbox_name, "add", "-A")
     if rc != 0:
         raise RuntimeError(f"git add -A failed at baseline: {err}")

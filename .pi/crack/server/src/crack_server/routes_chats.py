@@ -117,14 +117,15 @@ def api_chat_message(
     plan: str | None = Form(default=None),
     planner_model: str = Form(default=""),
     implementer_model: str = Form(default=""),
+    config: str | None = Form(default=None),
 ) -> HTMLResponse:
     """Append a user message, enqueue the agent, return the updated chat fragment.
 
-    The first message also carries the in-chat plan/model config: ``plan`` is the
-    checkbox (present ⇒ on, absent ⇒ off) but only when the config editor was
-    shown (``planner_model``/``implementer_model`` non-empty)."""
-    config_shown = bool(planner_model or implementer_model)
-    plan_flag = bool(plan) if config_shown else None
+    The first message also carries the in-chat plan/model config. An explicit
+    ``config=1`` hidden field (from the config editor) locks ``plan`` from the
+    checkbox presence; without it, plan is left untouched."""
+    # Explicit config editor submit: plan checkbox presence is authoritative.
+    plan_flag = bool(plan) if config else None
     return chats.post_message(
         chat_id,
         msg,

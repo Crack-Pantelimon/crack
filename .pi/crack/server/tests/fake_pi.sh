@@ -30,6 +30,7 @@
 #                  invocation looping through multiple internal agent-loop
 #                  segments (auto-continue), all turns from a single process
 #   hard           print a non-transient error to stderr and exit 1
+#   die:N          emit N turns then exit 0 without agent_end (mid-turn crash)
 #   ok             (print mode) echo "text-response" and exit 0
 #   copy:SRC>DST   copy file SRC to DST (an "agent wrote the artifact" stand-in),
 #                  emit one turn, then agent_end
@@ -185,6 +186,14 @@ time.sleep(arg)
   hard)
     echo "boom: unrecoverable parse explosion" >&2
     exit 1
+    ;;
+  die)
+    # Emit N turns then exit 0 *without* agent_end — simulates a sandbox pi
+    # dying mid-turn (proc is None / returncode None, stream incomplete).
+    for i in $(seq 1 "$arg"); do
+      emit_turn "die turn $i (invocation $n)"
+    done
+    exit 0
     ;;
   ok)
     echo "text-response"

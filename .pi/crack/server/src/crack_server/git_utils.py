@@ -1,14 +1,17 @@
-"""Best-effort git commits at pipeline checkpoints.
+"""Best-effort git commits at pipeline checkpoints, plus host-tree helpers
+for the clean-git gate / frozen sandbox base.
 
-Every failure is logged and swallowed: a checkpoint commit must never break the
-pipeline (cross-process git races, detached HEAD, nothing-to-commit, no git repo,
-etc. are all non-fatal). All commit messages are prefixed ``slopmaster3000:``.
+Every failure in :func:`commit` is logged and swallowed: a checkpoint commit
+must never break the pipeline. All commit messages are prefixed
+``slopmaster3000:``.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
+from html import escape
 from pathlib import Path
 
 from crack_server import paths
@@ -23,6 +26,109 @@ _IDENTITY = [
     "-c", "user.name=slopmaster3000",
     "-c", "user.email=slopmaster3000@crack.local",
 ]
+
+
+def _host_repo_root() -> Path:
+    """Host checkout used for sandbox overlays / clean-git gate."""
+    raw = os.environ.get("CRACK_HOST_REPO_ROOT")
+    if raw:
+        return Path(raw)
+    return paths.project_root()
+
+
+def host_worktree_dirty(root: Path | None = None) -> bool:
+    """True when the host worktree has staged, unstaged, or untracked changes."""
+    repo = root or _host_repo_root()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        logger.error("git_utils: host_worktree_dirty failed: %s", e)
+        return True  # fail closed: refuse to fork a dirty/unknown tree
+    if result.returncode != 0:
+        logger.error(
+            "git_utils: git status failed: %s",
+            (result.stderr or result.stdout).strip()[:200],
+        )
+        return True
+    return bool(result.stdout.strip())
+
+
+def host_status_colored(limit: int = 10, root: Path | None = None) -> str:
+    """First ``limit`` lines of colourised ``git status`` for the host tree."""
+    repo = root or _host_repo_root()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), "-c", "color.status=always", "status"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"(git status failed: {e})"
+    text = result.stdout or result.stderr or ""
+    lines = text.splitlines()
+    return "\n".join(lines[:limit])
+
+
+def ansi_to_html(text: str) -> str:
+    """Minimal SGR→HTML span converter (dependency-free). Escapes HTML first."""
+    out: list[str] = []
+    i = 0
+    open_span = False
+    s = text
+    while i < len(s):
+        if s[i] == "\x1b" and i + 1 < len(s) and s[i + 1] == "[":
+            j = i + 2
+            while j < len(s) and s[j] != "m":
+                j += 1
+            codes = s[i + 2:j].split(";") if j < len(s) else []
+            i = j + 1 if j < len(s) else len(s)
+            if open_span:
+                out.append("</span>")
+                open_span = False
+            if not codes or codes == ["0"] or codes == [""]:
+                continue
+            style_parts: list[str] = []
+            for c in codes:
+                if c == "1":
+                    style_parts.append("font-weight:bold")
+                elif c == "31":
+                    style_parts.append("color:#c22")
+                elif c == "32":
+                    style_parts.append("color:#2a2")
+                elif c == "33":
+                    style_parts.append("color:#a80")
+                elif c == "34":
+                    style_parts.append("color:#26c")
+                elif c == "35":
+                    style_parts.append("color:#a2a")
+                elif c == "36":
+                    style_parts.append("color:#2aa")
+                elif c == "91":
+                    style_parts.append("color:#f55")
+                elif c == "92":
+                    style_parts.append("color:#5c5")
+                elif c == "93":
+                    style_parts.append("color:#da0")
+            if style_parts:
+                out.append(f'<span style="{";".join(style_parts)}">')
+                open_span = True
+            continue
+        j = i
+        while j < len(s) and s[j] != "\x1b":
+            j += 1
+        out.append(escape(s[i:j]))
+        i = j
+    if open_span:
+        out.append("</span>")
+    return "".join(out)
 
 
 def commit(add: str | Path | list[str | Path], message: str) -> None:

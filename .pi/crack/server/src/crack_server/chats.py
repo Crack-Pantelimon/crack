@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from crack_server import ui as _ui
-from crack_server import attachments, chat_engine, context_stats
+from crack_server import attachments, chat_engine, context_stats, git_utils
 from crack_server import paths, patch, pi_runner, queue, sandbox, settings as _settings, titles
 from crack_server.chat_engine import MAX_CHAT_HOPS
 from crack_server.state import chat_state_mtime
@@ -202,6 +202,7 @@ def render_chat_config_editor(info: dict) -> str:
     nonplan = _plain_model_select("model", info.get("model") or _settings.nonplan_model())
     return f"""
       <div class="chat-config" data-plan-form>
+        <input type="hidden" name="config" value="1">
         <p class="chat-config-hint"><small class="muted">Pick the models before your
           first message — they lock once the chat starts.</small></p>
         <label class="new-chat-plan">
@@ -800,24 +801,58 @@ def _tag_chat_msg(index: int, html: str) -> str:
 
 
 def render_chat_msgs(chat_id: str) -> list[str]:
+    """Render the chat trajectory from pi session ndjson (faithful projection).
+
+    Exchange sidecars supply user prompts, recorded errors, and ask_user Q&A;
+    agent turns / annotations / unknown events come from ``sessions/*.jsonl``.
+    Falls back to the exchange-turns store when no session files exist yet.
+    """
+    from crack_server import trajectory_view
+
     render = _render()
     state = paths.chat_state(chat_id).read()
-    # One tracker for the whole chat so a model switch shows once, at the turn
-    # where it happens (a prewalk swap mid-exchange or a user switch between
-    # exchanges).
     model_state = render.new_model_state()
-    return render.render_exchanges(
-        state.get("exchanges", []),
-        lambda turns: render_chat_answer(chat_id, turns, model_state),
+    sessions_dir = paths.chat_sessions_dir(chat_id)
+    projected = trajectory_view.project_sessions_dir(
+        sessions_dir,
+        media_dir=paths.chat_dir(chat_id) / "media",
+        media_url_prefix=f"/chats/{chat_id}/media",
     )
+    exchanges = state.get("exchanges") or []
+    if not projected and exchanges:
+        # Pre-session or legacy: render from the persisted turn store.
+        return render.render_exchanges(
+            exchanges,
+            lambda turns: render_chat_answer(chat_id, turns, model_state),
+        )
+    rows = trajectory_view.merge_exchange_sidecars(projected, exchanges)
+    out: list[str] = []
+    known_runs = set(paths.list_run_ids(chat_id))
+    for row in rows:
+        kind = row.get("kind")
+        if kind == "turn" or not kind:
+            msgs = render.render_turn_msgs([row], include_text=True, model_state=model_state)
+            run_ids = [rid for rid in _spawn_run_ids(row) if rid in known_runs]
+            if run_ids and msgs:
+                cards = "".join(render_inline_run_region(chat_id, rid) for rid in run_ids)
+                msgs[-1] = _append_inside_stage_msg(msgs[-1], cards)
+            out.extend(msgs)
+        else:
+            out.extend(render.render_turn_msgs([row], include_text=True, model_state=model_state))
+    return out
 
 
-def render_chat_tail(chat_id: str) -> str:
+def render_chat_tail(
+    chat_id: str, *, gate_error_html: str | None = None
+) -> str:
     render = _render()
     info = paths.chat_info_state(chat_id).read()
     state = paths.chat_state(chat_id).read()
     phase = state.get("phase")
     parts: list[str] = []
+
+    if gate_error_html:
+        parts.append(gate_error_html)
 
     pending_n = len(state.get("pending") or [])
     if pending_n:
@@ -885,12 +920,14 @@ def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | Non
     )
 
 
-def render_chat_content(chat_id: str, after: int | None = None) -> str:
+def render_chat_content(
+    chat_id: str, after: int | None = None, *, gate_error_html: str | None = None
+) -> str:
     """Chat exchanges + status + form (msgs/tail; supports ``?after=`` deltas)."""
     return wrap_chat_content(
         chat_id,
         render_chat_msgs(chat_id),
-        render_chat_tail(chat_id),
+        render_chat_tail(chat_id, gate_error_html=gate_error_html),
         after=after,
     )
 
@@ -956,6 +993,23 @@ def post_message(
     msg = msg.strip()
     st = paths.chat_state(chat_id).read()
     pre_first = not (st.get("exchanges") or st.get("pending"))
+    # Hard clean-git gate: refuse the first message of a top-level sandboxed
+    # chat until the host worktree is clean (prerequisite for frozen bases).
+    if (
+        pre_first
+        and sandbox.sandbox_enabled()
+        and git_utils.host_worktree_dirty()
+    ):
+        status_raw = git_utils.host_status_colored(limit=10)
+        status_html = git_utils.ansi_to_html(status_raw)
+        gate = (
+            '<div class="chat-git-gate error" role="alert">'
+            "<p><strong>Host worktree is dirty</strong> — clean it (commit, "
+            "stash, or discard) before starting a sandboxed chat.</p>"
+            f'<pre class="chat-git-status">{status_html}</pre>'
+            "</div>"
+        )
+        return HTMLResponse(render_chat_content(chat_id, gate_error_html=gate))
     if pre_first and plan is not None:
         # Lock the in-chat model/plan choices onto the chat before it starts.
         def _lock_config(info: dict) -> dict:
@@ -1252,9 +1306,12 @@ async def run_chat(chat_id: str) -> None:
         if plan_active:
             model = planner_model
         else:
+            # Non-plan: locked chat model wins. ``implementer_model`` is only a
+            # fallback after a plan chat has graduated (it defaults to composer
+            # and must not shadow the locked non-plan model on exchange 0).
             model = (
                 cur_exchange.get("model")
-                or info.get("implementer_model")
+                or (info.get("implementer_model") if info.get("graduated") else None)
                 or info.get("model")
                 or DEFAULT_CHAT_MODEL
             )
