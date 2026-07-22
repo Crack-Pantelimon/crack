@@ -86,8 +86,29 @@ class JsonState:
         return await asyncio.to_thread(self.update, fn)
 
 
+def _latest_session_mtime(sessions_dir: Path) -> float:
+    """Newest ``*.jsonl`` mtime under a sessions dir (0.0 if none / unreadable).
+
+    pi appends trajectory events to these files live (a shared volume even when
+    the agent runs in a sandbox) *without* touching chat.json/run.json, so watching
+    them is what lets the long-poll surface each event mid-hop instead of only at
+    hop boundaries."""
+    latest = 0.0
+    try:
+        entries = list(sessions_dir.glob("*.jsonl"))
+    except OSError:
+        return latest
+    for jsonl in entries:
+        try:
+            latest = max(latest, jsonl.stat().st_mtime)
+        except OSError:
+            continue
+    return latest
+
+
 def chat_state_mtime(chat_id: str, root: Path | None = None) -> float:
-    """Max mtime of the chat state file and any sub-agent run.json files."""
+    """Max mtime of the chat state file, its live session trajectory, and any
+    sub-agent run.json / run session files."""
     from crack_server import paths  # lazy: paths imports this module
 
     latest = 0.0
@@ -95,6 +116,7 @@ def chat_state_mtime(chat_id: str, root: Path | None = None) -> float:
         latest = max(latest, paths.chat_state_path(chat_id, root).stat().st_mtime)
     except OSError:
         pass
+    latest = max(latest, _latest_session_mtime(paths.chat_sessions_dir(chat_id, root)))
     try:
         runs_dir = paths.chat_sub_agent_runs_dir(chat_id, root)
     except (ValueError, OSError):
@@ -106,4 +128,5 @@ def chat_state_mtime(chat_id: str, root: Path | None = None) -> float:
             latest = max(latest, run_json.stat().st_mtime)
         except OSError:
             continue
+        latest = max(latest, _latest_session_mtime(run_json.parent / "sessions"))
     return latest

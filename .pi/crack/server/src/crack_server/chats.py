@@ -279,34 +279,6 @@ def _append_inside_stage_msg(msg_html: str, extra: str) -> str:
     return msg_html[:idx] + extra + msg_html[idx:]
 
 
-def render_chat_answer(
-    chat_id: str, turns: list[dict], model_state: dict | None = None
-) -> list[str]:
-    """One exchange's agent output as stable per-turn msg fragments.
-
-    Each persisted turn is one append-only fragment (tools + that turn's own
-    text). Do not combine assistant texts into a single growing ``Clanker:``
-    block — that re-indexes on every poll and duplicates under beforeend.
-
-    A turn that spawned sub-agents gets those runs' full transcript cards
-    injected inline (self-polling regions) right under the spawning tool row.
-
-    ``model_state`` threads model-switch detection across exchanges (see
-    :func:`render.render_turn_msgs`)."""
-    render = _render()
-    agent_turns = [t for t in turns if t.get("kind") != "user_prompt"]
-    known_runs = set(paths.list_run_ids(chat_id))
-    out: list[str] = []
-    for turn in agent_turns:
-        msgs = render.render_turn_msgs([turn], include_text=True, model_state=model_state)
-        run_ids = [rid for rid in _spawn_run_ids(turn) if rid in known_runs]
-        if run_ids and msgs:
-            cards = "".join(render_inline_run_region(chat_id, rid) for rid in run_ids)
-            msgs[-1] = _append_inside_stage_msg(msgs[-1], cards)
-        out.extend(msgs)
-    return out
-
-
 def _chat_model_badge(info: dict) -> str:
     """Read-only summary of a chat's locked model choice(s)."""
     esc = _ui._esc
@@ -803,9 +775,13 @@ def _tag_chat_msg(index: int, html: str) -> str:
 def render_chat_msgs(chat_id: str) -> list[str]:
     """Render the chat trajectory from pi session ndjson (faithful projection).
 
-    Exchange sidecars supply user prompts, recorded errors, and ask_user Q&A;
-    agent turns / annotations / unknown events come from ``sessions/*.jsonl``.
-    Falls back to the exchange-turns store when no session files exist yet.
+    The session ndjson is the single source of truth for the message stream:
+    user prompts included. Exchange sidecars only *enrich* what the trajectory
+    already contains (ask_user Q&A, recorded errors, compiled-prompt / media
+    metadata) — they never inject a message the session file lacks. That keeps
+    the append-by-index poll stable: a just-sent prompt appears exactly once,
+    when pi records it, rather than being echoed optimistically at the top and
+    then again at its real position once annotations push it down.
     """
     from crack_server import trajectory_view
 
@@ -819,12 +795,6 @@ def render_chat_msgs(chat_id: str) -> list[str]:
         media_url_prefix=f"/chats/{chat_id}/media",
     )
     exchanges = state.get("exchanges") or []
-    if not projected and exchanges:
-        # Pre-session or legacy: render from the persisted turn store.
-        return render.render_exchanges(
-            exchanges,
-            lambda turns: render_chat_answer(chat_id, turns, model_state),
-        )
     rows = trajectory_view.merge_exchange_sidecars(projected, exchanges)
     out: list[str] = []
     known_runs = set(paths.list_run_ids(chat_id))

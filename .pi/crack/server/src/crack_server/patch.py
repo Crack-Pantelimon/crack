@@ -237,8 +237,12 @@ async def _produce_diff(
     await _stage_for_patch(sandbox_name, exclude=exclude)
     end_tree = await _write_tree(sandbox_name)
     patch_path.parent.mkdir(parents=True, exist_ok=True)
+    # `--binary` emits the full `index <sha>..<sha>` line + literal binary hunk so
+    # host `git apply` can reconstruct binary blobs (e.g. a screenshot PNG). Without
+    # it git writes only "Binary files ... differ", which apply rejects with
+    # "cannot apply binary patch ... without full index line".
     rc, out, err = await _git_in_sandbox(
-        sandbox_name, "diff", base_tree, end_tree,
+        sandbox_name, "diff", "--binary", base_tree, end_tree,
     )
     if rc != 0:
         raise RuntimeError(f"git diff failed: {err or out}")
@@ -263,7 +267,10 @@ def _produce_diff_sync(
     _stage_for_patch_sync(sandbox_name, exclude=exclude)
     end_tree = _write_tree_sync(sandbox_name)
     patch_path.parent.mkdir(parents=True, exist_ok=True)
-    rc, out, err = _git_in_sandbox_sync(sandbox_name, "diff", base_tree, end_tree)
+    # See `_produce_diff`: `--binary` is required for host apply of binary blobs.
+    rc, out, err = _git_in_sandbox_sync(
+        sandbox_name, "diff", "--binary", base_tree, end_tree,
+    )
     if rc != 0:
         raise RuntimeError(f"git diff failed: {err or out}")
     patch_path.write_text(out, encoding="utf-8")

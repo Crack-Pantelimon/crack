@@ -306,7 +306,12 @@ def merge_exchange_sidecars(
     # ask_user Q&A cards first (they stand in for the exchange that answered).
     out.extend(qa_rows)
 
-    seen_users: set[str] = set()
+    # The session ndjson is the sole source of user-prompt rows: a prompt shows
+    # up only once pi records it (as a `session_user` message), enriched with the
+    # exchange sidecar's compiled-prompt / media metadata. We deliberately do NOT
+    # synthesize a prompt row for exchanges not yet in the session file — an
+    # optimistic echo lands at a different index than the eventual trajectory row
+    # and the append-by-index poll then duplicates it.
     for row in projected:
         if row.get("kind") == "session_user":
             text = str(row.get("text") or "").strip()
@@ -321,18 +326,8 @@ def merge_exchange_sidecars(
                 **meta,
                 "timestamp": row.get("timestamp"),
             })
-            seen_users.add(text)
             continue
         out.append(row)
-
-    # Exchange user prompts that never landed in the session file (e.g. crash
-    # before pi recorded the message).
-    for text, meta in prompt_meta.items():
-        if text not in seen_users:
-            out.insert(
-                len(qa_rows),
-                {"kind": "user_prompt", "id": f"prompt-extra-{len(out)}", **meta},
-            )
 
     # Merge error rows into the projected stream by time instead of dumping them
     # at the end. `out` rows carry a monotonic (carry-forward) epoch; errors sort

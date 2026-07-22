@@ -49,7 +49,8 @@ async def test_extract_patch_empty_diff(artifact_dir):
             return 0, "", ""
         if args[-1] == "write-tree":
             return 0, "endtree\n", ""
-        if args[-3:-1] == ("diff", "base"):
+        if "diff" in args:
+            assert "--binary" in args
             return 0, "", ""
         return 0, "", ""
 
@@ -76,7 +77,8 @@ async def test_produce_diff_seeds_index_from_base_tree(artifact_dir):
             return 0, "", ""
         if args[-1] == "write-tree":
             return 0, "basetree\n", ""
-        if args[-3:-1] == ("diff", "basetree"):
+        if "diff" in args:
+            assert "--binary" in args
             return 0, "diff --git a/new.txt b/new.txt\n", ""
         return 0, "", ""
 
