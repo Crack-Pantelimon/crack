@@ -443,8 +443,10 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 ```
 src/crack_server/chats.py ← __future__, fastapi, crack_server
 src/crack_server/pi_rpc.py ← __future__, crack_server, shlex
+src/crack_server/render.py ← __future__, crack_server
 src/crack_server/sandbox.py ← __future__, crack_server
 src/crack_server/trajectory_view.py ← __future__, crack_server
+tests/test_detached_hops.py ← __future__, crack_server
 tests/test_sandbox.py ← __future__, unittest, crack_server, pytest
 ```
 
@@ -486,36 +488,52 @@ async def run_chat(chat_id: str) → None  :1231-1341  # Worker side of a CHAT_J
 async def arun_agent_hop_rpc(*, log_prefix: str, model: str, session_id: str, sessions_dir: Path, tools: str | None, message: str, start: float, sentinel: str | None, timeout_seconds: int, persist_turn, hop: int, pid_file: Path | None, stop_check, record_prompt, record_error, error_budget: Callable[[], int] | None, env_extra: dict[str, str] | None, waiting_check: Callable[[], bool] | None, append_system_prompt: str | None, swap_after_edit: bool, todo_already: bool, sandbox: str | None, resume_session: bool, **_ignored) → str  :515-540  # Run one agent hop over pi's RPC protocol (async)
 ```
 
+### src/crack_server/render.py
+```
+def render_user_prompt_msg(entry: dict) → str  :238-277  # Expandable `
+def new_model_state() → dict  :327-330  # Mutable tracker threaded through :func:`render_turn_msgs` ca
+def render_actions_table(turns: list[dict], include_text: bool) → str  :333-367  # Render agent turns as one compact actions table (one row per
+def render_annotation_row(row: dict) → str  :392-399  # Thin badge row for session / model_change / thinking_level_c
+def render_unknown_event_row(row: dict) → str  :402-417  # Faithful unknown-event row: type label + Expand revealing ra
+def render_error_row(entry: dict) → str  :420-441  # A durable `
+```
+
 ### src/crack_server/sandbox.py
 ```
-def sandbox_name(conv_id: str) → str  :30-31
-def sandbox_enabled() → bool  :34-48  # True when agent hops should run inside per-conversation podm
-def overlay_base_dir(conv_id: str) → Path  :72-74  # Frozen tracked-tree materialisation used as the sandbox ``:O
-def overlay_tree_path(conv_id: str) → Path  :77-79  # File holding the frozen ``git write-tree`` id for this sandb
-def snapshot_host_tree(root: Path | None) → str  :82-97  # ``git write-tree`` on the host checkout (clean gate ⇒ equals
-def materialise_frozen_base(tree: str, dest: Path, *, repo: Path | None) → None  :100-142  # Materialise tracked files from ``tree`` into ``dest`` (no gi
-def frozen_tree_for(conv_id: str) → str | None  :145-150  # Return the recorded frozen tree id for ``conv_id``, or None
-async def harness_volume_host_path() → str  :193-203  # Host mountpoint for ``crack-harness-data`` (overlay upper/wo
-async def ensure_network() → None  :206-212
-async def ensure_sandbox(conv_id: str, *, parent_conv: str | None) → str  :215-270  # Idempotently create+start the sandbox; return its name
-async def exec_in(name: str, argv: list[str], *, env: Mapping[str, str] | None, cwd: str, detached: bool, stdout: int | None, stderr: int | None, interactive: bool, stdin: int | None, limit: int | None) → asyncio.subprocess.Process  :273-284  # Build and launch ``podman exec``; return the asyncio subproc
-async def kill_session(name: str, session_id: str) → None  :342-350  # Mid-run kill: signal only the pi for one session (SIGTERM th
-def session_alive_sync(name: str, session_id: str) → bool  :353-355
-def kill_session_sync(name: str, session_id: str) → None  :358-368  # Sync wrapper for stop routes and ``kill_pid_file``
-def destroy_sandbox_sync(conv_id: str) → None  :371-378  # Sync wrapper for terminal handoffs from sync callers
-async def destroy_sandbox(conv_id: str) → None  :381-392  # Stop and remove the sandbox container for a conversation
+def sandbox_name  :30-31
+def sandbox_enabled  :34-48
+def overlay_base_dir  :72-74
+def overlay_tree_path  :77-79
+def snapshot_host_tree  :82-97
+def materialise_frozen_base  :100-142
+def frozen_tree_for  :145-150
+async def harness_volume_host_path  :193-203
+async def ensure_network  :206-212
+async def ensure_sandbox  :215-270
+async def exec_in  :273-284
+async def kill_session  :342-350
+def session_alive_sync  :353-355
+def kill_session_sync  :358-368
+def destroy_sandbox_sync  :371-378
+async def destroy_sandbox  :381-392
 ```
 
 ### src/crack_server/trajectory_view.py
 ```
-def list_session_files  :87-94
-def project_session_events  :113-240
-def project_sessions_dir  :243-247
-def merge_exchange_sidecars  :264-266
-def clear_cache  :351-353
+def list_session_files(sessions_dir: Path) → list[Path]  :87-94  # Session ndjson files in chronological order (filename timest
+def project_session_events(events: list[dict]) → list[dict]  :113-240  # Project raw pi session events into ordered view rows
+def project_sessions_dir(sessions_dir: Path, *, media_dir: Path | None, media_url_prefix: str) → list[dict]  :243-247  # Read all session files under ``sessions_dir`` and project to
+def merge_exchange_sidecars(projected: list[dict], exchanges: list[dict]) → list[dict]  :264-266  # Merge harness-only constructs into the projected stream
+def clear_cache() → None  :356-358  # Test helper: drop the session-file parse cache
 ```
 
 ## tests
+
+### tests/test_detached_hops.py
+```
+def test_recover_detached_hops_kills_orphan_pid_files  :20-40
+def test_kill_pid_file_uses_meta_for_sandbox  :43-59
+```
 
 ### tests/test_sandbox.py
 ```
