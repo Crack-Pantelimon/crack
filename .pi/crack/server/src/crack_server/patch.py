@@ -227,6 +227,13 @@ async def _produce_diff(
     *,
     exclude: tuple[str, ...] = (),
 ) -> bool:
+    # Seed the index from the frozen base tree so `git add -A` computes a true
+    # delta. Without this the sandbox's git repo was `git init`'d with an empty
+    # index, so `git add -A` skips tracked-but-gitignored files (e.g. _data/**/*.bytes)
+    # and every diff spuriously "deletes" them — which host `git apply` cannot apply.
+    rc, _, err = await _git_in_sandbox(sandbox_name, "read-tree", base_tree)
+    if rc != 0:
+        raise RuntimeError(f"git read-tree {base_tree[:12]} failed: {err}")
     await _stage_for_patch(sandbox_name, exclude=exclude)
     end_tree = await _write_tree(sandbox_name)
     patch_path.parent.mkdir(parents=True, exist_ok=True)
@@ -246,6 +253,13 @@ def _produce_diff_sync(
     *,
     exclude: tuple[str, ...] = (),
 ) -> bool:
+    # Seed the index from the frozen base tree so `git add -A` computes a true
+    # delta. Without this the sandbox's git repo was `git init`'d with an empty
+    # index, so `git add -A` skips tracked-but-gitignored files (e.g. _data/**/*.bytes)
+    # and every diff spuriously "deletes" them — which host `git apply` cannot apply.
+    rc, _, err = _git_in_sandbox_sync(sandbox_name, "read-tree", base_tree)
+    if rc != 0:
+        raise RuntimeError(f"git read-tree {base_tree[:12]} failed: {err}")
     _stage_for_patch_sync(sandbox_name, exclude=exclude)
     end_tree = _write_tree_sync(sandbox_name)
     patch_path.parent.mkdir(parents=True, exist_ok=True)
@@ -463,7 +477,6 @@ def enqueue_chat_system_message(chat_id: str, message: str, *, source: str = "sy
         pending.append({"user": message, "source": source})
         state["pending"] = pending
         state["phase"] = "chatting"
-        state["stop_requested"] = False
         return state
 
     paths.chat_state(chat_id).update(_enqueue)
@@ -474,9 +487,25 @@ def enqueue_chat_patch_nag(chat_id: str, big_files: tuple[tuple[str, int], ...])
     enqueue_chat_system_message(chat_id, format_big_file_nag(big_files), source="patch_guard")
 
 
-def enqueue_chat_apply_failure(chat_id: str, stderr: str, patch_path: Path) -> None:
-    enqueue_chat_system_message(
-        chat_id, format_apply_failure(stderr, patch_path), source="patch_apply",
+def record_chat_apply_failure(chat_id: str, stderr: str, patch_path: Path) -> None:
+    """Surface a host ``git apply`` failure as a durable, visible error and go idle.
+
+    Deliberately does NOT enqueue a new agent turn — a host apply failure is
+    environmental and must not restart the chat (that was the patch-apply loop).
+    """
+    resolved = str(patch_path.resolve())
+    short = (stderr or "").strip()
+    detail = short[-3000:]
+
+    def _err(state: dict) -> dict:
+        state["phase"] = "idle"
+        state["error"] = "Your changes could not be applied to the host repo (git apply failed)."
+        state["error_detail"] = f"{detail}\n\nThe full patch is at: {resolved}"
+        return state
+
+    paths.chat_state(chat_id).update(_err)
+    logger.warning(
+        "patch: host apply failed for chat %s; recorded error, not re-enqueuing", chat_id,
     )
 
 
@@ -506,10 +535,10 @@ def notify_parent_apply_failure(
     stderr: str,
     patch_path: Path,
 ) -> None:
-    message = format_apply_failure(stderr, patch_path)
     if parent_kind == "chat":
-        enqueue_chat_system_message(chat_id, message, source="patch_apply")
+        record_chat_apply_failure(chat_id, stderr, patch_path)
         return
+    message = format_apply_failure(stderr, patch_path)
     if parent_kind == "run":
         from crack_server.sub_agents import registry
 
@@ -630,7 +659,6 @@ async def finalize_chat_sandbox(
         def _bump(s: dict) -> dict:
             s["patch_guard_attempts"] = nag_attempt + 1
             s["phase"] = "chatting"
-            s["stop_requested"] = False
             return s
 
         chat.update(_bump)
@@ -650,7 +678,7 @@ async def finalize_chat_sandbox(
         if not gated:
             ok, err = await apply_patch_on_host(result.patch_path)
             if not ok:
-                enqueue_chat_apply_failure(chat_id, err, result.patch_path)
+                record_chat_apply_failure(chat_id, err, result.patch_path)
             elif self_mod:
                 # Applied code reloads crack-dev; watch health, roll back on failure.
                 launch_health_watcher(chat_id, result.patch_path)

@@ -273,7 +273,6 @@ def record_chat_errors(state: JsonState, *, log_message: str = "chat failed") ->
                 s["error"] = str(e)
                 s["error_detail"] = getattr(e, "detail", "")
                 s["error_over_budget"] = bool(getattr(e, "over_budget", False))
-            s["stop_requested"] = False
             return s
 
         state.update(_fail)

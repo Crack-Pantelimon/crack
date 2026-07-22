@@ -1,0 +1,4 @@
+- http://localhost:9847/chats/1784739382358
+- user clicked stop, but after that the engine keeps retrying all by itself. user clicking STOP sshould mean this task is completely halted and killed and suspended until they send another message. stopping a sub-agent should work the same way (but not stop the main agent).
+- global retry limit catches it , but then that also fails to stop it and it keeps cycling until we delete it. 
+- on refresh, the errors keep getting chunked at the bottom, and the other logs at the top, and they are not in the order of their timestamps.

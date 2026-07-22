@@ -8,5 +8,9 @@
       "maxLines": 300,
       "maxBytes": 8000
     }
+  },
+  "retry": {
+    "enabled": true,
+    "maxRetries": 5
   }
 }

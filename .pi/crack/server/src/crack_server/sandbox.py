@@ -279,13 +279,19 @@ async def exec_in(
     detached: bool = False,
     stdout: int | None = None,
     stderr: int | None = None,
+    interactive: bool = False,
+    stdin: int | None = None,
 ) -> asyncio.subprocess.Process:
     """Build and launch ``podman exec``; return the asyncio subprocess.
 
-  Plan 3 tails stdout/stderr or a shared hop output file from the returned process."""
+  Plan 3 tails stdout/stderr or a shared hop output file from the returned
+  process. Pass ``interactive=True`` and ``stdin=PIPE`` for RPC-mode pi
+  (stdin/stdout JSONL protocol)."""
     cmd: list[str] = ["podman", "exec"]
     if detached:
         cmd.append("-d")
+    if interactive:
+        cmd.append("-i")
     if cwd:
         cmd.extend(["-w", cwd])
     if env:
@@ -295,6 +301,8 @@ async def exec_in(
     cmd.extend(argv)
 
     kwargs: dict = {}
+    if stdin is not None:
+        kwargs["stdin"] = stdin
     if stdout is not None:
         kwargs["stdout"] = stdout
     if stderr is not None:

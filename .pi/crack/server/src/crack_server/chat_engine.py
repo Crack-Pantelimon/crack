@@ -126,7 +126,6 @@ async def run_exchange(
 
         def _finish(s: dict) -> dict:
             s["phase"] = stopped_phase if reason == "stopped" else "idle"
-            s["stop_requested"] = False
             if reason == "empty":
                 s["error"] = "model returned empty responses"
                 s["error_detail"] = ""
@@ -181,8 +180,13 @@ async def _run_prewalk_loop(
         # Stamp this hop's model onto every turn it persists (trajectory swaps).
         persister.current_model = hop_model
 
+        resume_session = False
         if hop == 1:
             record = prompt_recorder(persister, "chat", record_template, original=user_msg)
+            resume_session = (
+                any(t.get("label") == "chat" for t in turns_now)
+                or any(not t.get("kind") for t in turns_now)
+            )
         elif message == RESUME_MESSAGE:
             record = prompt_recorder(persister, "resume", "")
         else:
@@ -203,6 +207,7 @@ async def _run_prewalk_loop(
             record_prompt=record,
             record_error=error_recorder(state, subpath=["exchanges", idx]),
             env_extra=env_extra,
+            resume_session=resume_session,
             **(hop_kwargs or {}),
             **pw_kwargs,
         )

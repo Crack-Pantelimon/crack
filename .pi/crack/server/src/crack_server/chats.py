@@ -1212,7 +1212,6 @@ def _merge_child_inbox(chat_id: str) -> int:
             })
         state["pending"] = pending
         state["phase"] = "chatting"
-        state["stop_requested"] = False
         return state
 
     paths.chat_state(chat_id).update(_enqueue)

@@ -1,14 +1,16 @@
-"""Plan 24: crash mid-turn must retry (esp. sandbox where returncode is None)."""
+"""RPC safety-net retries and exact error surfacing."""
 
 from __future__ import annotations
 
-import json
+import asyncio
+import sys
+import time
 from pathlib import Path
 
 import pytest
 
-from crack_server import paths, pi_proc, pi_runner, ratelimit
-from tests.test_plan41 import fake_pi  # noqa: F401
+from crack_server import pi_proc, pi_rpc, pi_runner, ratelimit
+from tests.test_plan41 import FAKE_RPC, _fake_rpc_launch, fake_pi  # noqa: F401
 
 
 def _hop_kwargs(tmp_path, pid_file, **over):
@@ -28,167 +30,66 @@ def _hop_kwargs(tmp_path, pid_file, **over):
 
 
 def test_die_mid_turn_retries_then_succeeds(fake_pi, tmp_path, monkeypatch):
-    """pi exits without agent_end → crashed → retry resumes → agent_end."""
-    monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.01, 0.01])
+    monkeypatch.setattr(pi_rpc, "RPC_SAFETY_BACKOFF_SECONDS", 0.01)
     fake_pi.set_script(["die:1", "turns:1"])
     pid_file = tmp_path / "agent.pid"
     turns: list[dict] = []
     errors: list[dict] = []
     reason = pi_runner.run_agent_hop(
         **_hop_kwargs(tmp_path, pid_file),
-        start=__import__("time").monotonic(),
+        start=time.monotonic(),
         persist_turn=lambda t, h: turns.append(dict(t)),
         record_error=lambda e: errors.append(e) or len(errors),
     )
     assert reason == "agent_end"
     assert fake_pi.invocations() == 2
     assert len(errors) == 1
-    assert "crashed" in errors[0]["message"]
-    # Unique per-attempt output files; manifest points at the successful one.
-    manifest = pi_proc._read_hop_manifest(paths.hop_manifest_path(pid_file))
-    assert manifest["status"] == "done"
-    out = Path(manifest["output_path"])
-    assert out.name.endswith(".hop.1.1.jsonl") or ".hop.1.1." in out.name
-    assert out.is_file()
+    assert "exited unexpectedly" in errors[0]["message"]
+    assert fake_pi.prompt(2) == pi_runner.RESUME_MESSAGE
 
 
-def test_sandbox_style_crash_with_none_returncode_retries(monkeypatch, tmp_path):
-    """Even with returncode None (sandbox), crashed=True must not clean-exit."""
-    monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.01])
-    calls = {"n": 0}
-
-    async def fake_once(p, attempt_idx, attempt_message):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return {
-                "reason": "crashed",
-                "terminated_by_us": False,
-                "terminal": False,
-                "returncode": None,  # sandbox
-                "persisted": 1,
-                "ended_in_error": None,
-                "crashed": True,
-                "detail": "last output:\npartial",
-            }
-        return {
-            "reason": "agent_end",
-            "terminated_by_us": False,
-            "terminal": True,
-            "returncode": None,
-            "persisted": 1,
-            "ended_in_error": None,
-            "crashed": False,
-            "detail": "",
-        }
-
-    monkeypatch.setattr(pi_proc, "_attempt_once", fake_once)
-    monkeypatch.setattr(pi_proc, "_live_detached_manifest", lambda p: None)
+def test_structured_error_preferred_over_stderr(fake_pi, tmp_path, monkeypatch):
+    monkeypatch.setattr(ratelimit, "MAX_TOTAL_ERRORS", 1)
+    fake_pi.set_script(["autoretryfail:0"])
     errors: list[dict] = []
-    p = pi_proc._HopParams(
-        log_prefix="test",
-        model="m",
-        session_id="s",
-        sessions_dir=tmp_path / "sessions",
-        tools=None,
-        start=__import__("time").monotonic(),
-        sentinel=None,
-        timeout_seconds=60,
-        persist_turn=lambda t, h: None,
-        hop=1,
-        pid_file=tmp_path / "agent.pid",
-        stop_check=None,
-        env_extra=None,
-        waiting_check=None,
-        sandbox="crack-sbx-x",
-    )
+    with pytest.raises(pi_proc.PiError) as ei:
+        pi_runner.run_agent_hop(
+            **_hop_kwargs(tmp_path, tmp_path / "agent.pid"),
+            start=time.monotonic(),
+            persist_turn=lambda t, h: None,
+            record_error=lambda e: errors.append(e) or len(errors),
+            error_budget=lambda: 1,
+        )
+    assert "429 status code" in str(ei.value)
+    assert errors[0]["detail"] == "429 status code (no body)"
 
-    async def _run():
-        return await pi_proc._run_hop_with_retries(
-            p, "hi", record_error=lambda e: errors.append(e) or len(errors),
+
+@pytest.mark.anyio
+async def test_prompt_rejection_surfaces_exact_detail(tmp_path, monkeypatch):
+    async def launch(argv, *, sandbox, env):
+        del argv, sandbox, env
+        return await asyncio.create_subprocess_exec(
+            sys.executable, str(FAKE_RPC), "promptreject",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
-    reason = __import__("asyncio").run(_run())
-    assert reason == "agent_end"
-    assert calls["n"] == 2
-    assert errors and "crashed" in errors[0]["message"]
-
-
-def test_structured_error_preferred_over_generic(monkeypatch, tmp_path):
-    monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.01])
-    monkeypatch.setattr(ratelimit, "MAX_TOTAL_ERRORS", 1)
-    calls = {"n": 0}
-
-    async def fake_once(p, attempt_idx, attempt_message):
-        calls["n"] += 1
-        return {
-            "reason": "crashed",
-            "terminated_by_us": False,
-            "terminal": False,
-            "returncode": None,
-            "persisted": 0,
-            "ended_in_error": "Bad Gateway 502 from provider",
-            "crashed": True,
-            "detail": "last stderr:\nnoise",
-        }
-
-    monkeypatch.setattr(pi_proc, "_attempt_once", fake_once)
-    monkeypatch.setattr(pi_proc, "_live_detached_manifest", lambda p: None)
+    monkeypatch.setattr(pi_rpc, "_launch_rpc_proc", launch)
     errors: list[dict] = []
-    p = pi_proc._HopParams(
-        log_prefix="test",
-        model="m",
-        session_id="s",
-        sessions_dir=tmp_path / "sessions",
-        tools=None,
-        start=__import__("time").monotonic(),
-        sentinel=None,
-        timeout_seconds=60,
-        persist_turn=lambda t, h: None,
-        hop=1,
-        pid_file=tmp_path / "agent.pid",
-        stop_check=None,
-        env_extra=None,
-        waiting_check=None,
-    )
-
-    async def _run():
-        with pytest.raises(pi_proc.PiError) as ei:
-            await pi_proc._run_hop_with_retries(
-                p, "hi",
-                record_error=lambda e: errors.append(e) or len(errors),
-                error_budget=lambda: 1,
-            )
-        return ei.value
-
-    err = __import__("asyncio").run(_run())
-    assert "Bad Gateway 502" in str(err)
-    assert errors and "Bad Gateway 502" in errors[0]["message"]
-
-
-def test_nul_junk_lines_dropped():
-    sink = pi_proc._StreamSink(pi_proc._HopParams(
-        log_prefix="t", model="m", session_id="s",
-        sessions_dir=Path("/tmp"), tools=None,
-        start=0.0, sentinel=None, timeout_seconds=60,
-        persist_turn=lambda t, h: None, hop=1, pid_file=None,
-        stop_check=None, env_extra=None, waiting_check=None,
-    ))
-    assert pi_proc._process_stream_line(sink, "\x00\x00\x00", lambda: None) is False
-    assert sink.stderr_tail == []
-    assert sink.output_tail == []
-
-
-def test_attempt_output_paths_are_unique(tmp_path):
-    p = pi_proc._HopParams(
-        log_prefix="t", model="m", session_id="s",
-        sessions_dir=tmp_path / "sessions", tools=None,
-        start=0.0, sentinel=None, timeout_seconds=60,
-        persist_turn=lambda t, h: None, hop=3,
-        pid_file=tmp_path / "agent.pid",
-        stop_check=None, env_extra=None, waiting_check=None,
-    )
-    a0 = pi_proc._attempt_output_path(p, 0)
-    a1 = pi_proc._attempt_output_path(p, 1)
-    assert a0 != a1
-    assert a0.name == "agent.hop.3.0.jsonl"
-    assert a1.name == "agent.hop.3.1.jsonl"
+    with pytest.raises(pi_proc.PiError) as ei:
+        await pi_rpc.arun_agent_hop_rpc(
+            log_prefix="test",
+            model="moonshotai/x",
+            session_id="rpc-hop",
+            sessions_dir=tmp_path / "sessions",
+            tools="bash",
+            message="do it",
+            start=time.monotonic(),
+            sentinel=None,
+            timeout_seconds=60,
+            persist_turn=lambda t, h: None,
+            record_error=lambda e: errors.append(e) or len(errors),
+        )
+    assert ei.value.detail == "No project session found"
+    assert errors[0]["detail"] == "No project session found"

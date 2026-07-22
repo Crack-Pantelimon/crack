@@ -48,16 +48,6 @@ def harness_data_root(root: Path | None = None) -> Path:
     return proj / ".pi" / "crack"
 
 
-def hop_manifest_path(pid_file: Path) -> Path:
-    """The detached-hop manifest (hop.json) next to a pid file."""
-    return pid_file.with_name(pid_file.name.removesuffix(".pid") + ".hop.json")
-
-
-def hop_output_path(pid_file: Path) -> Path:
-    """Append-only hop stdout+stderr file next to a pid file."""
-    return pid_file.with_name(pid_file.name.removesuffix(".pid") + ".hop.jsonl")
-
-
 def templates_dir() -> Path:
     """Prompt templates root (prompt_templates/)."""
     return Path(__file__).resolve().parent.parent.parent / "prompt_templates"

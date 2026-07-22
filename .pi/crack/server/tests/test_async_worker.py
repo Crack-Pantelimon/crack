@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from crack_server import paths, queue, ratelimit, worker
-from tests.test_plan41 import FakePi, SHIM
+from crack_server import paths, pi_rpc, queue, ratelimit, worker
+from tests.test_plan41 import FakePi, SHIM, _fake_rpc_launch
 
 
 @pytest.fixture
@@ -29,6 +29,8 @@ def fake_pi(tmp_path, monkeypatch) -> FakePi:
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_PI_DIR", str(ctrl))
     monkeypatch.setenv("FAKE_PI_SCRIPT", str(script))
+    monkeypatch.setattr(pi_rpc, "_launch_rpc_proc", _fake_rpc_launch)
+    monkeypatch.setattr(pi_rpc, "RPC_SAFETY_BACKOFF_SECONDS", 0.01)
     monkeypatch.setattr(ratelimit, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
     monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.05, 0.05, 0.05, 0.05])
     monkeypatch.setattr(ratelimit, "PI_RETRY_WINDOW_SECONDS", 0.2)

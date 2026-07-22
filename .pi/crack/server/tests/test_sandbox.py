@@ -130,6 +130,24 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
 
 
 @pytest.mark.anyio
+async def test_exec_in_interactive_adds_i_flag(host_env):
+    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = object()
+        await s.exec_in(
+            "crack-sbx-x",
+            ["pi", "--mode", "rpc"],
+            interactive=True,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+        )
+        cmd = mock_exec.call_args[0]
+        assert "-i" in cmd
+        kwargs = mock_exec.call_args[1]
+        assert kwargs["stdin"] == asyncio.subprocess.PIPE
+        assert kwargs["stdout"] == asyncio.subprocess.PIPE
+
+
+@pytest.mark.anyio
 async def test_exec_in_builds_command(host_env):
     with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = object()

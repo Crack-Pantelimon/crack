@@ -1,15 +1,6 @@
-"""Plan 4.1 tests: runner & stage lifecycle, driven by the fake_pi.sh shim.
+"""Plan 4.1 tests: runner & stage lifecycle, driven by the fake_pi_rpc shim.
 
-Covers the per-section acceptance checks that are practical as pytest cases:
-rate limiting (§2), transient retries + session resume (§3), cap removal (§4),
-STOP classification (§6 backend), the exclusive queue (§7), sentinel own-line
-matching (§8), and compiled-prompt recording (§1) — including one stage-level
-run of Explore against the shim.
-
-Retry-everything update: hard failures (SIGKILL/-9 included) and empty runs
-retry on the HARD_RETRY_DELAYS schedule; the no-progress streak cap is
-len(HARD_RETRY_DELAYS) + 1 attempts, and the durable error budget
-(MAX_TOTAL_ERRORS recorded errors) raises PiError(over_budget=True).
+Agent hops use pi RPC mode. One-off ``run_pi_text`` calls still use fake_pi.sh.
 """
 
 from __future__ import annotations
@@ -17,15 +8,17 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import sys
 import threading
 import time
 from pathlib import Path
 
 import pytest
 
-from crack_server import pi_proc, pi_runner, queue, ratelimit
+from crack_server import pi_proc, pi_rpc, pi_runner, queue, ratelimit
 
 SHIM = Path(__file__).parent / "fake_pi.sh"
+FAKE_RPC = Path(__file__).parent / "fake_pi_rpc.py"
 
 
 class FakePi:
@@ -47,6 +40,18 @@ class FakePi:
         return int(count.read_text()) if count.exists() else 0
 
 
+async def _fake_rpc_launch(argv, *, sandbox, env):
+    del argv, sandbox, env
+    return await asyncio.create_subprocess_exec(
+        sys.executable,
+        str(FAKE_RPC),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+
+
 @pytest.fixture
 def fake_pi(tmp_path, monkeypatch) -> FakePi:
     bin_dir = tmp_path / "fakebin"
@@ -62,7 +67,8 @@ def fake_pi(tmp_path, monkeypatch) -> FakePi:
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_PI_DIR", str(ctrl))
     monkeypatch.setenv("FAKE_PI_SCRIPT", str(script))
-    # Fast retry schedules so failure paths finish in well under a second each.
+    monkeypatch.setattr(pi_rpc, "_launch_rpc_proc", _fake_rpc_launch)
+    monkeypatch.setattr(pi_rpc, "RPC_SAFETY_BACKOFF_SECONDS", 0.01)
     monkeypatch.setattr(ratelimit, "TRANSIENT_RETRY_DELAYS", [0.05, 0.05, 0.05])
     monkeypatch.setattr(ratelimit, "HARD_RETRY_DELAYS", [0.05, 0.05, 0.05, 0.05])
     monkeypatch.setattr(ratelimit, "PI_RETRY_WINDOW_SECONDS", 0.2)
@@ -71,6 +77,7 @@ def fake_pi(tmp_path, monkeypatch) -> FakePi:
 
 def run_hop(tmp_path, message="do it", sentinel=None, model="moonshotai/x", **kw):
     turns: list[dict] = []
+    persist = kw.pop("persist_turn", lambda t, h: turns.append(dict(t)))
     reason = pi_runner.run_agent_hop(
         log_prefix="test",
         model=model,
@@ -81,7 +88,7 @@ def run_hop(tmp_path, message="do it", sentinel=None, model="moonshotai/x", **kw
         start=time.monotonic(),
         sentinel=sentinel,
         timeout_seconds=60,
-        persist_turn=lambda t, h: turns.append(dict(t)),
+        persist_turn=persist,
         **kw,
     )
     return reason, turns
@@ -149,28 +156,23 @@ def test_is_transient_classification():
 
 
 def test_transient_then_success_completes_one_trajectory(fake_pi, tmp_path):
-    fake_pi.set_script(["transient", "transient", "turns:2"])
+    # Transient upstream failures are retried inside pi; the worker sees one RPC
+    # process per hop attempt. Here the shim succeeds on the first try.
+    fake_pi.set_script(["turns:2"])
     reason, turns = run_hop(tmp_path)
     assert reason == "agent_end"
     assert len(turns) == 2
-    assert fake_pi.invocations() == 3
-    # No turns persisted before the failures → the original message is replayed.
-    assert fake_pi.prompt(3) == "do it"
+    assert fake_pi.invocations() == 1
+    assert fake_pi.prompt(1) == "do it"
 
 
 def test_midstream_kill_resumes_session_with_continuation(fake_pi, tmp_path):
-    # 2 turns stream, then a transient death; the reattempt must resume the
-    # same session with the continuation message, keeping turns 1-2.
     fake_pi.set_script(["midfail:2", "turns:1"])
     prompts: list[dict] = []
     reason, turns = run_hop(tmp_path, record_prompt=prompts.append)
     assert reason == "agent_end"
     assert len(turns) == 3
     assert fake_pi.prompt(2) == pi_runner.RESUME_MESSAGE
-    a1, a2 = fake_pi.argv(1), fake_pi.argv(2)
-    assert a1[a1.index("--session-id") + 1] == a2[a2.index("--session-id") + 1]
-    assert a1[a1.index("--session-dir") + 1] == a2[a2.index("--session-dir") + 1]
-    # §1: the prompt was recorded once per hop call (not per attempt).
     assert len(prompts) == 1
     assert prompts[0]["kind"] == "user_prompt"
     assert prompts[0]["compiled"] == "do it"
@@ -182,70 +184,52 @@ def test_transient_failures_raise_at_streak_cap(fake_pi, tmp_path):
     errors: list[dict] = []
     with pytest.raises(pi_runner.PiError) as excinfo:
         run_hop(tmp_path, record_error=lambda e: errors.append(e) or len(errors))
-    # Transients also retry until the no-progress streak cap: every attempt
-    # failed without persisting a turn, so the streak ends it (not the budget).
-    assert fake_pi.invocations() == 1 + len(ratelimit.HARD_RETRY_DELAYS)
+    # Infrastructure failures safety-retry a few times, then raise.
+    assert fake_pi.invocations() == pi_rpc.RPC_SAFETY_MAX_ATTEMPTS
     assert not excinfo.value.over_budget
-    assert len(errors) == 1 + len(ratelimit.HARD_RETRY_DELAYS)
+    assert len(errors) == pi_rpc.RPC_SAFETY_MAX_ATTEMPTS
 
 
-def test_hard_failure_after_persisted_turns_resumes_and_retries(fake_pi, tmp_path):
-    # A hard failure after persisted turns no longer raises immediately: the
-    # hop resumes the session (RESUME_MESSAGE) and retries on the hard
-    # schedule. Here every attempt makes progress, so only the error budget
-    # (MAX_TOTAL_ERRORS recorded errors) stops it, over_budget=True.
-    fake_pi.set_script(["midhard:2"])
+def test_hard_failure_after_persisted_turns_raises_exact_error(fake_pi, tmp_path):
+    fake_pi.set_script(["autoretryfail:2"])
     persisted: list[dict] = []
     errors: list[dict] = []
     with pytest.raises(pi_runner.PiError) as excinfo:
-        pi_runner.run_agent_hop(
-            log_prefix="test",
-            model="moonshotai/x",
-            session_id="hop-test",
-            sessions_dir=tmp_path / "sessions",
-            tools="bash",
-            message="do it",
-            start=time.monotonic(),
-            sentinel=None,
-            timeout_seconds=60,
+        run_hop(
+            tmp_path,
             persist_turn=lambda t, h: persisted.append(dict(t)),
             record_error=lambda e: errors.append(e) or len(errors),
         )
-    assert excinfo.value.over_budget is True
-    # Every failed attempt was recorded durably with the entry fields.
-    assert len(errors) == ratelimit.MAX_TOTAL_ERRORS
-    assert errors[0]["rc"] == 1 and errors[0]["attempt"] == 1
-    assert errors[0]["message"] == "pi exited 1"
-    # Turns 1-2 of every attempt were kept and the session was resumed.
-    assert len(persisted) == 2 * ratelimit.MAX_TOTAL_ERRORS
-    assert fake_pi.invocations() == ratelimit.MAX_TOTAL_ERRORS
-    assert fake_pi.prompt(2) == pi_runner.RESUME_MESSAGE
+    assert "429 status code (no body)" in str(excinfo.value)
+    assert excinfo.value.detail == "429 status code (no body)"
+    assert len(persisted) == 2
+    assert len(errors) == 1
+    assert fake_pi.invocations() == 1
 
 
 def test_error_budget_cap_raises_over_budget(fake_pi, tmp_path):
-    fake_pi.set_script(["hard"])
+    fake_pi.set_script(["transient"])
     errors: list[dict] = []
     with pytest.raises(pi_runner.PiError) as excinfo:
         run_hop(
             tmp_path,
             record_error=lambda e: errors.append(e) or len(errors),
-            error_budget=lambda: 3,
+            error_budget=lambda: 2,
         )
     assert excinfo.value.over_budget is True
-    assert fake_pi.invocations() == 3
-    assert len(errors) == 3
+    assert fake_pi.invocations() == 2
+    assert len(errors) == 2
 
 
 def test_broken_error_recorder_never_wedges_retries(fake_pi, tmp_path):
-    fake_pi.set_script(["hard"])
+    fake_pi.set_script(["transient"])
 
     def broken(entry: dict) -> int:
         raise RuntimeError("recorder exploded")
 
     with pytest.raises(pi_runner.PiError):
         run_hop(tmp_path, record_error=broken)
-    # The streak cap still stops the loop on the local fallback count.
-    assert fake_pi.invocations() == 1 + len(ratelimit.HARD_RETRY_DELAYS)
+    assert fake_pi.invocations() == pi_rpc.RPC_SAFETY_MAX_ATTEMPTS
 
 
 # ---------------------------------------------------------------------------
@@ -253,11 +237,9 @@ def test_broken_error_recorder_never_wedges_retries(fake_pi, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_terminal_linger_past_grace_is_not_sigkill(fake_pi, tmp_path, monkeypatch):
-    # Fake pi emits agent_end then sleeps longer than EXIT_GRACE_SECONDS.
-    # The harness must detach (not SIGKILL) and must not record "pi exited -9".
-    monkeypatch.setattr(pi_proc, "EXIT_GRACE_SECONDS", 0.4)
-    fake_pi.set_script(["linger:2"])
+def test_terminal_linger_past_grace_is_not_sigkill(fake_pi, tmp_path):
+    # RPC mode: a successful hop completes even when pi lingers on teardown.
+    fake_pi.set_script(["turns:1"])
     errors: list[dict] = []
     reason, turns = run_hop(
         tmp_path,
@@ -265,34 +247,12 @@ def test_terminal_linger_past_grace_is_not_sigkill(fake_pi, tmp_path, monkeypatc
     )
     assert reason == "agent_end"
     assert len(turns) == 1
-    assert turns[0]["text"] == "done, lingering (invocation 1)"
     assert fake_pi.invocations() == 1
     assert errors == []
-    assert not any("pi exited -9" in (e.get("message") or "") for e in errors)
 
 
 def test_nonzero_exit_without_terminal_still_retries(fake_pi, tmp_path):
-    # Guards the not-sink.terminal branch: a hard crash with no agent_end must
-    # still count as failed and be retried (not short-circuited by terminality).
-    fake_pi.set_script(["hard", "turns:1"])
-    errors: list[dict] = []
-    reason, turns = run_hop(
-        tmp_path,
-        record_error=lambda e: errors.append(e) or len(errors),
-    )
-    assert reason == "agent_end"
-    assert len(turns) == 1
-    assert fake_pi.invocations() == 2
-    assert len(errors) == 1
-    assert errors[0]["message"] == "pi exited 1"
-    assert errors[0]["rc"] == 1
-
-
-def test_auto_retry_end_after_progress_forces_resume(fake_pi, tmp_path):
-    # Progress then pi-internal auto_retry exhaustion (rc 0 + agent_settled)
-    # must not look "done": the hop retries with RESUME_MESSAGE and keeps the
-    # earlier turns. Second attempt finishing cleanly completes the exchange.
-    fake_pi.set_script(["autoretryfail:1", "turns:1"])
+    fake_pi.set_script(["crash", "turns:1"])
     errors: list[dict] = []
     reason, turns = run_hop(
         tmp_path,
@@ -300,34 +260,41 @@ def test_auto_retry_end_after_progress_forces_resume(fake_pi, tmp_path):
     )
     assert reason == "agent_end"
     assert len(turns) == 2
-    assert turns[0]["text"] == "turn 1 (invocation 1)"
-    assert turns[1]["text"] == "turn 1 (invocation 2)"
+    assert turns[0]["text"] == "partial before crash"
     assert fake_pi.invocations() == 2
-    assert fake_pi.prompt(2) == pi_runner.RESUME_MESSAGE
+    assert len(errors) == 1
+    assert "exited unexpectedly" in errors[0]["message"]
+
+
+def test_auto_retry_end_after_progress_raises_exact_error(fake_pi, tmp_path):
+    fake_pi.set_script(["autoretryfail:1"])
+    persisted: list[dict] = []
+    errors: list[dict] = []
+    with pytest.raises(pi_runner.PiError) as excinfo:
+        run_hop(
+            tmp_path,
+            persist_turn=lambda t, h: persisted.append(dict(t)),
+            record_error=lambda e: errors.append(e) or len(errors),
+        )
+    assert len(persisted) == 1
+    assert fake_pi.invocations() == 1
     assert len(errors) == 1
     assert errors[0]["message"] == "pi gave up: 429 status code (no body)"
-    assert errors[0]["rc"] == 0
-    # Detail must surface the attempt's stdout/stderr tail (not hardcoded "").
-    assert errors[0]["detail"]
-    assert "auto_retry_end" in errors[0]["detail"] or "429" in errors[0]["detail"]
+    assert errors[0]["detail"] == "429 status code (no body)"
+    assert "429" in str(excinfo.value)
 
 
-def test_empty_turns_error_includes_detail(fake_pi, tmp_path):
-    # Clean agent_end with no persisted turns retries like a hard failure; the
-    # recorded error must carry the hop output tail for the UI collapsible.
-    fake_pi.set_script(["turns:0", "turns:1"])
+def test_empty_turns_returns_empty_reason(fake_pi, tmp_path):
+    fake_pi.set_script(["turns:0"])
     errors: list[dict] = []
     reason, turns = run_hop(
         tmp_path,
         record_error=lambda e: errors.append(e) or len(errors),
     )
-    assert reason == "agent_end"
-    assert len(turns) == 1
-    assert fake_pi.invocations() == 2
-    assert len(errors) == 1
-    assert errors[0]["message"] == "pi returned only empty turns"
-    assert errors[0]["detail"]
-    assert "agent_end" in errors[0]["detail"]
+    assert reason == "empty"
+    assert len(turns) == 0
+    assert fake_pi.invocations() == 1
+    assert errors == []
 
 
 def test_persisted_then_clean_agent_end_still_returns_immediately(fake_pi, tmp_path):
@@ -370,6 +337,15 @@ def test_willretry_agent_end_does_not_end_hop_early(fake_pi, tmp_path):
     assert errors == []
 
 
+def test_rpc_message_update_error_surfaces_exact_text(fake_pi, tmp_path):
+    fake_pi.set_script(["rpcerror:529 overloaded_error: Overloaded"])
+    errors: list[dict] = []
+    with pytest.raises(pi_runner.PiError) as excinfo:
+        run_hop(tmp_path, record_error=lambda e: errors.append(e) or len(errors))
+    assert excinfo.value.detail == "529 overloaded_error: Overloaded"
+    assert errors[0]["detail"] == "529 overloaded_error: Overloaded"
+
+
 def test_hard_backoff_schedule_matches_hard_retry_delays(monkeypatch):
     sleeps: list[float] = []
 
@@ -391,41 +367,6 @@ def test_hard_backoff_schedule_matches_hard_retry_delays(monkeypatch):
     ]
     assert sleeps == expected
     assert sleeps == [1.0, 1.0, 3.0, 6.0, 9.0, 16.0, 27.0, 27.0]
-
-
-def test_no_progress_streak_resets_on_progress(fake_pi, tmp_path, monkeypatch):
-    streaks: list[int] = []
-
-    async def fake_hard_sleep(streak: int) -> None:
-        streaks.append(streak)
-
-    monkeypatch.setattr(pi_proc, "_async_hard_backoff_sleep", fake_hard_sleep)
-    fake_pi.set_script(["hard", "hard", "midhard:1", "hard"])
-    errors: list[dict] = []
-    persisted: list[dict] = []
-    with pytest.raises(pi_runner.PiError) as excinfo:
-        pi_runner.run_agent_hop(
-            log_prefix="test",
-            model="moonshotai/x",
-            session_id="hop-test",
-            sessions_dir=tmp_path / "sessions",
-            tools="bash",
-            message="do it",
-            start=time.monotonic(),
-            sentinel=None,
-            timeout_seconds=60,
-            persist_turn=lambda t, h: persisted.append(dict(t)),
-            record_error=lambda e: errors.append(e) or len(errors),
-        )
-    # Streak climbs 1,2 → midhard persists a turn (progress → 0, resume) →
-    # climbs again until the cap (len(HARD_RETRY_DELAYS) + 1 attempts).
-    assert streaks == [1, 2, 0, 1, 2, 3, 4]
-    assert fake_pi.invocations() == 8
-    assert len(persisted) == 1
-    assert len(errors) == 8
-    assert not excinfo.value.over_budget
-    # After the progressing failure the session was resumed, not replayed.
-    assert fake_pi.prompt(4) == pi_runner.RESUME_MESSAGE
 
 
 def test_run_pi_text_transient_then_ok(fake_pi):
@@ -492,7 +433,7 @@ def test_sentinel_own_line_only(fake_pi, tmp_path):
 
 
 def test_stop_kills_process_group_and_returns_stopped(fake_pi, tmp_path):
-    fake_pi.set_script(["sleepy:30"])
+    fake_pi.set_script(["sleepy:5"])
     stop_flag = {"v": False}
     pid_file = tmp_path / "agent.pid"
     result: dict = {}

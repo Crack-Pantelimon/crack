@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,25 @@ from crack_server.steprun import attach_media_to_blocks
 from crack_server.transcript import apply_event_to_turn, text_from_content, turn_has_content
 
 logger = logging.getLogger("uvicorn.error")
+
+
+def _row_epoch(row: dict) -> float | None:
+    """Best-effort epoch for a trajectory row: prefer a harness ``at`` float, else
+    parse a session event's ISO ``timestamp`` (…Z). None when neither is present."""
+    at = row.get("at")
+    if at is not None:
+        try:
+            return float(at)
+        except (TypeError, ValueError):
+            pass
+    ts = row.get("timestamp")
+    if ts:
+        try:
+            return datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            pass
+    return None
+
 
 # Cache: path → (mtime_ns, size, parsed events list)
 _FILE_CACHE: dict[str, tuple[int, int, list[dict]]] = {}
@@ -299,6 +319,7 @@ def merge_exchange_sidecars(
                 "kind": "user_prompt",
                 "id": row.get("id") or f"prompt-{len(out)}",
                 **meta,
+                "timestamp": row.get("timestamp"),
             })
             seen_users.add(text)
             continue
@@ -313,9 +334,23 @@ def merge_exchange_sidecars(
                 {"kind": "user_prompt", "id": f"prompt-extra-{len(out)}", **meta},
             )
 
-    # Errors after the trajectory (attempt metadata is relative to hops).
-    out.extend(error_rows)
-    return out
+    # Merge error rows into the projected stream by time instead of dumping them
+    # at the end. `out` rows carry a monotonic (carry-forward) epoch; errors sort
+    # by their own `at`, and on ties land after the row they follow.
+    keyed: list[tuple[float, int, int, dict]] = []
+    last = 0.0
+    for idx, row in enumerate(out):
+        ep = _row_epoch(row)
+        if ep is None or ep < last:
+            ep = last            # carry forward so out order is preserved
+        else:
+            last = ep
+        keyed.append((ep, 0, idx, row))
+    for idx, err in enumerate(error_rows):
+        ep = _row_epoch(err)
+        keyed.append((ep if ep is not None else last, 1, idx, err))
+    keyed.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [payload for _, _, _, payload in keyed]
 
 
 def clear_cache() -> None:

@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import signal
 import time
 from pathlib import Path
 
@@ -138,13 +137,9 @@ async def _dispatch(job: dict) -> None:
             await asyncio.to_thread(_fail_dispatch, job, slug, task_id, run_id, exc)
 
 
-DETACHED_HOP_GRACE_SECONDS = 120.0
-
-
 def recover_detached_hops() -> None:
-    """Reload survival: leave live detached pi processes for re-attach."""
+    """Reload survival: reap orphaned agent pid files left from a prior worker."""
     from crack_server import paths, pi_runner
-    from crack_server.pi_proc import _hop_alive, _read_hop_manifest, _terminate_group
 
     pid_files: list[Path] = []
     chats_dir = paths.unscripted_chats_dir()
@@ -153,48 +148,8 @@ def recover_detached_hops() -> None:
         pid_files += list(chats_dir.glob("*/sub_agent_runs/*/agent.pid"))
 
     for pid_file in pid_files:
-        manifest_path = paths.hop_manifest_path(pid_file)
-        output_path = paths.hop_output_path(pid_file)
-        manifest = _read_hop_manifest(manifest_path)
-        session_id = str(manifest.get("session_id") or "") or None
-        if manifest.get("status") == "running" and (
-            manifest.get("sandbox") or isinstance(manifest.get("pid"), int)
-        ):
-            alive = _hop_alive(manifest, session_id)
-            budget = float(manifest.get("timeout") or 0) + DETACHED_HOP_GRACE_SECONDS
-            stale = time.time() - float(manifest.get("started_at") or 0) > budget
-            if alive and not stale:
-                logger.info(
-                    "crack-worker: detached hop %s still running; leaving for re-attach",
-                    manifest_path,
-                )
-                continue
-            if alive:
-                logger.warning(
-                    "crack-worker: detached hop %s stale; killing",
-                    manifest_path,
-                )
-                if manifest.get("sandbox") and session_id:
-                    from crack_server import sandbox as sandbox_mod
-
-                    sandbox_mod.kill_session_sync(str(manifest["sandbox"]), session_id)
-                else:
-                    pid = manifest.get("pid")
-                    if isinstance(pid, int):
-                        _terminate_group(pid, signal.SIGKILL)
-            elif not stale:
-                logger.info(
-                    "crack-worker: detached hop %s ended during restart; leaving for drain",
-                    manifest_path,
-                )
-                continue
-            for path in (pid_file, manifest_path, output_path):
-                path.unlink(missing_ok=True)
-            continue
         killed = pi_runner.kill_pid_file(pid_file)
         logger.info("crack-worker: orphaned agent pid file %s (killed=%s)", pid_file, killed)
-        for path in (pid_file, manifest_path, output_path):
-            path.unlink(missing_ok=True)
 
 
 SESSION_RETENTION_DAYS = 14

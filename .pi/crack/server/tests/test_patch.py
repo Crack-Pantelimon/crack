@@ -43,6 +43,8 @@ async def test_extract_patch_empty_diff(artifact_dir):
     async def fake_podman(*args, timeout=300):
         if args[:2] == ("exec", "crack-sbx-x") and args[2] == "bash":
             return 0, "", ""
+        if args[-2:] == ("read-tree", "base"):
+            return 0, "", ""
         if args[-2:] == ("add", "-A"):
             return 0, "", ""
         if args[-1] == "write-tree":
@@ -56,6 +58,40 @@ async def test_extract_patch_empty_diff(artifact_dir):
 
     assert result.empty
     assert not result.needs_nag
+
+
+@pytest.mark.anyio
+async def test_produce_diff_seeds_index_from_base_tree(artifact_dir):
+    """Tracked-but-gitignored files must not spuriously appear as deletions."""
+    p.base_tree_path(artifact_dir).write_text("basetree\n")
+    calls: list[tuple[str, ...]] = []
+
+    async def fake_podman(*args, timeout=300):
+        calls.append(args)
+        if args[:2] == ("exec", "crack-sbx-x") and args[2] == "bash":
+            return 0, "", ""
+        if args[-2:] == ("read-tree", "basetree"):
+            return 0, "", ""
+        if args[-2:] == ("add", "-A"):
+            return 0, "", ""
+        if args[-1] == "write-tree":
+            return 0, "basetree\n", ""
+        if args[-3:-1] == ("diff", "basetree"):
+            return 0, "diff --git a/new.txt b/new.txt\n", ""
+        return 0, "", ""
+
+    with patch.object(p.sandbox, "_podman", side_effect=fake_podman):
+        result = await p.extract_patch("crack-sbx-x", artifact_dir)
+
+    assert result.has_content
+    patch_text = p.patch_diff_path(artifact_dir).read_text()
+    assert "new.txt" in patch_text
+    assert "data.bytes" not in patch_text
+    read_tree_idx = next(
+        i for i, a in enumerate(calls) if a[-2:] == ("read-tree", "basetree")
+    )
+    add_idx = next(i for i, a in enumerate(calls) if a[-2:] == ("add", "-A"))
+    assert read_tree_idx < add_idx
 
 
 @pytest.mark.anyio
@@ -89,6 +125,94 @@ def test_format_apply_failure_includes_patch_path(tmp_path):
     assert "Patch application failed" in text
     assert str(patch_file.resolve()) in text
     assert "Resolve the conflict" in text
+
+
+def test_record_chat_apply_failure_sets_error_without_enqueue(tmp_path, monkeypatch):
+    from crack_server import chats, paths, queue
+
+    monkeypatch.setenv("CRACK_PI_PROJECT_ROOT", str(tmp_path))
+    chat_id = paths.generate_chat_id()
+    paths.create_chat(chat_id, "nvidia/z-ai/glm-5.2")
+    patch_file = paths.chat_dir(chat_id) / "patch.diff"
+    patch_file.write_text("diff\n")
+
+    enqueued: list[str] = []
+    monkeypatch.setattr(
+        queue, "enqueue_exclusive",
+        lambda *a, **k: enqueued.append(a[0]) or "job-id",
+    )
+
+    p.record_chat_apply_failure(chat_id, "boom", patch_file)
+
+    state = paths.chat_state(chat_id).read()
+    assert state["phase"] == "idle"
+    assert "git apply failed" in state["error"]
+    assert "boom" in state["error_detail"]
+    assert str(patch_file.resolve()) in state["error_detail"]
+    assert not state.get("pending")
+    assert not any(e.get("source") == "patch_apply" for e in state.get("exchanges") or [])
+    assert enqueued == []
+    assert not queue.has_job(chat_id, chats.CHAT_JOB_SLUG)
+
+
+@pytest.mark.anyio
+async def test_finalize_chat_sandbox_apply_failure_does_not_enqueue(tmp_path, monkeypatch):
+    from crack_server import chats, paths, queue
+
+    monkeypatch.setenv("CRACK_PI_PROJECT_ROOT", str(tmp_path))
+    chat_id = paths.generate_chat_id()
+    paths.create_chat(chat_id, "nvidia/z-ai/glm-5.2")
+    artifact_dir = paths.chat_dir(chat_id)
+    patch_file = p.patch_diff_path(artifact_dir)
+    patch_file.write_text("diff --git a/x.txt b/x.txt\n")
+
+    enqueued: list[str] = []
+    monkeypatch.setattr(
+        queue, "enqueue_exclusive",
+        lambda *a, **k: enqueued.append(a[0]) or "job-id",
+    )
+    monkeypatch.setattr(
+        p, "extract_patch",
+        AsyncMock(return_value=p.ExtractResult(
+            patch_path=patch_file, empty=False, needs_nag=False,
+            big_files=(), nag_attempt=0,
+        )),
+    )
+    monkeypatch.setattr(p, "apply_patch_on_host", AsyncMock(return_value=(False, "boom")))
+    monkeypatch.setattr(p.sandbox, "destroy_sandbox", AsyncMock())
+
+    await p.finalize_chat_sandbox(chat_id, f"crack-sbx-{chat_id}")
+
+    state = paths.chat_state(chat_id).read()
+    assert state["phase"] == "idle"
+    assert state.get("error")
+    assert not state.get("pending")
+    assert enqueued == []
+    assert not queue.has_job(chat_id, chats.CHAT_JOB_SLUG)
+
+
+def test_notify_parent_apply_failure_chat_records_error_not_enqueues(tmp_path, monkeypatch):
+    from crack_server import chats, paths, queue
+
+    monkeypatch.setenv("CRACK_PI_PROJECT_ROOT", str(tmp_path))
+    chat_id = paths.generate_chat_id()
+    paths.create_chat(chat_id, "nvidia/z-ai/glm-5.2")
+    patch_file = tmp_path / "patch.diff"
+
+    enqueued: list[str] = []
+    monkeypatch.setattr(
+        queue, "enqueue_exclusive",
+        lambda *a, **k: enqueued.append(a[0]) or "job-id",
+    )
+
+    p.notify_parent_apply_failure("chat", chat_id, chat_id, "conflict", patch_file)
+
+    state = paths.chat_state(chat_id).read()
+    assert state["phase"] == "idle"
+    assert state.get("error")
+    assert not state.get("pending")
+    assert enqueued == []
+    assert not queue.has_job(chat_id, chats.CHAT_JOB_SLUG)
 
 
 # -- Plan 7 Part B: self-modification detection / messaging -------------------
