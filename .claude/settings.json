@@ -7,7 +7,8 @@
       "mcp__chromium__navigate_page",
       "mcp__chromium__take_screenshot",
       "Read(//home/p/.local/share/containers/storage/overlay/704a978b851a0c395e7d16c8428795c55454ddfb3bbe4ac562b221d8054e00cf/diff/usr/lib/node_modules/@earendil-works/pi-coding-agent/docs/**)",
-      "mcp__chromium__click"
+      "mcp__chromium__click",
+      "mcp__chromium__fill"
     ]
   }
 }
