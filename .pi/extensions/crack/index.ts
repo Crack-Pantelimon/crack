@@ -10,7 +10,7 @@
  * the server for sub-agent runs. Rigid pipeline stages stay isolated via their
  * explicit --tools allowlists.
  *
- * Server: http://127.0.0.1:9847 (override with CRACK_PI_PORT)
+ * Server: http://<host>:9847 (CRACK_PI_HOST, default 127.0.0.1; sandboxes use crack-dev)
  */
 
 import { readdirSync, readFileSync, existsSync } from "node:fs";
@@ -20,7 +20,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { truncateTail } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
-const BASE = `http://127.0.0.1:${process.env.CRACK_PI_PORT ?? "9847"}`;
+const HOST = process.env.CRACK_PI_HOST ?? "127.0.0.1";
+const BASE = `http://${HOST}:${process.env.CRACK_PI_PORT ?? "9847"}`;
 // Must match crack_server.sub_agents.constants.MAX_DEPTH
 const MAX_DEPTH = 1;
 const MAX_PARALLEL_SUBAGENTS = 3;
@@ -130,6 +131,23 @@ interface WaitResponse {
 	pending: WaitPending[];
 }
 
+const FREE_TOOLS = new Set([
+	"read",
+	"grep",
+	"find",
+	"ls",
+	"todo",
+	"wait_join",
+	"ask_user",
+	"analyze_image",
+]);
+
+function isDestructive(toolName: string): boolean {
+	if (FREE_TOOLS.has(toolName)) return false;
+	if (toolName.startsWith("spawn_")) return false;
+	return true; // bash, edit, write, and all mcp/custom tools
+}
+
 function clamp(n: number, lo: number, hi: number): number {
 	return Math.min(hi, Math.max(lo, n));
 }
@@ -150,6 +168,35 @@ function crackContext(): { chatId: string; parentKind: string; parentId: string 
 		parentKind: process.env.CRACK_PARENT_KIND ?? "chat",
 		parentId: process.env.CRACK_PARENT_ID ?? chatId,
 	};
+}
+
+async function hasRunningChildren(): Promise<boolean> {
+	const { chatId, parentKind, parentId } = crackContext();
+	const url =
+		`${BASE}/api/chats/${encodeURIComponent(chatId)}/sub_agents/active_count` +
+		`?parent_kind=${encodeURIComponent(parentKind)}` +
+		`&parent_id=${encodeURIComponent(parentId)}`;
+	const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+	if (!res.ok) {
+		throw new Error(truncateTail(await res.text()).content);
+	}
+	const d = (await res.json()) as { active: number };
+	return d.active > 0;
+}
+
+/** Block until every running child is terminal (implicit parent-freeze wait). */
+async function waitForAllChildren(): Promise<void> {
+	const maxTotalSeconds = 3600;
+	const deadline = Date.now() + maxTotalSeconds * 1000;
+	while (await hasRunningChildren()) {
+		const remaining = Math.ceil((deadline - Date.now()) / 1000);
+		if (remaining <= 0) {
+			throw new Error(
+				"Timed out waiting for sub-agents to finish before destructive tool call",
+			);
+		}
+		await executeWaitJoin({ timeout_seconds: Math.min(600, remaining) });
+	}
 }
 
 async function executeWaitJoin(
@@ -289,6 +336,14 @@ export default function crack(pi: ExtensionAPI) {
 		};
 		pi.on("session_start", async (_event, ctx) => reconstructTodos(ctx));
 		pi.on("session_tree", async (_event, ctx) => reconstructTodos(ctx));
+
+		if (canSpawn) {
+			pi.on("tool_call", async (event, _ctx) => {
+				if (!isDestructive(event.toolName)) return;
+				if (!(await hasRunningChildren())) return;
+				await waitForAllChildren();
+			});
+		}
 
 		pi.registerTool({
 			name: "todo",

@@ -44,6 +44,8 @@ RUN  git config --global user.name "johnny clankerson"
 RUN apt-get update && apt-get install -y --no-install-recommends podman \
     && rm -rf /var/lib/apt/lists/*
 
+ENV CRACK_HARNESS_DATA_DIR=/crack-harness-data
+
 VOLUME /root
 WORKDIR /workspace
 

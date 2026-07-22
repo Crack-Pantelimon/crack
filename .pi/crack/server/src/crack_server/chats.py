@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from crack_server import ui as _ui
 from crack_server import attachments, chat_engine, context_stats
-from crack_server import paths, pi_runner, queue, settings as _settings, titles
+from crack_server import paths, patch, pi_runner, queue, sandbox, settings as _settings, titles
 from crack_server.chat_engine import MAX_CHAT_HOPS
 from crack_server.state import chat_state_mtime
 
@@ -1088,6 +1088,8 @@ def delete_chat(chat_id: str) -> HTMLResponse:
     """DELETE /api/chats/{id}: kill agents (incl. sub-runs), then remove the dir."""
     check_chat_id(chat_id)
     pi_runner.kill_pid_file(_agent_pid_file(chat_id))
+    if sandbox.sandbox_enabled():
+        sandbox.destroy_sandbox_sync(chat_id)
     _stop_all_runs(chat_id)
     try:
         shutil.rmtree(paths.chat_dir(chat_id))
@@ -1193,6 +1195,10 @@ async def run_chat(chat_id: str) -> None:
     """Worker side of a CHAT_JOB_SLUG job: drain child reports, then process
     pending exchanges FIFO until the queue is empty."""
     chat = paths.chat_state(chat_id)
+    sandbox_name: str | None = None
+    if sandbox.sandbox_enabled():
+        sandbox_name = await sandbox.ensure_sandbox(chat_id)
+        await patch.capture_baseline(sandbox_name, paths.chat_dir(chat_id))
 
     def stop_check() -> bool:
         return bool(chat.read().get("stop_requested"))
@@ -1202,32 +1208,33 @@ async def run_chat(chat_id: str) -> None:
         item = _pop_pending(chat_id)
         if item is None:
             def _idle(state: dict) -> dict:
-                # Only idle if nothing new arrived while we were checking.
                 if state.get("pending") or state.get("child_inbox"):
                     return state
                 state["phase"] = "idle"
                 return state
 
             chat.update(_idle)
-            # Re-check once: a finish() may have raced the idle write.
             _merge_child_inbox(chat_id)
             if chat.read().get("pending"):
                 continue
+            if sandbox.sandbox_enabled() and sandbox_name:
+                if await patch.finalize_chat_sandbox(chat_id, sandbox_name):
+                    sandbox_name = await sandbox.ensure_sandbox(chat_id)
+                    await patch.capture_baseline(sandbox_name, paths.chat_dir(chat_id))
+                    continue
+            elif sandbox.sandbox_enabled():
+                await sandbox.destroy_sandbox(chat_id)
             return
 
         info = paths.chat_info_state(chat_id).read()
         planner_model = info.get("planner_model") or info.get("model") or DEFAULT_CHAT_MODEL
         implementer_model = info.get("implementer_model") or info.get("model") or DEFAULT_CHAT_MODEL
-        # Plan mode governs only the first user message's resolution (its
-        # ask_user follow-ups included). Once the chat graduates, every later
-        # message runs unrestrained (plan off) on the model the user picked in
-        # the continuation dropdown, defaulting to the implementer model.
         plan_active = bool(info.get("plan")) and not bool(info.get("graduated"))
         exchanges = chat.read().get("exchanges", [])
         is_first = len(exchanges) == 1
         cur_exchange = exchanges[-1] if exchanges else {}
         if plan_active:
-            model = planner_model  # first hop; chat_engine swaps to implementer
+            model = planner_model
         else:
             model = (
                 cur_exchange.get("model")
@@ -1254,6 +1261,7 @@ async def run_chat(chat_id: str) -> None:
                 "pid_file": _agent_pid_file(chat_id),
                 "stop_check": stop_check,
                 "waiting_check": lambda: bool(chat.read().get("waiting_on")),
+                "sandbox": sandbox_name,
             },
             pre_stop_check=stop_check,
             on_first_exchange=(
@@ -1271,17 +1279,13 @@ async def run_chat(chat_id: str) -> None:
             media_dir=paths.chat_dir(chat_id) / "media",
             media_url_prefix=f"/chats/{chat_id}/media",
         )
-        # Graduate the chat once the first plan resolution finishes cleanly (not
-        # suspended on an ask_user). From here the continuation dropdown drives
-        # the model and plan mode never re-triggers.
         if plan_active and not chat.read().get("pending_question"):
-            # Cache the post-graduation display model (the implementer) on info so
-            # the card/right-tree badge is a direct dict read, not a per-poll
-            # model_for_phase over the exchange turns.
             paths.chat_info_state(chat_id).update(
                 lambda s: {**s, "graduated": True, "display_model": implementer_model}
             )
         if stop_check():
+            if sandbox.sandbox_enabled() and sandbox_name:
+                await patch.finalize_chat_sandbox(chat_id, sandbox_name, forceful=True)
             def _halt(state: dict) -> dict:
                 state["phase"] = "idle"
                 state["pending"] = []

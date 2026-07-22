@@ -7,7 +7,7 @@ import time
 import uuid
 from pathlib import Path
 
-from crack_server import paths, queue
+from crack_server import patch, paths, queue, sandbox
 from crack_server.sub_agents.constants import MAX_DEPTH, SUBAGENT_JOB_SLUG
 from crack_server.sub_agents import registry, signals
 
@@ -227,6 +227,14 @@ def finish(run_id: str, status: str) -> None:
         s.setdefault("finished_at", time.time())
         s["parent_notified"] = True
         return s
+
+    if sandbox.sandbox_enabled():
+        forceful = status == "stopped"
+        patch_result = patch.finalize_run_sandbox(
+            run_id, forceful=forceful, apply_to_parent=True,
+        )
+        if patch_result is not None and patch_result.needs_nag:
+            return
 
     state_obj.update(_terminal)
     state = state_obj.read()

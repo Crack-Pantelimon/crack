@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
-from crack_server import paths, pi_runner, prewalk, queue, titles
+from crack_server import paths, pi_runner, prewalk, queue, sandbox, titles
 from crack_server.ratelimit import MAX_TOTAL_ERRORS, RESUME_MESSAGE
 from crack_server.state import JsonState
 from crack_server.sub_agents.constants import (
@@ -206,6 +206,10 @@ class SubAgentPersona:
             return str(form["child_results"]), "child_results"
         if form and form.get("resume"):
             return RESUME_MESSAGE, ""
+        if form and form.get("patch_nag"):
+            return str(form["patch_nag"]), "patch_nag"
+        if form and form.get("patch_conflict"):
+            return str(form["patch_conflict"]), "patch_conflict"
         if form and form.get("nudge"):
             # Todo-aware nudge: names the still-open items when a todo list
             # exists, else a generic "keep going" (prewalk.nudge_text). A
@@ -282,6 +286,15 @@ class SubAgentPersona:
         # Stamp this hop's model onto every turn it persists (trajectory swaps).
         persister.current_model = hop_model
 
+        sandbox_name: str | None = None
+        if sandbox.sandbox_enabled():
+            from crack_server import patch as patch_mod
+
+            sandbox_name = await sandbox.ensure_sandbox(run_id)
+            await patch_mod.ensure_baseline(
+                sandbox_name, paths.run_dir(chat_id, run_id),
+            )
+
         try:
             reason = await pi_runner.arun_agent_hop(
                 log_prefix=f"sub_agent/{self.slug}/{run_id}",
@@ -304,6 +317,7 @@ class SubAgentPersona:
                 ),
                 env_extra=self._subagent_env(state),
                 waiting_check=lambda: bool(self.state_read(run_id).get("waiting_on")),
+                sandbox=sandbox_name,
                 **pw_kwargs,
             )
         except pi_runner.PiStopped:
@@ -512,6 +526,10 @@ class SubAgentPersona:
         self.state_update(run_id, _flag)
         chat_id = state["chat_id"]
         killed = pi_runner.kill_pid_file(paths.run_pid_file(chat_id, run_id))
+        if sandbox.sandbox_enabled() and cascade:
+            from crack_server import patch as patch_mod
+
+            patch_mod.finalize_run_sandbox(run_id, forceful=True, apply_to_parent=False)
         logger.info("sub_agent %s: stop requested for %s (killed=%s)", self.slug, run_id, killed)
 
         for child_id in list(state.get("children") or []):

@@ -144,7 +144,7 @@ DETACHED_HOP_GRACE_SECONDS = 120.0
 def recover_detached_hops() -> None:
     """Reload survival: leave live detached pi processes for re-attach."""
     from crack_server import paths, pi_runner
-    from crack_server.pi_proc import _pid_alive, _read_hop_manifest, _terminate_group
+    from crack_server.pi_proc import _hop_alive, _read_hop_manifest, _terminate_group
 
     pid_files: list[Path] = []
     chats_dir = paths.unscripted_chats_dir()
@@ -156,23 +156,32 @@ def recover_detached_hops() -> None:
         manifest_path = paths.hop_manifest_path(pid_file)
         output_path = paths.hop_output_path(pid_file)
         manifest = _read_hop_manifest(manifest_path)
-        pid = manifest.get("pid")
-        if manifest.get("status") == "running" and isinstance(pid, int):
-            alive = _pid_alive(pid, str(manifest.get("session_id") or "") or None)
+        session_id = str(manifest.get("session_id") or "") or None
+        if manifest.get("status") == "running" and (
+            manifest.get("sandbox") or isinstance(manifest.get("pid"), int)
+        ):
+            alive = _hop_alive(manifest, session_id)
             budget = float(manifest.get("timeout") or 0) + DETACHED_HOP_GRACE_SECONDS
             stale = time.time() - float(manifest.get("started_at") or 0) > budget
             if alive and not stale:
                 logger.info(
-                    "crack-worker: detached hop %s still running (pid %d); leaving for re-attach",
-                    manifest_path, pid,
+                    "crack-worker: detached hop %s still running; leaving for re-attach",
+                    manifest_path,
                 )
                 continue
             if alive:
                 logger.warning(
-                    "crack-worker: detached hop %s stale (pid %d); killing group",
-                    manifest_path, pid,
+                    "crack-worker: detached hop %s stale; killing",
+                    manifest_path,
                 )
-                _terminate_group(pid, signal.SIGKILL)
+                if manifest.get("sandbox") and session_id:
+                    from crack_server import sandbox as sandbox_mod
+
+                    sandbox_mod.kill_session_sync(str(manifest["sandbox"]), session_id)
+                else:
+                    pid = manifest.get("pid")
+                    if isinstance(pid, int):
+                        _terminate_group(pid, signal.SIGKILL)
             elif not stale:
                 logger.info(
                     "crack-worker: detached hop %s ended during restart; leaving for drain",

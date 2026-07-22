@@ -155,6 +155,21 @@ async def api_spawn_sub_agent(chat_id: str, request: Request) -> JSONResponse:
     })
 
 
+@router.get("/api/chats/{chat_id}/sub_agents/active_count")
+def api_active_child_count(
+    chat_id: str, parent_kind: str, parent_id: str
+) -> dict:
+    """Non-terminal child count for a parent (cheap probe for parent-freeze)."""
+    chats.check_chat_id(chat_id)
+    if parent_kind not in ("chat", "run") or not parent_id:
+        raise HTTPException(
+            status_code=400, detail="parent_kind and parent_id are required"
+        )
+    if parent_kind == "run":
+        _run_or_404(parent_id)
+    return {"active": runner.active_child_count(chat_id, parent_kind, parent_id)}
+
+
 @router.post("/api/chats/{chat_id}/sub_agents/wait")
 async def api_wait_sub_agents(chat_id: str, request: Request) -> JSONResponse:
     """Long-poll for child results (the server side of the wait_join tool).

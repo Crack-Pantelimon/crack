@@ -75,6 +75,26 @@ def test_personas_discovered(chat_root):
     assert slugs == ["coder"]
 
 
+def test_active_child_count_endpoint(chat_root):
+    from crack_server.routes_sub_agents import api_active_child_count
+
+    assert api_active_child_count(chat_root, "chat", chat_root) == {"active": 0}
+
+    runner.spawn(
+        chat_id=chat_root,
+        persona_slug="coder",
+        instructions="busy",
+        parent_kind="chat",
+        parent_id=chat_root,
+        depth=0,
+    )
+    assert api_active_child_count(chat_root, "chat", chat_root) == {"active": 1}
+
+    run_id = paths.list_run_ids(chat_root)[0]
+    runner.finish(run_id, "done")
+    assert api_active_child_count(chat_root, "chat", chat_root) == {"active": 0}
+
+
 
 @pytest.mark.anyio
 async def test_spawn_run_report_parent_resume(chat_root, fake_pi):

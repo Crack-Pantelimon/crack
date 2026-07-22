@@ -11,6 +11,20 @@ if ! ( docker volume ls | grep crack-dev-target-dir ) ; then
     docker volume create crack-dev-target-dir
 fi
 
+# Shared, non-overlaid volume that holds ALL mutable harness state. It is mounted
+# read-write into crack-dev AND (later plans) into every sandbox, so the server and
+# the sandboxed pi processes share one stable view that is never an overlay lower.
+if ! docker volume ls | grep -q crack-harness-data; then
+    docker volume create crack-harness-data
+fi
+# Anchor container: keeps the volume referenced and gives a stable target for
+# inspection/backup (`docker exec crack-harness-data ls /crack-harness-data`).
+if ! docker ps -a --format '{{.Names}}' | grep -qx crack-harness-data; then
+    docker run -d --name crack-harness-data --restart unless-stopped \
+        -v crack-harness-data:/crack-harness-data \
+        "$IMG_NAME" sleep infinity
+fi
+
 docker rm -f crack-dev || true
 # ./build.sh
 
@@ -21,14 +35,23 @@ docker rm -f crack-dev || true
 HOST_PODMAN_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
 systemctl --user enable --now podman.socket || true
 
+# Shared network: sandboxes reach crack-server as http://crack-dev:9847
+if ! docker network exists crack-net; then
+    docker network create crack-net
+fi
+
 docker run -d \
   --name crack-dev \
+  --network crack-net \
+  --network-alias crack-dev \
   -v "$(dirname $PWD):/workspace" \
   -v "crack-dev-root-dir:/root" \
   -v "crack-dev-target-dir:/workspace/target" \
+  -v "crack-harness-data:/crack-harness-data" \
   -v "${HOST_PODMAN_SOCK}:/run/podman/podman.sock" \
   -e "CONTAINER_HOST=unix:///run/podman/podman.sock" \
   -e "CRACK_HOST_REPO_ROOT=$(dirname $PWD)" \
+  -e "CRACK_HARNESS_DATA_DIR=/crack-harness-data" \
   -p "127.0.0.1:9847:9847" \
   -p "127.0.0.1:21122:22" \
   -p "127.0.0.1:9930:9930" \

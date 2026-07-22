@@ -28,6 +28,26 @@ def project_root() -> Path:
     return Path(raw).expanduser().resolve()
 
 
+def harness_data_root(root: Path | None = None) -> Path:
+    """Root for all MUTABLE harness state (chats, runs, sessions, queue, hop I/O).
+
+    Tests pass an explicit ``root`` and get a co-located tree under it. In the
+    container, CRACK_HARNESS_DATA_DIR points at the shared /crack-harness-data
+    volume. Local dev with neither falls back to the in-repo path (old behavior)."""
+    if root is not None:
+        return root / ".pi" / "crack"
+    proj = project_root()
+    env = os.environ.get("CRACK_HARNESS_DATA_DIR")
+    if env:
+        # Tests monkeypatch CRACK_PI_PROJECT_ROOT to tmp_path while the container
+        # still exports CRACK_HARNESS_DATA_DIR — keep harness state co-located.
+        pi_root = os.environ.get("CRACK_PI_PROJECT_ROOT")
+        if pi_root and Path(pi_root).expanduser().resolve() != Path("/workspace").resolve():
+            return proj / ".pi" / "crack"
+        return Path(env)
+    return proj / ".pi" / "crack"
+
+
 def hop_manifest_path(pid_file: Path) -> Path:
     """The detached-hop manifest (hop.json) next to a pid file."""
     return pid_file.with_name(pid_file.name.removesuffix(".pid") + ".hop.json")
@@ -44,8 +64,8 @@ def templates_dir() -> Path:
 
 
 def harness_dir(root: Path | None = None) -> Path:
-    """Shared infra dir: .pi/crack/harness/ (models cache, queue, locks)."""
-    return (root or project_root()) / ".pi" / "crack" / "harness"
+    """Shared infra dir: harness/ (models cache, queue, locks)."""
+    return harness_data_root(root) / "harness"
 
 
 def models_cache_state(root: Path | None = None) -> JsonState:
@@ -75,7 +95,7 @@ def worker_lock_path(root: Path | None = None) -> Path:
 
 
 def unscripted_chats_dir(root: Path | None = None) -> Path:
-    return (root or project_root()) / ".pi" / "crack" / "unscripted_chats"
+    return harness_data_root(root) / "unscripted_chats"
 
 
 def chat_dir(chat_id: str, root: Path | None = None) -> Path:

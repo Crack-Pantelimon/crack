@@ -2,45 +2,13 @@
 
 set -ex
 
-
 cd /workspace/.pi/crack/server
 uv sync
 
-# --- Shared environment for every child process ---------------------------
-# This script is the container entrypoint, so every export below is inherited
-# by the worker, the web server, and (transitively) the `pi` subprocesses and
-# MCP servers they spawn. Keep tool/browser paths here so nothing has to guess.
-export CRACK_PI_PROJECT_ROOT=/workspace
-export HOME=/root
-# The web server defaults to 127.0.0.1 (main.py); inside the container it must
-# bind 0.0.0.0 or the docker-published port (run.sh) is unreachable.
-export CRACK_PI_HOST=0.0.0.0
-# Toolchains (also set as Docker ENV, re-exported here so a `docker exec` or a
-# child with a scrubbed env still finds them): cargo/wasm-pack, uv python, node.
-export PATH="/usr/local/cargo/bin:/usr/local/python/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-# Browsers + WebDriver, so any tool (MCP or CLI) resolves them without probing.
-export CHROME_BIN=/usr/bin/chromium
-export CHROME_PATH=/usr/bin/chromium
-export CHROMIUM_PATH=/usr/bin/chromium
-export FIREFOX_BIN=/usr/bin/firefox-esr
-export CHROMEDRIVER_BIN=/usr/bin/chromedriver
-export GECKODRIVER_BIN=/usr/local/bin/geckodriver
-export PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
-# Running headless as root: no X display, and chromium needs --no-sandbox.
-unset DISPLAY
-export CHROMIUM_FLAGS="--no-sandbox --disable-gpu"
-# --------------------------------------------------------------------------
+source /workspace/_docker/_sandbox_common.sh
 
-mkdir -p /workspace/.pi/crack/harness
-# MCP servers (web-search + browsers) for pi agents: the pi-mcp-adapter resolves
-# .mcp.json as <cwd>/.mcp.json (no upward walk), but worker-spawned agents run
-# with cwd=/workspace/.pi/crack/server — so sync the repo copy into the global
-# config the adapter reads regardless of cwd (see _docker/README.md).
-mkdir -p /root/.config/mcp
-cp /workspace/.mcp.json /root/.config/mcp/mcp.json
-# web-search-mcp is a stdio server launched lazily by the adapter; sanity-check the build.
-[ -f /root/web-search-mcp/dist/index.js ] || \
-    echo "WARNING: web-search-mcp not built at /root/web-search-mcp (see _docker/README.md)" >&2
+# crack-dev binds uvicorn on all interfaces; sandboxes set CRACK_PI_HOST=crack-dev via podman -e.
+export CRACK_PI_HOST=0.0.0.0
 
 # --- Network-reachable MCP endpoints (for host/outside users) --------------
 # The in-container `pi` agents talk to the MCP servers over stdio (mcp.json
@@ -58,12 +26,12 @@ cp /workspace/.mcp.json /root/.config/mcp/mcp.json
 export MCP_FIREFOX_PORT=9930
 export MCP_CHROMIUM_PORT=9931
 export MCP_WEBSEARCH_PORT=9932
-mkdir -p /workspace/.pi/crack/harness/mcp-http
+mkdir -p "$CRACK_HARNESS_DATA_DIR/harness/mcp-http"
 
 respawn() {  # respawn <logname> <cmd...>
     local name="$1"; shift
     ( while true; do
-        "$@" >>"/workspace/.pi/crack/harness/mcp-http/${name}.log" 2>&1 || true
+        "$@" >>"$CRACK_HARNESS_DATA_DIR/harness/mcp-http/${name}.log" 2>&1 || true
         echo "[mcp-http] ${name} exited; respawning in 3s" >&2
         sleep 3
       done ) &
@@ -90,23 +58,14 @@ respawn web-search-fwd \
 
 # --- Blender MCP (ports 9876 addon socket, 9877 HTTP) ---------------------
 # Blender addon runs inside Blender (Xvfb) on TCP 9876; blender-mcp serves HTTP on 9877.
-export BLENDER_ADDON_PORT=9876
 export MCP_BLENDER_HTTP_PORT=9877
-export BLENDER_HOST=127.0.0.1
-export BLENDER_PORT=9876
-export DISABLE_TELEMETRY=true
-# /root is a named volume — sync addon from image path every boot (like mcp.json above).
-BLENDER_ADDON_DIR="/root/.config/blender/5.1/scripts/addons"
-mkdir -p "${BLENDER_ADDON_DIR}"
-rm -f "${BLENDER_ADDON_DIR}/blender_mcp.py"
-cp /opt/blender_mcp_addon.py "${BLENDER_ADDON_DIR}/blendermcp.py"
 # Force X11 backend, disable Wayland
 export QT_QPA_PLATFORM=offscreen
 export WAYLAND_DISPLAY=""
 export DISPLAY=:99
 
 # Start Xvfb on display :99 (one display for all Blender respawns — not xvfb-run per launch)
-Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +extension RANDR +extension RENDER >/workspace/.pi/crack/harness/mcp-http/xvfb.log 2>&1 &
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +extension RANDR +extension RENDER >"$CRACK_HARNESS_DATA_DIR/harness/mcp-http/xvfb.log" 2>&1 &
 
 sleep 2
 

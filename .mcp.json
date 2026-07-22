@@ -37,7 +37,7 @@
       ]
     },
     "blender": {
-      "command": "blender-mcp",
+      "command": "/workspace/_docker/_blender_mcp_lazy.sh",
       "env": {
         "BLENDER_HOST": "localhost",
         "BLENDER_PORT": "9876",

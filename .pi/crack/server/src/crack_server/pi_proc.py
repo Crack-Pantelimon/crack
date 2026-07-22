@@ -185,10 +185,12 @@ def _write_hop_manifest(path: Path, data: dict) -> None:
 
 
 def _pid_alive(pid: int, session_id: str | None = None) -> bool:
-    """Liveness for a possibly-detached pi: ``os.kill(pid, 0)`` plus a
+    """Liveness for a possibly-detached pi on the host: ``os.kill(pid, 0)`` plus a
     /proc cmdline identity check — the cmdline contains the ``--session-id``
     argv, which guards against pid reuse and weeds out zombies (whose
     cmdline reads empty)."""
+    if pid <= 0:
+        return False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -207,6 +209,56 @@ def _pid_alive(pid: int, session_id: str | None = None) -> bool:
     return not session_id or session_id in cmdline
 
 
+def _hop_alive(manifest: dict, session_id: str | None = None) -> bool:
+    """Liveness for a detached hop: sandbox session or host pid."""
+    from crack_server import sandbox as sandbox_mod
+
+    sbx = manifest.get("sandbox")
+    sid = session_id or manifest.get("session_id")
+    if sbx and sid:
+        return sandbox_mod.session_alive_sync(str(sbx), str(sid))
+    pid = manifest.get("pid")
+    if isinstance(pid, int):
+        return _pid_alive(pid, str(sid) if sid else None)
+    return False
+
+
+def _kill_hop_process(manifest: dict, sig: int) -> None:
+    """Signal a detached hop (host process group or sandbox pi session)."""
+    from crack_server import sandbox as sandbox_mod
+
+    sbx = manifest.get("sandbox")
+    sid = manifest.get("session_id")
+    if sbx and sid:
+        if sig == signal.SIGKILL:
+            sandbox_mod._podman_sync("exec", str(sbx), "pkill", "-KILL", "-f", str(sid))
+        else:
+            sandbox_mod._podman_sync("exec", str(sbx), "pkill", "-TERM", "-f", str(sid))
+        return
+    pid = manifest.get("pid")
+    if isinstance(pid, int):
+        _terminate_group(pid, sig)
+
+
+async def _spawn_sandbox_pi(p: "_HopParams", pi_argv: list[str], output_path: Path) -> None:
+    """Start pi detached inside the sandbox; stdout/stderr land on the shared hop file."""
+    from crack_server import sandbox as sandbox_mod
+
+    redirect = f"exec {shlex.join(pi_argv)} > {shlex.quote(str(output_path))} 2>&1"
+    env = {
+        "CRACK_HARNESS_DATA_DIR": os.environ.get("CRACK_HARNESS_DATA_DIR", "/crack-harness-data"),
+        "CRACK_PI_HOST": os.environ.get("CRACK_PI_HOST", "crack-dev"),
+        **(p.env_extra or {}),
+    }
+    await sandbox_mod.exec_in(
+        p.sandbox,
+        ["sh", "-c", redirect],
+        env=env,
+        cwd="/workspace",
+        detached=True,
+    )
+
+
 def _terminate_group(pid: int, sig: int) -> None:
     """Signal a detached pi's whole process group (spawned start_new_session,
     so pgid == pid), falling back to the bare pid."""
@@ -222,35 +274,48 @@ def _sweep_detached_pids(
     session_id: str | None,
     log_prefix: str,
     hop: int,
+    *,
+    sandbox: str | None = None,
 ) -> list[dict]:
-    """Drop dead detached pids; SIGTERM / SIGKILL those past the age thresholds.
+    """Drop dead detached pids/sessions; SIGTERM / SIGKILL those past the age thresholds.
 
-    Each entry is ``{"pid", "since", "sigterm_at"?}``. Survivors (still alive
-    and not yet SIGKILL'd) are returned for the next manifest write. Logs one
-    warning summary when any survive — the visibility hook for "are we rate
-    limited by our own leaked processes?".
-    """
+    Each entry is ``{"pid", "since", "sigterm_at"?}`` or, for sandbox hops,
+    ``{"session_id", "since", "sigterm_at"?}``. Survivors are returned for the
+    next manifest write."""
     now = time.time()
     survivors: list[dict] = []
     for raw in entries or []:
         if not isinstance(raw, dict):
             continue
-        pid = raw.get("pid")
         since = raw.get("since")
-        if not isinstance(pid, int) or not isinstance(since, (int, float)):
-            continue
-        if not _pid_alive(pid, session_id):
+        if not isinstance(since, (int, float)):
             continue
         entry = dict(raw)
+        detached_sid = entry.get("session_id")
+        pid = entry.get("pid")
+        if sandbox and detached_sid:
+            alive = _hop_alive({"sandbox": sandbox, "session_id": detached_sid})
+        elif isinstance(pid, int):
+            alive = _pid_alive(pid, session_id)
+        else:
+            continue
+        if not alive:
+            continue
         sigterm_at = entry.get("sigterm_at")
         if isinstance(sigterm_at, (int, float)):
             if now - sigterm_at >= DETACHED_KILL_AFTER_SECONDS:
-                _terminate_group(pid, signal.SIGKILL)
+                if sandbox and detached_sid:
+                    _kill_hop_process({"sandbox": sandbox, "session_id": detached_sid}, signal.SIGKILL)
+                elif isinstance(pid, int):
+                    _terminate_group(pid, signal.SIGKILL)
                 continue
             survivors.append(entry)
             continue
         if now - since >= DETACHED_TERMINATE_AFTER_SECONDS:
-            _terminate_group(pid, signal.SIGTERM)
+            if sandbox and detached_sid:
+                _kill_hop_process({"sandbox": sandbox, "session_id": detached_sid}, signal.SIGTERM)
+            elif isinstance(pid, int):
+                _terminate_group(pid, signal.SIGTERM)
             entry["sigterm_at"] = now
             survivors.append(entry)
             continue
@@ -259,9 +324,8 @@ def _sweep_detached_pids(
     if survivors:
         oldest = max(now - float(e["since"]) for e in survivors)
         logger.warning(
-            "%s hop %d: %d detached pi still alive (pids=%s, oldest=%.0fs)",
-            log_prefix, hop, len(survivors),
-            [e["pid"] for e in survivors], oldest,
+            "%s hop %d: %d detached pi still alive (entries=%s, oldest=%.0fs)",
+            log_prefix, hop, len(survivors), survivors, oldest,
         )
     return survivors
 
@@ -449,15 +513,31 @@ def _kill_process_group(proc: asyncio.subprocess.Process) -> None:
 
 
 def kill_pid_file(pid_file: Path) -> bool:
-    """Kill the process group named in ``pid_file`` (written by arun_agent_hop).
+    """Kill the agent hop named in ``pid_file`` and its hop manifest.
 
-    Sends SIGTERM to the whole group (pi + any children it spawned), then
-    SIGKILL as a fallback. Also SIGKILL any still-alive ``detached_pids`` in
-    the sibling hop manifest — an explicit STOP is the moment aggressive
-    cleanup is safe (no MCP-teardown ambiguity). Returns True if a signal was
-    delivered. Safe to call when the file is missing or the process is already
-    gone."""
+    For sandbox hops, signals pi inside the container via ``session_id``.
+    For local hops, sends SIGTERM/SIGKILL to the host process group. Also
+    reaps grace-period ``detached_pids`` / ``detached_sessions`` from the
+    sibling hop manifest. Returns True if a signal was delivered."""
     delivered = False
+    manifest_path = paths_mod.hop_manifest_path(pid_file)
+    manifest = _read_hop_manifest(manifest_path)
+    sbx = manifest.get("sandbox")
+    session_id = manifest.get("session_id")
+    if sbx and session_id:
+        from crack_server import sandbox as sandbox_mod
+
+        sandbox_mod.kill_session_sync(str(sbx), str(session_id))
+        delivered = True
+        for entry in manifest.get("detached_pids") or []:
+            if not isinstance(entry, dict):
+                continue
+            detached_sid = entry.get("session_id")
+            if detached_sid:
+                sandbox_mod.kill_session_sync(str(sbx), str(detached_sid))
+                delivered = True
+        return delivered
+
     try:
         pid = int(pid_file.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
@@ -475,9 +555,6 @@ def kill_pid_file(pid_file: Path) -> bool:
                 except ProcessLookupError:
                     delivered = True
                     break
-                # Give SIGTERM a brief moment before escalating to SIGKILL.
-                # Sync sleep is intentional: kill_pid_file is only called from
-                # sync routes, stop handlers, and startup recovery (to_thread).
                 if sig == signal.SIGTERM:
                     for _ in range(20):
                         try:
@@ -489,8 +566,6 @@ def kill_pid_file(pid_file: Path) -> bool:
                         continue
                     break
 
-    # Explicit STOP: also reap grace-period-detached pids from prior attempts.
-    manifest = _read_hop_manifest(paths_mod.hop_manifest_path(pid_file))
     for entry in manifest.get("detached_pids") or []:
         if not isinstance(entry, dict):
             continue
@@ -724,26 +799,36 @@ async def _tail_events(
     *,
     proc: asyncio.subprocess.Process | None,
     pid: int,
+    sandbox: str | None = None,
+    session_id: str | None = None,
 ) -> None:
     """Tail pi's stdout file from ``sink.offset`` until the hop ends (sentinel,
-    time cap, agent_end) or the pid disappears. The same routine serves a
-    freshly-spawned pi (``proc`` given) and a re-attached one (``proc=None``,
-    liveness via the pid). The active-time watchdog is folded in: a pi that
-    hangs without emitting output gets its process group killed well past the
-    stage time cap."""
+    time cap, agent_end) or the process/session disappears. Serves a freshly-
+    spawned pi (``proc`` given), a sandbox detached pi (``sandbox`` given), or
+    a re-attached one (``proc=None``, liveness via pid or sandbox session)."""
     p = sink.p
+    sid = session_id or p.session_id
+    sbx = sandbox or p.sandbox
 
     def terminate() -> None:
-        if proc is not None:
+        if sbx:
+            from crack_server import sandbox as sandbox_mod
+
+            sandbox_mod.kill_session_sync(sbx, sid)
+        elif proc is not None:
             with contextlib.suppress(ProcessLookupError):
                 proc.terminate()
         else:
             _terminate_group(pid, signal.SIGTERM)
 
     def dead() -> bool:
+        if sbx:
+            from crack_server import sandbox as sandbox_mod
+
+            return not sandbox_mod.session_alive_sync(sbx, sid)
         if proc is not None:
             return proc.returncode is not None
-        return not _pid_alive(pid)
+        return not _pid_alive(pid, sid)
 
     sink.persist_offset = sink.offset
     buf = b""
@@ -755,8 +840,6 @@ async def _tail_events(
             if chunk:
                 buf += chunk
                 if len(buf) > STREAM_LINE_LIMIT:
-                    # A pathological single line would otherwise grow the
-                    # buffer forever; flush it as one line.
                     complete = [buf]
                     buf = b""
                 else:
@@ -771,25 +854,25 @@ async def _tail_events(
             elif dead():
                 if drained_after_death:
                     if buf.strip():
-                        # A crash may leave a final line without a trailing
-                        # newline — it often holds the error that killed pi.
                         sink.offset += len(buf)
                         line = buf.decode("utf-8", "replace").strip()
                         _process_stream_line(sink, line, terminate)
                     return
-                # One final pass so lines written just before death are seen.
                 drained_after_death = True
             else:
                 _tick_wait_credit(p, sink)
                 if _active_elapsed(p, sink) > p.timeout_seconds + 60:
                     logger.error("%s hop %d: watchdog kill after %.0fs active seconds",
                                  p.log_prefix, p.hop, _active_elapsed(p, sink))
-                    if proc is not None:
+                    if sbx:
+                        from crack_server import sandbox as sandbox_mod
+
+                        await sandbox_mod.kill_session(sbx, sid)
+                    elif proc is not None:
                         with contextlib.suppress(ProcessLookupError):
                             proc.kill()
                     else:
                         _terminate_group(pid, signal.SIGKILL)
-                    # Death is observed on a later pass (then drained).
                 await asyncio.sleep(TAIL_POLL_SECONDS)
 
 
@@ -808,6 +891,8 @@ class _HopParams(NamedTuple):
     stop_check: Callable[[], bool] | None
     env_extra: dict[str, str] | None
     waiting_check: Callable[[], bool] | None
+    # Podman sandbox container name (``crack-sbx-<conv_id>``) when sandboxing is on.
+    sandbox: str | None = None
     # Prewalk: a system-prompt append delivered as a launch flag (never a
     # session turn) so omitting it on a later resume prunes it from context.
     append_system_prompt: str | None = None
@@ -840,42 +925,47 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
     output file, tail it to completion, and report how it ended. ``persisted``
     counts turns committed to disk this attempt so the retry loop can
     distinguish resuming from replaying."""
-    cmd = _build_cmd(p, attempt_message)
+    pi_argv = _build_cmd(p, attempt_message)
     logger.info("%s hop %d: full prompt:\n%s", p.log_prefix, p.hop, attempt_message)
-    logger.info("+ %s", shlex.join(cmd))
+    if p.sandbox:
+        logger.info("+ podman exec -d %s %s", p.sandbox, shlex.join(pi_argv))
+    else:
+        logger.info("+ %s", shlex.join(pi_argv))
 
     await async_wait_for_rate_limit(p.model)
     manifest_path, output_path = _hop_paths(p)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    # Carry forward prior grace-period detaches and bound them before we spawn
-    # another pi for this hop (each attempt used to overwrite the sole pid slot).
     prior = _read_hop_manifest(manifest_path)
     detached_pids = _sweep_detached_pids(
         prior.get("detached_pids") or [],
         p.session_id, p.log_prefix, p.hop,
+        sandbox=p.sandbox,
     )
-    # start_new_session=True puts pi in its own process group so an external
-    # STOP can kill pi *and* any children it spawned (npx MCP servers) via
-    # the group leader's pid, which we publish to pid_file. Output goes to a
-    # file (not a pipe) so pi survives a server reload: the restarted worker
-    # re-attaches via the manifest instead of respawning.
-    with open(output_path, "wb") as out:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=out, stderr=asyncio.subprocess.STDOUT,
-            start_new_session=True, cwd=str(project_root()),
-            env={**os.environ, **(p.env_extra or {})},
-        )
-    if p.pid_file is not None:
-        try:
-            p.pid_file.parent.mkdir(parents=True, exist_ok=True)
-            p.pid_file.write_text(str(proc.pid), encoding="utf-8")
-        except OSError as e:
-            logger.warning("%s hop %d: could not write pid_file %s: %s",
-                           p.log_prefix, p.hop, p.pid_file, e)
+
+    proc: asyncio.subprocess.Process | None = None
+    pid = 0
+    if p.sandbox:
+        output_path.write_bytes(b"")
+        await _spawn_sandbox_pi(p, pi_argv, output_path)
+    else:
+        with open(output_path, "wb") as out:
+            proc = await asyncio.create_subprocess_exec(
+                *pi_argv, stdout=out, stderr=asyncio.subprocess.STDOUT,
+                start_new_session=True, cwd=str(project_root()),
+                env={**os.environ, **(p.env_extra or {})},
+            )
+        pid = proc.pid
+        if p.pid_file is not None:
+            try:
+                p.pid_file.parent.mkdir(parents=True, exist_ok=True)
+                p.pid_file.write_text(str(proc.pid), encoding="utf-8")
+            except OSError as e:
+                logger.warning("%s hop %d: could not write pid_file %s: %s",
+                               p.log_prefix, p.hop, p.pid_file, e)
+
     sink = _StreamSink(p)
     sink.manifest_path = manifest_path
-    sink.manifest = {
-        "pid": proc.pid,
+    manifest: dict = {
         "started_at": time.time(),
         "output_path": str(output_path),
         "offset": 0,
@@ -888,64 +978,86 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
         "status": "running",
         "detached_pids": detached_pids,
     }
+    if p.sandbox:
+        manifest["sandbox"] = p.sandbox
+    else:
+        manifest["pid"] = pid
+    sink.manifest = manifest
     _write_hop_manifest(manifest_path, sink.manifest)
 
     detached = False
     try:
-        await _tail_events(sink, output_path, proc=proc, pid=proc.pid)
+        await _tail_events(
+            sink, output_path,
+            proc=proc, pid=pid,
+            sandbox=p.sandbox, session_id=p.session_id,
+        )
     except asyncio.CancelledError:
-        # Server reload / job abort: DON'T kill pi — it keeps writing to the
-        # output file (tini reaps it later) and the restarted worker
-        # re-attaches via the manifest. The pid_file must survive too, so a
-        # user STOP can still find the pid. Flush the offset of the last
-        # persisted turn (a turn boundary): the re-attaching worker replays
-        # at most the one partial in-flight turn.
         detached = True
         sink.manifest.update({"offset": sink.persist_offset, "status": "running"})
         _write_hop_manifest(manifest_path, sink.manifest)
-        logger.info("%s hop %d: detached pi pid %d at offset %d (reload?); leaving it running",
-                    p.log_prefix, p.hop, proc.pid, sink.persist_offset)
+        if p.sandbox:
+            logger.info(
+                "%s hop %d: detached sandbox pi session %s at offset %d (reload?)",
+                p.log_prefix, p.hop, p.session_id, sink.persist_offset,
+            )
+        else:
+            logger.info("%s hop %d: detached pi pid %d at offset %d (reload?); leaving it running",
+                        p.log_prefix, p.hop, pid, sink.persist_offset)
         raise
     finally:
         if not detached:
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=EXIT_GRACE_SECONDS)
-            except asyncio.TimeoutError:
-                if sink.terminal:
-                    # Terminal event already fired: pi is lingering on MCP
-                    # client teardown. Do not SIGKILL — leave it running
-                    # (tini / PID 1 reaps it). returncode stays None (= clean).
-                    # Record the pid so the next attempt's sweep can bound it.
+            if not p.sandbox and proc is not None:
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=EXIT_GRACE_SECONDS)
+                except asyncio.TimeoutError:
+                    if sink.terminal:
+                        sink.manifest.setdefault("detached_pids", []).append(
+                            {"pid": proc.pid, "since": time.time()},
+                        )
+                        logger.info(
+                            "%s hop %d: pi pid %d still alive %.0fs after terminal "
+                            "event; detaching (no SIGKILL)",
+                            p.log_prefix, p.hop, proc.pid, EXIT_GRACE_SECONDS,
+                        )
+                    else:
+                        proc.kill()
+                        await proc.wait()
+            elif p.sandbox and sink.terminal:
+                from crack_server import sandbox as sandbox_mod
+
+                if sandbox_mod.session_alive_sync(p.sandbox, p.session_id):
                     sink.manifest.setdefault("detached_pids", []).append(
-                        {"pid": proc.pid, "since": time.time()},
+                        {"session_id": p.session_id, "since": time.time()},
                     )
                     logger.info(
-                        "%s hop %d: pi pid %d still alive %.0fs after terminal "
-                        "event; detaching (no SIGKILL)",
-                        p.log_prefix, p.hop, proc.pid, EXIT_GRACE_SECONDS,
+                        "%s hop %d: sandbox pi session %s still alive %.0fs after "
+                        "terminal event; detaching (no SIGKILL)",
+                        p.log_prefix, p.hop, p.session_id, EXIT_GRACE_SECONDS,
                     )
-                else:
-                    proc.kill()
-                    await proc.wait()
-            if p.pid_file is not None:
+            if p.pid_file is not None and not p.sandbox:
                 try:
                     p.pid_file.unlink()
                 except OSError:
                     pass
-            crashed = (
-                not sink.terminated_by_us
-                and not sink.terminal
-                and proc.returncode not in (0, None)
-            )
+            if p.sandbox:
+                crashed = (
+                    not sink.terminated_by_us
+                    and not sink.terminal
+                )
+            else:
+                crashed = (
+                    not sink.terminated_by_us
+                    and not sink.terminal
+                    and proc is not None
+                    and proc.returncode not in (0, None)
+                )
             sink.manifest.update({
                 "offset": sink.offset,
                 "status": "crashed" if crashed else "done",
             })
             _write_hop_manifest(manifest_path, sink.manifest)
 
-    # An external STOP kills the subprocess out from under the tail loop,
-    # which looks like a crash (non-zero rc). If the caller confirms a stop
-    # was requested, classify it as an intentional, clean halt.
     if not sink.terminated_by_us and p.stop_check is not None:
         try:
             if p.stop_check():
@@ -955,14 +1067,14 @@ async def _attempt_once(p: _HopParams, attempt_idx: int, attempt_message: str) -
             logger.exception("%s hop %d: stop_check raised", p.log_prefix, p.hop)
 
     elapsed = time.monotonic() - p.start
+    rc = proc.returncode if proc is not None else None
     logger.info("%s hop %d: attempt %d finished reason=%s persisted=%d total_elapsed=%.2fs rc=%s",
-                p.log_prefix, p.hop, attempt_idx + 1, sink.reason, sink.persisted, elapsed,
-                proc.returncode)
+                p.log_prefix, p.hop, attempt_idx + 1, sink.reason, sink.persisted, elapsed, rc)
     return {
         "reason": sink.reason,
         "terminated_by_us": sink.terminated_by_us,
         "terminal": sink.terminal,
-        "returncode": proc.returncode,
+        "returncode": rc,
         "persisted": sink.persisted,
         "ended_in_error": sink.ended_in_error,
         "detail": _compose_detail("\n".join(sink.output_tail), "\n".join(sink.stderr_tail)),
@@ -974,27 +1086,33 @@ async def _reattach_attempt(
 ) -> dict:
     """Re-attach to a pi that survived a server reload: tail its output file
     from the stored offset to completion, persisting new turns — no second pi
-    is spawned for the session. A pi that already died is drained from the
-    file: a terminal event in the backlog completes the hop normally,
-    otherwise the attempt reports a crash (rc -1) and the retry loop resumes
-    the session with a fresh pi."""
-    pid = int(manifest["pid"])
+    is spawned for the session."""
     output_path = Path(manifest.get("output_path") or str(_hop_paths(p)[1]))
-    logger.info("%s hop %d: re-attaching to detached pi pid %d at offset %d",
-                p.log_prefix, p.hop, pid, int(manifest.get("offset") or 0))
+    sbx = manifest.get("sandbox") or p.sandbox
+    pid = manifest.get("pid")
+    if sbx:
+        logger.info("%s hop %d: re-attaching to sandbox pi session %s at offset %d",
+                    p.log_prefix, p.hop, p.session_id, int(manifest.get("offset") or 0))
+    else:
+        pid = int(pid)
+        logger.info("%s hop %d: re-attaching to detached pi pid %d at offset %d",
+                    p.log_prefix, p.hop, pid, int(manifest.get("offset") or 0))
     sink = _StreamSink(p)
     sink.offset = int(manifest.get("offset") or 0)
     sink.manifest_path = manifest_path
     sink.manifest = manifest
-    await _tail_events(sink, output_path, proc=None, pid=pid)
+    await _tail_events(
+        sink, output_path,
+        proc=None, pid=int(pid) if isinstance(pid, int) else 0,
+        sandbox=str(sbx) if sbx else None,
+        session_id=p.session_id,
+    )
 
-    # A pi that emitted agent_end may still be flushing its session files;
-    # give it a moment to exit before a later hop spawns against the same dir.
     deadline = time.monotonic() + 5
-    while _pid_alive(pid, p.session_id) and time.monotonic() < deadline:
+    while _hop_alive(manifest, p.session_id) and time.monotonic() < deadline:
         await asyncio.sleep(0.1)
 
-    if p.pid_file is not None:
+    if p.pid_file is not None and not sbx:
         try:
             p.pid_file.unlink()
         except OSError:
@@ -1032,19 +1150,21 @@ async def _reattach_attempt(
 
 def _live_detached_manifest(p: _HopParams) -> tuple[Path, dict] | None:
     """The hop manifest worth re-attaching to: status "running", same
-    session, and either a live pid or unconsumed output left to drain (a pi
-    that finished or crashed during the restart window)."""
+    session, and either a live pi (host pid or sandbox session) or unconsumed
+    output left to drain."""
     manifest_path, _ = _hop_paths(p)
     manifest = _read_hop_manifest(manifest_path)
     if manifest.get("status") != "running":
         return None
     if manifest.get("session_id") != p.session_id:
         return None
-    pid = manifest.get("pid")
-    if not isinstance(pid, int):
-        return None
-    if _pid_alive(pid, p.session_id):
-        return manifest_path, manifest
+    if manifest.get("sandbox") or p.sandbox:
+        if _hop_alive(manifest, p.session_id):
+            return manifest_path, manifest
+    else:
+        pid = manifest.get("pid")
+        if isinstance(pid, int) and _pid_alive(pid, p.session_id):
+            return manifest_path, manifest
     try:
         size = Path(str(manifest.get("output_path") or "")).stat().st_size
     except OSError:
@@ -1205,6 +1325,7 @@ async def arun_agent_hop(
     append_system_prompt: str | None = None,
     swap_after_edit: bool = False,
     todo_already: bool = False,
+    sandbox: str | None = None,
 ) -> str:
     """Run one hop of a tool-using agent and stream its JSON events (async).
 
@@ -1265,7 +1386,8 @@ async def arun_agent_hop(
                    timeout_seconds=timeout_seconds, persist_turn=persist_turn, hop=hop,
                    pid_file=pid_file, stop_check=stop_check, env_extra=env_extra,
                    waiting_check=waiting_check, append_system_prompt=append_system_prompt,
-                   swap_after_edit=swap_after_edit, todo_already=todo_already)
+                   swap_after_edit=swap_after_edit, todo_already=todo_already,
+                   sandbox=sandbox)
     p.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     if record_prompt is not None:
