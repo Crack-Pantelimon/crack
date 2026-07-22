@@ -21,227 +21,194 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## deps
 ```
-.pi/crack/server/src/crack_server/pi_proc.py ← __future__, crack_server, shlex
+.pi/crack/server/tests/test_pi_rpc.py ← __future__, crack_server, pytest
+.pi/crack/server/tests/test_plan41.py ← __future__, crack_server, pytest
+.pi/crack/server/tests/test_sandbox.py ← __future__, unittest, crack_server, pytest
+.pi/crack/server/tests/test_stop_durable.py ← __future__, crack_server, tests, pytest
+.pi/crack/server/tests/test_sub_agents.py ← __future__, crack_server, tests, pytest
+.pi/crack/server/tests/test_trajectory_view.py ← __future__, crack_server
 ```
 
-## todos
+## changes (last 5 commits — 6 minutes ago)
 ```
-rust_pkg/storage_crackhouse/src/models.rs:202  # TODO: ! Get existing model SQLs from the DB and only drop/create if changed
-rust_pkg/api_asscrack/src/crack_worker/api_worker.rs:50  # TODO: get which is missing...
+.pi/crack/server/tests/test_pi_rpc.py         +_hop_kwargs  +_fake_launch  +test_rpc_persists_turn_and_returns_agent_end  +test_rpc_stop_check_sends_abort_and_returns_stopped
+.pi/crack/server/tests/test_plan41.py         +_fake_rpc_launch  +test_hard_failure_after_persisted_turns_raises_exact_error  +test_terminal_linger_past_grace_is_not_sigkill  +test_auto_retry_end_after_progress_raises_exact_error
+.pi/crack/server/tests/test_sandbox.py        +test_exec_in_interactive_adds_i_flag  +test_exec_in_passes_stream_limit  +test_exec_in_omits_limit_when_unset  ~test_ensure_sandbox_creates_with_overlay_dirs
+.pi/crack/server/tests/test_stop_durable.py   +noop_enqueue  +test_stop_chat_sets_stop_requested  +test_pop_pending_drains_queue_while_stopped  +_seed
+.pi/crack/server/tests/test_sub_agents.py     ~fake_pi
+.pi/crack/server/tests/test_trajectory_view.py +test_merge_exchange_sidecars_interleaves_errors_by_time  ~test_ansi_to_html_preserves_colour
 ```
 
 ## .pi
 
-### .pi/crack/server/src/crack_server/pi_proc.py
+### .pi/crack/server/tests/test_pi_rpc.py
 ```
-class PiError(RuntimeError)  :78-88
-  def __init__(message: str, detail: str, over_budget: bool) → None
-class PiStopped(RuntimeError)  :91-93
-class _TurnAccumulator  :505-548
-  def __init__() → None
-  def apply(event: dict) → None
-class _StreamSink  :551-597
-  def __init__(p: _HopParams) → None
-  def persist(turn: dict) → None
-class _HopParams(NamedTuple)  :794-816
-async def arun_pi_text(prompt: str, log_prefix: str, model: str, max_input_chars: int | None, record_prompt, pid_file: Path | None, stop_check: Callable[[], bool] | None, image_paths: list[Path] | None, record_error) → tuple[str, float]  :269-278
-def run_pi_text(*args, **kwargs) → tuple[str, float]  :392-396  # Sync wrapper over :func:`arun_pi_text` for thread-based call
-def kill_pid_file(pid_file: Path) → bool  :451-502  # Kill the process group named in ``pid_file`` (written by aru
-async def arun_agent_hop(*, log_prefix: str, model: str, session_id: str, sessions_dir: Path, tools: str | None, message: str, start: float, sentinel: str | None, timeout_seconds: int, persist_turn, hop: int, pid_file: Path | None, stop_check, record_prompt, record_error, error_budget: Callable[[], int] | None, env_extra: dict[str, str] | None, waiting_check: Callable[[], bool] | None, append_system_prompt: str | None, swap_after_edit: bool, todo_already: bool) → str  :1183-1205
-def run_agent_hop(**kwargs) → str  :1280-1284  # Sync wrapper over :func:`arun_agent_hop` for thread-based ca
+async def test_rpc_persists_turn_and_returns_agent_end(tmp_path, monkeypatch)  :47-56
+async def test_rpc_stop_check_sends_abort_and_returns_stopped(tmp_path, monkeypatch)  :60-87
 ```
 
-## rust_pkg
-
-### rust_pkg/net_crackpipe/src/chat/chat_ticket.rs
+### .pi/crack/server/tests/test_plan41.py
 ```
-pub struct ChatTicket
-impl ChatTicket
-  pub fn new_str_bs(topic_id: &str, bs: BTreeSet<NodeId>) → Self
-```
-
-### rust_pkg/net_crackpipe/src/echo.rs
-```
-pub struct Echo
-impl Echo
-  pub fn new(own_endpoint_node_id: NodeId, sleep_manager: SleepManager) → Self
-impl Echo
-impl Echo
-```
-
-### rust_pkg/net_crackpipe/src/lib.rs
-```
-pub fn timestamp_micros() → u128
-pub fn datetime_now() → DateTime<Utc>
-```
-
-### rust_pkg/net_crackpipe/src/signed_message.rs
-```
-pub struct SignedMessage
-pub struct MessageSigner
-pub struct WireMessage
-pub struct ReceivedMessage
-pub enum ChatMessage
-pub trait AcceptableType
-pub trait IChatRoomType
-impl SignedMessage
-  pub fn verify_and_decode(bytes: &[u8]) → Result<WireMessage<T>>
-impl MessageSigner
-  pub fn sign_and_encode(&self, message: T,) → Result<(Vec<u8>, WireMessag...
+class FakePi  :24-40
+  def __init__(ctrl: Path, script: Path)
+  def set_script(lines: list[str]) → None
+  def argv(n: int) → list[str]
+  def prompt(n: int) → str
+  def invocations() → int
+def fake_pi  :56-75
+def run_hop  :78-94
+def test_limiter_keyed_by_provider  :102-107
+def test_rate_limiter_reserves_slots_without_serializing  :110-130
+def test_non_nvidia_hops_run_back_to_back  :133-139
+def test_is_transient_classification  :147-155
+def test_transient_then_success_completes_one_trajectory  :158-166
+def test_midstream_kill_resumes_session_with_continuation  :169-179
+def test_transient_failures_raise_at_streak_cap  :182-190
+def test_hard_failure_after_persisted_turns_raises_exact_error  :193-207
+def test_error_budget_cap_raises_over_budget  :210-221
+def test_broken_error_recorder_never_wedges_retries  :224-232
+def test_terminal_linger_past_grace_is_not_sigkill  :240-251
+def test_nonzero_exit_without_terminal_still_retries  :254-266
+def test_auto_retry_end_after_progress_raises_exact_error  :269-284
+def test_empty_turns_returns_empty_reason  :287-297
+def test_persisted_then_clean_agent_end_still_returns_immediately  :300-312
+def test_willretry_agent_end_does_not_end_hop_early  :315-337
+def test_rpc_message_update_error_surfaces_exact_text  :340-346
+def test_hard_backoff_schedule_matches_hard_retry_delays  :349-369
+def test_run_pi_text_transient_then_ok  :372-376
+def test_run_pi_text_hard_failures_exhaust_schedule  :379-383
+def test_run_pi_text_records_each_failed_attempt  :386-402
+def test_forty_turns_stream_uncut  :410-414
 ```
 
-### rust_pkg/net_crackpipe/src/sleep.rs
+### .pi/crack/server/tests/test_sandbox.py
 ```
-pub struct SleepManager
-impl SleepManager
-  pub fn new() → Self
-  pub async fn sleep(&self, duration: Duration)
-  pub fn wake_up(&self)
-impl SleepManagerInner
-```
-
-### rust_pkg/net_crackpipe/src/user_identity.rs
-```
-pub struct UserIdentity
-pub struct UserIdentitySecrets
-pub struct NodeIdentity
-impl UserIdentity
-  pub fn nickname(&self) → String
-  pub fn user_id(&self) → &PublicKey
-  pub fn html_color(&self) → String
-  pub fn rgb_color(&self) → (u8, u8, u8)
-impl UserIdentitySecrets
-impl UserIdentitySecrets
-  pub fn user_identity(&self) → &UserIdentity
-  pub fn secret_key(&self) → &SecretKey
-  pub fn generate() → Self
-impl NodeIdentity
-  pub fn nickname(&self) → String
-  pub fn html_color(&self) → String
-  pub fn rgb_color(&self) → (u8, u8, u8)
-  pub fn user_id(&self) → &PublicKey
-  pub fn node_id(&self) → &PublicKey
-  pub fn user_identity(&self) → &UserIdentity
-  pub fn bootstrap_idx(&self) → Option<u32>
-  pub fn new(user_identity: UserIdentity, node_id: PublicKey, bootstrap_idx: Option<u32>,) → Self
+def host_env(monkeypatch, tmp_path)  :14-16
+async def test_sandbox_enabled_off_in_tests(host_env, monkeypatch, tmp_path)  :20-23
+async def test_sandbox_enabled_forced(monkeypatch, host_env)  :27-30
+async def test_ensure_network_creates_when_missing(host_env)  :34-47
+async def test_ensure_network_skips_create_when_present(host_env)  :51-61
+async def test_ensure_sandbox_starts_existing(host_env)  :65-79
+async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path)  :83-129
+async def test_exec_in_interactive_adds_i_flag(host_env)  :133-147
+async def test_exec_in_passes_stream_limit(host_env)  :151-166
+async def test_exec_in_omits_limit_when_unset(host_env)  :170-174
+async def test_exec_in_builds_command(host_env)  :178-195
+async def test_kill_session_escalates_to_kill(host_env)  :199-219
+async def test_destroy_sandbox_kill_and_rm(host_env)  :223-235
+async def test_destroy_sandbox_noop_when_missing(host_env)  :239-251
 ```
 
-### rust_pkg/storage_crackhouse/src/api.rs
+### .pi/crack/server/tests/test_stop_durable.py
 ```
-pub async fn execute_sql2(sql: String) → anyhow::Result<SqlResultSet>
-pub async fn execute_sql_params(req: SQLAndParams) → anyhow::Result<SqlResultSet>
-```
-
-### rust_pkg/storage_crackhouse/src/impl_rusqulite.rs
-```
-pub async fn sql_query(sql: SQLAndParams) → anyhow::Result<SqlResultSet>
-```
-
-### rust_pkg/storage_crackhouse/src/lib.rs
-```
-pub async fn install_opfs_sahpool() → anyhow::Result<()>
-pub async fn install_relaxed_idb() → anyhow::Result<()>
+def noop_enqueue(monkeypatch)  :13-14
+def test_stop_chat_sets_stop_requested(chat_root, monkeypatch)  :17-20
+def test_pop_pending_drains_queue_while_stopped(chat_root)  :23-35
+def test_enqueue_system_message_preserves_stop(chat_root, noop_enqueue)  :38-44
+def test_merge_child_inbox_preserves_stop(chat_root, noop_enqueue)  :47-66
+def test_post_message_clears_stop(chat_root, noop_enqueue)  :69-73
+def test_answer_chat_question_clears_stop(chat_root, noop_enqueue)  :76-84
+async def test_exchange_finish_preserves_stop_requested(chat_root)  :88-114
+def test_subagent_stop_does_not_clear_parent_stop(chat_root, fake_pi, monkeypatch)  :117-135
+def test_subagent_retry_clears_only_run_stop(chat_root, fake_pi, monkeypatch)  :138-163
 ```
 
-### rust_pkg/storage_crackhouse/src/models.rs
+### .pi/crack/server/tests/test_sub_agents.py
 ```
-pub struct ModelColumnImpl
-pub trait ModelGroup
-pub trait ModelDef
-pub trait ModelSerial
-pub trait DbTypeMapping
-impl i64
-impl String
-impl f64
-impl Vec
-impl Option
-pub async fn run_migrate_tables(groups: impl Iterator<Item = Arc<dyn ModelGroup>>,) → anyhow::Result<()>
-```
-
-### rust_pkg/storage_crackhouse/src/types.rs
-```
-pub struct SQLAndParams
-pub struct SqlResultSet
-pub struct SqlResultRow
-pub enum DbValueType
-pub enum DbValue
-impl DbValueType
-  pub fn to_sql_str(&self) → &'static str
-impl DbValue
-  pub fn fold_option(value: Option<DbValue>) → DbValue
-impl TryFrom
-impl String
-impl i64
-impl f64
-impl Vec
+def fake_pi(tmp_path, monkeypatch) → FakePi  :42-62
+def chat_root(tmp_path, monkeypatch, fake_pi) → str  :66-72
+def test_personas_discovered(chat_root)  :75-77
+def test_active_child_count_endpoint(chat_root)  :80-97
+async def test_spawn_run_report_parent_resume(chat_root, fake_pi)  :102-127
+async def test_nudge_then_report(chat_root, fake_pi)  :132-148
+async def test_nudge_exhaustion_errors_and_resumes_parent(chat_root, fake_pi)  :153-169
+async def test_depth_limit_rejects_spawn_beyond_max(chat_root, fake_pi)  :174-203
+async def test_parallel_children_both_delivered(chat_root, fake_pi)  :208-234
+async def test_reclaim_orphans_requeues(chat_root, fake_pi)  :239-259
+def test_api_list_personas(chat_root)  :263-268
+async def test_api_spawn(chat_root, fake_pi)  :273-304
+def test_sidebar_tree_always_polls(chat_root)  :307-309
+def test_sidebar_tree_shows_spawned_run(chat_root)  :312-323
+async def test_run_gets_title_on_begin(chat_root, fake_pi)  :327-339
+def test_sidebar_node_shows_title_not_persona(chat_root)  :342-359
+def test_sidebar_order_and_metrics(chat_root, monkeypatch)  :362-392
+def test_fill_template_depth_gating(chat_root)  :395-406
+async def test_spawn_parallel_cap_slot_pending(chat_root, monkeypatch)  :410-448
+async def test_spawn_waits_for_free_slot(chat_root, fake_pi)  :452-493
 ```
 
-### rust_pkg/web_serviceworker_crackslave/src/lib.rs
+### .pi/crack/server/tests/test_trajectory_view.py
 ```
-pub async fn _js_init_dedicated_worker() → Result<(), JsValue>
-pub async fn _js_compute_payload_reply(msg: JsValue) → Result<JsValue, JsValue>
-pub async fn web_worker_registration(mapping: Arc<ApiImplMapping>,) → std::result::Result<(), JsV...
-```
-
-### rust_pkg/web_serviceworker_crackloader/src/lib.rs
-```
-pub struct WebWorkerFactory
-impl WebWorkerFactory
+def test_project_unknown_event_has_expand_row(tmp_path: Path)  :11-43
+def test_project_merges_tool_results(tmp_path: Path)  :46-78
+def test_ansi_to_html_preserves_colour()  :81-86
+def test_merge_exchange_sidecars_interleaves_errors_by_time()  :89-137  # Errors with ``at`` between turn timestamps appear in order, 
+def test_host_worktree_dirty_detects_untracked(tmp_path: Path)  :140-150
 ```
 
-### rust_pkg/api_asscrack/src/api/api_client.rs
+## _data
+
+### _data/news/main.py
 ```
-pub struct ApiClient
-pub struct MessageLater
-impl ApiClient
-  pub fn new(pipe: WorkerPipe) → Self
-  pub async fn call(&self, arg: T::Arg) → anyhow::Result<T::Ret>
+def main()  :9-26
 ```
 
-### rust_pkg/api_asscrack/src/api/api_method_macros.rs
+## _docker
+
+### _docker/_apply_healthcheck.sh
 ```
-pub struct ApiGroupDeclStatic
-pub struct ApiMethodInfo
-pub struct ApiMethodImpl
-pub trait ApiGroupDecl
-pub trait ApiGroupMethods
-pub trait ApiGroupImpls
-pub trait ApiMethodDecl
-impl ApiMethodImpl
-  pub fn fullname(&self) → String
-impl ApiMethodInfo
-  pub fn fullname(&self) → String
+# Plan 7 Part B (steps 3-4): after a self-modifying patch is applied to the live
+function log()
 ```
 
-### rust_pkg/api_asscrack/src/api/api_worker_declarations.rs
+### _docker/_blender_mcp_lazy.sh
 ```
-pub async fn worker_ping(_x: () → anyhow::Result<()>
-```
-
-### rust_pkg/api_asscrack/src/crack_worker/api_worker.rs
-```
-pub struct ApiImplMapping
-pub fn make_api_mapping(groups: Vec<Arc<dyn ApiGroupImpls>>) → Arc<ApiImplMapping>
-pub async fn compute_response_message(_request: WorkerMessage, mapping: Arc<ApiImplMapping>,) → WorkerMessage
+# Lazy Blender bootstrap for stdio blender-mcp (sandboxes and crack-dev pi agents).
+function port_open()
+function start_blender_stack()
 ```
 
-### rust_pkg/api_asscrack/src/crack_worker/mod.rs
+### _docker/_cont_start.sh
 ```
-pub struct WorkerPipe
-pub struct WorkerMessage
-pub trait WorkerLoaderFactory
+function respawn()
+export CRACK_PI_HOST
+export MCP_FIREFOX_PORT
+export MCP_CHROMIUM_PORT
+export MCP_WEBSEARCH_PORT
+export BROWSER_HEADLESS
+export MCP_BLENDER_HTTP_PORT
+export QT_QPA_PLATFORM
+export WAYLAND_DISPLAY
+export DISPLAY
 ```
 
-### rust_pkg/thread_crackworker/src/lib.rs
+### _docker/_sandbox_common.sh
 ```
-pub struct ThreadWorkerFactory
-impl ThreadWorkerFactory
+# Shared cheap setup for crack-dev and sandboxes: env exports, MCP config, Blender addon sync.
+export CRACK_PI_PROJECT_ROOT
+export CRACK_HARNESS_DATA_DIR
+export HOME
+export PATH
+export CHROME_BIN
+export CHROME_PATH
+export CHROMIUM_PATH
+export FIREFOX_BIN
+export CHROMEDRIVER_BIN
+export GECKODRIVER_BIN
+export PLAYWRIGHT_BROWSERS_PATH
+export CHROMIUM_FLAGS
+export BLENDER_ADDON_PORT
+export BLENDER_HOST
+export BLENDER_PORT
+export DISABLE_TELEMETRY
 ```
 
-### rust_pkg/_crack_utils/src/lib.rs
+### _docker/_sandbox_start.sh
 ```
-pub fn get_timestamp_now_ms() → i64
-pub fn spawn(f: F) → n0_future::task::JoinHandle...
-pub fn random_u32() → u32
-pub async fn sleep_ms(dt_ms: u32)
+# Cheap sandbox entrypoint: shared env + lazy MCP config, no eager HTTP bridges or crack-server.
+```
+
+### _docker/run.sh
+```
+export IMG_NAME
 ```

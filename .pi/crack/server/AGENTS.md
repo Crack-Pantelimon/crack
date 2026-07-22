@@ -441,168 +441,96 @@ Always run `sigmap ask` (or `sigmap --query`) before searching for files relevan
 
 ## deps
 ```
-src/crack_server/chat_engine.py ← __future__, crack_server
-src/crack_server/models.py ← __future__, crack_server
-src/crack_server/pi_proc.py ← __future__, crack_server, shlex
-src/crack_server/render.py ← __future__, crack_server
-src/crack_server/routes_settings.py ← __future__, fastapi, crack_server
-src/crack_server/steprun.py ← __future__, crack_server
-src/crack_server/sub_agents/base.py ← __future__, crack_server
-src/crack_server/sub_agents/runner.py ← __future__, crack_server
-tests/test_ask_user.py ← __future__, crack_server, tests, pytest
-tests/test_model_switch.py ← __future__, crack_server, tests
-```
-
-## versions (installed direct deps)
-```
-fastapi@0.139.2
-python-multipart@0.0.32
-uvicorn@0.51.0
-```
-
-## todos
-```
-src/crack_server/chat_engine.py:221  # TODO: list still has open items, nudge (bounded); otherwise done.
-src/crack_server/sub_agents/base.py:175  # TODO: -aware nudge: names the still-open items when a todo list
+src/crack_server/chats.py ← __future__, fastapi, crack_server
+src/crack_server/pi_rpc.py ← __future__, crack_server, shlex
+src/crack_server/sandbox.py ← __future__, crack_server
+src/crack_server/trajectory_view.py ← __future__, crack_server
+tests/test_sandbox.py ← __future__, unittest, crack_server, pytest
 ```
 
 ## src
 
-### src/crack_server/chat_engine.py
+### src/crack_server/chats.py
 ```
-def run_exchange_sync(**kwargs) → None  :47-53  # Sync wrapper over :func:`run_exchange` for thread-based call
-async def run_exchange(*, state: JsonState, ident: str, message_builder: Callable[[str], str], record_template: str, log_prefix: str, model: str, session_id: str, sessions_dir: Path, tools: str | None, timeout_seconds: int, hop_kwargs: dict | None, pre_stop_check: Callable[[], bool] | None, on_first_exchange: "Callable[[str], Awaitable[None]] | None", on_no_exchanges: Callable[[], None] | None, stopped_phase: str, env_extra: dict[str, str] | None, media_dir: Path | None, media_url_prefix: str, plan: bool, planner_model: str, implementer_model: str, max_hops: int, persona_slug: str) → None  :56-80
-```
-
-### src/crack_server/models.py
-```
-def models_for_render(force: bool) → list[str]  :106-121  # Cache-only model list for page renders (B21): never shells o
-def image_models_for_render(force: bool) → list[str]  :124-140  # Cache-only list of models that accept image input (``images:
-def model_info(model: str) → dict | None  :150-154  # Cached pi metadata for one model id (context window etc
-def context_window(model: str) → int | None  :157-162  # Cached context-window token count for a model, or None when 
-def refresh_models() → None  :165-179  # Worker side of a ``MODELS_JOB_SLUG`` job: fetch `pi --list-m
-```
-
-### src/crack_server/pi_proc.py
-```
-class PiError(RuntimeError)  :78-88
-  def __init__(message: str, detail: str, over_budget: bool) → None
-class PiStopped(RuntimeError)  :91-93
-class _TurnAccumulator  :505-548
-  def __init__() → None
-  def apply(event: dict) → None
-class _StreamSink  :551-597
-  def __init__(p: _HopParams) → None
-  def persist(turn: dict) → None
-class _HopParams(NamedTuple)  :794-816
-async def arun_pi_text(prompt: str, log_prefix: str, model: str, max_input_chars: int | None, record_prompt, pid_file: Path | None, stop_check: Callable[[], bool] | None, image_paths: list[Path] | None, record_error) → tuple[str, float]  :269-278
-def run_pi_text(*args, **kwargs) → tuple[str, float]  :392-396  # Sync wrapper over :func:`arun_pi_text` for thread-based call
-def kill_pid_file(pid_file: Path) → bool  :451-502  # Kill the process group named in ``pid_file`` (written by aru
-async def arun_agent_hop(*, log_prefix: str, model: str, session_id: str, sessions_dir: Path, tools: str | None, message: str, start: float, sentinel: str | None, timeout_seconds: int, persist_turn, hop: int, pid_file: Path | None, stop_check, record_prompt, record_error, error_budget: Callable[[], int] | None, env_extra: dict[str, str] | None, waiting_check: Callable[[], bool] | None, append_system_prompt: str | None, swap_after_edit: bool, todo_already: bool) → str  :1183-1205
-def run_agent_hop(**kwargs) → str  :1280-1284  # Sync wrapper over :func:`arun_agent_hop` for thread-based ca
+def check_chat_id(chat_id: str) → None  :48-55  # 404 on malformed or unknown chat ids (mirrors app
+def list_chat_links() → list[tuple[str, str]]  :67-74  # ``(chat_id, title)`` pairs for the persistent sidebar nav
+def chat_status_dot(chat_id: str) → dict  :85-123  # ``{"phase": chatting|awaiting|idle|error, "tool": ok|err|pen
+def render_chat_dot(chat_id: str, status: dict | None) → str  :126-136  # Outer phase symbol + inner tool-colored dot for sidebar/home
+def render_new_chat_form() → str  :179-187  # New-chat button
+def render_chat_config_editor(info: dict) → str  :190-220  # Editable plan/model controls shown at the top of a brand-new
+def render_home_section() → str  :223-245  # Chats-only home body: New Chat + recent chats + links
+def render_home_page() → str  :248-250  # Full HTML for ``GET /``
+def render_chat_form(chat_id: str, info: dict, state: dict | None) → str  :295-343
+def render_user_question_form(chat_id: str, run_id: str, question: dict) → str  :346-365  # The ask_user Q&A form for a suspended run (run tree + run pa
+def render_chat_question_form(chat_id: str, question: dict) → str  :368-388  # Interactive ask_user form for a chat parent: radios for choi
+def render_answered_question(qa: dict) → str  :391-411  # Read-only mirror of an answered ask_user form (shown in the 
+def root_run_id(chat_id: str, run_id: str) → str  :540-553  # Walk parent links up to the root run parented by the chat (t
+def render_inline_run_region(chat_id: str, run_id: str) → str  :648-663  # A root sub-agent card as a self-polling region (embedded inl
+def render_sidebar_tree(chat_id: str) → str  :712-759  # Right-rail control tree: root = the chat (Stop = kill everyt
+def render_chat_msgs(chat_id: str) → list[str]  :775-812
+def render_chat_tail(chat_id: str, *, gate_error_html: str | None) → str  :815-816
+def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | None) → str  :861-890
+def render_chat_content(chat_id: str, after: int | None, *, gate_error_html: str | None) → str  :893-894  # Chat exchanges + status + form (msgs/tail; supports ``
+def render_chat_page_body(chat_id: str) → str  :905-915
+def create_chat(plan: bool, planner_model: str, implementer_model: str, model: str) → RedirectResponse  :921-925  # POST /api/chats: create a prewalk-coder chat with its locked
+def post_message(chat_id: str, msg: str, model: str | None, *, plan: bool | None, planner_model: str, implementer_model: str) → HTMLResponse  :941-948
+def answer_chat_question(chat_id: str, answer: str) → HTMLResponse  :1043-1075  # POST /api/chats/{id}/ask_answer: the human's answer to a cha
+def stop_chat(chat_id: str) → HTMLResponse  :1091-1112  # POST /api/chats/{id}/stop: halt the chat agent and all sub-a
+def delete_chat(chat_id: str) → HTMLResponse  :1115-1127  # DELETE /api/chats/{id}: kill agents (incl
+async def run_chat(chat_id: str) → None  :1231-1341  # Worker side of a CHAT_JOB_SLUG job: drain child reports, the
 ```
 
-### src/crack_server/render.py
+### src/crack_server/pi_rpc.py
 ```
-def render_user_prompt_msg(entry: dict) → str  :190-229  # Expandable `
-def new_model_state() → dict  :279-282  # Mutable tracker threaded through :func:`render_turn_msgs` ca
-def render_actions_table(turns: list[dict], include_text: bool) → str  :285-315  # Render agent turns as one compact actions table (one row per
-def render_error_row(entry: dict) → str  :340-361  # A durable `
+@dataclass _RpcAttemptResult(reason, settled, persisted, pi_failure, infrastructure_failure, stderr_tail)  :244-250
+async def arun_agent_hop_rpc(*, log_prefix: str, model: str, session_id: str, sessions_dir: Path, tools: str | None, message: str, start: float, sentinel: str | None, timeout_seconds: int, persist_turn, hop: int, pid_file: Path | None, stop_check, record_prompt, record_error, error_budget: Callable[[], int] | None, env_extra: dict[str, str] | None, waiting_check: Callable[[], bool] | None, append_system_prompt: str | None, swap_after_edit: bool, todo_already: bool, sandbox: str | None, resume_session: bool, **_ignored) → str  :515-540  # Run one agent hop over pi's RPC protocol (async)
 ```
 
-### src/crack_server/routes_settings.py
+### src/crack_server/sandbox.py
 ```
-def settings_page() → HTMLResponse  :65-82
-GET /settings  →  settings_page()  :65-82
-POST /api/settings/vision_model  →  api_set_vision_model()  :86-89
-POST /api/settings/agent_model/{kind}  →  api_set_agent_model()  :93-98
-```
-
-### src/crack_server/static/app.css
-```
-.sidebar-nav
-.sidebar-nav
-.sidebar-nav
-.sidebar-nav
-.inline-form
-.file-row-header
-.file-row-label
-.prompt-row
-```
-
-### src/crack_server/steprun.py
-```
-class TurnPersister  :90-175
-  def append(entry: dict) → None
-  def persist(current_turn: dict, hop: int) → None
-  def stamp_reason(reason: str) → None
-  def text() → str
-def attach_media_to_blocks  :20-21
-def make_turn  :72-87
-def turn_persister  :178-185
-def prompt_recorder  :194-199
-def error_recorder  :221-222
-def grant_error_budget  :251-256
-def record_chat_errors  :261-279
+def sandbox_name(conv_id: str) → str  :30-31
+def sandbox_enabled() → bool  :34-48  # True when agent hops should run inside per-conversation podm
+def overlay_base_dir(conv_id: str) → Path  :72-74  # Frozen tracked-tree materialisation used as the sandbox ``:O
+def overlay_tree_path(conv_id: str) → Path  :77-79  # File holding the frozen ``git write-tree`` id for this sandb
+def snapshot_host_tree(root: Path | None) → str  :82-97  # ``git write-tree`` on the host checkout (clean gate ⇒ equals
+def materialise_frozen_base(tree: str, dest: Path, *, repo: Path | None) → None  :100-142  # Materialise tracked files from ``tree`` into ``dest`` (no gi
+def frozen_tree_for(conv_id: str) → str | None  :145-150  # Return the recorded frozen tree id for ``conv_id``, or None
+async def harness_volume_host_path() → str  :193-203  # Host mountpoint for ``crack-harness-data`` (overlay upper/wo
+async def ensure_network() → None  :206-212
+async def ensure_sandbox(conv_id: str, *, parent_conv: str | None) → str  :215-270  # Idempotently create+start the sandbox; return its name
+async def exec_in(name: str, argv: list[str], *, env: Mapping[str, str] | None, cwd: str, detached: bool, stdout: int | None, stderr: int | None, interactive: bool, stdin: int | None, limit: int | None) → asyncio.subprocess.Process  :273-284  # Build and launch ``podman exec``; return the asyncio subproc
+async def kill_session(name: str, session_id: str) → None  :342-350  # Mid-run kill: signal only the pi for one session (SIGTERM th
+def session_alive_sync(name: str, session_id: str) → bool  :353-355
+def kill_session_sync(name: str, session_id: str) → None  :358-368  # Sync wrapper for stop routes and ``kill_pid_file``
+def destroy_sandbox_sync(conv_id: str) → None  :371-378  # Sync wrapper for terminal handoffs from sync callers
+async def destroy_sandbox(conv_id: str) → None  :381-392  # Stop and remove the sandbox container for a conversation
 ```
 
-### src/crack_server/sub_agents/base.py
+### src/crack_server/trajectory_view.py
 ```
-class SubAgentPersona  :32-489
-  def persona_dir() → Path
-  def config_path() → Path
-  def config_dict() → dict
-  def model_for() → str
-  def load_template(name: str) → str
-  def tool_name() → str
-  def tool_description() → str
-  def tool_label() → str
-```
-
-### src/crack_server/sub_agents/runner.py
-```
-def format_child_result  :19-37
-def build_entry  :62-78
-def spawn  :81-89
-def finish  :184-260
+def list_session_files  :87-94
+def project_session_events  :113-240
+def project_sessions_dir  :243-247
+def merge_exchange_sidecars  :264-266
+def clear_cache  :351-353
 ```
 
 ## tests
 
-### tests/test_ask_user.py
+### tests/test_sandbox.py
 ```
-async def test_ask_user_suspends_run_then_answer_resumes(chat_root, fake_pi)  :22-62
-async def test_ask_user_orphan_sweep_skips_awaiting_user(chat_root, fake_pi)  :66-87
-async def test_ask_user_answer_requires_awaiting_phase(chat_root, fake_pi)  :91-104
-async def test_ask_user_route_and_chat_parent(chat_root, fake_pi)  :108-142
-async def test_user_answer_route(chat_root, fake_pi)  :146-176
-```
-
-### tests/test_model_switch.py
-```
-def test_make_turn_records_model_when_set()  :27-29
-def test_make_turn_omits_model_when_empty()  :32-34
-def test_persister_stamps_current_model(tmp_path)  :37-46
-def test_persister_stamp_reason_on_last_turn(tmp_path)  :49-58
-def test_persister_stamp_reason_noop_when_empty(tmp_path)  :61-66
-def test_reason_note_shown_for_notable_reasons()  :69-74
-def test_model_tag_shown_per_turn()  :86-91
-def test_prewalk_swap_divider_after_todo()  :94-102
-def test_user_switch_divider_without_todo()  :105-109
-def test_no_divider_when_model_stable()  :112-115
-def test_model_state_threads_across_calls()  :118-125
-def test_tool_output_short_has_no_expand_toggle()  :133-136
-def test_tool_output_long_has_single_icon_toggle()  :139-144
-def test_plan_chat_form_editor_before_first_message(chat_root)  :156-163
-def test_plan_chat_form_locked_before_graduation(chat_root)  :166-172
-def test_plan_chat_form_dropdown_after_graduation(chat_root)  :175-185
-def test_nonplan_chat_form_has_dropdown(chat_root)  :188-193
-def test_run_display_model_uses_planner_while_planning()  :201-206
-def test_run_display_model_uses_implementer_after_swap()  :209-218
-def test_chat_display_model_planning_then_graduated()  :221-229
-def test_graduation_gate_matches_prewalk_swap()  :232-240
-def test_post_message_locks_config_on_first_message(chat_root)  :243-256
-def test_chat_display_model_prefers_cached(chat_root)  :259-263
-def test_image_models_filters_to_image_capable(chat_root)  :271-279
-def test_image_models_fallback_when_no_info(chat_root)  :282-288
+def host_env(monkeypatch, tmp_path)  :14-16
+async def test_sandbox_enabled_off_in_tests(host_env, monkeypatch, tmp_path)  :20-23
+async def test_sandbox_enabled_forced(monkeypatch, host_env)  :27-30
+async def test_ensure_network_creates_when_missing(host_env)  :34-47
+async def test_ensure_network_skips_create_when_present(host_env)  :51-61
+async def test_ensure_sandbox_starts_existing(host_env)  :65-79
+async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path)  :83-129
+async def test_exec_in_interactive_adds_i_flag(host_env)  :133-147
+async def test_exec_in_passes_stream_limit(host_env)  :151-166
+async def test_exec_in_omits_limit_when_unset(host_env)  :170-174
+async def test_exec_in_builds_command(host_env)  :178-195
+async def test_kill_session_escalates_to_kill(host_env)  :199-219
+async def test_destroy_sandbox_kill_and_rm(host_env)  :223-235
+async def test_destroy_sandbox_noop_when_missing(host_env)  :239-251
 ```
