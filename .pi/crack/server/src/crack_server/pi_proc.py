@@ -247,7 +247,12 @@ async def _spawn_sandbox_pi(p: "_HopParams", pi_argv: list[str], output_path: Pa
     redirect = f"exec {shlex.join(pi_argv)} > {shlex.quote(str(output_path))} 2>&1"
     env = {
         "CRACK_HARNESS_DATA_DIR": os.environ.get("CRACK_HARNESS_DATA_DIR", "/crack-harness-data"),
-        "CRACK_PI_HOST": os.environ.get("CRACK_PI_HOST", "crack-dev"),
+        # A sandbox reaches crack-server by its crack-net hostname. Do NOT inherit
+        # crack-dev's own CRACK_PI_HOST (which is 0.0.0.0, the uvicorn *bind*
+        # address) — inside a sandbox that resolves to nothing, breaking the
+        # spawn/wait/ask tools with ECONNREFUSED. The container already sets this
+        # value; pin it here so the exec env can never override it wrongly.
+        "CRACK_PI_HOST": "crack-dev",
         **(p.env_extra or {}),
     }
     await sandbox_mod.exec_in(

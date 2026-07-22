@@ -93,9 +93,12 @@ def apply_event_to_turn(event: dict, current_turn: dict) -> None:
             continue
         btype = block.get("type")
         if btype == "text":
-            current_turn["text"] += block.get("text", "")
+            # Tolerant of a message_end that arrives with no preceding turn_start
+            # (some providers, e.g. nemotron, emit a thinking/text message without
+            # one) — never KeyError on an uninitialized current_turn.
+            current_turn["text"] = current_turn.get("text", "") + block.get("text", "")
         elif btype == "thinking":
-            current_turn["thinking"] += block.get("thinking", "")
+            current_turn["thinking"] = current_turn.get("thinking", "") + block.get("thinking", "")
         elif btype == "toolCall":
             current_turn.setdefault("tool_blocks", []).append(
                 {

@@ -291,9 +291,13 @@ class SubAgentPersona:
             from crack_server import patch as patch_mod
 
             sandbox_name = await sandbox.ensure_sandbox(run_id)
-            await patch_mod.ensure_baseline(
-                sandbox_name, paths.run_dir(chat_id, run_id),
-            )
+            run_directory = paths.run_dir(chat_id, run_id)
+            # First hop only (no baseline yet): replay the parent's uncommitted
+            # tree into the fresh child sandbox so it starts from the parent's
+            # current work (Plan 7 Part A / chain-overlay via git-replay).
+            if not patch_mod.base_tree_path(run_directory).is_file():
+                await patch_mod.seed_child_from_parent(sandbox_name, run_id, state)
+            await patch_mod.ensure_baseline(sandbox_name, run_directory)
 
         try:
             reason = await pi_runner.arun_agent_hop(
@@ -529,7 +533,8 @@ class SubAgentPersona:
         if sandbox.sandbox_enabled() and cascade:
             from crack_server import patch as patch_mod
 
-            patch_mod.finalize_run_sandbox(run_id, forceful=True, apply_to_parent=False)
+            # Stopped children don't push their patch into the parent overlay.
+            patch_mod.extract_run_patch(run_id, forceful=True, mark_pending=False)
         logger.info("sub_agent %s: stop requested for %s (killed=%s)", self.slug, run_id, killed)
 
         for child_id in list(state.get("children") or []):

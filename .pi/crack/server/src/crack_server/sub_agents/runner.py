@@ -230,8 +230,8 @@ def finish(run_id: str, status: str) -> None:
 
     if sandbox.sandbox_enabled():
         forceful = status == "stopped"
-        patch_result = patch.finalize_run_sandbox(
-            run_id, forceful=forceful, apply_to_parent=True,
+        patch_result = patch.extract_run_patch(
+            run_id, forceful=forceful, mark_pending=True,
         )
         if patch_result is not None and patch_result.needs_nag:
             return
@@ -239,10 +239,16 @@ def finish(run_id: str, status: str) -> None:
     state_obj.update(_terminal)
     state = state_obj.read()
 
-    entry = build_entry(run_id, state, status=status)
-
     parent_kind = state.get("parent_kind")
     parent_id = state.get("parent_id")
+
+    # Now that this child is terminal, apply any deferred sibling patches into the
+    # parent overlay in dispatch order — but only when no siblings are still
+    # running (guards the parent overlay from concurrent/mid-run git-applies).
+    if sandbox.sandbox_enabled():
+        patch.drain_parent_patches(chat_id, parent_kind, parent_id)
+
+    entry = build_entry(run_id, state, status=status)
 
     if parent_kind == "chat":
         chat_state = paths.chat_state(chat_id)

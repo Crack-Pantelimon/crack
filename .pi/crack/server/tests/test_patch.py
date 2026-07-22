@@ -89,3 +89,160 @@ def test_format_apply_failure_includes_patch_path(tmp_path):
     assert "Patch application failed" in text
     assert str(patch_file.resolve()) in text
     assert "Resolve the conflict" in text
+
+
+# -- Plan 7 Part B: self-modification detection / messaging -------------------
+
+
+def test_patch_touches_self_mod_server(tmp_path):
+    pf = tmp_path / "patch.diff"
+    pf.write_text(
+        "diff --git a/.pi/crack/server/src/crack_server/x.py "
+        "b/.pi/crack/server/src/crack_server/x.py\n@@ -1 +1 @@\n-a\n+b\n"
+    )
+    assert p.patch_touches_self_mod(pf) is True
+
+
+def test_patch_touches_self_mod_extension(tmp_path):
+    pf = tmp_path / "patch.diff"
+    pf.write_text("diff --git a/.pi/extensions/crack/index.ts b/.pi/extensions/crack/index.ts\n")
+    assert p.patch_touches_self_mod(pf) is True
+
+
+def test_patch_touches_self_mod_ignores_other_paths(tmp_path):
+    pf = tmp_path / "patch.diff"
+    pf.write_text("diff --git a/_slop/report-23/README.md b/_slop/report-23/README.md\n")
+    assert p.patch_touches_self_mod(pf) is False
+
+
+def test_format_test_failure_mentions_untouched_host(tmp_path):
+    pf = tmp_path / "patch.diff"
+    text = p.format_test_failure("E   assert 1 == 2\n1 failed", pf)
+    assert "FAILED" in text
+    assert "untouched" in text
+    assert str(pf.resolve()) in text
+
+
+# -- Plan 7 / parallel-patch guard: dispatch-ordered, serialized drain --------
+
+
+def _make_child(chat_id, run_id, *, pending=True):
+    from crack_server import paths
+
+    paths.run_dir(chat_id, run_id).mkdir(parents=True, exist_ok=True)
+    paths.run_state(chat_id, run_id).write({
+        "run_id": run_id,
+        "chat_id": chat_id,
+        "parent_kind": "chat",
+        "parent_id": chat_id,
+        "phase": "done",
+        "patch_pending": pending,
+    })
+    p.patch_diff_path(paths.run_dir(chat_id, run_id)).write_text(f"patch-for-{run_id}\n")
+
+
+@pytest.fixture
+def drain_chat(tmp_path, monkeypatch):
+    from crack_server import paths
+
+    monkeypatch.setenv("CRACK_PI_PROJECT_ROOT", str(tmp_path))
+    chat_id = paths.generate_chat_id()
+    paths.create_chat(chat_id, "nvidia/z-ai/glm-5.2")
+    return chat_id
+
+
+def test_drain_applies_in_dispatch_order(drain_chat, monkeypatch):
+    from crack_server import paths
+    from crack_server.sub_agents import runner
+
+    older = paths.generate_run_id()
+    newer = paths.generate_run_id()
+    while newer <= older:
+        newer = paths.generate_run_id()
+    # Create out of spawn order to prove the drain sorts, not insertion order.
+    _make_child(drain_chat, newer)
+    _make_child(drain_chat, older)
+
+    applied: list[str] = []
+    monkeypatch.setattr(p.sandbox, "sandbox_enabled", lambda: True)
+    monkeypatch.setattr(runner, "active_child_count", lambda *a, **k: 0)
+
+    def fake_apply(sbx, patch_path):
+        applied.append(patch_path.read_text().strip())
+        return True, ""
+
+    monkeypatch.setattr(p, "apply_patch_to_sandbox_sync", fake_apply)
+
+    p.drain_parent_patches(drain_chat, "chat", drain_chat)
+
+    assert applied == [f"patch-for-{older}", f"patch-for-{newer}"]
+    for rid in (older, newer):
+        assert paths.run_state(drain_chat, rid).read().get("patch_pending") is False
+    assert paths.chat_state(drain_chat).read().get("patch_draining") is False
+
+
+def test_drain_defers_while_siblings_running(drain_chat, monkeypatch):
+    from crack_server import paths
+    from crack_server.sub_agents import runner
+
+    rid = paths.generate_run_id()
+    _make_child(drain_chat, rid)
+
+    applied: list[str] = []
+    monkeypatch.setattr(p.sandbox, "sandbox_enabled", lambda: True)
+    monkeypatch.setattr(runner, "active_child_count", lambda *a, **k: 1)  # sibling alive
+    monkeypatch.setattr(
+        p, "apply_patch_to_sandbox_sync",
+        lambda s, pp: (applied.append(pp), (True, ""))[1],
+    )
+
+    p.drain_parent_patches(drain_chat, "chat", drain_chat)
+
+    assert applied == []  # nothing applied while a sibling is still running
+    assert paths.run_state(drain_chat, rid).read().get("patch_pending") is True
+
+
+def test_drain_conflict_notifies_and_clears(drain_chat, monkeypatch):
+    from crack_server import paths
+    from crack_server.sub_agents import runner
+
+    rid = paths.generate_run_id()
+    _make_child(drain_chat, rid)
+
+    notified: list[str] = []
+    monkeypatch.setattr(p.sandbox, "sandbox_enabled", lambda: True)
+    monkeypatch.setattr(runner, "active_child_count", lambda *a, **k: 0)
+    monkeypatch.setattr(p, "apply_patch_to_sandbox_sync", lambda s, pp: (False, "conflict"))
+    monkeypatch.setattr(
+        p, "notify_parent_apply_failure",
+        lambda pk, pi, cid, err, pp: notified.append(err),
+    )
+
+    p.drain_parent_patches(drain_chat, "chat", drain_chat)
+
+    assert notified == ["conflict"]
+    # Cleared even on conflict, so a later sibling isn't blocked behind it.
+    assert paths.run_state(drain_chat, rid).read().get("patch_pending") is False
+
+
+def test_drain_apply_exception_leaves_pending(drain_chat, monkeypatch):
+    from crack_server import paths
+    from crack_server.sub_agents import runner
+
+    rid = paths.generate_run_id()
+    _make_child(drain_chat, rid)
+
+    monkeypatch.setattr(p.sandbox, "sandbox_enabled", lambda: True)
+    monkeypatch.setattr(runner, "active_child_count", lambda *a, **k: 0)
+
+    def boom(sbx, pp):
+        raise RuntimeError("podman timed out")
+
+    monkeypatch.setattr(p, "apply_patch_to_sandbox_sync", boom)
+
+    p.drain_parent_patches(drain_chat, "chat", drain_chat)
+
+    # A raised apply must NOT clear the flag (so a later drain retries it) and must
+    # release the drain lock.
+    assert paths.run_state(drain_chat, rid).read().get("patch_pending") is True
+    assert paths.chat_state(drain_chat).read().get("patch_draining") is False

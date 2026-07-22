@@ -1161,6 +1161,16 @@ def _merge_child_inbox(chat_id: str) -> int:
     return len(entries)
 
 
+def _has_active_runs(chat_id: str) -> bool:
+    """True while any sub-agent run under this chat is non-terminal. Used to hold
+    the chat sandbox open so children's finish-time patches still have a parent
+    overlay to apply into."""
+    for run_id in paths.list_run_ids(chat_id):
+        if paths.run_state(chat_id, run_id).read().get("phase") not in _RUN_TERMINAL:
+            return True
+    return False
+
+
 def _pop_pending(chat_id: str) -> dict | None:
     """Pop the next pending message, or None if the queue is empty / stop flagged."""
     taken: dict | None = None
@@ -1217,6 +1227,12 @@ async def run_chat(chat_id: str) -> None:
             _merge_child_inbox(chat_id)
             if chat.read().get("pending"):
                 continue
+            if sandbox.sandbox_enabled() and _has_active_runs(chat_id):
+                # Sub-agents still running (the chat ended its turn without
+                # wait_join): keep the chat sandbox alive so their finish-time
+                # patches can still apply into it. drain_children re-enqueues this
+                # job when they finish, and we finalize on a later idle pass.
+                return
             if sandbox.sandbox_enabled() and sandbox_name:
                 if await patch.finalize_chat_sandbox(chat_id, sandbox_name):
                     sandbox_name = await sandbox.ensure_sandbox(chat_id)

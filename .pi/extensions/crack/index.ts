@@ -176,12 +176,25 @@ async function hasRunningChildren(): Promise<boolean> {
 		`${BASE}/api/chats/${encodeURIComponent(chatId)}/sub_agents/active_count` +
 		`?parent_kind=${encodeURIComponent(parentKind)}` +
 		`&parent_id=${encodeURIComponent(parentId)}`;
-	const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-	if (!res.ok) {
-		throw new Error(truncateTail(await res.text()).content);
+	// This probe runs before every destructive tool call. crack-dev may be
+	// briefly unreachable (uvicorn reloads on a self-mod apply) — do NOT hard-fail
+	// the tool for a transient blip. Retry a few times, then fail OPEN (treat as
+	// "no children"): with git-replay overlays a child no longer mounts the
+	// parent's live tree, so a missed freeze during a reload window is safe.
+	let lastErr: unknown;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+			if (!res.ok) throw new Error(truncateTail(await res.text()).content);
+			const d = (await res.json()) as { active: number };
+			return d.active > 0;
+		} catch (e) {
+			lastErr = e;
+			await sleep(1000);
+		}
 	}
-	const d = (await res.json()) as { active: number };
-	return d.active > 0;
+	console.error(`crack: active_count probe failed, assuming no children: ${lastErr}`);
+	return false;
 }
 
 /** Block until every running child is terminal (implicit parent-freeze wait). */
