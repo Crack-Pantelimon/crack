@@ -256,6 +256,25 @@ def test_post_message_locks_config_on_first_message(chat_root):  # noqa: F811
     assert paths.chat_state(chat_root).read()["pending"][0].get("model") is None
 
 
+def test_dirty_git_gate_preserves_plan_config(chat_root, monkeypatch):  # noqa: F811
+    """Plan 24 Issue 3a/4: a dirty-tree refusal must still persist the user's
+    plan/model choice, else the gate re-render flips the plan checkbox back on."""
+    from crack_server import paths, sandbox, git_utils
+
+    monkeypatch.setattr(sandbox, "sandbox_enabled", lambda: True)
+    monkeypatch.setattr(git_utils, "host_worktree_dirty", lambda *a, **k: True)
+    monkeypatch.setattr(git_utils, "host_status_colored", lambda *a, **k: "dirty")
+
+    resp = chats.post_message(chat_root, "do it", "acme/n", plan=False)
+    # Refused: red gate shown, nothing enqueued.
+    assert "Host worktree is dirty" in resp.body.decode()
+    assert not paths.chat_state(chat_root).read().get("pending")
+    # But the plan-off choice is locked onto info so the re-render stays off.
+    info = paths.chat_info_state(chat_root).read()
+    assert info["plan"] is False
+    assert "checked" not in chats.render_chat_config_editor(info).split("data-plan-toggle")[0]
+
+
 def test_config_editor_emits_config_hidden_field():
     html = chats.render_chat_config_editor({
         "plan": False,

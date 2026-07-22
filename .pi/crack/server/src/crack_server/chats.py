@@ -993,6 +993,26 @@ def post_message(
     msg = msg.strip()
     st = paths.chat_state(chat_id).read()
     pre_first = not (st.get("exchanges") or st.get("pending"))
+    if pre_first and plan is not None:
+        # Lock the in-chat model/plan choices onto the chat before it starts.
+        # This runs *before* the clean-git gate so that a refused (dirty-tree)
+        # send still persists the user's plan/model selection — otherwise the
+        # gate re-render falls back to config defaults and silently flips the
+        # plan checkbox back on.
+        def _lock_config(info: dict) -> dict:
+            info["plan"] = bool(plan)
+            if planner_model:
+                info["planner_model"] = planner_model
+            if implementer_model:
+                info["implementer_model"] = implementer_model
+            if model:
+                info["model"] = model
+            return info
+
+        paths.chat_info_state(chat_id).update(_lock_config)
+        # The nonplan model is now stored on the chat; don't also stamp it as a
+        # per-exchange continuation switch.
+        model = None
     # Hard clean-git gate: refuse the first message of a top-level sandboxed
     # chat until the host worktree is clean (prerequisite for frozen bases).
     if (
@@ -1010,22 +1030,6 @@ def post_message(
             "</div>"
         )
         return HTMLResponse(render_chat_content(chat_id, gate_error_html=gate))
-    if pre_first and plan is not None:
-        # Lock the in-chat model/plan choices onto the chat before it starts.
-        def _lock_config(info: dict) -> dict:
-            info["plan"] = bool(plan)
-            if planner_model:
-                info["planner_model"] = planner_model
-            if implementer_model:
-                info["implementer_model"] = implementer_model
-            if model:
-                info["model"] = model
-            return info
-
-        paths.chat_info_state(chat_id).update(_lock_config)
-        # The nonplan model is now stored on the chat; don't also stamp it as a
-        # per-exchange continuation switch.
-        model = None
     # One-shot attachments staged via paste/drop: weave them into this message,
     # then clear the manifest so they aren't resent on the next message. The
     # uploaded files stay on disk under attachments/ for history. A media list

@@ -9,7 +9,6 @@ must never break the pipeline. All commit messages are prefixed
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 from html import escape
 from pathlib import Path
@@ -29,10 +28,16 @@ _IDENTITY = [
 
 
 def _host_repo_root() -> Path:
-    """Host checkout used for sandbox overlays / clean-git gate."""
-    raw = os.environ.get("CRACK_HOST_REPO_ROOT")
-    if raw:
-        return Path(raw)
+    """In-container path to the repo tree for the clean-git gate.
+
+    The gate helpers run *inside* the crack-dev container. ``CRACK_HOST_REPO_ROOT``
+    is a **host-only** path (e.g. ``/home/p/VIDOEGAME/crack``) that exists only on
+    the docker host — it is meant for constructing sibling-container overlay mount
+    specs, and does not resolve inside the container (``git -C`` there fails with
+    ``cannot change to '…': No such file or directory``). The identical tree is
+    bind-mounted at ``/workspace`` (== :func:`paths.project_root`), so git status
+    there reflects the true host-tree dirtiness. Always use the in-container path.
+    """
     return paths.project_root()
 
 
