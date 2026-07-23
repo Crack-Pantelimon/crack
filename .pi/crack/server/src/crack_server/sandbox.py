@@ -74,6 +74,16 @@ def overlay_base_dir(conv_id: str) -> Path:
     return _overlay_root(conv_id) / "base"
 
 
+def overlay_upper_dir(conv_id: str) -> Path:
+    """Writable overlay upper — where files the sandbox creates under
+    ``/workspace`` land, readable from the host while the overlay exists.
+
+    Used by the trajectory media hook to read images the agent produced inside
+    its sandbox (e.g. screenshots) whose paths do not resolve in the server's own
+    filesystem."""
+    return _overlay_dirs(conv_id)[0]
+
+
 def overlay_tree_path(conv_id: str) -> Path:
     """File holding the frozen ``git write-tree`` id for this sandbox."""
     return _overlay_root(conv_id) / "tree"

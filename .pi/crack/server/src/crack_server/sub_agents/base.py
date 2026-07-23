@@ -274,6 +274,7 @@ class SubAgentPersona:
             state_obj, key="turns",
             media_dir=paths.run_media_dir(chat_id, run_id),
             media_url_prefix=f"/chats/{chat_id}/sub_agents/runs/{run_id}/media",
+            conv_id=run_id,
         )
         record = prompt_recorder(persister, f"hop {hop_n}", template, message)
 

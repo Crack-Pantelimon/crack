@@ -766,17 +766,21 @@ def render_sidebar_tree(chat_id: str) -> str:
     )
 
 
-def _tag_chat_msg(index: int, html: str) -> str:
+def _tag_chat_msg(index: int, html: str, oob: bool = False) -> str:
     esc = _ui._esc
     msg_id = f"{CHAT_SLUG}-msg-{index}"
+    # An out-of-band copy replaces the same-id element already in the DOM (used to
+    # refresh a turn that was rendered mid-flight, so its tool dots settle once the
+    # result lands rather than staying stuck "running" until a full reload).
+    attrs = f'id="{esc(msg_id)}" ' + ('hx-swap-oob="true" ' if oob else "")
     for needle in (
         '<div class="stage-msg', "<div class='stage-msg",
         '<details class="stage-msg', "<details class='stage-msg",
     ):
         if needle in html[:120]:
             tag = needle.split(" ", 1)[0]
-            return html.replace(tag + " ", f'{tag} id="{esc(msg_id)}" ', 1)
-    return f'<div id="{esc(msg_id)}" class="stage-msg">{html}</div>'
+            return html.replace(tag + " ", f"{tag} {attrs}", 1)
+    return f'<div {attrs}class="stage-msg">{html}</div>'
 
 
 def _exchange_duration(exchange: dict | None) -> float | None:
@@ -824,6 +828,7 @@ def render_chat_msgs(chat_id: str) -> list[str]:
         sessions_dir,
         media_dir=paths.chat_dir(chat_id) / "media",
         media_url_prefix=f"/chats/{chat_id}/media",
+        conv_id=chat_id,
     )
     exchanges = state.get("exchanges") or []
     rows = trajectory_view.merge_exchange_sidecars(projected, exchanges)
@@ -921,9 +926,20 @@ def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | Non
         status = "idle"
 
     if after is not None:
+        # Re-send the boundary message (the last one the client already has) as an
+        # out-of-band swap: a turn rendered while its tools were still running is
+        # frozen at its index and the append-only delta (i > after) never revisits
+        # it, so its dots would stay blue until a full reload. The OOB copy replaces
+        # it in place; strictly-new messages (i > after) are appended as before.
+        boundary = (
+            _tag_chat_msg(after, msgs[after], oob=True)
+            if 0 <= after < msg_count
+            else ""
+        )
         new_msgs = "".join(tagged[i] for i in range(len(tagged)) if i > after)
         return (
-            new_msgs
+            boundary
+            + new_msgs
             + f'<div id="chat-tail" hx-swap-oob="outerHTML">{tail}</div>'
             + '<span id="chat-status-meta" hx-swap-oob="outerHTML"'
             + f' data-stage-status="{esc(status)}" data-msg-count="{msg_count}"'

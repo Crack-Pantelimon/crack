@@ -17,20 +17,66 @@ from crack_server.state import JsonState
 
 logger = logging.getLogger("uvicorn.error")
 
+def _resolve_media_source(cand: str, conv_id: str | None) -> Path | None:
+    """Locate a readable copy of ``cand`` on the host, or None.
+
+    Images the agent produces inside a sandbox (e.g. screenshots under
+    ``/workspace``) do not exist in the server's own filesystem — they live in
+    the overlay *upper* dir. When ``conv_id`` is given we prefer that upper copy
+    for absolute ``/workspace`` paths (it is the sandbox's actual bytes), then
+    fall back to resolving the path directly against the host filesystem.
+    """
+    from crack_server.paths import project_root
+
+    raw = Path(cand)
+    if conv_id and raw.is_absolute():
+        try:
+            rel = raw.relative_to("/workspace")
+        except ValueError:
+            rel = None
+        if rel is not None:
+            from crack_server import sandbox
+            upper = sandbox.overlay_upper_dir(conv_id) / rel
+            if upper.is_file():
+                return upper
+
+    host = raw if raw.is_absolute() else project_root() / raw
+    return host if host.is_file() else None
+
+
+def _read_media_manifest(path: Path) -> dict[str, str]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+
 def attach_media_to_blocks(
-    tool_blocks: list[dict], media_dir: Path, url_prefix: str
+    tool_blocks: list[dict], media_dir: Path, url_prefix: str,
+    conv_id: str | None = None,
 ) -> list[dict]:
     """Copy images referenced by read/analyze_image tool calls into ``media_dir``
     and attach a ``media: [{src, url}]`` field to their blocks.
 
     Candidates: ``read`` calls whose path has an image extension, and every
     path in an ``analyze_image`` call's ``image_paths``. Missing/corrupt/
-    non-image files are skipped silently (save_validated_copy returns None).
-    The saved copy persists inside the task/chat/run dir, so thumbnails keep
-    working even if the source path is later deleted.
+    non-image files are skipped silently.
+
+    The saved copy persists inside the chat/run dir, so thumbnails keep working
+    even after the sandbox (and its source path) disappear. Because the saved
+    name is content-derived, the source bytes are needed to recompute it — so we
+    remember every ``source path → saved filename`` mapping in a durable
+    ``index.json`` manifest beside the copies. On a later render, when the source
+    is gone, we serve the remembered copy from that manifest. ``conv_id`` lets us
+    read sandbox-only sources from the overlay upper while the run is live (see
+    :func:`_resolve_media_source`).
     """
     from crack_server import images as images_mod
-    from crack_server.paths import project_root
+
+    manifest_path = media_dir / "index.json"
+    manifest = _read_media_manifest(manifest_path)
+    new_entries: dict[str, str] = {}
 
     out: list[dict] = []
     for block in tool_blocks:
@@ -57,15 +103,33 @@ def attach_media_to_blocks(
 
         media: list[dict] = []
         for cand in candidates:
-            path = Path(cand)
-            if not path.is_absolute():
-                path = project_root() / path
-            saved = images_mod.save_validated_copy(path, media_dir)
-            if saved is not None:
-                media.append({"src": str(path), "url": f"{url_prefix}/{saved.name}"})
+            saved_name: str | None = None
+            src = _resolve_media_source(cand, conv_id)
+            if src is not None:
+                saved = images_mod.save_validated_copy(src, media_dir)
+                if saved is not None:
+                    saved_name = saved.name
+                    if manifest.get(cand) != saved_name:
+                        new_entries[cand] = saved_name
+            if saved_name is None:
+                # Source gone — serve the copy we remembered from an earlier pass.
+                remembered = manifest.get(cand)
+                if remembered and (media_dir / remembered).is_file():
+                    saved_name = remembered
+            if saved_name is not None:
+                media.append({"src": cand, "url": f"{url_prefix}/{saved_name}"})
         if media:
             block["media"] = media
         out.append(block)
+
+    if new_entries:
+        from crack_server.state import JsonState
+
+        def _merge(s: dict) -> dict:
+            s.update(new_entries)
+            return s
+
+        JsonState(manifest_path).update(_merge)
     return out
 
 
@@ -108,6 +172,7 @@ class TurnPersister:
         post: Callable[[dict], None] | None = None,
         media_dir: Path | None = None,
         media_url_prefix: str = "",
+        conv_id: str | None = None,
     ):
         self.state = state
         self.key = key
@@ -120,6 +185,9 @@ class TurnPersister:
         self.current_model: str = ""
         self.media_dir = media_dir
         self.media_url_prefix = media_url_prefix
+        # Conversation id owning this persister's sandbox, so the media hook can
+        # read sandbox-only image sources (e.g. screenshots) from the overlay upper.
+        self.conv_id = conv_id
 
     def _snapshot(self) -> list[dict]:
         node = self.state.read()
@@ -146,7 +214,8 @@ class TurnPersister:
         turn = make_turn(current_turn, hop, self.current_model)
         if self.media_dir is not None:
             turn["tool_blocks"] = attach_media_to_blocks(
-                turn["tool_blocks"], self.media_dir, self.media_url_prefix
+                turn["tool_blocks"], self.media_dir, self.media_url_prefix,
+                self.conv_id,
             )
         self.append(turn)
 
@@ -218,11 +287,12 @@ def turn_persister(
     post: Callable[[dict], None] | None = None,
     media_dir: Path | None = None,
     media_url_prefix: str = "",
+    conv_id: str | None = None,
 ) -> TurnPersister:
     """A TurnPersister bound to ``state`` (see the class docstring)."""
     return TurnPersister(
         state, key=key, subpath=subpath, existing=existing, post=post,
-        media_dir=media_dir, media_url_prefix=media_url_prefix,
+        media_dir=media_dir, media_url_prefix=media_url_prefix, conv_id=conv_id,
     )
 
 

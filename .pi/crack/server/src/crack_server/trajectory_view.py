@@ -268,8 +268,12 @@ def project_sessions_dir(
     *,
     media_dir: Path | None = None,
     media_url_prefix: str = "",
+    conv_id: str | None = None,
 ) -> list[dict]:
-    """Read all session files under ``sessions_dir`` and project to view rows."""
+    """Read all session files under ``sessions_dir`` and project to view rows.
+
+    ``conv_id`` lets the media hook read sandbox-only image sources from the
+    overlay upper (see :func:`steprun.attach_media_to_blocks`)."""
     rows: list[dict] = []
     for path in list_session_files(sessions_dir):
         events = _read_session_events(path)
@@ -278,7 +282,7 @@ def project_sessions_dir(
             for row in part:
                 if row.get("kind") == "turn" and row.get("tool_blocks"):
                     row["tool_blocks"] = attach_media_to_blocks(
-                        row["tool_blocks"], media_dir, media_url_prefix,
+                        row["tool_blocks"], media_dir, media_url_prefix, conv_id,
                     )
         rows.extend(part)
     return rows

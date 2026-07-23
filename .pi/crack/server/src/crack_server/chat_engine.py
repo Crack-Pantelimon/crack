@@ -109,6 +109,7 @@ async def run_exchange(
         persister = turn_persister(
             state, subpath=["exchanges", idx],
             media_dir=media_dir, media_url_prefix=media_url_prefix,
+            conv_id=ident,
         )
 
         def _stamp_started(s: dict) -> dict:
