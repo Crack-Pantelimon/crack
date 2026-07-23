@@ -413,6 +413,31 @@ main.container-fluid {
   font-size: 0.8rem;
 }
 
+/* Tighten the todo checklist so each item reads as a compact line. */
+.todo-render ul {
+  margin: 0.2rem 0;
+  padding-left: 1.1rem;
+  list-style: none;
+}
+.todo-render li {
+  margin: 0.05rem 0;
+}
+.todo-render p {
+  margin: 0.15rem 0;
+}
+
+/* Badge naming what a todo call did (write · N items / toggle #3 / list). */
+.todo-action {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  padding: 0.05rem 0.35rem;
+  margin-bottom: 0.2rem;
+  border-radius: 4px;
+  background: rgba(74, 144, 226, 0.14);
+  color: var(--pico-primary, #0172ad);
+}
+
 .trunc-marker {
   color: #a80;
 }
@@ -1152,25 +1177,32 @@ main.container-fluid {
  * model-switch dividers, inline tool-output previews, table alignment.
  * ------------------------------------------------------------------------- */
 
-/* Bordered, padded top-level chat trajectory — matches the sub-agent cards. */
-#chat-msgs {
+/* Bordered, padded top-level chat trajectory — matches the sub-agent cards. The
+ * border wraps both the messages and the running (Clanking) tail, so the busy
+ * spinner sits just above the bottom border rather than below it. */
+.chat-frame {
   border: 2px solid #888;
   border-radius: 6px;
   padding: 0.4rem 0.75rem;
   margin: 0.6rem 0;
   background: rgba(0, 0, 0, 0.015);
 }
-.chat-content[data-stage-status="running"] #chat-msgs {
+.chat-content[data-stage-status="running"] .chat-frame {
   border-color: #4a90e2;
 }
-.chat-content[data-stage-status="error"] #chat-msgs {
+.chat-content[data-stage-status="error"] .chat-frame {
   border-color: #8b1a1a;
 }
-.chat-content[data-stage-status="done"] #chat-msgs {
+.chat-content[data-stage-status="done"] .chat-frame {
   border-color: #1e6b3a;
 }
-.chat-content[data-stage-status="stopped"] #chat-msgs {
+.chat-content[data-stage-status="stopped"] .chat-frame {
   border-color: #888;
+}
+/* The running tail sits inside the frame; drop its extra top padding so it hugs
+ * the last message and the bottom border. */
+#chat-running:empty {
+  display: none;
 }
 
 /* Table alignment: fixed narrow Type/Size/Time columns, wrapping middle column. */

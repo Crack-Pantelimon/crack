@@ -568,9 +568,49 @@ def _subtree_active(chat_id: str, run_id: str, cmap: dict[str, list[str]]) -> bo
     return any(_subtree_active(chat_id, c, cmap) for c in cmap.get(run_id, []))
 
 
+def _run_annotation_rows(chat_id: str, run_id: str) -> list[dict]:
+    """Projected annotation rows (session / model_change / thinking-level badges)
+    from the run's own session ndjson, time-stamped with an ``at`` epoch so they
+    interleave into the ``state['turns']`` spine. This keeps the sub-agent's data
+    source (its persisted turns) while giving its card the same badges the chat
+    trajectory shows from its projection."""
+    from crack_server import trajectory_view
+
+    rows: list[dict] = []
+    try:
+        projected = trajectory_view.project_sessions_dir(
+            paths.run_sessions_dir(chat_id, run_id)
+        )
+    except Exception:  # projection is best-effort; never break the card
+        return rows
+    for r in projected:
+        if r.get("kind") != "annotation":
+            continue
+        ep = trajectory_view._row_epoch(r)
+        rows.append({**r, "at": ep} if ep is not None else dict(r))
+    return rows
+
+
+def _run_duration(state: dict) -> float | None:
+    start = state.get("created_at")
+    if not start:
+        return None
+    end = state.get("finished_at") if state.get("phase") in _RUN_TERMINAL else time.time()
+    try:
+        return max(0.0, float(end) - float(start))
+    except (TypeError, ValueError):
+        return None
+
+
 def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, list[str]]) -> str:
     """One bordered sub-agent card: collapsible header + full transcript +
-    context meter + nested children. Open while active, collapsed when done."""
+    (bottom) terminal marker / Clanking tail + context meter + nested children.
+    Open while active, collapsed when done.
+
+    Mirrors the top-level chat frame: the Stop button and Clanking spinner live at
+    the *bottom* of the transcript (not the top), the terminal-reason / error row
+    renders as the trajectory's last line, and the context meter is pinned to the
+    bottom of the card."""
     esc = _ui._esc
     render = _render()
     state = paths.run_state(chat_id, run_id).read()
@@ -583,23 +623,7 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
     safe_run = esc(run_id)
     phase_cls = _run_phase_class(str(phase))
     model = _run_display_model(state)
-
-    actions = ""
-    if phase not in _RUN_TERMINAL:
-        actions += (
-            f'<button class="contrast compact-btn" '
-            f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/stop" '
-            f'hx-target="closest .subagent-run-region" hx-swap="outerHTML">Stop</button>'
-        )
-    if phase in ("error", "stopped"):
-        actions += (
-            f'<button class="secondary compact-btn" '
-            f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/retry" '
-            f'hx-target="closest .subagent-run-region" hx-swap="outerHTML">Retry</button>'
-        )
-    error = ""
-    if phase == "error" and state.get("error"):
-        error = f'<p class="error"><small>{esc(str(state["error"]))}</small></p>'
+    terminal = phase in _RUN_TERMINAL
 
     form_html = ""
     if phase == "awaiting_user" and state.get("pending_question"):
@@ -607,11 +631,41 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
 
     turns = state.get("turns") or []
     errors = state.get("errors") or []
+    spine = list(turns) + _run_annotation_rows(chat_id, run_id)
     transcript = "".join(render.render_turn_msgs(
-        turns, errors=errors, include_text=True, model_state=render.new_model_state()
+        spine, errors=errors, include_text=True, model_state=render.new_model_state()
     ))
     if not transcript:
         transcript = '<p class="muted"><small>No turns yet.</small></p>'
+
+    # Bottom-of-trajectory marker: terminal-reason / error row when finished,
+    # else a Clanking spinner + Stop while the run is working (same as the chat).
+    tail_html = ""
+    if terminal:
+        tail_html = render.render_terminal_reason_for_phase(
+            str(phase), duration=_run_duration(state)
+        )
+    else:
+        tail_html = render.render_running_tail(
+            f"/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/stop",
+            target="closest .subagent-run-region",
+        )
+
+    # Error detail + Retry sit just below the frame (the red terminal row above
+    # already flags the failure — this only surfaces the message + recovery).
+    below = ""
+    if phase == "error" and state.get("error"):
+        below += render.render_error_msg(
+            str(state.get("error", "")), str(state.get("error_detail", ""))
+        )
+    if phase in ("error", "stopped"):
+        below += (
+            f'<div class="subagent-actions">'
+            f'<button class="secondary compact-btn" '
+            f'hx-post="/api/chats/{esc(chat_id)}/sub_agents/runs/{safe_run}/retry" '
+            f'hx-target="closest .subagent-run-region" hx-swap="outerHTML">Retry</button>'
+            f"</div>"
+        )
 
     ctx_line = context_stats.render_context_line(
         paths.run_sessions_dir(chat_id, run_id), model
@@ -623,7 +677,7 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
     )
     status_dot = f'<span class="run-status-dot phase-{esc(phase_cls)}" aria-hidden="true"></span>'
     model_badge = f'<code class="run-model">{esc(model)}</code>' if model else ""
-    open_attr = " open" if phase not in _RUN_TERMINAL else ""
+    open_attr = " open" if not terminal else ""
     metrics = f" · {hop_count} turns"
     if alive:
         metrics += f" · {esc(alive)}"
@@ -639,11 +693,14 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
     )
     body = (
         f'<div class="subagent-body">'
-        f'<div class="subagent-actions">{actions}</div>'
-        f"{error}{form_html}"
+        f"{form_html}"
+        f'<div class="subagent-frame">'
         f'<div class="subagent-transcript">{transcript}</div>'
-        f"{ctx_line}"
-        f"{child_html}</div>"
+        f"{tail_html}"
+        f"</div>"
+        f"{below}"
+        f"{child_html}"
+        f"{ctx_line}</div>"
     )
     return (
         f'<div class="subagent-card phase-{esc(phase_cls)}" data-run-id="{safe_run}">'
@@ -858,6 +915,19 @@ def render_chat_msgs(chat_id: str) -> list[str]:
     return out
 
 
+def render_chat_running(chat_id: str, state: dict) -> str:
+    """The Clanking spinner + Stop button, shown while the chat agent works.
+
+    Lives *inside* the bordered chat frame (just above its bottom border), not in
+    the tail below it — so the busy indicator reads as part of the trajectory."""
+    if state.get("phase") != "chatting":
+        return ""
+    return _render().render_running_tail(
+        f"/api/chats/{_ui._esc(chat_id)}/stop",
+        target="#chat-content",
+    )
+
+
 def render_chat_tail(
     chat_id: str, *, gate_error_html: str | None = None
 ) -> str:
@@ -884,15 +954,6 @@ def render_chat_tail(
         parts.append(render.render_fatal_error_banner(state))
         parts.append(render.render_error_msg(state.get("error", ""), state.get("error_detail", "")))
 
-    if phase == "chatting":
-        safe_id = _ui._esc(chat_id)
-        parts.append(
-            '<div class="stage-running">'
-            f"{render.render_spinner('Thinking…')}"
-            f'<button class="contrast" hx-post="/api/chats/{safe_id}/stop" '
-            'hx-target="#chat-content" hx-swap="outerHTML">Stop</button></div>'
-        )
-
     # Context meter pinned to the bottom of the chat frame (pi-CLI status line).
     ctx_line = context_stats.render_context_line(
         paths.chat_sessions_dir(chat_id), info.get("model") or DEFAULT_CHAT_MODEL
@@ -911,6 +972,7 @@ def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | Non
     mtime = chat_state_mtime(chat_id)
     state = paths.chat_state(chat_id).read()
     phase = state.get("phase") or "idle"
+    running = render_chat_running(chat_id, state)
     exchanges = state.get("exchanges") or []
     last_ex = exchanges[-1] if exchanges else {}
     stop_reason = last_ex.get("stop_reason")
@@ -937,9 +999,13 @@ def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | Non
             else ""
         )
         new_msgs = "".join(tagged[i] for i in range(len(tagged)) if i > after)
+        # New msgs append into #chat-msgs (beforeend); #chat-running is a sibling
+        # inside .chat-frame, so it stays pinned just above the frame's bottom
+        # border while messages grow above it.
         return (
             boundary
             + new_msgs
+            + f'<div id="chat-running" hx-swap-oob="outerHTML">{running}</div>'
             + f'<div id="chat-tail" hx-swap-oob="outerHTML">{tail}</div>'
             + '<span id="chat-status-meta" hx-swap-oob="outerHTML"'
             + f' data-stage-status="{esc(status)}" data-msg-count="{msg_count}"'
@@ -951,7 +1017,10 @@ def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | Non
         f' data-chat-id="{esc(chat_id)}" data-stage-status="{esc(status)}"'
         f' data-msg-count="{msg_count}" data-state-mtime="{mtime}"'
         f' data-stage-slug="{CHAT_SLUG}">'
+        f'<div class="chat-frame">'
         f'<div id="chat-msgs">{"".join(tagged)}</div>'
+        f'<div id="chat-running">{running}</div>'
+        f"</div>"
         f'<div id="chat-tail">{tail}</div>'
         f'<span id="chat-status-meta" hidden'
         f' data-stage-status="{esc(status)}" data-msg-count="{msg_count}"'

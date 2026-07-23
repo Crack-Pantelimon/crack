@@ -292,6 +292,17 @@ class SubAgentPersona:
         if sandbox.sandbox_enabled():
             from crack_server import patch as patch_mod
 
+            # Re-check stop right before touching the container: a Stop that
+            # landed after the top-of-hop check tears the container down, and the
+            # baseline ops below would then fail against a dead container. Bail
+            # cleanly to "stopped" instead of surfacing that as a dispatch error.
+            if bool(self.state_read(run_id).get("stop_requested")):
+                await self._amark_stopped(run_id)
+                from crack_server.sub_agents import runner
+
+                await asyncio.to_thread(runner.finish, run_id, "stopped")
+                return None
+
             parent_conv = (
                 state.get("parent_id") if state.get("parent_kind") == "run"
                 else state.get("chat_id")
@@ -560,6 +571,29 @@ class SubAgentPersona:
             runner.finish(run_id, "stopped")
 
     def record_dispatch_error(self, run_id: str, message: str) -> None:
+        # A dispatch that races a Stop (the container was torn down by
+        # request_stop) throws here — but that failure is the *expected*
+        # consequence of stopping, not a new error. Never clobber a run the user
+        # already stopped (or one already terminal): keep it "stopped" so the UI
+        # shows a clean interruption instead of a spurious red error + Retry.
+        current = self.state_read(run_id)
+        if current.get("stop_requested") or current.get("phase") in TERMINAL_PHASES:
+            def _ensure_stopped(s: dict) -> dict:
+                if s.get("phase") not in TERMINAL_PHASES:
+                    s["phase"] = "stopped"
+                    s["finished_at"] = time.time()
+                return s
+
+            self.state_update(run_id, _ensure_stopped)
+            logger.info(
+                "sub_agent %s: dispatch failed after stop for %s — kept stopped (%s)",
+                self.slug, run_id, message,
+            )
+            from crack_server.sub_agents import runner
+
+            runner.finish(run_id, "stopped")
+            return
+
         def _fail(s: dict) -> dict:
             s["phase"] = "error"
             s["error"] = f"worker dispatch failed: {message}"

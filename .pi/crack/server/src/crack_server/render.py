@@ -61,6 +61,37 @@ def _parse_tool_args(input_raw) -> dict:
     return {}
 
 
+_TODO_LINE_RE = re.compile(r"^\[(?P<mark>[ xX])\]\s*(?P<rest>.*)$")
+
+
+def _todo_action_label(args: dict) -> str:
+    """Human label for what a todo tool call *did*, read from its input args."""
+    action = str(args.get("action") or "").lower()
+    if action == "write":
+        n = len(args.get("items") or [])
+        return f"write · {n} item{'' if n == 1 else 's'}"
+    if action == "toggle":
+        return f"toggle #{args.get('id')}"
+    if action == "list":
+        return "list"
+    return action or "todo"
+
+
+def _todo_markdown(output: str) -> str:
+    """Turn the tool's ``[ ] #1 text`` lines into a markdown bullet list with
+    unicode checkbox glyphs (CommonMark has no task-list plugin), leaving the
+    ``Todo list (n/m done):`` header line as-is."""
+    lines: list[str] = []
+    for raw in output.splitlines():
+        m = _TODO_LINE_RE.match(raw.strip())
+        if m:
+            box = "☑" if m.group("mark").lower() == "x" else "☐"
+            lines.append(f"- {box} {m.group('rest')}")
+        else:
+            lines.append(raw)
+    return "\n".join(lines)
+
+
 def _render_text_action_row(
     kind: str,
     text: str,
@@ -225,7 +256,11 @@ def _render_tool_action_row(
     elif name == "todo":
         action_type = "todo"
         out_text = str(block.get("output") or "")
-        middle = f'<div class="todo-render">{_ui._render_markdown(out_text)}</div>'
+        badge = (
+            f'<span class="todo-action">{esc(_todo_action_label(args))}</span>'
+        )
+        rendered = _ui._render_markdown(_todo_markdown(out_text))
+        middle = f'<div class="todo-render">{badge}{rendered}</div>'
         size = f"in {_fmt_chars(len(str(input_raw)))} / out {_fmt_chars(len(output))}"
         elapsed = block.get("elapsed")
         if elapsed is not None:
@@ -685,6 +720,44 @@ def render_spinner(label: str) -> str:
     """Busy spinner fragment (no stage-msg wrapper — lives in the tail)."""
     esc = _ui._esc
     return f'<p class="stage-spinner" aria-busy="true">{esc(label)}</p>'
+
+
+# The one busy-tail label, shared by chats and sub-agents. Present-participle of
+# the agent's persona name (Clanker) — the noun stays "Clanker" in prose.
+CLANKING_LABEL = "Clanking…"
+
+
+def render_running_tail(
+    stop_url: str, *, target: str, swap: str = "outerHTML"
+) -> str:
+    """The shared "agent is working" tail: a ``Clanking…`` spinner + Stop button.
+
+    Lives just above the bottom border of the bordered trajectory area (chats and
+    sub-agent cards alike). ``target``/``swap`` are the htmx destination for the
+    Stop POST (chat: ``#chat-content``; sub-agent: the run region)."""
+    esc = _ui._esc
+    return (
+        '<div class="stage-running">'
+        f"{render_spinner(CLANKING_LABEL)}"
+        f'<button class="contrast" hx-post="{esc(stop_url)}" '
+        f'hx-target="{esc(target)}" hx-swap="{esc(swap)}">Stop</button>'
+        "</div>"
+    )
+
+
+def render_terminal_reason_for_phase(
+    phase: str, duration: float | None = None
+) -> str:
+    """Map a sub-agent run's terminal *phase* onto the same terminal-reason /
+    error rows the chat renders from its exchange ``stop_reason`` — so a finished
+    sub-agent card ends with the same bottom marker a chat does."""
+    if phase == "stopped":
+        return render_terminal_reason_row("stopped", duration=duration)
+    if phase == "error":
+        return render_error_stop_row(duration)
+    if phase == "done":
+        return render_terminal_reason_row("agent_end", duration=duration)
+    return ""
 
 
 # ---------------------------------------------------------------------------
