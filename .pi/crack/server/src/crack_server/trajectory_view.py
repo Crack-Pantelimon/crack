@@ -291,12 +291,15 @@ def project_sessions_dir(
 def merge_exchange_sidecars(
     projected: list[dict],
     exchanges: list[dict],
+    notes: list[dict] | None = None,
 ) -> list[dict]:
     """Merge harness-only constructs into the projected stream.
 
     The session ndjson is the spine (including user messages). Exchange sidecars
     supply ask_user Q&A, recorded errors, and richer user-prompt metadata
-    (compiled prompt / media) that pi's session file does not carry.
+    (compiled prompt / media) that pi's session file does not carry. ``notes``
+    are UI-only trajectory markers (sub-agent returns, patch build/apply) that
+    interleave by their own ``at`` like the other sidecars.
     """
     # Map stripped user text → exchange sidecar metadata.
     prompt_meta: dict[str, dict] = {}
@@ -393,7 +396,8 @@ def merge_exchange_sidecars(
         else:
             last = ep
         keyed.append((ep, 0, idx, row))
-    for idx, side in enumerate(error_rows + qa_rows + terminal_rows):
+    note_rows = list(notes or [])
+    for idx, side in enumerate(error_rows + qa_rows + terminal_rows + note_rows):
         ep = _row_epoch(side)
         keyed.append((ep if ep is not None else last, 1, idx, side))
     keyed.sort(key=lambda item: (item[0], item[1], item[2]))

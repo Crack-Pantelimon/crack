@@ -44,6 +44,76 @@ class ExtractResult:
         return not self.empty and self.patch_path is not None
 
 
+# ---------------------------------------------------------------------------
+# Trajectory traces: surface patch build/apply as UI-only notes so the user can
+# see a diff being constructed and merged (sub-agent → parent, or chat → host).
+# ---------------------------------------------------------------------------
+
+
+def _human_bytes(n: int) -> str:
+    if n < 1000:
+        return f"{n} B"
+    if n < 1_000_000:
+        return f"{n / 1000:.2f} KB"
+    return f"{n / 1_000_000:.2f} MB"
+
+
+def diff_stats(patch_text: str) -> dict:
+    """Count files changed / added / deleted and total byte size of a git diff."""
+    files = added = deleted = 0
+    for line in patch_text.splitlines():
+        if line.startswith("diff --git "):
+            files += 1
+        elif line.startswith("new file mode "):
+            added += 1
+        elif line.startswith("deleted file mode "):
+            deleted += 1
+    return {
+        "files": files,
+        "added": added,
+        "deleted": deleted,
+        "modified": max(0, files - added - deleted),
+        "bytes": len(patch_text.encode("utf-8")),
+    }
+
+
+def _stats_from_path(patch_path: Path) -> dict | None:
+    try:
+        return diff_stats(patch_path.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+
+
+def format_patch_summary(stats: dict) -> str:
+    return (
+        f"{stats['files']} files changed, {stats['added']} added, "
+        f"{stats['deleted']} deleted · {_human_bytes(stats['bytes'])}"
+    )
+
+
+def _note_parent(
+    parent_kind: str,
+    parent_id: str,
+    chat_id: str,
+    note_type: str,
+    text: str,
+    **kw: str,
+) -> None:
+    """Append a trajectory note to a patch's *destination* conversation (the
+    parent overlay for sub-agent patches, the chat for host patches)."""
+    try:
+        obj = (
+            paths.chat_state(chat_id)
+            if parent_kind == "chat"
+            else paths.run_state_by_id(parent_id)
+        )
+        paths.append_traj_note(obj, note_type, text, **kw)
+    except (ValueError, FileNotFoundError):
+        pass
+    except Exception:  # a UI marker must never break patch apply
+        logger.exception("patch: failed to record %s note", note_type)
+
+
 def base_tree_path(artifact_dir: Path) -> Path:
     return artifact_dir / "base_tree"
 
@@ -607,22 +677,51 @@ async def finalize_chat_sandbox(
         return True
 
     if result.has_content and result.patch_path is not None:
+        stats = _stats_from_path(result.patch_path)
+        summary = f" — {format_patch_summary(stats)}" if stats else ""
+        paths.append_traj_note(
+            chat, "patch", f"Creating patch{summary}", icon="📦", status="ok",
+        )
         self_mod = patch_touches_self_mod(result.patch_path)
         gated = False
         if self_mod:
+            paths.append_traj_note(
+                chat, "patch",
+                "Patch touches crack-server — running test gate before host apply…",
+                icon="🧪",
+            )
             passed, output = await run_sandbox_tests(sandbox_name)
             if not passed:
                 # Do NOT apply a self-mod patch whose tests fail — the live
                 # crack-dev host stays untouched; hand the failure to the chat.
+                paths.append_traj_note(
+                    chat, "patch",
+                    "✗ Test gate failed — host repo untouched",
+                    icon="⚠", status="err",
+                )
                 enqueue_chat_test_failure(chat_id, output, result.patch_path)
                 gated = True
         if not gated:
+            paths.append_traj_note(
+                chat, "patch", f"Applying patch to host repo{summary}", icon="🔀",
+            )
             ok, err = await apply_patch_on_host(result.patch_path)
             if not ok:
+                paths.append_traj_note(
+                    chat, "patch",
+                    "✗ Patch failed to apply to host repo",
+                    icon="⚠", status="err", detail=(err or "").strip()[-2000:],
+                )
                 record_chat_apply_failure(chat_id, err, result.patch_path)
-            elif self_mod:
-                # Applied code reloads crack-dev; watch health, roll back on failure.
-                launch_health_watcher(chat_id, result.patch_path)
+            else:
+                paths.append_traj_note(
+                    chat, "patch",
+                    f"✓ Applied to host repo{summary}",
+                    icon="✅", status="ok",
+                )
+                if self_mod:
+                    # Applied code reloads crack-dev; watch health, roll back on failure.
+                    launch_health_watcher(chat_id, result.patch_path)
 
     def _reset(s: dict) -> dict:
         s["patch_guard_attempts"] = 0
@@ -671,6 +770,15 @@ def extract_run_patch(
 
     if mark_pending and result.has_content:
         paths.run_state_by_id(run_id).update(lambda s: {**s, "patch_pending": True})
+
+    if result.has_content and result.patch_path is not None:
+        stats = _stats_from_path(result.patch_path)
+        if stats is not None:
+            paths.append_traj_note(
+                paths.run_state_by_id(run_id), "patch",
+                f"Creating patch — {format_patch_summary(stats)}",
+                icon="📦", status="ok",
+            )
 
     base_tree_path(artifact_dir).unlink(missing_ok=True)
     sandbox.destroy_sandbox_sync(run_id)
@@ -751,6 +859,14 @@ def drain_parent_patches(chat_id: str, parent_kind: str, parent_id: str) -> None
                     _clear_pending(child_id)
                     progressed = True
                     continue
+                short = child_id.split("_", 1)[-1][:8]
+                stats = _stats_from_path(patch_path)
+                summary = f" — {format_patch_summary(stats)}" if stats else ""
+                _note_parent(
+                    parent_kind, parent_id, chat_id, "patch",
+                    f"Applying sub-agent {short} patch{summary}",
+                    icon="🔀",
+                )
                 try:
                     ok, err = apply_patch_to_sandbox_sync(parent_sandbox, patch_path)
                 except Exception:
@@ -766,7 +882,19 @@ def drain_parent_patches(chat_id: str, parent_kind: str, parent_id: str) -> None
                 # lose the patch.
                 _clear_pending(child_id)
                 progressed = True
-                if not ok:
+                if ok:
+                    _note_parent(
+                        parent_kind, parent_id, chat_id, "patch",
+                        f"✓ Applied sub-agent {short} patch{summary}",
+                        icon="✅", status="ok",
+                    )
+                else:
+                    _note_parent(
+                        parent_kind, parent_id, chat_id, "patch",
+                        f"✗ Sub-agent {short} patch failed to apply — conflict handed "
+                        "to the managing agent",
+                        icon="⚠", status="err", detail=(err or "").strip()[-2000:],
+                    )
                     notify_parent_apply_failure(
                         parent_kind, parent_id, chat_id, err, patch_path,
                     )

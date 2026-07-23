@@ -445,6 +445,35 @@ def render_prep_timing_row(entry: dict) -> str:
     )
 
 
+def render_note_row(entry: dict) -> str:
+    """A UI-only trajectory note (``kind="note"``): a harness-authored marker such
+    as a sub-agent returning or a patch being built/applied. Rendered as a thin
+    badge line, styled by ``note_type``/``status``, with optional expandable
+    ``detail`` (e.g. a failed ``git apply`` stderr)."""
+    esc = _ui._esc
+    note_type = str(entry.get("note_type") or "note")
+    status = str(entry.get("status") or "")
+    icon = str(entry.get("icon") or "")
+    text = str(entry.get("text") or "")
+    at = entry.get("at")
+    ago = f' <small class="muted">· {_ui._format_ago(float(at))}</small>' if at else ""
+    cls = f"traj-note traj-note--{esc(note_type)}"
+    if status:
+        cls += f" traj-note--{esc(status)}"
+    icon_html = f"{esc(icon)} " if icon else ""
+    body = (
+        f'<div class="stage-msg {cls}">'
+        f'<span class="traj-note-line">{icon_html}{esc(text)}{ago}</span>'
+    )
+    detail = str(entry.get("detail") or "")
+    if detail:
+        body += (
+            '<details class="traj-note-detail"><summary>details</summary>'
+            f'<pre class="traj-note-log">{esc(detail)}</pre></details>'
+        )
+    return body + "</div>"
+
+
 def new_model_state() -> dict:
     """Mutable tracker threaded through :func:`render_turn_msgs` calls so model
     switches are detected across exchanges (chats) or across a run's hops."""
@@ -642,6 +671,9 @@ def render_turn_msgs(
             continue
         if kind == "prep_timing":
             out.append(render_prep_timing_row(entry))
+            continue
+        if kind == "note":
+            out.append(render_note_row(entry))
             continue
         if kind and kind != "turn":
             continue

@@ -742,6 +742,57 @@ main.container-fluid {
   color: var(--pico-primary, #0172ad);
 }
 
+/* UI-only trajectory notes: sub-agent returns + patch build/apply traces. */
+.traj-note {
+  padding: 0.2rem 0.6rem;
+  margin: 0.25rem 0;
+  border-left: 3px solid var(--pico-muted-border-color, #ddd);
+  border-radius: 4px;
+  background: var(--pico-code-background-color, #f6f8fa);
+}
+
+.traj-note-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.traj-note--child_return {
+  border-left-color: var(--pico-primary, #0172ad);
+}
+
+.traj-note--patch {
+  border-left-color: #7a5cc4;
+}
+
+.traj-note--ok {
+  border-left-color: var(--pico-ins-color, #2a7d2a);
+}
+
+.traj-note--warn {
+  border-left-color: #b8860b;
+}
+
+.traj-note--err {
+  border-left-color: var(--pico-del-color, #a00);
+}
+
+.traj-note--err .traj-note-line {
+  color: var(--pico-del-color, #a00);
+}
+
+.traj-note-detail > summary {
+  cursor: pointer;
+  font-size: 0.8em;
+  color: var(--pico-muted-color, #777);
+}
+
+.traj-note-log {
+  white-space: pre-wrap;
+  font-size: 0.8em;
+  max-height: 16rem;
+  overflow: auto;
+}
+
 .stage-message.chat-form,
 .finished-chat.chat-form,
 .chat-form {

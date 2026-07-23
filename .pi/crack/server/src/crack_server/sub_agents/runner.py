@@ -40,6 +40,21 @@ def active_child_count(chat_id: str, parent_kind: str, parent_id: str) -> int:
     return n
 
 
+def mark_delivered_to_parent(run_id: str | None) -> None:
+    """Ledger a child run's report as delivered to its parent agent (via any
+    channel). The single guard against double-delivery: once set, the deferred
+    child_report merge (chat or run parent) drops the entry instead of rolling a
+    duplicate turn. Idempotent and best-effort."""
+    if not run_id:
+        return
+    try:
+        paths.run_state_by_id(run_id).update(
+            lambda s: {**s, "delivered_to_parent": True}
+        )
+    except (ValueError, FileNotFoundError):
+        pass
+
+
 def format_child_result(entry: dict) -> str:
     """One canonical handoff message for a finished child run."""
     run_id = entry.get("run_id", "?")
@@ -205,6 +220,33 @@ def spawn(
     return dict(state)
 
 
+_RETURN_NOTE_STATUS = {"done": "ok", "error": "err", "stopped": "warn"}
+
+
+def _record_return_note(
+    state: dict, run_id: str, status: str, parent_kind: str, parent_id: str
+) -> None:
+    """Append a UI-only ``child_return`` note to the parent's trajectory."""
+    persona = state.get("persona", "") or "sub-agent"
+    short = run_id.split("_", 1)[-1][:8] if "_" in run_id else run_id[:8]
+    text = f"Sub-agent {persona} ({short}) returned — {status}."
+    try:
+        if parent_kind == "chat":
+            parent_obj = paths.chat_state(state.get("chat_id", ""))
+        elif parent_kind == "run":
+            parent_obj = paths.run_state_by_id(parent_id)
+        else:
+            return
+        paths.append_traj_note(
+            parent_obj, "child_return", text,
+            icon="↩", status=_RETURN_NOTE_STATUS.get(status, ""),
+        )
+    except (ValueError, FileNotFoundError):
+        pass
+    except Exception:  # a UI marker must never break the terminal handoff
+        logger.exception("finish: failed to record return note for %s", run_id)
+
+
 def finish(run_id: str, status: str) -> None:
     """Idempotent terminal handoff: inbox the result and resume the parent."""
     state_obj = paths.run_state_by_id(run_id)
@@ -249,6 +291,12 @@ def finish(run_id: str, status: str) -> None:
         patch.drain_parent_patches(chat_id, parent_kind, parent_id)
 
     entry = build_entry(run_id, state, status=status)
+
+    # Live trajectory marker: surface the return in the parent's trajectory the
+    # instant it happens (visible on the next poll), independent of whether the
+    # parent agent is mid-exchange and of when the report is fed back to it. This
+    # is UI-only and never re-delivered to agent context.
+    _record_return_note(state, run_id, status, parent_kind, parent_id)
 
     if parent_kind == "chat":
         chat_state = paths.chat_state(chat_id)

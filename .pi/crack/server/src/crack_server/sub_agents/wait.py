@@ -214,6 +214,14 @@ def poll(
                 results.append(rebuilt)
         # else ("all"): consumed by an earlier wait — not outstanding.
 
+    # Ledger the single source of delivery: any run whose result we hand back
+    # here (by drain OR by rebuild) is marked delivered_to_parent, so the
+    # deferred child_report merge (chats._merge_child_inbox) never re-delivers
+    # the same report as a fresh roll. This closes the finish()-gap rebuild race
+    # where the inbox entry lands *after* a two-strike rebuild already delivered.
+    for r in results:
+        runner.mark_delivered_to_parent(r.get("run_id"))
+
     return {"results": results, "pending": pending}
 
 

@@ -631,7 +631,11 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
 
     turns = state.get("turns") or []
     errors = state.get("errors") or []
-    spine = list(turns) + _run_annotation_rows(chat_id, run_id)
+    spine = (
+        list(turns)
+        + _run_annotation_rows(chat_id, run_id)
+        + list(state.get("traj_notes") or [])
+    )
     transcript = "".join(render.render_turn_msgs(
         spine, errors=errors, include_text=True, model_state=render.new_model_state()
     ))
@@ -888,7 +892,9 @@ def render_chat_msgs(chat_id: str) -> list[str]:
         conv_id=chat_id,
     )
     exchanges = state.get("exchanges") or []
-    rows = trajectory_view.merge_exchange_sidecars(projected, exchanges)
+    rows = trajectory_view.merge_exchange_sidecars(
+        projected, exchanges, notes=state.get("traj_notes") or [],
+    )
     out: list[str] = []
     # UI-only prep timings (sandbox / first byte / …) — not part of chat history.
     for entry in state.get("ui_prep") or []:
@@ -1302,7 +1308,14 @@ async def _maybe_generate_title(chat_id: str, first_message: str) -> None:
 
 
 def _merge_child_inbox(chat_id: str) -> int:
-    """Move chat.json child_inbox entries into pending as child_report messages."""
+    """Move chat.json child_inbox entries into pending as child_report messages.
+
+    A run already marked ``delivered_to_parent`` (its report reached the agent
+    inline via wait_join / the destructive-tool freeze) is dropped rather than
+    re-delivered as a roll — the ledger that kills the double-delivery. Entries
+    that survive are marked delivered as they are turned into a report, so a
+    later merge pass can't roll them again either.
+    """
     from crack_server.sub_agents import runner
 
     entries: list[dict] = []
@@ -1316,9 +1329,28 @@ def _merge_child_inbox(chat_id: str) -> int:
     if not entries:
         return 0
 
+    fresh: list[dict] = []
+    for entry in entries:
+        run_id = entry.get("run_id")
+        already = False
+        if run_id:
+            try:
+                already = bool(
+                    paths.run_state_by_id(run_id).read().get("delivered_to_parent")
+                )
+            except (ValueError, FileNotFoundError):
+                already = False
+        if already:
+            continue
+        fresh.append(entry)
+        runner.mark_delivered_to_parent(run_id)
+
+    if not fresh:
+        return 0
+
     def _enqueue(state: dict) -> dict:
         pending = list(state.get("pending") or [])
-        for entry in entries:
+        for entry in fresh:
             pending.append({
                 "user": (
                     "Your spawned sub-agent(s) have reported back:\n\n"
@@ -1332,7 +1364,7 @@ def _merge_child_inbox(chat_id: str) -> int:
         return state
 
     paths.chat_state(chat_id).update(_enqueue)
-    return len(entries)
+    return len(fresh)
 
 
 def _has_active_runs(chat_id: str) -> bool:

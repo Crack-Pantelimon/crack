@@ -236,6 +236,53 @@ def run_sessions_dir(chat_id: str, run_id: str, root: Path | None = None) -> Pat
     return run_dir(chat_id, run_id, root) / "sessions"
 
 
+# Cap the per-conversation trajectory-note ring so a long-lived chat can't grow
+# its state file without bound (notes are UI-only; oldest fall off first).
+MAX_TRAJ_NOTES = 400
+
+
+def append_traj_note(
+    state_obj: JsonState,
+    note_type: str,
+    text: str,
+    *,
+    icon: str = "",
+    detail: str = "",
+    status: str = "",
+    at: float | None = None,
+) -> None:
+    """Append a UI-only trajectory note to a chat/run state's ``traj_notes`` ring.
+
+    Notes are harness-authored markers (a sub-agent returning, a patch being
+    built/applied) that interleave into the rendered trajectory by their ``at``
+    timestamp — the same sidecar mechanism as recorded errors and ask_user Q&A.
+    They are never fed back into agent context. ``kind="note"`` matches the
+    render dispatch in ``render.render_turn_msgs``.
+    """
+    note = {
+        "kind": "note",
+        "note_type": note_type,
+        "text": text,
+        "at": float(at) if at is not None else time.time(),
+    }
+    if icon:
+        note["icon"] = icon
+    if detail:
+        note["detail"] = detail
+    if status:
+        note["status"] = status
+
+    def _append(state: dict) -> dict:
+        notes = list(state.get("traj_notes") or [])
+        notes.append(note)
+        if len(notes) > MAX_TRAJ_NOTES:
+            notes = notes[-MAX_TRAJ_NOTES:]
+        state["traj_notes"] = notes
+        return state
+
+    state_obj.update(_append)
+
+
 def run_pid_file(chat_id: str, run_id: str, root: Path | None = None) -> Path:
     return run_dir(chat_id, run_id, root) / "agent.pid"
 
