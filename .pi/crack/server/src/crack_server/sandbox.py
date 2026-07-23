@@ -16,11 +16,11 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 
-from crack_server.paths import project_root
+from crack_server.paths import RUN_ID_RE, chat_dir, find_run_dir, project_root
 
 logger = logging.getLogger("uvicorn.error")
 
-CRACK_NET = "crack-net"
+CRACK_NET = "crack-docker-net"
 HARNESS_VOLUME = "crack-harness-data"
 TARGET_VOLUME = "crack-dev-target-dir"
 SANDBOX_IMAGE = "localhost/crack-dev:latest"
@@ -61,8 +61,14 @@ def _harness_data_dir() -> Path:
     return Path(raw)
 
 
+def _overlay_root(conv_id: str) -> Path:
+    if RUN_ID_RE.fullmatch(conv_id):
+        return find_run_dir(conv_id) / "overlays"
+    return chat_dir(conv_id) / "overlays"
+
+
 def _overlay_dirs(conv_id: str) -> tuple[Path, Path]:
-    base = _harness_data_dir() / "overlays" / conv_id
+    base = _overlay_root(conv_id)
     return base / "upper", base / "work"
 
 
@@ -71,8 +77,9 @@ def _target_overlay_dirs(conv_id: str) -> tuple[Path, Path]:
     return base / "target-upper", base / "target-work"
 
 
-def _overlay_root(conv_id: str) -> Path:
-    return _harness_data_dir() / "overlays" / conv_id
+def _host_overlay_root(vol: str, conv_id: str) -> str:
+    rel = _overlay_root(conv_id).relative_to(_harness_data_dir())
+    return f"{vol}/{rel}"
 
 
 def overlay_base_dir(conv_id: str) -> Path:
@@ -160,7 +167,10 @@ def materialise_frozen_base(tree: str, dest: Path, *, repo: Path | None = None) 
 
 def frozen_tree_for(conv_id: str) -> str | None:
     """Return the recorded frozen tree id for ``conv_id``, or None."""
-    path = overlay_tree_path(conv_id)
+    try:
+        path = overlay_tree_path(conv_id)
+    except ValueError:
+        return None
     if not path.is_file():
         return None
     return path.read_text(encoding="utf-8").strip() or None
@@ -258,7 +268,7 @@ async def ensure_sandbox(conv_id: str, *, parent_conv: str | None = None) -> str
     await ensure_network()
     vol = await harness_volume_host_path()
     target_vol = await target_volume_host_path()
-    ovl = f"{vol}/overlays/{conv_id}"
+    ovl = _host_overlay_root(vol, conv_id)
     upper, work = _overlay_dirs(conv_id)
     upper.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
@@ -268,7 +278,7 @@ async def ensure_sandbox(conv_id: str, *, parent_conv: str | None = None) -> str
 
     if parent_conv and overlay_base_dir(parent_conv).is_dir():
         # Share the parent's immutable lower (overlay lower is read-only).
-        lower_host = f"{vol}/overlays/{parent_conv}/base"
+        lower_host = f"{_host_overlay_root(vol, parent_conv)}/base"
         tree = frozen_tree_for(parent_conv)
         if tree:
             _overlay_root(conv_id).mkdir(parents=True, exist_ok=True)

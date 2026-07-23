@@ -85,13 +85,14 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
     harness = tmp_path / "harness"
     repo.mkdir()
     harness.mkdir()
+    chat_id = "1700000000000"
     monkeypatch.setenv("CRACK_HOST_REPO_ROOT", str(repo))
     monkeypatch.setenv("CRACK_HARNESS_DATA_DIR", str(harness))
 
     run_args: list[str] = []
 
     async def fake_podman(*args, timeout=60):
-        if args[:3] == ("container", "exists", "crack-sbx-new"):
+        if args[:3] == ("container", "exists", f"crack-sbx-{chat_id}"):
             return 1, "", ""
         if args[:2] == ("volume", "inspect"):
             if args[2] == s.HARNESS_VOLUME:
@@ -116,20 +117,22 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
         patch.object(s, "snapshot_host_tree", side_effect=fake_snapshot),
         patch.object(s, "materialise_frozen_base", side_effect=fake_materialise),
     ):
-        name = await s.ensure_sandbox("new")
+        name = await s.ensure_sandbox(chat_id)
 
-    assert name == "crack-sbx-new"
-    assert (harness / "overlays" / "new" / "upper").is_dir()
-    assert (harness / "overlays" / "new" / "work").is_dir()
+    overlay = harness / "unscripted_chats" / chat_id / "overlays"
+    assert name == f"crack-sbx-{chat_id}"
+    assert (overlay / "upper").is_dir()
+    assert (overlay / "work").is_dir()
     joined = " ".join(run_args)
     assert "--network" in run_args and s.CRACK_NET in run_args
-    assert "upperdir=/host/vol/crack-harness-data/overlays/new/upper" in joined
-    assert "workdir=/host/vol/crack-harness-data/overlays/new/work" in joined
+    host_overlay = f"/host/vol/crack-harness-data/unscripted_chats/{chat_id}/overlays"
+    assert f"upperdir={host_overlay}/upper" in joined
+    assert f"workdir={host_overlay}/work" in joined
     # Frozen base lower (not the live host repo).
-    assert "/overlays/new/base:/workspace:O" in joined
+    assert f"{host_overlay}/base:/workspace:O" in joined
     assert "/crack-host-git-objects:ro" in joined
-    assert "upperdir=/host/vol/crack-harness-data/overlays/new/target-upper" in joined
-    assert "workdir=/host/vol/crack-harness-data/overlays/new/target-work" in joined
+    assert f"upperdir={host_overlay}/target-upper" in joined
+    assert f"workdir={host_overlay}/target-work" in joined
     assert "/host/vol/crack-dev-target-dir:/workspace/target:O" in joined
     assert "CRACK_PI_HOST=crack-dev" in joined
     assert "/workspace/_docker/_sandbox_start.sh" in joined
@@ -141,18 +144,24 @@ async def test_ensure_sandbox_child_target_overlay_uses_shared_base(monkeypatch,
     harness = tmp_path / "harness"
     repo.mkdir()
     harness.mkdir()
+    parent_chat_id = "1700000000000"
+    run_id = "1700000000001_a1b2c3d4"
     monkeypatch.setenv("CRACK_HOST_REPO_ROOT", str(repo))
     monkeypatch.setenv("CRACK_HARNESS_DATA_DIR", str(harness))
 
-    parent_base = harness / "overlays" / "parent" / "base"
+    parent_overlay = harness / "unscripted_chats" / parent_chat_id / "overlays"
+    parent_base = parent_overlay / "base"
     parent_base.mkdir(parents=True)
-    (harness / "overlays" / "parent" / "tree").write_text("b" * 40 + "\n")
-    (harness / "overlays" / "parent" / "target-upper").mkdir(parents=True)
+    (parent_overlay / "tree").write_text("b" * 40 + "\n")
+    (parent_overlay / "target-upper").mkdir(parents=True)
+    (harness / "unscripted_chats" / parent_chat_id / "sub_agent_runs" / run_id).mkdir(
+        parents=True,
+    )
 
     run_args: list[str] = []
 
     async def fake_podman(*args, timeout=60):
-        if args[:3] == ("container", "exists", "crack-sbx-child"):
+        if args[:3] == ("container", "exists", f"crack-sbx-{run_id}"):
             return 1, "", ""
         if args[:2] == ("volume", "inspect"):
             if args[2] == s.HARNESS_VOLUME:
@@ -165,17 +174,24 @@ async def test_ensure_sandbox_child_target_overlay_uses_shared_base(monkeypatch,
         return 0, "", ""
 
     with patch.object(s, "_podman", side_effect=fake_podman):
-        name = await s.ensure_sandbox("child", parent_conv="parent")
+        name = await s.ensure_sandbox(run_id, parent_conv=parent_chat_id)
 
-    assert name == "crack-sbx-child"
+    assert name == f"crack-sbx-{run_id}"
     joined = " ".join(run_args)
+    parent_host_overlay = (
+        f"/host/vol/crack-harness-data/unscripted_chats/{parent_chat_id}/overlays"
+    )
+    child_host_overlay = (
+        f"/host/vol/crack-harness-data/unscripted_chats/{parent_chat_id}"
+        f"/sub_agent_runs/{run_id}/overlays"
+    )
     # Workspace lower chains to the parent's frozen base (immutable) ...
-    assert "/overlays/parent/base:/workspace:O" in joined
+    assert f"{parent_host_overlay}/base:/workspace:O" in joined
     # ... but /workspace/target overlays the SHARED base index volume, never the
     # parent's live target-upper (overlayfs forbids a mutating lowerdir).
     assert "/host/vol/crack-dev-target-dir:/workspace/target:O" in joined
-    assert "/overlays/parent/target-upper:/workspace/target" not in joined
-    assert "upperdir=/host/vol/crack-harness-data/overlays/child/target-upper" in joined
+    assert f"{parent_host_overlay}/target-upper:/workspace/target" not in joined
+    assert f"upperdir={child_host_overlay}/target-upper" in joined
 
 
 @pytest.mark.anyio
