@@ -94,7 +94,10 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
         if args[:3] == ("container", "exists", "crack-sbx-new"):
             return 1, "", ""
         if args[:2] == ("volume", "inspect"):
-            return 0, "/host/vol/crack-harness-data\n", ""
+            if args[2] == s.HARNESS_VOLUME:
+                return 0, "/host/vol/crack-harness-data\n", ""
+            if args[2] == s.TARGET_VOLUME:
+                return 0, "/host/vol/crack-dev-target-dir\n", ""
         if args[0] == "run":
             run_args.extend(args)
             return 0, "container-id\n", ""
@@ -125,8 +128,54 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
     # Frozen base lower (not the live host repo).
     assert "/overlays/new/base:/workspace:O" in joined
     assert "/crack-host-git-objects:ro" in joined
+    assert "upperdir=/host/vol/crack-harness-data/overlays/new/target-upper" in joined
+    assert "workdir=/host/vol/crack-harness-data/overlays/new/target-work" in joined
+    assert "/host/vol/crack-dev-target-dir:/workspace/target:O" in joined
     assert "CRACK_PI_HOST=crack-dev" in joined
     assert "/workspace/_docker/_sandbox_start.sh" in joined
+
+
+@pytest.mark.anyio
+async def test_ensure_sandbox_child_target_overlay_uses_shared_base(monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    harness = tmp_path / "harness"
+    repo.mkdir()
+    harness.mkdir()
+    monkeypatch.setenv("CRACK_HOST_REPO_ROOT", str(repo))
+    monkeypatch.setenv("CRACK_HARNESS_DATA_DIR", str(harness))
+
+    parent_base = harness / "overlays" / "parent" / "base"
+    parent_base.mkdir(parents=True)
+    (harness / "overlays" / "parent" / "tree").write_text("b" * 40 + "\n")
+    (harness / "overlays" / "parent" / "target-upper").mkdir(parents=True)
+
+    run_args: list[str] = []
+
+    async def fake_podman(*args, timeout=60):
+        if args[:3] == ("container", "exists", "crack-sbx-child"):
+            return 1, "", ""
+        if args[:2] == ("volume", "inspect"):
+            if args[2] == s.HARNESS_VOLUME:
+                return 0, "/host/vol/crack-harness-data\n", ""
+            if args[2] == s.TARGET_VOLUME:
+                return 0, "/host/vol/crack-dev-target-dir\n", ""
+        if args[0] == "run":
+            run_args.extend(args)
+            return 0, "container-id\n", ""
+        return 0, "", ""
+
+    with patch.object(s, "_podman", side_effect=fake_podman):
+        name = await s.ensure_sandbox("child", parent_conv="parent")
+
+    assert name == "crack-sbx-child"
+    joined = " ".join(run_args)
+    # Workspace lower chains to the parent's frozen base (immutable) ...
+    assert "/overlays/parent/base:/workspace:O" in joined
+    # ... but /workspace/target overlays the SHARED base index volume, never the
+    # parent's live target-upper (overlayfs forbids a mutating lowerdir).
+    assert "/host/vol/crack-dev-target-dir:/workspace/target:O" in joined
+    assert "/overlays/parent/target-upper:/workspace/target" not in joined
+    assert "upperdir=/host/vol/crack-harness-data/overlays/child/target-upper" in joined
 
 
 @pytest.mark.anyio

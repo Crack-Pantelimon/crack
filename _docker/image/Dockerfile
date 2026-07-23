@@ -71,6 +71,14 @@ ENV CRACK_HARNESS_DATA_DIR=/crack-harness-data
 RUN pip install --no-cache-dir --break-system-packages poetry
 ENV POETRY_VIRTUALENVS_PATH=/workspace/target/python-venvs/
 
+# Poetry 2.x and virtualenv shell out to a bare `python`, but Debian ships only
+# `python3`/`python3.13` and the base image's `/usr/local/python/bin` (from
+# UV_PYTHON_INSTALL_DIR) is never populated (no `uv python install` step). Without
+# this symlink `poetry install` dies with FileNotFoundError: 'python' and the
+# container crash-loops. With it, Poetry resolves the interpreter and honors
+# POETRY_VIRTUALENVS_PATH above (venv in the overlaid target volume, not in-project).
+RUN ln -sf /usr/bin/python3 /usr/local/bin/python
+
 VOLUME /root
 WORKDIR /workspace
 

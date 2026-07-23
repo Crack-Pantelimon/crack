@@ -1,0 +1,8 @@
+{
+  "name": "crack-claude-context",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@zilliz/claude-context-core": "0.1.15"
+  }
+}

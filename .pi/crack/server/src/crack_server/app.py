@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from crack_server import (
     routes_chats,
+    routes_rag,
     routes_settings,
     routes_sub_agents,
     routes_vision,
@@ -40,3 +41,4 @@ app.include_router(routes_chats.router)
 app.include_router(routes_sub_agents.router)
 app.include_router(routes_vision.router)
 app.include_router(routes_settings.router)
+app.include_router(routes_rag.router)

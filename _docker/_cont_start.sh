@@ -23,6 +23,7 @@ export CRACK_PI_HOST=0.0.0.0
 #   chromium    : http://<host>:9931/sse   (SSE)
 #   web-search  : http://<host>:9932/sse   (SSE)
 #   blender     : http://<host>:9877/mcp   (Streamable HTTP, native)
+#   code-search : stdio MCP (@zilliz/claude-context-mcp) — no HTTP bridge
 export MCP_FIREFOX_PORT=9930
 export MCP_CHROMIUM_PORT=9931
 export MCP_WEBSEARCH_PORT=9932
@@ -59,23 +60,42 @@ respawn web-search-fwd \
 # --- Blender MCP (ports 9876 addon socket, 9877 HTTP) ---------------------
 # Blender addon runs inside Blender (Xvfb) on TCP 9876; blender-mcp serves HTTP on 9877.
 export MCP_BLENDER_HTTP_PORT=9877
-# Force X11 backend, disable Wayland
-export QT_QPA_PLATFORM=offscreen
+# Force X11 via Xvfb; Blender 5 prefers Wayland if XDG_RUNTIME_DIR is wrong/missing.
 export WAYLAND_DISPLAY=""
 export DISPLAY=:99
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
+mkdir -p -m 700 "$XDG_RUNTIME_DIR"
 
-# Start Xvfb on display :99 (one display for all Blender respawns — not xvfb-run per launch)
-Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +extension RANDR +extension RENDER >"$CRACK_HARNESS_DATA_DIR/harness/mcp-http/xvfb.log" 2>&1 &
+# Start Xvfb on :99 once. Stale lock files (SIGKILL'd prior boot) make Xvfb refuse
+# to start while no server is actually listening — clear them if nothing owns :99.
+if ! pgrep -x Xvfb >/dev/null 2>&1; then
+    rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+    Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +extension RANDR +extension RENDER \
+        >"$CRACK_HARNESS_DATA_DIR/harness/mcp-http/xvfb.log" 2>&1 &
+    sleep 2
+fi
 
-sleep 2
-
+# Blender 5.x audio flag is single-dash `-noaudio` (double-dash is treated as a .blend path).
 respawn blender \
-    blender --noaudio --addons blendermcp
+    blender -noaudio --addons blendermcp
 
 sleep 5
 
 respawn blender-mcp \
     python3 -c "from blender_mcp.server import mcp; mcp.settings.host='0.0.0.0'; mcp.settings.port=${MCP_BLENDER_HTTP_PORT}; mcp.settings.stateless_http=True; mcp.settings.json_response=True; mcp.run(transport='streamable-http')"
+# --------------------------------------------------------------------------
+
+# --- claude-context RAG (Milvus + Ollama; /rag page + first-hop injection) ---
+# Build + index are SLOW on a cold volume, so they run in the background —
+# crack-server must not wait on them. Agent search uses stdio MCP (code-search).
+source /workspace/_docker/_claude_context_setup.sh
+(
+    set +e   # index failure must not block crack-server
+    claude_context_ensure_built
+    claude_context_wait_milvus || true
+    claude_context_ensure_embed_model || true
+    bash /workspace/_docker/_claude_context_index.sh
+) >>"$CRACK_HARNESS_DATA_DIR/harness/mcp-http/claude-context-bringup.log" 2>&1 &
 # --------------------------------------------------------------------------
 
 # Single process: the queue worker runs inside the server (uvicorn app lifespan,

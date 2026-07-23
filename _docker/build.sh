@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -ex
-export IMG_NAME=crack-dev:latest
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export IMG_NAME=localhost/crack-dev:latest
 
-docker build -t $IMG_NAME -f Dockerfile .
-
+docker build -t "$IMG_NAME" -f "$SCRIPT_DIR/image/Dockerfile" "$SCRIPT_DIR/image/"

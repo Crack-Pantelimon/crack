@@ -1,3 +1,4 @@
 *.bytes
 json_decoded/
+raw_fetch/
 *.tmp

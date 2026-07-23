@@ -1,14 +1,19 @@
 {
   "permissions": {
     "allow": [
+      "Bash(echo *)",
+      "Bash(timeout *)",
       "Bash(docker exec *)",
+      "Bash(docker *)",
       "mcp__chromium__new_page",
       "mcp__chromium__resize_page",
       "mcp__chromium__navigate_page",
       "mcp__chromium__take_screenshot",
-      "Read(//home/p/.local/share/containers/storage/overlay/704a978b851a0c395e7d16c8428795c55454ddfb3bbe4ac562b221d8054e00cf/diff/usr/lib/node_modules/@earendil-works/pi-coding-agent/docs/**)",
+      "Read(//home/p/.local/share/containers/storage/overlay/**)",
       "mcp__chromium__click",
-      "mcp__chromium__fill"
+      "mcp__chromium__fill",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

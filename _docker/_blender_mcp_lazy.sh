@@ -22,16 +22,19 @@ PY
 }
 
 start_blender_stack() {
-    export QT_QPA_PLATFORM=offscreen
     export WAYLAND_DISPLAY=""
     export DISPLAY=:99
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
+    mkdir -p -m 700 "$XDG_RUNTIME_DIR"
     if ! pgrep -x Xvfb >/dev/null 2>&1; then
+        rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
         Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +extension RANDR +extension RENDER \
             >/tmp/blender-lazy-xvfb.log 2>&1 &
         sleep 2
     fi
-    if ! pgrep -f 'blender --noaudio' >/dev/null 2>&1; then
-        blender --noaudio --addons blendermcp >/tmp/blender-lazy-blender.log 2>&1 &
+    # Blender 5.x: `-noaudio` (single dash). `--noaudio` is treated as a .blend path.
+    if ! pgrep -f 'blender -noaudio' >/dev/null 2>&1; then
+        blender -noaudio --addons blendermcp >/tmp/blender-lazy-blender.log 2>&1 &
         sleep 5
     fi
     for _ in $(seq 1 60); do

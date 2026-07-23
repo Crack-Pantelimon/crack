@@ -269,6 +269,12 @@ class SubAgentPersona:
         chat_id = state["chat_id"]
         message, template = self._compile_message(run_id, form, state)
         hop_n = int(state.get("hops_completed", 0)) + 1
+        if hop_n == 1:
+            from crack_server import rag_inject
+
+            message = await rag_inject.maybe_prepend_first_hop(
+                query=message, message=message,
+            )
         state_obj = self.state(run_id)
         persister = TurnPersister(
             state_obj, key="turns",

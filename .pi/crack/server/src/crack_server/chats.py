@@ -1521,10 +1521,17 @@ async def run_chat(chat_id: str) -> None:
                 elapsed,
             )
 
+        user_msg = cur_exchange.get("user", "")
+        from crack_server import rag_inject
+
+        first_hop_message = await rag_inject.maybe_prepend_first_hop(
+            query=user_msg, message=user_msg,
+        )
+
         await chat_engine.run_exchange(
             state=chat,
             ident=chat_id,
-            message_builder=lambda user_msg: user_msg,
+            message_builder=lambda _: first_hop_message,
             record_template="",
             log_prefix="unscripted-chat",
             model=model,

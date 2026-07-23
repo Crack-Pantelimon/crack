@@ -22,6 +22,7 @@ logger = logging.getLogger("uvicorn.error")
 
 CRACK_NET = "crack-net"
 HARNESS_VOLUME = "crack-harness-data"
+TARGET_VOLUME = "crack-dev-target-dir"
 SANDBOX_IMAGE = "localhost/crack-dev:latest"
 _DEFAULT_EXEC_TIMEOUT = 60
 _KILL_GRACE_SECONDS = 2.0
@@ -63,6 +64,11 @@ def _harness_data_dir() -> Path:
 def _overlay_dirs(conv_id: str) -> tuple[Path, Path]:
     base = _harness_data_dir() / "overlays" / conv_id
     return base / "upper", base / "work"
+
+
+def _target_overlay_dirs(conv_id: str) -> tuple[Path, Path]:
+    base = _overlay_root(conv_id)
+    return base / "target-upper", base / "target-work"
 
 
 def _overlay_root(conv_id: str) -> Path:
@@ -213,6 +219,19 @@ async def harness_volume_host_path() -> str:
     return path
 
 
+async def target_volume_host_path() -> str:
+    """Host mountpoint for ``crack-dev-target-dir`` (shared target / RAG base)."""
+    rc, out, err = await _podman(
+        "volume", "inspect", TARGET_VOLUME, "--format", "{{.Mountpoint}}",
+    )
+    if rc != 0:
+        raise RuntimeError(f"podman volume inspect {TARGET_VOLUME} failed: {err or out}")
+    path = out.strip()
+    if not path:
+        raise RuntimeError(f"podman volume inspect {TARGET_VOLUME} returned empty mountpoint")
+    return path
+
+
 async def ensure_network() -> None:
     rc, *_ = await _podman("network", "exists", CRACK_NET)
     if rc != 0:
@@ -238,10 +257,14 @@ async def ensure_sandbox(conv_id: str, *, parent_conv: str | None = None) -> str
 
     await ensure_network()
     vol = await harness_volume_host_path()
+    target_vol = await target_volume_host_path()
     ovl = f"{vol}/overlays/{conv_id}"
     upper, work = _overlay_dirs(conv_id)
     upper.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
+    t_upper, t_work = _target_overlay_dirs(conv_id)
+    t_upper.mkdir(parents=True, exist_ok=True)
+    t_work.mkdir(parents=True, exist_ok=True)
 
     if parent_conv and overlay_base_dir(parent_conv).is_dir():
         # Share the parent's immutable lower (overlay lower is read-only).
@@ -256,12 +279,25 @@ async def ensure_sandbox(conv_id: str, *, parent_conv: str | None = None) -> str
         materialise_frozen_base(tree, base)
         lower_host = f"{ovl}/base"
 
+    # Every sandbox (top-level or sub-agent) overlays /workspace/target on the
+    # SAME shared base — the ``crack-dev-target-dir`` volume that holds the RAG
+    # base index. A child must NOT chain its lower to the parent's *live*
+    # target-upper: overlayfs forbids mutating a lowerdir under an active mount
+    # (ESTALE / cache incoherence), and the parent keeps writing there. So a
+    # sub-agent sees the frozen base index, not the parent's mid-run re-index
+    # (accepted out-of-scope; see plan §8). Per-conversation upper/work still
+    # isolate each sandbox's own re-index into its own overlay upper.
+    target_lower = target_vol
+
     host_git_objects = f"{_host_repo()}/.git/objects"
     rc, out, err = await _podman(
         "run", "-d", "--name", name, "--network", CRACK_NET,
         "-v", f"{lower_host}:/workspace:O,upperdir={ovl}/upper,workdir={ovl}/work",
         "-v", f"{host_git_objects}:/crack-host-git-objects:ro",
-        "-v", "crack-dev-target-dir:/workspace/target:O",
+        "-v", (
+            f"{target_lower}:/workspace/target:O,"
+            f"upperdir={ovl}/target-upper,workdir={ovl}/target-work"
+        ),
         "-v", "crack-dev-root-dir:/root:O",
         "-v", f"{HARNESS_VOLUME}:/crack-harness-data",
         "-e", "CRACK_HARNESS_DATA_DIR=/crack-harness-data",

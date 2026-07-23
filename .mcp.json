@@ -43,6 +43,19 @@
         "BLENDER_PORT": "9876",
         "DISABLE_TELEMETRY": "true"
       }
+    },
+    "code-search": {
+      "command": "npx",
+      "args": ["-y", "@zilliz/claude-context-mcp@0.1.15"],
+      "env": {
+        "MILVUS_ADDRESS": "milvus-standalone:19530",
+        "EMBEDDING_PROVIDER": "Ollama",
+        "OLLAMA_HOST": "http://ollama:11434",
+        "EMBEDDING_MODEL": "all-minilm",
+        "EMBEDDING_DIMENSION": "384",
+        "CODEBASE_PATH": "/workspace",
+        "CUSTOM_IGNORE_PATTERNS": "target/**,node_modules/**,_slop/**,.playwright-mcp/**,venv/**,**/.venv/**,**/site-packages/**"
+      }
     }
   }
 }

@@ -1,0 +1,6 @@
+{
+  "first_hop_enabled": true,
+  "first_hop_top_k": 5,
+  "first_hop_min_score": 0.02,
+  "first_hop_max_chars": 12000
+}

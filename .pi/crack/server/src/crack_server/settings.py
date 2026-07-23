@@ -71,3 +71,46 @@ def plan_implementer_model() -> str:
 
 def nonplan_model() -> str:
     return get_model("nonplan")
+
+
+# ---------------------------------------------------------------------------
+# RAG first-hop injection (Plan 30 Part 5)
+# ---------------------------------------------------------------------------
+
+_RAG_DEFAULTS = {
+    "first_hop_enabled": True,
+    "first_hop_top_k": 5,
+    # Live scores on nomic-embed-text over our index cluster ~0.02–0.05.
+    "first_hop_min_score": 0.02,
+    "first_hop_max_chars": 12000,
+}
+
+
+def _rag_config_path() -> Path:
+    return harness_dir() / "rag.json"
+
+
+def rag_config() -> dict:
+    """Merged RAG injection settings (harness ``rag.json`` over defaults)."""
+    path = _rag_config_path()
+    data: dict = {}
+    if path.is_file():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                data = raw
+        except (json.JSONDecodeError, OSError):
+            pass
+    # Accept legacy first_turn_* keys from early plan drafts.
+    legacy = {
+        "first_hop_enabled": data.pop("first_turn_enabled", None),
+        "first_hop_top_k": data.pop("first_turn_top_k", None),
+        "first_hop_min_score": data.pop("first_turn_min_score", None),
+        "first_hop_max_chars": data.pop("first_turn_max_chars", None),
+    }
+    out = dict(_RAG_DEFAULTS)
+    for key, default in _RAG_DEFAULTS.items():
+        val = data.get(key, legacy.get(key))
+        if val is not None:
+            out[key] = val
+    return out
