@@ -35,6 +35,23 @@ RUN pi install npm:pi-antigravity
 RUN pi install npm:pi-cursor-agent && pi uninstall npm:pi-cursor-sdk
 RUN pi install npm:pi-readseek
 
+# rust-analyzer: the base image ships only the rustup *proxy* stub (the binary
+# errors with "Unknown binary rust-analyzer"). Add the real component so the
+# serena MCP server has a Rust language backend. NOTE: this lives in
+# /usr/local/rustup (image layer, NOT a volume) so `docker compose ... --force-recreate`
+# in run.sh drops it — _cont_start.sh re-adds it idempotently at every boot.
+RUN rustup component add rust-analyzer
+
+# Serena — semantic-code / refactoring MCP server (symbol definition & usages,
+# rename_symbol, replace_symbol_body, find_referencing_symbols, ...). Wired in
+# .mcp.json as the `serena` stdio server. Installed as a uv tool into /root.
+# NOTE: /root is a VOLUME (see VOLUME below), so this only seeds a FRESH
+# crack-dev-root-dir; an existing volume shadows it and is installed into
+# out-of-band (uv tool install run in the live container) and re-ensured by
+# _cont_start.sh at boot. Pinned to a commit for reproducibility.
+RUN uv tool install --python 3.13 \
+    "git+https://github.com/oraios/serena@5e8662b283241910a5062b058b09627288c16f0c"
+
 # Patch pi-mcp-adapter (installed in the base image) so the `mcp` gateway tool
 # accepts `args` as a native object, not only a double-encoded JSON string. pi
 # validates tool args against the schema BEFORE the handler runs, so models that

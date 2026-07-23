@@ -56,6 +56,22 @@
         "CODEBASE_PATH": "/workspace",
         "CUSTOM_IGNORE_PATTERNS": "target/**,node_modules/**,_slop/**,.playwright-mcp/**,venv/**,**/.venv/**,**/site-packages/**"
       }
+    },
+    "serena": {
+      "command": "/root/.local/bin/serena",
+      "args": [
+        "start-mcp-server",
+        "--context", "claude-code",
+        "--project", "/workspace",
+        "--transport", "stdio",
+        "--enable-web-dashboard", "false",
+        "--enable-gui-log-window", "false",
+        "--log-level", "ERROR"
+      ],
+      "env": {
+        "HOME": "/root",
+        "CARGO_TARGET_DIR": "/workspace/target/rust-anal"
+      }
     }
   }
 }

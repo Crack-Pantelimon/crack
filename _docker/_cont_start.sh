@@ -7,6 +7,20 @@ poetry install
 
 source /workspace/_docker/_sandbox_common.sh
 
+# --- serena MCP language backends (survive `run.sh` --force-recreate) --------
+# rust-analyzer lives in /usr/local/rustup (image layer, dropped on recreate) so
+# re-add the component every boot; it's a no-op once cached. Serena is a uv tool
+# in the /root volume (persists), so only (re)install it if the volume is fresh.
+rustup component add rust-analyzer 2>/dev/null || \
+    echo "[serena] WARNING: rust-analyzer component add failed (Rust tools degraded)" >&2
+if [ ! -x /root/.local/bin/serena ]; then
+    echo "[serena] installing serena into fresh /root volume..."
+    uv tool install --python 3.13 \
+        "git+https://github.com/oraios/serena@5e8662b283241910a5062b058b09627288c16f0c" \
+        || echo "[serena] WARNING: serena install failed (semantic MCP tools unavailable)" >&2
+fi
+# ----------------------------------------------------------------------------
+
 # crack-dev binds uvicorn on all interfaces; sandboxes set CRACK_PI_HOST=crack-dev via podman -e.
 export CRACK_PI_HOST=0.0.0.0
 
