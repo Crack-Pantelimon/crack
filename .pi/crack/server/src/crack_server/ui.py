@@ -53,6 +53,20 @@ def _format_ago(ts: float) -> str:
     return f"{delta // 86400}d ago"
 
 
+def _format_duration(seconds: float) -> str:
+    """Human duration for a run/exchange span (``42.3s`` / ``3m 12s`` / ``1h 5m``)."""
+    seconds = max(0.0, float(seconds))
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    if mins < 60:
+        return f"{mins}m {secs}s"
+    hours = mins // 60
+    mins = mins % 60
+    return f"{hours}h {mins}m"
+
+
 def _render_sidebar() -> str:
     """Persistent left-nav: Home, Sub-agents, Settings, Chats (with status dots)."""
     from crack_server import chats

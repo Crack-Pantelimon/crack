@@ -63,6 +63,12 @@ def models_cache_state(root: Path | None = None) -> JsonState:
     return JsonState(harness_dir(root) / "models_list.json")
 
 
+def model_latency_state(root: Path | None = None) -> JsonState:
+    """Per-model EMA latency cache (sibling of ``models_list.json``)."""
+    harness_dir(root).mkdir(parents=True, exist_ok=True)
+    return JsonState(harness_dir(root) / "model_latency.json")
+
+
 def queue_dir(root: Path | None = None) -> Path:
     return harness_dir(root) / "queue"
 

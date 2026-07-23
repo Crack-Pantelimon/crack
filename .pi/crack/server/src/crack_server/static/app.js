@@ -254,6 +254,13 @@
   });
 
   document.body.addEventListener('click', function (evt) {
+    const collapseBtn = evt.target.closest && evt.target.closest('.md-collapse-btn');
+    if (collapseBtn) {
+      const details = collapseBtn.closest('details');
+      if (details) details.open = false;
+      evt.preventDefault();
+      return;
+    }
     const img = evt.target.closest && evt.target.closest('img.tool-thumb');
     if (!img) return;
     let dlg = document.getElementById('img-lightbox');

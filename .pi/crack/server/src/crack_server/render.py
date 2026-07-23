@@ -62,24 +62,25 @@ def _parse_tool_args(input_raw) -> dict:
     return {}
 
 
-def _render_text_action_row(kind: str, text: str, elapsed: float | None = None) -> str:
-    """Table row for an assistant text/thinking block: first-line snippet, expandable."""
-    esc = _ui._esc
-    stripped = text.strip()
-    first_line = stripped.splitlines()[0] if stripped else ""
-    snippet = first_line if len(first_line) <= 80 else first_line[:77] + "…"
-    if stripped == first_line and len(first_line) <= 80:
-        middle = esc(snippet)
-    else:
-        middle = (
-            f"<details><summary>{esc(snippet)}</summary>"
-            f'<div class="turn-text">{esc(text)}</div></details>'
-        )
+def _render_text_action_row(
+    kind: str,
+    text: str,
+    elapsed: float | None = None,
+    time_delta: float | None = None,
+) -> str:
+    """Table row for an assistant text/thinking block: clamped markdown + expand."""
+    middle = _render_clamped_markdown(
+        text,
+        max_lines=5,
+        full_label="full text",
+        bordered=True,
+        collapse_button=True,
+    )
     size = f"out {_fmt_chars(len(text))}"
     if elapsed is not None:
         size += f" · {elapsed:.1f}s"
-    return f"<tr><td>{kind}</td><td>{middle}</td><td>{size}</td></tr>"
-
+    time_cell = f"{time_delta:.1f}s" if time_delta is not None else ""
+    return f"<tr><td>{kind}</td><td>{middle}</td><td>{size}</td><td>{time_cell}</td></tr>"
 
 def _render_media_thumbs(block: dict) -> str:
     """Click-to-expand thumbnails for a tool block's persisted ``media`` copies."""
@@ -116,21 +117,36 @@ def _render_clamped_markdown(
     max_lines: int,
     header: str = "",
     full_label: str = "full output",
+    *,
+    bordered: bool = False,
+    collapse_button: bool = False,
 ) -> str:
     """First ``max_lines`` lines rendered as markdown, with a ``<details>`` holding
-    the full markdown render. ``header`` is emitted above (e.g. the plan badge)."""
+    the full markdown render. ``header`` is emitted above (e.g. the plan badge).
+
+    ``bordered`` / ``collapse_button`` opt into the text/think variant (gray border
+    around the expanded body + a bottom ``Collapse ^`` control); spawn/todo rows
+    leave them off."""
     lines = md_text.splitlines()
+    has_more = len(lines) > max_lines
     head = "\n".join(lines[:max_lines])
     head_html = _ui._render_markdown(head)
+    if has_more:
+        head_html += '<span class="md-clamp-ellipsis">…</span>'
     body = f'{header}<div class="md-clamp-head">{head_html}</div>'
-    if len(lines) > max_lines:
+    if has_more:
         full_html = _ui._render_markdown(md_text)
+        full_cls = "md-clamp-full" + (" md-clamp-full--bordered" if bordered else "")
+        collapse = (
+            '<button type="button" class="md-collapse-btn">Collapse ^</button>'
+            if collapse_button
+            else ""
+        )
         body += (
             f'<details class="md-clamp-more"><summary>{_ui._esc(full_label)}</summary>'
-            f'<div class="md-clamp-full">{full_html}</div></details>'
+            f'<div class="{full_cls}">{full_html}{collapse}</div></details>'
         )
     return f'<div class="md-clamp">{body}</div>'
-
 
 def _render_tool_output(output: str) -> str:
     """Inline output preview (first few lines) with a single expand icon for
@@ -156,7 +172,9 @@ def _render_tool_output(output: str) -> str:
     )
 
 
-def _render_tool_action_row(block: dict) -> str:
+def _render_tool_action_row(
+    block: dict, time_delta: float | None = None
+) -> str:
     """Table row for one tool call: type, path/command, in/out char counts, output."""
     esc = _ui._esc
     name = str(block.get("name", "tool"))
@@ -164,6 +182,7 @@ def _render_tool_action_row(block: dict) -> str:
     output = str(block.get("output", ""))
     args = _parse_tool_args(input_raw)
     dot = _tool_dot_class(block)
+    time_cell = f"{time_delta:.1f}s" if time_delta is not None else ""
 
     if name == "read":
         action_type = "read"
@@ -216,7 +235,10 @@ def _render_tool_action_row(block: dict) -> str:
             f'<span class="tool-dot tool-dot--{dot}" aria-hidden="true"></span>'
             f"{action_type}"
         )
-        return f"<tr><td>{type_cell}</td><td>{middle}</td><td>{size}</td></tr>"
+        return (
+            f"<tr><td>{type_cell}</td><td>{middle}</td><td>{size}</td>"
+            f"<td>{time_cell}</td></tr>"
+        )
     else:
         action_type = esc(name)
         middle = f'<pre class="cmd">{esc(str(input_raw))}</pre>'
@@ -232,8 +254,10 @@ def _render_tool_action_row(block: dict) -> str:
         f'<span class="tool-dot tool-dot--{dot}" aria-hidden="true"></span>'
         f"{action_type}"
     )
-    return f"<tr><td>{type_cell}</td><td>{middle}</td><td>{size}</td></tr>"
-
+    return (
+        f"<tr><td>{type_cell}</td><td>{middle}</td><td>{size}</td>"
+        f"<td>{time_cell}</td></tr>"
+    )
 
 def render_user_prompt_msg(entry: dict) -> str:
     """Expandable `.stage-msg` for a recorded ``user_prompt`` turn entry.
@@ -328,31 +352,49 @@ def _reason_note(reason: str) -> str:
 # as a dedicated trajectory row at the bottom of the exchange so the user can see
 # *why* the run ended — most importantly a user interruption, which otherwise
 # leaves no trace in the trajectory at all.
-def render_terminal_reason_row(reason: str) -> str:
+def render_terminal_reason_row(
+    reason: str, duration: float | None = None
+) -> str:
     """A trajectory row explaining why the exchange's agent stopped. Empty for
     reasons that are not terminal (``swap``/``time_cap`` continue the run) or that
     already surface elsewhere (``empty`` shows an error card)."""
-    esc = _ui._esc
+    after = (
+        f" — after {_ui._esc(_ui._format_duration(duration))}"
+        if duration is not None
+        else ""
+    )
     if reason == "waiting_children":
         return (
             '<div class="stage-msg terminal-reason terminal-reason--waiting">'
             '<span class="terminal-reason-line">⏳ Agent ended its turn with sub-agents '
-            "still running — waiting for them (implicit wait_join).</span></div>"
+            f"still running — waiting for them (implicit wait_join).{after}</span></div>"
         )
     if reason == "stopped":
         return (
             '<div class="stage-msg terminal-reason terminal-reason--stopped">'
             '<span class="terminal-reason-line">⏹ Stopped by user — run interrupted.'
-            "</span></div>"
+            f"{after}</span></div>"
         )
     if reason in ("agent_end", "sentinel"):
         return (
             '<div class="stage-msg terminal-reason">'
             '<span class="terminal-reason-line"><small class="muted">■ Agent finished '
-            "its turn — no pending tools or sub-agents.</small></span></div>"
+            f"its turn — no pending tools or sub-agents.{after}</small></span></div>"
         )
     return ""
 
+
+def render_error_stop_row(duration: float | None = None) -> str:
+    """Red terminal line for an exchange that ended in error (no terminal_reason)."""
+    after = (
+        f" after {_ui._esc(_ui._format_duration(duration))}"
+        if duration is not None
+        else ""
+    )
+    return (
+        '<div class="stage-msg stage-error terminal-reason terminal-reason--error">'
+        f'<span class="terminal-reason-line">Stopped: Error{after}</span></div>'
+    )
 
 def render_prep_timing_row(entry: dict) -> str:
     """UI-only debug line for a preparatory stage (sandbox / first byte / …)."""
@@ -372,14 +414,21 @@ def render_prep_timing_row(entry: dict) -> str:
 def new_model_state() -> dict:
     """Mutable tracker threaded through :func:`render_turn_msgs` calls so model
     switches are detected across exchanges (chats) or across a run's hops."""
-    return {"model": None, "seen_todo": False}
+    return {"model": None, "seen_todo": False, "prev_epoch": None}
 
 
-def render_actions_table(turns: list[dict], include_text: bool = True) -> str:
+def render_actions_table(
+    turns: list[dict],
+    include_text: bool = True,
+    time_delta: float | None = None,
+) -> str:
     """Render agent turns as one compact actions table (one row per action).
 
     Unknown ``kind`` entries (including ``user_prompt``) are skipped — use
-    :func:`render_turn_msgs` for per-turn / prompt rows."""
+    :func:`render_turn_msgs` for per-turn / prompt rows.
+
+    ``time_delta`` (seconds since the previous event) is shown only on the first
+    row of each turn so the Time column reads as a per-turn value."""
     rows: list[str] = []
     for turn in turns:
         # Projected trajectory rows carry kind="turn"; only genuinely non-turn
@@ -395,22 +444,35 @@ def render_actions_table(turns: list[dict], include_text: bool = True) -> str:
         thinking = turn.get("thinking", "")
         text = _clean_turn_text(turn.get("text", ""))
         elapsed = turn.get("elapsed")
+        first = True
+
+        def _delta() -> float | None:
+            nonlocal first
+            if not first:
+                return None
+            first = False
+            return time_delta
+
         if thinking:
-            rows.append(_render_text_action_row("think", thinking, elapsed))
+            rows.append(
+                _render_text_action_row("think", thinking, elapsed, time_delta=_delta())
+            )
         if include_text and text:
-            rows.append(_render_text_action_row("text", text, elapsed))
+            rows.append(
+                _render_text_action_row("text", text, elapsed, time_delta=_delta())
+            )
         for block in turn.get("tool_blocks", []):
-            rows.append(_render_tool_action_row(block))
+            rows.append(_render_tool_action_row(block, time_delta=_delta()))
     if not rows:
         return ""
     return (
         '<table class="explore-actions">'
-        '<colgroup><col class="col-type"><col class="col-path"><col class="col-size"></colgroup>'
+        '<colgroup><col class="col-type"><col class="col-path">'
+        '<col class="col-size"><col class="col-time"></colgroup>'
         "<thead><tr>"
-        "<th>Type</th><th>Path / command</th><th>Size</th>"
+        "<th>Type</th><th>Path / command</th><th>Size</th><th>Time</th>"
         f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
     )
-
 
 def _merged_trajectory(turns: list[dict], errors: list[dict]) -> list[dict]:
     """Merge turn/prompt entries with durable error rows, time-ordered.
@@ -533,7 +595,14 @@ def render_turn_msgs(
             out.append(chats.render_answered_question(entry.get("qa") or {}))
             continue
         if kind == "terminal_reason":
-            row = render_terminal_reason_row(str(entry.get("reason") or ""))
+            dur = entry.get("duration")
+            try:
+                dur_f = float(dur) if dur is not None else None
+            except (TypeError, ValueError):
+                dur_f = None
+            row = render_terminal_reason_row(
+                str(entry.get("reason") or ""), duration=dur_f
+            )
             if row:
                 out.append(row)
             continue
@@ -543,7 +612,19 @@ def render_turn_msgs(
         if kind and kind != "turn":
             continue
         # Plain agent turn (kind absent or "turn").
-        table = render_actions_table([entry], include_text=include_text)
+        time_delta: float | None = None
+        if model_state is not None:
+            from crack_server.trajectory_view import _row_epoch
+
+            epoch = _row_epoch(entry)
+            prev_epoch = model_state.get("prev_epoch")
+            if epoch is not None and prev_epoch is not None:
+                time_delta = max(0.0, float(epoch) - float(prev_epoch))
+            if epoch is not None:
+                model_state["prev_epoch"] = epoch
+        table = render_actions_table(
+            [entry], include_text=include_text, time_delta=time_delta
+        )
         if not table:
             continue
         cur_model = str(entry.get("model") or "")
@@ -694,10 +775,17 @@ def model_select(
     options = models if models is not None else models_mod.models_for_render()
     if current not in options:
         options = [current] + options
-    opts = "".join(
-        f'<option value="{esc(m)}"{" selected" if m == current else ""}>{esc(m)}</option>'
-        for m in options
-    )
+    from crack_server import model_latency
+
+    avgs = model_latency.latencies()
+    opt_bits: list[str] = []
+    for m in options:
+        selected = " selected" if m == current else ""
+        label = esc(m)
+        if m != current and m in avgs:
+            label = f"{esc(m)}  ·  {avgs[m]:.1f}s"
+        opt_bits.append(f'<option value="{esc(m)}"{selected}>{label}</option>')
+    opts = "".join(opt_bits)
     target_attr = f' hx-target="{esc(target)}"' if target else ""
     cont = indent + " " * 8
     inner = indent + " " * 2

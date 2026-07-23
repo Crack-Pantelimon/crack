@@ -39,6 +39,28 @@ def _row_epoch(row: dict) -> float | None:
     return None
 
 
+def _exchange_duration(exchange: dict) -> float | None:
+    """Wall duration for an exchange from started_at/finished_at, else turn span."""
+    started = exchange.get("started_at")
+    finished = exchange.get("finished_at")
+    try:
+        if started is not None and finished is not None:
+            return max(0.0, float(finished) - float(started))
+    except (TypeError, ValueError):
+        pass
+    ats: list[float] = []
+    for t in exchange.get("turns") or []:
+        at = t.get("at")
+        if at is not None:
+            try:
+                ats.append(float(at))
+            except (TypeError, ValueError):
+                pass
+    if len(ats) >= 2:
+        return max(0.0, ats[-1] - ats[0])
+    return None
+
+
 # Cache: path → (mtime_ns, size, parsed events list)
 _FILE_CACHE: dict[str, tuple[int, int, list[dict]]] = {}
 
@@ -321,11 +343,13 @@ def merge_exchange_sidecars(
                     break
             if at is None:
                 at = time.time()
+            duration = _exchange_duration(exchange)
             terminal_rows.append({
                 "kind": "terminal_reason",
                 "id": f"stop-{i}",
                 "reason": stop_reason,
                 "at": at,
+                **({"duration": duration} if duration is not None else {}),
             })
 
     out: list[dict] = []

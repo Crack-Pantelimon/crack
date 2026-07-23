@@ -20,6 +20,7 @@ from crack_server.sub_agents.constants import (
 from crack_server.steprun import (
     TurnPersister,
     error_recorder,
+    flush_latencies,
     grant_error_budget,
     prompt_recorder,
 )
@@ -359,6 +360,7 @@ class SubAgentPersona:
         await self.astate_update(run_id, _bump)
         # Record why this hop ended on its last persisted turn (trajectory note).
         persister.stamp_reason(reason)
+        await flush_latencies(persister)
 
         if reason == "stopped":
             await self._amark_stopped(run_id)

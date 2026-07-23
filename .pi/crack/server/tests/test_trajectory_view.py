@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from crack_server import git_utils, trajectory_view
 
 
@@ -156,11 +158,29 @@ def test_merge_exchange_sidecars_appends_terminal_reason():
         "user": "hello",
         "turns": [{"at": 1767261660.0}],
         "stop_reason": "stopped",
+        "started_at": 1767261600.0,
+        "finished_at": 1767261660.0,
     }]
     rows = trajectory_view.merge_exchange_sidecars(projected, exchanges)
     kinds = [r["kind"] for r in rows]
     assert kinds[-1] == "terminal_reason"
     assert rows[-1]["reason"] == "stopped"
+    assert rows[-1]["duration"] == pytest.approx(60.0)
+
+
+def test_merge_exchange_sidecars_duration_falls_back_to_turn_span():
+    projected = [
+        {"kind": "session_user", "id": "u1", "text": "hi", "timestamp": "2026-01-01T10:00:00Z"},
+        {"kind": "turn", "id": "t1", "text": "ok", "timestamp": "2026-01-01T10:01:00Z"},
+    ]
+    exchanges = [{
+        "user": "hi",
+        "turns": [{"at": 100.0}, {"at": 142.5}],
+        "stop_reason": "agent_end",
+    }]
+    rows = trajectory_view.merge_exchange_sidecars(projected, exchanges)
+    term = next(r for r in rows if r["kind"] == "terminal_reason")
+    assert term["duration"] == pytest.approx(42.5)
 
 
 def test_host_worktree_dirty_detects_untracked(tmp_path: Path):

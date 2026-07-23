@@ -303,9 +303,10 @@ main.container-fluid {
   table-layout: fixed;
 }
 
-.explore-actions .col-type { width: 12%; }
-.explore-actions .col-path { width: 76%; }
-.explore-actions .col-size { width: 12%; }
+.explore-actions .col-type { width: 10%; }
+.explore-actions .col-path { width: 62%; }
+.explore-actions .col-size { width: 16%; }
+.explore-actions .col-time { width: 12%; }
 
 .explore-actions th,
 .explore-actions td {
@@ -377,6 +378,35 @@ main.container-fluid {
 
 .md-clamp-head {
   overflow: hidden;
+}
+
+.md-clamp-ellipsis {
+  color: var(--pico-muted-color);
+  margin-left: 0.15em;
+}
+
+.md-clamp-full--bordered {
+  border: 1px solid #aaa;
+  border-radius: 4px;
+  padding: 0.5rem 0.65rem;
+  margin-top: 0.35rem;
+}
+
+.md-collapse-btn {
+  display: block;
+  margin: 0.5rem 0 0;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  color: var(--pico-muted-color);
+  background: transparent;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.md-collapse-btn:hover {
+  color: var(--pico-color);
+  border-color: #888;
 }
 
 .todo-render {
@@ -917,7 +947,10 @@ main.container-fluid {
   border-color: #e67e22;
 }
 .subagent-card.phase-error {
-  border-color: #c44;
+  border-color: #8b1a1a;
+}
+.subagent-card.phase-stopped {
+  border-color: #888;
 }
 .subagent-card-header {
   display: flex;
@@ -939,7 +972,8 @@ main.container-fluid {
 }
 .run-status-dot.phase-done { background: #1e6b3a; }
 .run-status-dot.phase-awaiting { background: #e67e22; }
-.run-status-dot.phase-error { background: #c44; }
+.run-status-dot.phase-error { background: #8b1a1a; }
+.run-status-dot.phase-stopped { background: #888; }
 .subagent-transcript {
   margin-top: 0.35rem;
 }
@@ -1130,10 +1164,16 @@ main.container-fluid {
   border-color: #4a90e2;
 }
 .chat-content[data-stage-status="error"] #chat-msgs {
-  border-color: #c44;
+  border-color: #8b1a1a;
+}
+.chat-content[data-stage-status="done"] #chat-msgs {
+  border-color: #1e6b3a;
+}
+.chat-content[data-stage-status="stopped"] #chat-msgs {
+  border-color: #888;
 }
 
-/* Table alignment: fixed narrow Type/Size columns, wrapping middle column. */
+/* Table alignment: fixed narrow Type/Size/Time columns, wrapping middle column. */
 .explore-actions {
   table-layout: fixed;
 }
@@ -1141,8 +1181,16 @@ main.container-fluid {
   width: 7.5rem;
   white-space: normal;
 }
-.explore-actions td:last-child {
-  width: 6.5rem;
+.explore-actions td:nth-child(3),
+.explore-actions td:nth-child(4) {
+  width: 5.5rem;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--pico-muted-color);
+  font-size: 0.78rem;
+}
+.explore-actions .col-time {
+  width: 5.5rem;
 }
 .explore-actions td:nth-child(2) {
   word-break: break-word;

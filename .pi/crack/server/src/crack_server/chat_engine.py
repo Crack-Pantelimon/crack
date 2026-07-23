@@ -31,6 +31,7 @@ from crack_server.ratelimit import RESUME_MESSAGE
 from crack_server.state import JsonState
 from crack_server.steprun import (
     error_recorder,
+    flush_latencies,
     prompt_recorder,
     record_chat_errors,
     turn_persister,
@@ -110,6 +111,14 @@ async def run_exchange(
             media_dir=media_dir, media_url_prefix=media_url_prefix,
         )
 
+        def _stamp_started(s: dict) -> dict:
+            exs = s.get("exchanges") or []
+            if 0 <= idx < len(exs):
+                exs[idx].setdefault("started_at", time.time())
+            return s
+
+        state.update(_stamp_started)
+
         if pre_stop_check is not None and pre_stop_check():
             reason = "stopped"
         else:
@@ -135,6 +144,7 @@ async def run_exchange(
             exs = s.get("exchanges") or []
             if 0 <= idx < len(exs):
                 exs[idx]["stop_reason"] = reason
+                exs[idx]["finished_at"] = time.time()
             return s
 
         state.update(_finish)
@@ -219,6 +229,7 @@ async def _run_prewalk_loop(
         )
         # Record why this hop ended on its last persisted turn (trajectory note).
         persister.stamp_reason(reason)
+        await flush_latencies(persister)
 
         if reason in ("stopped", "empty"):
             break

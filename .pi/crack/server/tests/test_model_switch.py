@@ -76,8 +76,10 @@ def test_reason_note_shown_for_notable_reasons():
 
 def test_terminal_reason_row_labels():
     assert "Stopped by user" in render.render_terminal_reason_row("stopped")
+    assert "after 12.5s" in render.render_terminal_reason_row("stopped", duration=12.5)
     assert "wait_join" in render.render_terminal_reason_row("waiting_children")
     assert "Agent finished" in render.render_terminal_reason_row("agent_end")
+    assert "after 3m 12s" in render.render_terminal_reason_row("agent_end", duration=192.0)
     assert render.render_terminal_reason_row("swap") == ""
     assert render.render_terminal_reason_row("time_cap") == ""
 

@@ -175,6 +175,41 @@ class TurnPersister:
         return "\n\n".join(t["text"] for t in self.new if t.get("text")).strip()
 
 
+async def flush_latencies(persister: TurnPersister) -> None:
+    """Record EMA latency for newly persisted agent turns since the last flush.
+
+    Delta is wall-clock ``at`` between consecutive agent turns (across
+    ``existing + new``). The first turn of a run has no predecessor and is
+    skipped. Safe to call after every hop — already-flushed turns are ignored.
+    """
+    from crack_server import model_latency
+
+    def _is_agent_turn(t: dict) -> bool:
+        # Real agent turns carry no ``kind`` and no ``template`` (the latter marks
+        # the compiled-prompt entries that share the ``turns`` list).
+        return not t.get("kind") and "template" not in t
+
+    agent_turns = [t for t in (persister.existing + persister.new) if _is_agent_turn(t)]
+    # Each hop on the sub-agent path builds a *new* persister whose ``existing``
+    # already holds every prior turn; default the flush cursor past those so we
+    # never re-record them (the in-object attr keeps a single persister's repeated
+    # flushes — the chat exchange loop — from double counting either).
+    existing_agent = sum(1 for t in persister.existing if _is_agent_turn(t))
+    flushed = getattr(persister, "_latency_flushed", None)
+    if flushed is None:
+        flushed = existing_agent
+    for i in range(max(flushed, 1), len(agent_turns)):
+        turn = agent_turns[i]
+        prev = agent_turns[i - 1]
+        model = str(turn.get("model") or "")
+        at = turn.get("at")
+        prev_at = prev.get("at")
+        if not model or at is None or prev_at is None:
+            continue
+        await model_latency.record_latency(model, float(at) - float(prev_at))
+    persister._latency_flushed = len(agent_turns)
+
+
 def turn_persister(
     state: JsonState,
     key: str = "turns",

@@ -131,3 +131,38 @@ def test_render_fatal_error_banner():
 
     html = render.render_fatal_error_banner({"errors": [{}] * 20})
     assert "Failed more than 20 times" in html
+
+
+def test_render_error_stop_row_includes_duration():
+    html = render.render_error_stop_row(42.3)
+    assert "stage-error" in html
+    assert "Stopped: Error after 42.3s" in html
+
+
+def test_errored_chat_emits_stopped_error_line(tmp_path, monkeypatch):
+    """Errored chats (phase idle + error set) show the red runtime line."""
+    monkeypatch.setenv("CRACK_PI_PROJECT_ROOT", str(tmp_path))
+    from crack_server import chats, paths
+
+    chat_id = "1700000000000"
+    paths.chat_dir(chat_id).mkdir(parents=True)
+    paths.chat_sessions_dir(chat_id).mkdir(parents=True)
+    paths.chat_info_state(chat_id).write({"title": "t", "model": "m"})
+    paths.chat_state(chat_id).write({
+        "phase": "idle",
+        "error": "429 Too Many Requests",
+        "exchanges": [{
+            "user": "hi",
+            "turns": [
+                {"at": 100.0, "text": "a", "thinking": "", "tool_blocks": []},
+                {"at": 142.3, "text": "b", "thinking": "", "tool_blocks": []},
+            ],
+            "started_at": 100.0,
+            "finished_at": 142.3,
+            "stop_reason": "empty",
+        }],
+    })
+    msgs = chats.render_chat_msgs(chat_id)
+    joined = "".join(msgs)
+    assert "Stopped: Error after" in joined
+    assert "stage-error" in joined

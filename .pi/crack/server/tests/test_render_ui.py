@@ -14,6 +14,45 @@ def test_render_actions_table_has_colgroup():
     ])
     assert "<colgroup>" in html
     assert "col-path" in html
+    assert "col-time" in html
+    assert "<th>Time</th>" in html
+
+
+def test_text_row_renders_markdown_clamp_and_collapse():
+    text = "\n".join(f"line **{i}**" for i in range(12))
+    html = render._render_text_action_row("text", text)
+    assert "md-clamp" in html
+    assert "<strong>" in html or "<p>" in html  # markdown rendered
+    assert "md-clamp-ellipsis" in html
+    assert "md-clamp-more" in html
+    assert "md-clamp-full--bordered" in html
+    assert "md-collapse-btn" in html
+    assert "Collapse ^" in html
+    assert "<th>Time</th>" not in html  # row only; table adds header
+    assert html.count("<td>") == 4  # type, path, size, time
+
+
+def test_think_row_uses_same_clamped_markdown():
+    thinking = "\n".join(f"thought {i}" for i in range(8))
+    html = render._render_text_action_row("think", thinking)
+    assert ">think<" in html or ">think</td>" in html or html.startswith("<tr><td>think</td>")
+    assert "md-clamp" in html
+    assert "md-collapse-btn" in html
+
+
+def test_time_column_on_first_row_only():
+    state = render.new_model_state()
+    turns = [
+        {"text": "first", "thinking": "", "tool_blocks": [], "at": 100.0, "model": "m"},
+        {"text": "second", "thinking": "", "tool_blocks": [], "at": 112.5, "model": "m"},
+    ]
+    msgs = render.render_turn_msgs(turns, model_state=state)
+    assert len(msgs) == 2
+    assert "12.5s" in msgs[1]
+    # First turn has no predecessor → empty Time cell (no seconds value in first row's last td).
+    assert "<th>Time</th>" in msgs[0]
+    # Only the first data row of the second turn carries the delta.
+    assert msgs[1].count("12.5s") == 1
 
 
 def test_spawn_coder_row_pretty_renders():

@@ -163,17 +163,22 @@ def _render_chat_list(ids: list[str]) -> str:
 def _plain_model_select(name: str, current: str) -> str:
     """A plain <select> of the model cache (no htmx save-on-change) for the
     new-chat form. The saved/default value is always kept as an option."""
+    from crack_server import model_latency
     from crack_server import models as models_mod
 
     esc = _ui._esc
     options = models_mod.models_for_render()
     if current not in options:
         options = [current] + options
-    opts = "".join(
-        f'<option value="{esc(m)}"{" selected" if m == current else ""}>{esc(m)}</option>'
-        for m in options
-    )
-    return f'<select name="{esc(name)}">{opts}</select>'
+    avgs = model_latency.latencies()
+    opt_bits: list[str] = []
+    for m in options:
+        selected = " selected" if m == current else ""
+        label = esc(m)
+        if m != current and m in avgs:
+            label = f"{esc(m)}  ·  {avgs[m]:.1f}s"
+        opt_bits.append(f'<option value="{esc(m)}"{selected}>{label}</option>')
+    return f'<select name="{esc(name)}">{"".join(opt_bits)}</select>'
 
 
 def render_new_chat_form() -> str:
@@ -418,8 +423,10 @@ def _run_phase_class(phase: str) -> str:
         return "done"
     if phase == "awaiting_user":
         return "awaiting"
-    if phase in ("error", "stopped"):
+    if phase == "error":
         return "error"
+    if phase == "stopped":
+        return "stopped"
     return phase or "idle"
 
 
@@ -772,6 +779,30 @@ def _tag_chat_msg(index: int, html: str) -> str:
     return f'<div id="{esc(msg_id)}" class="stage-msg">{html}</div>'
 
 
+def _exchange_duration(exchange: dict | None) -> float | None:
+    """Wall duration for an exchange from started_at/finished_at, else turn span."""
+    if not exchange:
+        return None
+    started = exchange.get("started_at")
+    finished = exchange.get("finished_at")
+    try:
+        if started is not None and finished is not None:
+            return max(0.0, float(finished) - float(started))
+    except (TypeError, ValueError):
+        pass
+    ats = []
+    for t in exchange.get("turns") or []:
+        at = t.get("at")
+        if at is not None:
+            try:
+                ats.append(float(at))
+            except (TypeError, ValueError):
+                pass
+    if len(ats) >= 2:
+        return max(0.0, ats[-1] - ats[0])
+    return None
+
+
 def render_chat_msgs(chat_id: str) -> list[str]:
     """Render the chat trajectory from pi session ndjson (faithful projection).
 
@@ -812,6 +843,13 @@ def render_chat_msgs(chat_id: str) -> list[str]:
             out.extend(msgs)
         else:
             out.extend(render.render_turn_msgs([row], include_text=True, model_state=model_state))
+
+    # Errored chats have no terminal_reason row (phase resets to idle); show a
+    # red runtime line just above the #chat-msgs border.
+    last_ex = exchanges[-1] if exchanges else None
+    stop_reason = (last_ex or {}).get("stop_reason")
+    if state.get("error") or stop_reason == "empty":
+        out.append(render.render_error_stop_row(_exchange_duration(last_ex)))
     return out
 
 
@@ -866,8 +904,21 @@ def wrap_chat_content(chat_id: str, msgs: list[str], tail: str, after: int | Non
     tagged = [_tag_chat_msg(i, m) for i, m in enumerate(msgs)]
     msg_count = len(tagged)
     mtime = chat_state_mtime(chat_id)
-    phase = paths.chat_state(chat_id).read().get("phase") or "idle"
-    status = "running" if phase == "chatting" else ("error" if phase == "error" else "idle")
+    state = paths.chat_state(chat_id).read()
+    phase = state.get("phase") or "idle"
+    exchanges = state.get("exchanges") or []
+    last_ex = exchanges[-1] if exchanges else {}
+    stop_reason = last_ex.get("stop_reason")
+    if phase == "chatting":
+        status = "running"
+    elif state.get("error") or stop_reason == "empty":
+        status = "error"
+    elif stop_reason == "stopped":
+        status = "stopped"
+    elif stop_reason in ("agent_end", "sentinel"):
+        status = "done"
+    else:
+        status = "idle"
 
     if after is not None:
         new_msgs = "".join(tagged[i] for i in range(len(tagged)) if i > after)
@@ -1281,13 +1332,7 @@ async def run_chat(chat_id: str) -> None:
             "sandbox ready (frozen git tree + overlay)",
             time.monotonic() - t0,
         )
-        t1 = time.monotonic()
         await patch.capture_baseline(sandbox_name, paths.chat_dir(chat_id))
-        _append_ui_prep(
-            chat_id, "baseline",
-            "git baseline captured",
-            time.monotonic() - t1,
-        )
 
     def stop_check() -> bool:
         return bool(chat.read().get("stop_requested"))
@@ -1321,13 +1366,7 @@ async def run_chat(chat_id: str) -> None:
                         "sandbox ready (frozen git tree + overlay)",
                         time.monotonic() - t0,
                     )
-                    t1 = time.monotonic()
                     await patch.capture_baseline(sandbox_name, paths.chat_dir(chat_id))
-                    _append_ui_prep(
-                        chat_id, "baseline",
-                        "git baseline captured",
-                        time.monotonic() - t1,
-                    )
                     continue
             elif sandbox.sandbox_enabled():
                 await sandbox.destroy_sandbox(chat_id)
