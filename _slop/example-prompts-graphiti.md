@@ -5,12 +5,14 @@ services are running and that Graphiti telemetry is disabled.
 
 Models (Ollama local LLM guide + RAG-matching embedder):
 
-- LLM: `deepseek-r1:7b` via `OpenAIGenericClient` → `http://ollama:11434/v1`
+- LLM: `qwen3.5:4b` via `OpenAIGenericClient` → `http://ollama:11434/v1`
+  (requests send `reasoning_effort: none` — qwen3.5 thinking is off)
 - Embeddings: `all-minilm` (384-dim, same as RAG / code-search), not `nomic-embed-text`
+- Group id: `crack_repo` (no hyphens — FalkorDB RediSearch breaks on `-` in `@group_id`)
 
 ## Seed a small graph
 
-Add three episodes to the `crack-repo` group:
+Add three episodes to the `crack_repo` group:
 
 1. “The crack server is a FastAPI application in `.pi/crack/server`.”
 2. “The RAG page uses Milvus and Ollama embeddings.”

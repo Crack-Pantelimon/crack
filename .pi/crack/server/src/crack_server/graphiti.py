@@ -34,6 +34,9 @@ GRAPHITI_EMBEDDING_DIMENSION = int(
 )
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 SEARCH_LIMIT = int(os.environ.get("GRAPHITI_SEARCH_LIMIT", "20"))
+# Cap completion size — qwen3.5 defaults to thinking and can burn 10k+ tokens
+# at ~25 tok/s if left at OpenAIGenericClient's 16k default.
+GRAPHITI_LLM_MAX_TOKENS = int(os.environ.get("GRAPHITI_LLM_MAX_TOKENS", "2048"))
 
 # Graphiti's telemetry is opt-out. Set all known switches explicitly so a
 # package upgrade cannot silently turn telemetry back on in this deployment.
@@ -47,6 +50,30 @@ os.environ.setdefault("OPENAI_BASE_URL", f"{OLLAMA_HOST.rstrip('/')}/v1")
 
 _graph: Any | None = None
 _init_error: str | None = None
+
+
+def _disable_ollama_thinking(openai_client: Any) -> None:
+    """Force ``reasoning_effort=none`` on every chat.completions call.
+
+    qwen3.5 enables thinking by default on Ollama's OpenAI-compat endpoint.
+    Without this, a single Graphiti extract burns the GPU for minutes at ~25
+    tok/s (thousands of hidden thinking tokens before any JSON answer).
+    Native ``think:false`` is ignored on ``/v1/chat/completions``; use
+    ``extra_body.reasoning_effort`` instead (ollama/ollama#14820).
+    """
+    completions = openai_client.chat.completions
+    if getattr(completions, "_crack_no_think", False):
+        return
+    original = completions.create
+
+    async def create(*args: Any, **kwargs: Any) -> Any:
+        extra = dict(kwargs.pop("extra_body", None) or {})
+        extra.setdefault("reasoning_effort", "none")
+        kwargs["extra_body"] = extra
+        return await original(*args, **kwargs)
+
+    completions.create = create  # type: ignore[method-assign]
+    completions._crack_no_think = True  # type: ignore[attr-defined]
 
 
 def _build_graph() -> Any:
@@ -69,10 +96,14 @@ def _build_graph() -> Any:
         model=GRAPHITI_LLM_MODEL,
         small_model=GRAPHITI_LLM_MODEL,
         temperature=0.0,
+        max_tokens=GRAPHITI_LLM_MAX_TOKENS,
     )
     # OpenAIGenericClient → /v1/chat/completions (Ollama-compatible).
     # OpenAIClient would hit /v1/responses, which Ollama does not implement.
-    llm_client = OpenAIGenericClient(config=llm_config)
+    llm_client = OpenAIGenericClient(
+        config=llm_config, max_tokens=GRAPHITI_LLM_MAX_TOKENS
+    )
+    _disable_ollama_thinking(llm_client.client)
     embedder = OpenAIEmbedder(
         config=OpenAIEmbedderConfig(
             api_key="ollama",
@@ -81,11 +112,14 @@ def _build_graph() -> Any:
             embedding_dim=GRAPHITI_EMBEDDING_DIMENSION,
         )
     )
+    # Reranker needs the raw AsyncOpenAI client (not OpenAIGenericClient).
     return Graphiti(
         graph_driver=driver,
         llm_client=llm_client,
         embedder=embedder,
-        cross_encoder=OpenAIRerankerClient(client=llm_client, config=llm_config),
+        cross_encoder=OpenAIRerankerClient(
+            client=llm_client.client, config=llm_config
+        ),
     )
 
 

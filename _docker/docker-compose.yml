@@ -74,15 +74,26 @@ services:
     container_name: graphiti-mcp
     # standalone = MCP only (no embedded FalkorDB/browser); we run those as siblings.
     image: docker.io/zepai/knowledge-graph-mcp:standalone
+    # Patch FastMCP Host allowlist + OpenAIGenericClient for Ollama (see patch script).
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
     volumes:
       - type: bind
         source: ./graphiti-mcp-config.yaml
         target: /app/mcp/config/config.yaml
         read_only: true
+      - type: bind
+        source: ./_graphiti_mcp_entrypoint.sh
+        target: /entrypoint.sh
+        read_only: true
+      - type: bind
+        source: ./_graphiti_mcp_patch_ollama.py
+        target: /patch_ollama.py
+        read_only: true
     environment:
       FALKORDB_URI: redis://falkordb:6379
       FALKORDB_DATABASE: graphiti
-      GRAPHITI_GROUP_ID: crack-repo
+      # Underscore only: FalkorDB/RediSearch treats '-' as syntax in @group_id filters.
+      GRAPHITI_GROUP_ID: crack_repo
       # Config yaml expands OPENAI_API_URL (not OPENAI_BASE_URL).
       OPENAI_API_URL: http://ollama:11434/v1
       OPENAI_API_KEY: ollama
@@ -165,6 +176,7 @@ services:
       GRAPHITI_LLM_MODEL: qwen3.5:4b
       GRAPHITI_EMBEDDING_MODEL: all-minilm
       GRAPHITI_EMBEDDING_DIMENSION: "384"
+      GRAPHITI_LLM_MAX_TOKENS: "2048"
       GRAPHITI_TELEMETRY_ENABLED: "false"
       TELEMETRY_ENABLED: "false"
       DO_NOT_TRACK: "1"

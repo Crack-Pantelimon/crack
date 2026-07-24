@@ -10,7 +10,8 @@ server:
 llm:
   provider: "openai"
   model: "qwen3.5:4b"
-  max_tokens: 4096
+  # Keep small: qwen3.5 thinking (when not disabled) can fill large budgets.
+  max_tokens: 2048
 
   providers:
     openai:
@@ -39,7 +40,8 @@ database:
       database: ${FALKORDB_DATABASE:graphiti}
 
 graphiti:
-  group_id: ${GRAPHITI_GROUP_ID:crack-repo}
+  # Underscore only — hyphens break FalkorDB fulltext @group_id filters.
+  group_id: ${GRAPHITI_GROUP_ID:crack_repo}
   episode_id_prefix: ${EPISODE_ID_PREFIX:}
   user_id: ${USER_ID:mcp_user}
   entity_types:
