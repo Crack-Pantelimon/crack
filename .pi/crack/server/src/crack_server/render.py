@@ -474,6 +474,21 @@ def render_note_row(entry: dict) -> str:
     status = str(entry.get("status") or "")
     icon = str(entry.get("icon") or "")
     text = str(entry.get("text") or "")
+    if note_type == "compaction":
+        tb = entry.get("tokens_before")
+        ta = entry.get("tokens_after")
+        mb = entry.get("messages_before")
+        ma = entry.get("messages_after")
+        dur = entry.get("duration_s")
+        stats_bits: list[str] = []
+        if tb is not None and ta is not None:
+            stats_bits.append(f"tokens {tb:,}→{ta:,}")
+        if mb is not None and ma is not None:
+            stats_bits.append(f"msgs {mb}→{ma}")
+        if dur is not None:
+            stats_bits.append(f"{dur}s")
+        if stats_bits:
+            text = f"{text} ({', '.join(stats_bits)})" if text else ", ".join(stats_bits)
     at = entry.get("at")
     ago = f' <small class="muted">· {_ui._format_ago(float(at))}</small>' if at else ""
     cls = f"traj-note traj-note--{esc(note_type)}"

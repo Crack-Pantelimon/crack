@@ -764,6 +764,12 @@ main.container-fluid {
   border-left-color: #7a5cc4;
 }
 
+
+.traj-note--compaction {
+  border-left-color: #e67e22;
+  background: #fff8f0;
+}
+
 .traj-note--ok {
   border-left-color: var(--pico-ins-color, #2a7d2a);
 }

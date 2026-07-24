@@ -8,7 +8,7 @@ import time
 import uuid
 from pathlib import Path
 
-from crack_server import paths, pi_runner, prewalk, queue, sandbox, titles
+from crack_server import compaction, paths, pi_runner, prewalk, queue, sandbox, titles
 from crack_server.ratelimit import MAX_TOTAL_ERRORS, RESUME_MESSAGE
 from crack_server.state import JsonState
 from crack_server.sub_agents.constants import (
@@ -324,11 +324,20 @@ class SubAgentPersona:
                 await patch_mod.seed_child_from_parent(sandbox_name, run_id, state)
             await patch_mod.ensure_baseline(sandbox_name, run_directory)
 
+        base_session_id = f"subagent-{run_id}"
+        active_session_id = await compaction.compact_if_needed(
+            state_obj=state_obj,
+            sessions_dir=paths.run_sessions_dir(chat_id, run_id),
+            model=hop_model,
+            base_session_id=base_session_id,
+            pid_file=paths.run_pid_file(chat_id, run_id),
+            log_prefix=f"sub_agent/{self.slug}/{run_id}",
+        )
         try:
             reason = await pi_runner.arun_agent_hop(
                 log_prefix=f"sub_agent/{self.slug}/{run_id}",
                 model=hop_model,
-                session_id=f"subagent-{run_id}",
+                session_id=active_session_id,
                 sessions_dir=paths.run_sessions_dir(chat_id, run_id),
                 tools=None,
                 message=message,

@@ -26,7 +26,7 @@ from collections.abc import Awaitable
 from pathlib import Path
 from typing import Callable
 
-from crack_server import pi_runner, prewalk
+from crack_server import compaction, pi_runner, prewalk
 from crack_server.ratelimit import RESUME_MESSAGE
 from crack_server.state import JsonState
 from crack_server.steprun import (
@@ -70,6 +70,7 @@ async def run_exchange(
     implementer_model: str = "",
     max_hops: int = 1,
     persona_slug: str = "coder",
+    base_session_id: str | None = None,
 ) -> None:
     """Run the agent for the latest entry in ``state["exchanges"]``.
 
@@ -123,6 +124,7 @@ async def run_exchange(
                 start=start, first_message=first_message, user_msg=user_msg,
                 record_template=record_template, hop_kwargs=hop_kwargs,
                 env_extra=env_extra, max_hops=max_hops,
+                base_session_id=base_session_id or session_id,
             )
 
         def _finish(s: dict) -> dict:
@@ -165,6 +167,7 @@ async def _run_prewalk_loop(
     hop_kwargs: dict | None,
     env_extra: dict[str, str] | None,
     max_hops: int,
+    base_session_id: str,
 ) -> str:
     """Drive one exchange to completion across prewalk hops; return the final
     stop reason."""
@@ -188,6 +191,15 @@ async def _run_prewalk_loop(
         # Stamp this hop's model onto every turn it persists (trajectory swaps).
         persister.current_model = hop_model
 
+        session_id = await compaction.compact_if_needed(
+            state_obj=state,
+            sessions_dir=sessions_dir,
+            model=hop_model,
+            base_session_id=base_session_id,
+            pid_file=(hop_kwargs or {}).get("pid_file"),
+            log_prefix=log_prefix,
+        )
+
         resume_session = False
         if hop == 1:
             record = prompt_recorder(persister, "chat", record_template, original=user_msg)
@@ -203,7 +215,7 @@ async def _run_prewalk_loop(
         reason = await pi_runner.arun_agent_hop(
             log_prefix=log_prefix,
             model=hop_model,
-            session_id=session_id,
+            session_id=session_id,  # active id (may change after compaction)
             sessions_dir=sessions_dir,
             tools=tools,
             message=message,

@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from crack_server import ui as _ui
-from crack_server import attachments, chat_engine, context_guard, context_stats, git_utils
+from crack_server import attachments, chat_engine, compaction, context_guard, context_stats, git_utils
 from crack_server import paths, patch, pi_runner, queue, sandbox, settings as _settings, titles
 from crack_server.chat_engine import MAX_CHAT_HOPS
 from crack_server.state import chat_state_mtime
@@ -1532,6 +1532,7 @@ async def run_chat(chat_id: str) -> None:
             query=user_msg, message=user_msg,
         )
 
+        base_session_id = f"unscripted-{chat_id}"
         await chat_engine.run_exchange(
             state=chat,
             ident=chat_id,
@@ -1543,7 +1544,8 @@ async def run_chat(chat_id: str) -> None:
             planner_model=planner_model,
             implementer_model=implementer_model,
             max_hops=MAX_CHAT_HOPS,
-            session_id=f"unscripted-{chat_id}",
+            session_id=compaction.resolve_session_id(chat.read(), base_session_id),
+            base_session_id=base_session_id,
             sessions_dir=paths.chat_sessions_dir(chat_id),
             tools=None,
             timeout_seconds=CHAT_TIMEOUT_SECONDS,

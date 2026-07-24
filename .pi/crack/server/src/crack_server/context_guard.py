@@ -15,6 +15,13 @@ FORCE_STOP_REASON = "force_stopped_ctx"
 FORCE_STOP_THRESHOLD = 0.75  # 75 %
 
 
+def needs_compaction(sessions_dir: Path, model: str) -> bool:
+    """Return True when rolling compaction should run before the next hop."""
+    from crack_server import compaction
+
+    return compaction.should_compact(sessions_dir, model)
+
+
 def build_force_stop_message(elapsed_seconds: float) -> str:
     """Return the canonical 'Force Stopped: … Ran for X minutes' string."""
     minutes = elapsed_seconds / 60.0
