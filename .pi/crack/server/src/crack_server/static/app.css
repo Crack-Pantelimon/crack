@@ -1496,6 +1496,16 @@ main.container-fluid {
   margin: 0;
   align-self: flex-start;
 }
+.patch-review-actions button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.patch-commit-indicator,
+.patch-reject-indicator {
+  font-size: 0.85em;
+  color: var(--pico-muted-color, #666);
+  align-self: flex-start;
+}
 /* Per-line comment gutter affordance */
 td.d2h-code-linenumber,
 td.d2h-code-side-linenumber {

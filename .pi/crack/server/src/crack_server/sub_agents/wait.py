@@ -11,12 +11,23 @@ delivery.
 Disk is truth: everything here re-reads run/chat state; ``signals`` events
 (the route's long-poll wakeup) carry no payload.
 
-The finish() race: ``parent_notified=True`` lands in one state write, the
-inbox entry in a later one. A child seen as ``notified`` with no inbox entry
-is therefore *pending* while its ``finished_at`` is recent (the gap); past
-``NOTIFIED_GAP_SECONDS`` it must have been consumed by an earlier wait, so an
-explicit target on it gets an immediate ``delivered_earlier`` rebuild from run
-state (and the caller's two-strike rule can force the same via ``rebuild``).
+The finish() races we must not mis-resolve:
+
+1. ``parent_notified=True`` lands in one state write, the inbox entry in a
+   later one. A child seen as ``notified`` with no inbox entry is *pending*
+   while its ``finished_at`` is recent; past ``NOTIFIED_GAP_SECONDS`` it was
+   consumed by an earlier wait, so an explicit target rebuilds
+   ``delivered_earlier`` (and the caller's two-strike rule can force the same
+   via ``rebuild``).
+
+2. ``phase`` may flip to a terminal value *before* ``finish()`` finishes
+   extracting the child patch and merging it into the parent overlay (historically
+   ``_after_hop`` stamped ``done`` then called ``finish()``, which blocks on
+   extract for tens of seconds). A terminal-but-not-notified child inside
+   ``FINISH_GAP_SECONDS`` is therefore *pending* — not a crash-gap rebuild.
+   Only after that window do we rebuild (true crash recovery). Returning early
+   here is the harmful timing bug: the parent agent resumes before
+   "Merged sub-agent" and edits files that are not in its overlay yet.
 """
 
 from __future__ import annotations
@@ -35,6 +46,10 @@ TERMINAL_PHASES = ("done", "error", "stopped")
 # How long a notified-but-entryless child is treated as the transient finish()
 # gap (pending) rather than as consumed by an earlier wait.
 NOTIFIED_GAP_SECONDS = 60.0
+
+# How long a terminal-but-not-yet-notified child is treated as finish()-in-
+# progress (extract + drain + inbox) rather than as a crashed finish().
+FINISH_GAP_SECONDS = 120.0
 
 
 def _state_obj_for(chat_id: str, parent_kind: str, parent_id: str):
@@ -132,6 +147,15 @@ def _in_notify_gap(descriptor: dict, now: float) -> bool:
     )
 
 
+def _in_finish_gap(descriptor: dict, now: float) -> bool:
+    """True while finish() may still be extracting/merging after a terminal phase stamp."""
+    finished_at = float(descriptor.get("finished_at") or 0)
+    if finished_at <= 0:
+        # No finished_at yet (phase flipped without a stamp) — treat as in-progress.
+        return True
+    return (now - finished_at) < FINISH_GAP_SECONDS
+
+
 def poll(
     *,
     chat_id: str,
@@ -147,10 +171,10 @@ def poll(
 
     ``results`` are freshly drained inbox entries plus rebuilt ones (flagged
     ``delivered_earlier``). ``pending`` lists targets that have not produced a
-    result yet: still running, terminal-but-never-notified is rebuilt
-    immediately instead (crash gap), and notified-but-entryless within the
-    notify-gap window (the caller's two-strike rule escalates those to an
-    explicit ``rebuild``).
+    result yet: still running, terminal-but-not-notified inside the finish gap
+    (extract/drain still in flight), notified-but-entryless within the notify
+    gap (two-strike rebuild), and crash-gap rebuilds only after the finish gap
+    expires.
     """
     now = time.time()
     children = _direct_children(chat_id, parent_kind, parent_id)
@@ -194,8 +218,15 @@ def poll(
             continue
         if not descriptor["notified"]:
             if descriptor["phase"] in TERMINAL_PHASES:
-                # Terminal but finish() never ran (crash gap): rebuild so the
-                # caller is not stuck forever.
+                if _in_finish_gap(descriptor, now):
+                    # finish() still running (extract/drain/inbox) — do NOT
+                    # rebuild; that would unblock wait_join before the merge.
+                    pending.append(
+                        {k: descriptor[k] for k in ("run_id", "persona", "phase", "notified")}
+                    )
+                    continue
+                # Terminal long enough that finish() never completed (crash):
+                # rebuild so the caller is not stuck forever.
                 rebuilt = _rebuild_result(descriptor)
                 if rebuilt is not None:
                     seen.add(rid)

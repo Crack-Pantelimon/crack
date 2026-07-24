@@ -268,6 +268,47 @@ async def test_notified_gap_not_misread_as_delivered(chat_root, fake_pi):
 
 
 @pytest.mark.anyio
+async def test_finish_in_progress_not_rebuilt_early(chat_root, fake_pi):
+    """terminal + !notified inside FINISH_GAP must stay pending.
+
+    Reproducing the harmful wait_join timing bug: phase stamped done before
+    finish() completes extract/drain must not unblock the parent via a
+    delivered_earlier rebuild.
+    """
+    state = runner.spawn(
+        chat_id=chat_root, persona_slug="coder", instructions="F",
+        parent_kind="chat", parent_id=chat_root, depth=0,
+    )
+    run_id = state["run_id"]
+    queue.complete(queue.claim_next())
+
+    def _mid_finish(s: dict) -> dict:
+        s["phase"] = "done"
+        s["parent_notified"] = False
+        s["finished_at"] = time.time()
+        return s
+
+    paths.run_state(chat_root, run_id).update(_mid_finish)
+    res = wait.poll(chat_id=chat_root, parent_kind="chat", parent_id=chat_root,
+                    target=run_id)
+    assert res["results"] == []
+    assert [p["run_id"] for p in res["pending"]] == [run_id]
+    assert res["pending"][0]["notified"] is False
+
+    # Past the finish gap → crash recovery rebuild is allowed.
+    def _age(s: dict) -> dict:
+        s["finished_at"] = time.time() - wait.FINISH_GAP_SECONDS - 5
+        return s
+
+    paths.run_state(chat_root, run_id).update(_age)
+    res = wait.poll(chat_id=chat_root, parent_kind="chat", parent_id=chat_root,
+                    target=run_id)
+    assert [r["run_id"] for r in res["results"]] == [run_id]
+    assert res["results"][0]["delivered_earlier"] is True
+    assert res["pending"] == []
+
+
+@pytest.mark.anyio
 async def test_wait_route_long_poll_wakes_on_notify(chat_root, fake_pi):
     from crack_server.routes_sub_agents import api_wait_sub_agents
 

@@ -266,7 +266,9 @@ def finish(run_id: str, status: str) -> None:
                 s["phase"] = "stopped"
             else:
                 s["phase"] = "error"
-        s.setdefault("finished_at", time.time())
+        # spawn() seeds finished_at=None; setdefault would leave that in place.
+        if not s.get("finished_at"):
+            s["finished_at"] = time.time()
         s["parent_notified"] = True
         return s
 
@@ -284,9 +286,10 @@ def finish(run_id: str, status: str) -> None:
     parent_kind = state.get("parent_kind")
     parent_id = state.get("parent_id")
 
-    # Now that this child is terminal, apply any deferred sibling patches into the
-    # parent overlay in dispatch order — but only when no siblings are still
-    # running (guards the parent overlay from concurrent/mid-run git-applies).
+    # Now that this child is terminal, merge its (and any earlier pending sibling)
+    # patches into the parent overlay in dispatch order under patch_draining.
+    # Must complete before the inbox write / notify so wait_join cannot return
+    # while the parent's overlay still lacks the child's files.
     if sandbox.sandbox_enabled():
         patch.drain_parent_patches(chat_id, parent_kind, parent_id)
 

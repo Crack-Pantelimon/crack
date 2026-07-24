@@ -411,12 +411,11 @@ class SubAgentPersona:
         state = await self.astate_read(run_id)
         report = Path(state.get("report_path", ""))
         if report.is_file():
-            def _done(s: dict) -> dict:
-                s["phase"] = "done"
-                s["finished_at"] = time.time()
-                return s
-
-            await self.astate_update(run_id, _done)
+            # Do NOT stamp phase=done here. finish() extracts the patch (can take
+            # tens of seconds), drains it into the parent overlay, then marks
+            # terminal + notifies wait_join. Stamping done first lets wait.poll's
+            # crash-gap rebuild return before "Merged sub-agent", and the parent
+            # resumes against files that are not in its overlay yet.
             from crack_server.sub_agents import runner
 
             await asyncio.to_thread(runner.finish, run_id, "done")

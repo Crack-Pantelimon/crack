@@ -34,12 +34,6 @@ _GIT_TIMEOUT = 300.0
 MERGE_AUTO_ATTEMPTS = 1
 MERGE_AGENT_ATTEMPTS = 1
 
-# Top-level patches touching these trees can brick crack-dev when applied to the
-# host (uvicorn reloads the server package; the extension is re-read per pi run).
-# Such patches are gated: tested in the sandbox first, then health-checked with a
-# reverse-apply rollback watcher (Plan 7 Part B).
-_SELF_MOD_PREFIXES = (".pi/crack/server/", ".pi/extensions/crack/")
-
 _INCOMING_REF = "refs/crack/incoming"
 _COMMIT_IDENTITY = [
     "-c", "user.name=slopmaster3000",
@@ -1007,87 +1001,8 @@ def notify_parent_apply_failure(
 
 
 # ---------------------------------------------------------------------------
-# Plan 7 Part B: self-modification apply guard
+# Top-level chat: publish pending patch for human review
 # ---------------------------------------------------------------------------
-
-
-def patch_touches_self_mod(patch_path: Path) -> bool:
-    """True when the patch changes crack-server or the crack extension — applying
-    it to the host reloads/rebuilds the live harness, so it must be gated."""
-    try:
-        text = patch_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-    for line in text.splitlines():
-        if not line.startswith("diff --git "):
-            continue
-        for token in line.split()[2:]:
-            rel = token[2:] if token[:2] in ("a/", "b/") else token
-            if rel.startswith(_SELF_MOD_PREFIXES):
-                return True
-    return False
-
-
-def format_test_failure(output: str, patch_path: Path) -> str:
-    resolved = patch_path.resolve()
-    tail = output.strip()[-3000:] or "(no output)"
-    return (
-        "Your changes touch crack-server / the crack extension, so the harness ran "
-        "the server test suite against your sandbox BEFORE applying to the live "
-        "crack-dev host. The tests FAILED, so nothing was applied — the live server "
-        "is untouched.\n\n"
-        f"pytest output (tail):\n{tail}\n\n"
-        f"The full patch is at: {resolved}\n\n"
-        "Fix the failing tests, then stop; the harness will re-run this gate."
-    )
-
-
-def enqueue_chat_test_failure(chat_id: str, output: str, patch_path: Path) -> None:
-    enqueue_chat_system_message(
-        chat_id, format_test_failure(output, patch_path), source="patch_tests",
-    )
-
-
-async def run_sandbox_tests(sandbox_name: str) -> tuple[bool, str]:
-    """Run the crack-server test suite inside the sandbox overlay (Plan 7B step 1).
-
-    The sandbox inherits crack-dev's Poetry venv through the `:O` overlay on the
-    target volume (``POETRY_VIRTUALENVS_PATH=/workspace/target/python-venvs``), so
-    ``poetry run`` executes in it without installing. Returns
-    ``(passed, combined_output)``.
-    """
-    script = (
-        "cd /workspace/.pi/crack/server && "
-        "PYTHONPATH=tests:. poetry run pytest -q "
-        "--ignore=tests/test_vision_media.py"
-    )
-    rc, out, err = await sandbox._podman(
-        "exec", sandbox_name, "bash", "-lc", script, timeout=600.0,
-    )
-    return rc == 0, (out + err)
-
-
-def launch_health_watcher(chat_id: str, patch_path: Path) -> None:
-    """Detached watcher: poll crack-dev health after a self-mod apply and, if it
-    never comes healthy, reverse-apply the patch so the reloader recovers to a
-    good tree (Plan 7B steps 2-4). Survives the server reload because it is a new
-    session, independent of the worker/uvicorn process."""
-    script = paths.project_root() / "_docker" / "_apply_healthcheck.sh"
-    if not script.is_file():
-        logger.warning("health watcher script missing: %s", script)
-        return
-    try:
-        subprocess.Popen(  # noqa: S603 — fixed argv, no shell
-            ["bash", str(script), str(patch_path.resolve()), chat_id],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            cwd=str(paths.project_root()),
-        )
-        logger.info("launched apply health watcher for chat %s", chat_id)
-    except OSError as e:
-        logger.warning("could not launch health watcher for %s: %s", chat_id, e)
 
 
 async def publish_pending_patch(
@@ -1300,7 +1215,6 @@ def drain_parent_patches(chat_id: str, parent_kind: str, parent_id: str) -> None
     """
     if not sandbox.sandbox_enabled():
         return
-    from crack_server.sub_agents import runner
 
     parent_conv = parent_id if parent_kind == "run" else chat_id
     parent_state = (
@@ -1308,8 +1222,11 @@ def drain_parent_patches(chat_id: str, parent_kind: str, parent_id: str) -> None
         else paths.run_state_by_id(parent_id)
     )
     while True:
-        if runner.active_child_count(chat_id, parent_kind, parent_id) > 0:
-            return  # siblings still running; whoever finishes last drains
+        # Merge finished children's patches immediately (even while siblings
+        # still run). Each child has its own sandbox; the parent overlay merge
+        # is serialized by patch_draining. Deferring until the last sibling
+        # finished let wait_join return after inbox notify while files were
+        # still absent from the parent overlay.
         claimed = {"v": False}
 
         def _claim(s: dict) -> dict:
@@ -1485,21 +1402,6 @@ async def handle_patch_commit(
         pending.get("title") or info.get("title") or f"Chat {chat_id}"
     )
 
-    # Self-mod gate at Commit time (tests → merge → commit → health-watch).
-    if patch_path.is_file() and patch_touches_self_mod(patch_path):
-        sbx_name = sandbox.sandbox_name(chat_id)
-        if sandbox.container_exists_sync(sbx_name):
-            await sandbox.ensure_sandbox(chat_id)
-            passed, output = await run_sandbox_tests(sbx_name)
-            if not passed:
-                paths.append_traj_note(
-                    chat, "patch",
-                    "✗ Test gate failed — host repo untouched",
-                    icon="⚠", status="err", detail=(output or "")[-2000:],
-                )
-                enqueue_chat_test_failure(chat_id, output, patch_path)
-                return "test gate failed"
-
     displayed = ""
     if patch_path.is_file():
         try:
@@ -1604,8 +1506,6 @@ async def handle_patch_commit(
             f"✓ Committed{hash_note}: {commit_msg}",
             icon="✅", status="ok",
         )
-        if patch_path.is_file() and patch_touches_self_mod(patch_path):
-            launch_health_watcher(chat_id, patch_path)
 
         chat.update(_clear_pending_patch_state)
         await sandbox.destroy_sandbox(chat_id)

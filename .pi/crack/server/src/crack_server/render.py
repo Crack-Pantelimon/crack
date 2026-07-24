@@ -572,21 +572,31 @@ def render_patch_review_panel(entry: dict) -> str:
 <div class="patch-review-actions">
   <form class="patch-review-commit"
         hx-post="/api/chats/{esc(chat_id)}/patch/commit"
-        hx-target="#chat-content" hx-swap="outerHTML">
+        hx-target="#chat-content" hx-swap="outerHTML"
+        hx-disabled-elt="find button"
+        hx-indicator="find .patch-commit-indicator">
     {confirm_field}
     <label>Commit message
       <textarea name="message" rows="3">{esc(title)}</textarea>
     </label>
     <button type="submit">{esc(commit_label)}</button>
+    <span class="htmx-indicator patch-commit-indicator" aria-live="polite">
+      Committing to host…
+    </span>
   </form>
   <form class="patch-review-reject"
         hx-post="/api/chats/{esc(chat_id)}/patch/reject"
-        hx-target="#chat-content" hx-swap="outerHTML">
+        hx-target="#chat-content" hx-swap="outerHTML"
+        hx-disabled-elt="find button"
+        hx-indicator="find .patch-reject-indicator">
     <label>Reject with comments
       <textarea name="message" rows="3"
         placeholder="Feedback for the agent (per-line comments are appended)"></textarea>
     </label>
     <button type="submit" style="background:red">Reject</button>
+    <span class="htmx-indicator patch-reject-indicator" aria-live="polite">
+      Rejecting…
+    </span>
   </form>
 </div>
 """
