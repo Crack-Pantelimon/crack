@@ -1438,6 +1438,9 @@ main.container-fluid {
   margin: 0;
   width: auto;
 }
+.patch-review-toggles button.is-active {
+  outline: 2px solid var(--pico-primary, #0172ad);
+}
 .patch-review-refreshed {
   background: #fff3cd;
   color: #664d03;
@@ -1452,61 +1455,112 @@ main.container-fluid {
   overflow-x: auto;
   max-height: 60vh;
 }
-.patch-review-d2h.is-hidden {
+/* Hide per-file diff bodies; keep the files-changed overview visible. */
+.patch-review-d2h.patch-diff-body-hidden .d2h-wrapper {
   display: none;
 }
 .patch-review-actions {
   display: grid;
-  gap: 0.6rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: start;
   margin-top: 0.5rem;
+}
+@media (max-width: 720px) {
+  .patch-review-actions {
+    grid-template-columns: 1fr;
+  }
 }
 .patch-review-actions form {
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 .patch-review-actions label {
   font-size: 0.85em;
 }
-.patch-review-actions input[type="text"],
 .patch-review-actions textarea {
-  margin-bottom: 0.35rem;
+  margin-bottom: 0;
+  min-height: 4.5rem;
+  width: 100%;
 }
 .patch-review-actions button {
   width: auto;
   margin: 0;
+  align-self: flex-start;
 }
 /* Per-line comment gutter affordance */
-.d2h-code-line:hover .patch-line-comment-btn,
-.d2h-code-side-line:hover .patch-line-comment-btn {
+td.d2h-code-linenumber,
+td.d2h-code-side-linenumber {
+  position: relative;
+  padding-left: 1.1rem !important;
+}
+.d2h-code-linenumber:hover .patch-line-comment-btn,
+.d2h-code-side-linenumber:hover .patch-line-comment-btn,
+tr:hover .patch-line-comment-btn {
   opacity: 1;
 }
 .patch-line-comment-btn {
-  opacity: 0;
+  opacity: 0.75;
   border: none;
   background: transparent;
   cursor: pointer;
   color: var(--pico-primary, #0172ad);
-  font-size: 0.75rem;
-  padding: 0 0.2rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  margin: 0;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+  height: 1rem;
+}
+.patch-line-comment-btn:hover {
+  opacity: 1;
+  color: #0b5;
 }
 .patch-line-comment-box {
   display: flex;
   gap: 0.35rem;
-  margin: 0.2rem 0 0.4rem 2rem;
+  align-items: flex-start;
+  padding: 0.35rem 0.5rem 0.5rem 1.2rem;
+  background: rgba(1, 114, 173, 0.06);
 }
 .patch-line-comment-box textarea {
   flex: 1;
-  min-height: 2.2rem;
+  min-height: 2.4rem;
   font-size: 0.8em;
+  margin: 0;
+}
+.patch-line-comment-box button {
+  width: auto;
+  margin: 0;
+  font-size: 0.8em;
+  padding: 0.25rem 0.6rem;
 }
 .patch-line-comments {
-  margin: 0.2rem 0 0.4rem 2rem;
+  padding: 0.2rem 0.5rem 0.35rem 1.2rem;
   font-size: 0.8em;
   color: var(--pico-muted-color, #555);
+  background: rgba(0, 0, 0, 0.03);
+}
+.patch-line-comment-chip {
+  padding: 0.15rem 0;
 }
 @media (prefers-color-scheme: dark) {
   .patch-review-refreshed {
     background: #3d3420;
     color: #ffe08a;
     border-color: #5c4d20;
+  }
+  .patch-line-comment-box {
+    background: rgba(80, 160, 220, 0.12);
+  }
+  .patch-line-comments {
+    background: rgba(255, 255, 255, 0.04);
   }
 }

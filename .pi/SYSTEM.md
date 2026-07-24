@@ -254,3 +254,13 @@ the `serena_*_memory`, `serena_onboarding`, `serena_initial_instructions` set.
 
 The first serena call in a fresh session may take a minute while the language
 server warms up — wait for it, do not spam retries.
+
+# Waiting on sub-agents — use `wait_join`, never re-spawn
+
+After you call `spawn_coder` (or any other spawn tool), the child runs in the
+background. To block until it finishes and receive its report, call **`wait_join`**.
+
+**Do NOT** call `spawn_coder` again with a prompt like "wait for the sub-agent" —
+that starts a *new* child. Waiting is `wait_join` only (free; no tokens burned
+while blocked). On timeout, call `wait_join` again; do not poll report files with
+bash `sleep` loops.

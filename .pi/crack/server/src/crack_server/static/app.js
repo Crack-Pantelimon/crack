@@ -385,6 +385,14 @@
         return;
       }
       let outputFormat = 'line-by-line';
+      let bodyHidden = false;
+      function applyBodyVisibility() {
+        target.classList.toggle('patch-diff-body-hidden', bodyHidden);
+        const bodyToggle = panel.querySelector('.patch-body-toggle');
+        if (bodyToggle) {
+          bodyToggle.textContent = bodyHidden ? 'Show diff' : 'Hide diff';
+        }
+      }
       function render() {
         const cfg = {
           drawFileList: true,
@@ -407,6 +415,7 @@
           target.innerHTML = '<pre class="traj-note-log"></pre>';
           target.querySelector('pre').textContent = diffText.slice(0, 20000);
         }
+        applyBodyVisibility();
         wireCommentGutters(panel, target);
       }
       render();
@@ -414,80 +423,181 @@
       panel.querySelectorAll('.patch-view-toggle').forEach(function (btn) {
         btn.addEventListener('click', function () {
           outputFormat = btn.getAttribute('data-view') || 'line-by-line';
-          panel.removeAttribute('data-d2h-ready');
+          panel.querySelectorAll('.patch-view-toggle').forEach(function (b) {
+            b.classList.toggle('is-active', b === btn);
+          });
           target.innerHTML = '';
-          panel.setAttribute('data-d2h-ready', '0');
-          // re-init
-          const was = panel.getAttribute('data-d2h-ready');
-          panel.setAttribute('data-d2h-ready', '0');
           render();
-          panel.setAttribute('data-d2h-ready', '1');
         });
       });
       const bodyToggle = panel.querySelector('.patch-body-toggle');
       if (bodyToggle) {
         bodyToggle.addEventListener('click', function () {
-          const hidden = target.classList.toggle('is-hidden');
-          bodyToggle.textContent = hidden ? 'Show diff' : 'Hide diff';
+          // Keep the file-list overview; only hide the per-file diff bodies.
+          bodyHidden = !bodyHidden;
+          applyBodyVisibility();
         });
       }
     });
   }
 
+  function parseComments(panel) {
+    try {
+      return JSON.parse(panel.getAttribute('data-comments') || '[]') || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function fileNameFromNode(node) {
+    let cur = node;
+    while (cur) {
+      const fileWrap = cur.closest && cur.closest('.d2h-file-wrapper');
+      if (fileWrap) {
+        const nameEl = fileWrap.querySelector('.d2h-file-name');
+        return ((nameEl && nameEl.textContent) || '').trim();
+      }
+      cur = cur.parentElement;
+    }
+    return '';
+  }
+
+  function lineNumberFromTd(td) {
+    if (!td) return '';
+    const num2 = td.querySelector('.line-num2');
+    const num1 = td.querySelector('.line-num1');
+    if (num2 || num1) {
+      const n2 = ((num2 && num2.textContent) || '').trim();
+      const n1 = ((num1 && num1.textContent) || '').trim();
+      return n2 || n1;
+    }
+    return (td.textContent || '').trim();
+  }
+
   function wireCommentGutters(panel, target) {
     const chatId = panel.getAttribute('data-chat-id');
     if (!chatId) return;
-    target.querySelectorAll('.d2h-code-line, .d2h-code-side-line').forEach(function (row) {
-      if (row.querySelector('.patch-line-comment-btn')) return;
-      const lineNum = row.querySelector('.d2h-code-linenumber, .d2h-code-side-linenumber');
-      const n = lineNum && (lineNum.getAttribute('data-line-number') || lineNum.textContent || '').trim();
-      if (!n || !/^\d+$/.test(n)) return;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'patch-line-comment-btn';
-      btn.textContent = '+';
-      btn.title = 'Comment on line ' + n;
-      (lineNum || row).prepend(btn);
-      btn.addEventListener('click', function (evt) {
-        evt.preventDefault();
-        evt.stopPropagation();
-        openLineCommentBox(panel, row, n);
+    const comments = parseComments(panel);
+
+    target.querySelectorAll('tbody.d2h-diff-tbody > tr').forEach(function (tr) {
+      if (tr.querySelector('.d2h-info')) return;
+      const lineTds = tr.querySelectorAll(
+        'td.d2h-code-linenumber, td.d2h-code-side-linenumber'
+      );
+      lineTds.forEach(function (td) {
+        if (td.classList.contains('d2h-emptyplaceholder') ||
+            td.classList.contains('d2h-code-side-emptyplaceholder')) {
+          return;
+        }
+        if (td.querySelector('.patch-line-comment-btn')) return;
+        const n = lineNumberFromTd(td);
+        if (!n || !/^\d+$/.test(n)) return;
+
+        const sideDiff = td.closest('.d2h-file-side-diff');
+        let side = 'new';
+        if (sideDiff) {
+          const sides = sideDiff.parentElement
+            ? sideDiff.parentElement.querySelectorAll('.d2h-file-side-diff')
+            : [];
+          side = (sides[0] === sideDiff) ? 'old' : 'new';
+        } else {
+          const num2 = td.querySelector('.line-num2');
+          const num1 = td.querySelector('.line-num1');
+          const hasNew = num2 && (num2.textContent || '').trim();
+          const hasOld = num1 && (num1.textContent || '').trim();
+          if (hasNew) side = 'new';
+          else if (hasOld) side = 'old';
+        }
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'patch-line-comment-btn';
+        btn.textContent = '+';
+        btn.title = 'Comment on line ' + n;
+        btn.setAttribute('data-line', n);
+        btn.setAttribute('data-side', side);
+        td.prepend(btn);
+        btn.addEventListener('click', function (evt) {
+          evt.preventDefault();
+          evt.stopPropagation();
+          openLineCommentBox(panel, tr, n, side, td);
+        });
       });
+
+      // Render any saved comments for this row under the line.
+      const file = fileNameFromNode(tr);
+      const nums = [...tr.querySelectorAll(
+        'td.d2h-code-linenumber, td.d2h-code-side-linenumber'
+      )].map(lineNumberFromTd).filter(function (x) { return /^\d+$/.test(x); });
+      const matched = comments.filter(function (c) {
+        const cl = String(c.line || '');
+        const cf = String(c.file || '');
+        if (!nums.includes(cl)) return false;
+        if (!file) return true;
+        return !cf || cf === file || cf.indexOf(file) !== -1 || file.indexOf(cf) !== -1;
+      });
+      if (matched.length) {
+        const already = tr.nextElementSibling;
+        if (already && already.classList && already.classList.contains('patch-line-comments-row')) {
+          // already painted
+        } else {
+        const crow = document.createElement('tr');
+        crow.className = 'patch-line-comments-row';
+        const cell = document.createElement('td');
+        cell.colSpan = Math.max(2, tr.children.length);
+        cell.className = 'patch-line-comments';
+        matched.forEach(function (c) {
+          const chip = document.createElement('div');
+          chip.className = 'patch-line-comment-chip';
+          chip.textContent = (c.side ? c.side + ' ' : '') +
+            (c.line != null ? 'L' + c.line + ': ' : '') +
+            (c.body || '');
+          cell.appendChild(chip);
+        });
+        crow.appendChild(cell);
+        tr.insertAdjacentElement('afterend', crow);
+        }
+      }
     });
   }
 
-  function openLineCommentBox(panel, row, line) {
+  function openLineCommentBox(panel, tr, line, side, td) {
     const chatId = panel.getAttribute('data-chat-id');
-    let box = row.nextElementSibling;
-    if (box && box.classList && box.classList.contains('patch-line-comment-box')) {
-      box.querySelector('textarea').focus();
+    let next = tr.nextElementSibling;
+    if (next && next.classList && next.classList.contains('patch-line-comment-box-row')) {
+      const ta = next.querySelector('textarea');
+      if (ta) ta.focus();
       return;
     }
-    box = document.createElement('div');
-    box.className = 'patch-line-comment-box';
-    box.innerHTML = '<textarea placeholder="Comment…"></textarea><button type="button">Save</button>';
-    row.insertAdjacentElement('afterend', box);
-    const ta = box.querySelector('textarea');
-    const save = box.querySelector('button');
+    const boxRow = document.createElement('tr');
+    boxRow.className = 'patch-line-comment-box-row';
+    const cell = document.createElement('td');
+    cell.colSpan = Math.max(2, tr.children.length);
+    cell.className = 'patch-line-comment-box';
+    cell.innerHTML =
+      '<textarea placeholder="Comment on line ' + line + '…"></textarea>' +
+      '<button type="button">Save</button>' +
+      '<button type="button" class="secondary patch-line-comment-cancel">Cancel</button>';
+    boxRow.appendChild(cell);
+    tr.insertAdjacentElement('afterend', boxRow);
+    const ta = cell.querySelector('textarea');
+    const save = cell.querySelector('button');
+    const cancel = cell.querySelector('.patch-line-comment-cancel');
     ta.focus();
+    cancel.addEventListener('click', function () { boxRow.remove(); });
     save.addEventListener('click', function () {
       const body = (ta.value || '').trim();
       if (!body) return;
-      // Best-effort file path from nearest file header
-      let file = '';
-      let node = row;
-      while (node) {
-        const fileWrap = node.closest && node.closest('.d2h-file-wrapper');
-        if (fileWrap) {
-          const nameEl = fileWrap.querySelector('.d2h-file-name, .d2h-file-name-wrapper');
-          file = (nameEl && nameEl.textContent || '').trim();
-          break;
-        }
-        node = node.parentElement;
+      let file = fileNameFromNode(tr);
+      // Strip tag noise like "ADDED" if we fell back to the wrapper text.
+      const nameOnly = tr.closest('.d2h-file-wrapper');
+      if (nameOnly) {
+        const neat = nameOnly.querySelector('.d2h-file-name');
+        if (neat) file = (neat.textContent || '').trim();
       }
       const fd = new FormData();
       fd.append('file', file || 'unknown');
-      fd.append('side', 'new');
+      fd.append('side', side || 'new');
       fd.append('line', String(line));
       fd.append('body', body);
       fetch('/api/chats/' + encodeURIComponent(chatId) + '/patch/comment', {

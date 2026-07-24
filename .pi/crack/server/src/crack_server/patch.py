@@ -1140,7 +1140,6 @@ async def publish_pending_patch(
                 "patch_path": str(result.patch_path),
                 "stats": stats,
                 "title": title,
-                "ignored": False,
             }
             s["review_comments"] = []
             s["apply_attempt"] = 0
@@ -1379,7 +1378,7 @@ def drain_parent_patches(chat_id: str, parent_kind: str, parent_id: str) -> None
 
 
 # ---------------------------------------------------------------------------
-# Human review gate actions (Commit / Reject / Ignore / per-line comments)
+# Human review gate actions (Commit / Reject / per-line comments)
 # ---------------------------------------------------------------------------
 
 
@@ -1477,7 +1476,7 @@ async def handle_patch_commit(
     chat = paths.chat_state(chat_id)
     state = chat.read()
     pending = state.get("pending_patch") or {}
-    if not pending or pending.get("ignored"):
+    if not pending:
         return "no pending patch"
     artifact_dir = paths.chat_dir(chat_id)
     patch_path = patch_diff_path(artifact_dir)
@@ -1641,21 +1640,3 @@ async def handle_patch_reject(chat_id: str, *, message: str = "") -> str:
         chat, "patch", "Rejected — sent feedback to agent", icon="↩", status="ok",
     )
     return "rejected"
-
-
-def handle_patch_ignore(chat_id: str) -> str:
-    """Leave the pending patch on disk; mark ignored (no teardown)."""
-    chat = paths.chat_state(chat_id)
-
-    def _ignore(s: dict) -> dict:
-        pending = dict(s.get("pending_patch") or {})
-        pending["ignored"] = True
-        s["pending_patch"] = pending
-        s["phase"] = "review"
-        return s
-
-    chat.update(_ignore)
-    paths.append_traj_note(
-        chat, "patch", "Ignored — patch left on disk", icon="⏸", status="ok",
-    )
-    return "ignored"

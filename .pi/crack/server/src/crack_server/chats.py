@@ -88,9 +88,7 @@ def chat_status_dot(chat_id: str) -> dict:
     phase_raw = state.get("phase") or "idle"
     if phase_raw == "chatting":
         phase = "chatting"
-    elif phase_raw == "review" or (
-        state.get("pending_patch") and not (state.get("pending_patch") or {}).get("ignored")
-    ):
+    elif phase_raw == "review" or state.get("pending_patch"):
         phase = "review"
     elif phase_raw == "error" or state.get("error"):
         phase = "error"

@@ -494,7 +494,7 @@ def render_note_row(entry: dict) -> str:
 
 
 def render_patch_review_panel(entry: dict) -> str:
-    """GitHub-style review panel: diff2html host + Commit/Reject/Ignore actions."""
+    """GitHub-style review panel: diff2html host + Commit/Reject actions."""
     from html import escape as html_escape
     from pathlib import Path
 
@@ -511,7 +511,6 @@ def render_patch_review_panel(entry: dict) -> str:
     confirm_needed = False
     refreshed = False
     title = ""
-    ignored = False
     if chat_id:
         try:
             st = paths.chat_state(chat_id).read()
@@ -520,7 +519,6 @@ def render_patch_review_panel(entry: dict) -> str:
             confirm_needed = bool(st.get("review_confirm_needed"))
             refreshed = bool(st.get("review_refreshed_diff"))
             title = str(pending.get("title") or "")
-            ignored = bool(pending.get("ignored"))
         except (ValueError, FileNotFoundError):
             pass
 
@@ -549,13 +547,6 @@ def render_patch_review_panel(entry: dict) -> str:
             "</div>"
         )
 
-    if ignored:
-        return (
-            f'<div class="stage-msg traj-note traj-note--patch">'
-            f'<span class="traj-note-line">⏸ Ignored — patch left on disk{ago}</span>'
-            f"</div>"
-        )
-
     actions = ""
     if chat_id and pending:
         confirm_field = (
@@ -569,7 +560,7 @@ def render_patch_review_panel(entry: dict) -> str:
         hx-target="#chat-content" hx-swap="outerHTML">
     {confirm_field}
     <label>Commit message
-      <input type="text" name="message" value="{esc(title)}" />
+      <textarea name="message" rows="3">{esc(title)}</textarea>
     </label>
     <button type="submit">{esc(commit_label)}</button>
   </form>
@@ -577,14 +568,10 @@ def render_patch_review_panel(entry: dict) -> str:
         hx-post="/api/chats/{esc(chat_id)}/patch/reject"
         hx-target="#chat-content" hx-swap="outerHTML">
     <label>Reject with comments
-      <textarea name="message" rows="2"
+      <textarea name="message" rows="3"
         placeholder="Feedback for the agent (per-line comments are appended)"></textarea>
     </label>
-    <button type="submit" class="secondary">Reject</button>
-  </form>
-  <form hx-post="/api/chats/{esc(chat_id)}/patch/ignore"
-        hx-target="#chat-content" hx-swap="outerHTML">
-    <button type="submit" class="contrast">Ignore</button>
+    <button type="submit" style="background:red">Reject</button>
   </form>
 </div>
 """

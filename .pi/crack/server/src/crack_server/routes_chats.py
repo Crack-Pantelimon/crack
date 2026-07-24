@@ -155,7 +155,7 @@ def api_chat_delete(chat_id: str) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
-# Patch review gate (Commit / Reject / Ignore / per-line comments)
+# Patch review gate (Commit / Reject / per-line comments)
 # ---------------------------------------------------------------------------
 
 
@@ -203,16 +203,6 @@ async def api_chat_patch_reject(
     from crack_server import patch as patch_mod
 
     await patch_mod.handle_patch_reject(chat_id, message=message)
-    return HTMLResponse(chats.render_chat_content(chat_id))
-
-
-@router.post("/api/chats/{chat_id}/patch/ignore", response_class=HTMLResponse)
-def api_chat_patch_ignore(chat_id: str) -> HTMLResponse:
-    """Leave the pending patch on disk; no teardown."""
-    chats.check_chat_id(chat_id)
-    from crack_server import patch as patch_mod
-
-    patch_mod.handle_patch_ignore(chat_id)
     return HTMLResponse(chats.render_chat_content(chat_id))
 
 
