@@ -1580,3 +1580,15 @@ tr:hover .patch-line-comment-btn {
     background: rgba(255, 255, 255, 0.04);
   }
 }
+.graph-canvas {
+  height: 65vh;
+  min-height: 420px;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 0.5rem;
+  margin-top: 1rem;
+  background: #fafafa;
+}
+
+.graph-details {
+  margin-top: 1rem;
+}

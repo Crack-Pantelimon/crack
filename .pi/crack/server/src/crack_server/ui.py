@@ -82,6 +82,7 @@ def _render_sidebar() -> str:
       <a href="/"><strong>Home</strong></a>
       <a href="/sub_agents">Sub-agents</a>
       <a href="/rag">RAG search</a>
+      <a href="/graph">Graph Search</a>
       <a href="/settings">Settings</a>
       <h6>Chats</h6>
       {chat_links}

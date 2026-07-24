@@ -20,6 +20,8 @@ volumes:
     name: milvus-minio-data
   milvus-data:
     name: milvus-data
+  falkordb-data:
+    name: falkordb-data
 
 services:
   crack_nginx_data:
@@ -45,6 +47,46 @@ services:
       - nvidia.com/gpu=all
     ports:
       - 127.0.0.1:11434:11434
+    restart: unless-stopped
+
+  falkordb:
+    container_name: falkordb
+    image: docker.io/falkordb/falkordb:latest
+    volumes:
+      - falkordb-data:/data
+    ports:
+      - 127.0.0.1:6379:6379
+    restart: unless-stopped
+
+  falkordb-browser:
+    container_name: falkordb-browser
+    image: docker.io/falkordb/falkordb-browser:latest
+    environment:
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: 6379
+    ports:
+      - 127.0.0.1:3000:3000
+    depends_on:
+      - falkordb
+    restart: unless-stopped
+
+  graphiti-mcp:
+    container_name: graphiti-mcp
+    image: docker.io/zepai/knowledge-graph-mcp:latest
+    environment:
+      FALKORDB_URI: redis://falkordb:6379
+      FALKORDB_DATABASE: graphiti
+      GRAPHITI_GROUP_ID: crack-repo
+      OPENAI_BASE_URL: http://ollama:11434/v1
+      OPENAI_API_KEY: ollama
+      MODEL_NAME: llama3.2
+      GRAPHITI_TELEMETRY_ENABLED: "false"
+      SEMAPHORE_LIMIT: "3"
+    ports:
+      - 127.0.0.1:8000:8000
+    depends_on:
+      - falkordb
+      - ollama
     restart: unless-stopped
 
   milvus-etcd:
@@ -103,6 +145,13 @@ services:
       CONTAINER_HOST: unix:///run/podman/podman.sock
       CRACK_HOST_REPO_ROOT: ${CRACK_HOST_REPO_ROOT}
       CRACK_HARNESS_DATA_DIR: /crack-harness-data
+      FALKORDB_HOST: falkordb
+      FALKORDB_PORT: 6379
+      FALKORDB_DATABASE: graphiti
+      OLLAMA_HOST: http://ollama:11434
+      GRAPHITI_TELEMETRY_ENABLED: "false"
+      TELEMETRY_ENABLED: "false"
+      DO_NOT_TRACK: "1"
     ports:
       - 127.0.0.1:9847:9847
       - 127.0.0.1:21122:22

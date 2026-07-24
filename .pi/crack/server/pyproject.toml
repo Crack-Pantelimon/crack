@@ -3,9 +3,10 @@ name = "crack-pi-server"
 version = "0.1.0"
 description = "Web UI for .pi/crack/tasks/<task_id> prompt markdown files"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<4"
 dependencies = [
     "fastapi>=0.115.0",
+    "graphiti-core[falkordb]>=0.21.0",
     "markdown-it-py>=4.2.0",
     "python-multipart>=0.0.32",
     "uvicorn[standard]>=0.32.0",

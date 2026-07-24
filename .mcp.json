@@ -44,6 +44,14 @@
         "DISABLE_TELEMETRY": "true"
       }
     },
+    "graphiti": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://graphiti-mcp:8000/mcp/"],
+      "env": {
+        "GRAPHITI_TELEMETRY_ENABLED": "false",
+        "DO_NOT_TRACK": "1"
+      }
+    },
     "code-search": {
       "command": "npx",
       "args": ["-y", "@zilliz/claude-context-mcp@0.1.15"],
