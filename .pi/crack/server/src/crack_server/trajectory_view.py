@@ -159,7 +159,11 @@ def project_session_events(events: list[dict]) -> list[dict]:
         if etype == "model_change":
             model = str(event.get("modelId") or event.get("model") or "")
             provider = str(event.get("provider") or "")
-            current_model = f"{provider}/{model}" if provider and model and "/" not in model else (model or provider)
+            current_model = (
+                f"{provider}/{model}"
+                if provider and model
+                else (model or provider)
+            )
             rows.append({
                 "kind": "annotation",
                 "ann": "model_change",
@@ -403,6 +407,36 @@ def merge_exchange_sidecars(
     keyed.sort(key=lambda item: (item[0], item[1], item[2]))
     return [payload for _, _, _, payload in keyed]
 
+
+
+def merge_time_sorted_spine(
+    primary: list[dict],
+    *sidecar_lists: list[dict],
+) -> list[dict]:
+    """Merge primary rows with sidecar rows by time.
+
+    Primary rows keep list order on tie (monotonic ``at``). Sidecar rows sort by
+    their ``at`` / ``timestamp``; on ties they land after the spine row they
+    follow — same keyed-sort pattern as :func:`merge_exchange_sidecars` and
+    ``render._merged_trajectory``.
+    """
+    keyed: list[tuple[float, int, int, dict]] = []
+    last = 0.0
+    for idx, row in enumerate(primary):
+        ep = _row_epoch(row)
+        if ep is None or ep < last:
+            ep = last
+        else:
+            last = ep
+        keyed.append((ep, 0, idx, row))
+    sidecars: list[dict] = []
+    for lst in sidecar_lists:
+        sidecars.extend(lst)
+    for idx, side in enumerate(sidecars):
+        ep = _row_epoch(side)
+        keyed.append((ep if ep is not None else last, 1, idx, side))
+    keyed.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [payload for _, _, _, payload in keyed]
 
 def clear_cache() -> None:
     """Test helper: drop the session-file parse cache."""

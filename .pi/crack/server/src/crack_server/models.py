@@ -24,6 +24,7 @@ FALLBACK_MODELS = [
 ]
 MAX_AGE_SECONDS = 24 * 3600
 FETCH_TIMEOUT_SECONDS = 60
+DEFAULT_CONTEXT_WINDOW = 200_000
 
 # Pseudo-stage slug for the models-cache refresh job on the queue (worker.py).
 MODELS_JOB_SLUG = "__models__"
@@ -154,7 +155,12 @@ def model_info(model: str) -> dict | None:
     return info.get(model)
 
 
-def context_window(model: str) -> int | None:
+def context_window(model: str) -> int:
+    """Cached context-window token count for a model, defaulting to 200k when unknown."""
+    entry = model_info(model)
+    if not entry:
+        return DEFAULT_CONTEXT_WINDOW
+    return entry.get("context_tokens") or DEFAULT_CONTEXT_WINDOW
     """Cached context-window token count for a model, or None when unknown."""
     entry = model_info(model)
     if not entry:

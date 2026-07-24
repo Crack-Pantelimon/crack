@@ -144,6 +144,60 @@ def test_model_state_threads_across_calls():
     assert "model-switch" in second
 
 
+def test_models_equivalent_treats_provider_prefix_variants():
+    assert render.models_equivalent(
+        "nvidia/minimaxai/minimax-m3", "minimaxai/minimax-m3"
+    )
+    assert not render.models_equivalent("acme/a", "acme/b")
+
+
+def test_prewalk_swap_with_early_model_change_annotation():
+    """Session-start model_change must not produce a reversed swap divider."""
+    from crack_server import trajectory_view
+
+    planner = "nvidia/minimaxai/minimax-m3"
+    implementer = "nvidia/stepfun-ai/step-3.7-flash"
+    turns = [
+        _turn(planner, tools=[{"name": "todo", "output": "[ ] #1 do it"}], text="plan"),
+        _turn(implementer, tools=[{"name": "edit", "input": {"path": "a.py"}}], text="impl"),
+    ]
+    turns[0]["at"] = 101.0
+    turns[1]["at"] = 102.0
+    annotations = [{
+        "kind": "annotation", "ann": "model_change", "model": planner, "at": 100.0,
+    }]
+    spine = trajectory_view.merge_time_sorted_spine(turns, annotations)
+    html = "".join(render.render_turn_msgs(spine, model_state=render.new_model_state()))
+    assert html.count("model-switch-line") == 1
+    assert "prewalk plan complete" in html
+    assert implementer in html
+    assert f"implementing on <code>{implementer}</code>" in html
+    assert f"implementing on <code>{planner}</code>" not in html
+
+
+def test_unsorted_annotations_append_would_reverse_swap():
+    """Regression: concatenating annotations after turns shows a bogus divider."""
+    from crack_server import trajectory_view
+
+    planner = "nvidia/minimaxai/minimax-m3"
+    implementer = "nvidia/stepfun-ai/step-3.7-flash"
+    turns = [
+        _turn(planner, tools=[{"name": "todo", "output": "[ ] #1"}], text="plan"),
+        _turn(implementer, tools=[{"name": "edit", "input": {"path": "a.py"}}], text="impl"),
+    ]
+    turns[0]["at"] = 101.0
+    turns[1]["at"] = 102.0
+    annotations = [{
+        "kind": "annotation", "ann": "model_change", "model": planner, "at": 100.0,
+    }]
+    bad_spine = list(turns) + annotations
+    good_spine = trajectory_view.merge_time_sorted_spine(turns, annotations)
+    bad_html = "".join(render.render_turn_msgs(bad_spine, model_state=render.new_model_state()))
+    good_html = "".join(render.render_turn_msgs(good_spine, model_state=render.new_model_state()))
+    assert bad_html.count("model-switch-line") == 2
+    assert good_html.count("model-switch-line") == 1
+
+
 # ---------------------------------------------------------------------------
 # tool-output preview
 # ---------------------------------------------------------------------------

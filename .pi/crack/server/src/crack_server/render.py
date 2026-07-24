@@ -335,6 +335,17 @@ def render_user_prompt_msg(entry: dict) -> str:
     )
 
 
+def models_equivalent(a: str, b: str) -> bool:
+    """True when two model ids refer to the same model (provider prefix variants)."""
+    a = str(a or "").strip()
+    b = str(b or "").strip()
+    if not a or not b:
+        return a == b
+    if a == b:
+        return True
+    return a.endswith("/" + b) or b.endswith("/" + a)
+
+
 def _model_tag(model: str) -> str:
     """Small per-turn badge naming the model that produced the turn."""
     esc = _ui._esc
@@ -642,7 +653,7 @@ def render_turn_msgs(
             if entry.get("ann") == "model_change" and model_state is not None:
                 cur_model = str(entry.get("model") or "")
                 prev = model_state.get("model")
-                if prev and cur_model and prev != cur_model:
+                if prev and cur_model and not models_equivalent(prev, cur_model):
                     swap = bool(model_state.get("seen_todo"))
                     out.append(_model_switch_divider(prev, cur_model, swap))
                     model_state["seen_todo"] = False
@@ -697,7 +708,7 @@ def render_turn_msgs(
         tag = ""
         if model_state is not None and cur_model:
             prev = model_state.get("model")
-            if prev and prev != cur_model:
+            if prev and not models_equivalent(prev, cur_model):
                 swap = bool(model_state.get("seen_todo"))
                 out.append(_model_switch_divider(prev, cur_model, swap))
                 model_state["seen_todo"] = False

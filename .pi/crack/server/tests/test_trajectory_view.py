@@ -194,3 +194,25 @@ def test_host_worktree_dirty_detects_untracked(tmp_path: Path):
     assert not git_utils.host_worktree_dirty(tmp_path)
     (tmp_path / "dirt.txt").write_text("x")
     assert git_utils.host_worktree_dirty(tmp_path)
+
+def test_model_change_projects_fully_qualified_id():
+    events = [{
+        "type": "model_change", "id": "m1",
+        "provider": "nvidia", "modelId": "minimaxai/minimax-m3",
+        "timestamp": "2026-01-01T00:00:00Z",
+    }]
+    rows = trajectory_view.project_session_events(events)
+    mc = next(r for r in rows if r.get("ann") == "model_change")
+    assert mc["model"] == "nvidia/minimaxai/minimax-m3"
+
+
+def test_merge_time_sorted_spine_interleaves_by_at():
+    turns = [{"kind": "turn", "text": "later", "at": 200.0, "model": "nvidia/m2"}]
+    annotations = [{
+        "kind": "annotation", "ann": "model_change", "model": "nvidia/m1",
+        "at": 100.0, "timestamp": "2026-01-01T00:00:00Z",
+    }]
+    spine = trajectory_view.merge_time_sorted_spine(turns, annotations)
+    assert spine[0]["ann"] == "model_change"
+    assert spine[1]["text"] == "later"
+

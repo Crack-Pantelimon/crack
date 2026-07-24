@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from crack_server import ui as _ui
-from crack_server import attachments, chat_engine, context_stats, git_utils
+from crack_server import attachments, chat_engine, context_guard, context_stats, git_utils
 from crack_server import paths, patch, pi_runner, queue, sandbox, settings as _settings, titles
 from crack_server.chat_engine import MAX_CHAT_HOPS
 from crack_server.state import chat_state_mtime
@@ -629,12 +629,14 @@ def _render_run_card(chat_id: str, run_id: str, children_by_parent: dict[str, li
     if phase == "awaiting_user" and state.get("pending_question"):
         form_html = render_user_question_form(chat_id, run_id, state["pending_question"])
 
+    from crack_server import trajectory_view
+
     turns = state.get("turns") or []
     errors = state.get("errors") or []
-    spine = (
-        list(turns)
-        + _run_annotation_rows(chat_id, run_id)
-        + list(state.get("traj_notes") or [])
+    spine = trajectory_view.merge_time_sorted_spine(
+        list(turns),
+        _run_annotation_rows(chat_id, run_id),
+        list(state.get("traj_notes") or []),
     )
     transcript = "".join(render.render_turn_msgs(
         spine, errors=errors, include_text=True, model_state=render.new_model_state()
