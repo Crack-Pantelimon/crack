@@ -1,6 +1,6 @@
 # Report: Async Blockage During Sandbox Creation (pi crack server / crack-dev)
 
-**Status:** analysis + fix plan (not yet implemented)
+**Status:** ✅ implemented in `sandbox.py` (Edits A, B, C, D + §5.4 semaphore)
 **Author:** triage pass
 **Scope:** `.pi/crack/server/src/crack_server/` — the FastAPI + async in-process
 worker that serves the pi crack chat interface.
@@ -322,3 +322,58 @@ ops). Wrapping the three git calls (and the overlay mkdir/write block) in
 `subprocess.run`, and bounding concurrent materialisation with a small
 semaphore fully fixes the blockage. The change is ~4–20 lines, isolated to
 `sandbox.py`, and fully rollbackable.
+sandbox.py", and fully rollbackable.
+
+## 10. Implementation log (applied 2024)
+
+File changed: `.pi/crack/server/src/crack_server/sandbox.py`. One file, ~+60/−20 lines.
+
+**Edits applied (matches the plan in §5):**
+
+1. **Module-level constants (§5.4):** added `_GIT_SUB_TIMEOUT = 60` and a
+   module-level `_SANDBOX_MAT_SEM` / `_materialise_sem()` helper so a sandbox
+   materialisation semaphore (`asyncio.Semaphore(2)`) is created lazily on the
+   running loop (laziness avoids the "no running event loop" error at import
+   time, which is what happens if you build the semaphore at module top level).
+
+2. **Edit D — subprocess timeouts inside `materialise_frozen_base`:**
+   - `tar -x ...` now uses `timeout=_GIT_SUB_TIMEOUT;
+     `subprocess.TimeoutExpired` kills+drains the `git archive` Popen and raises a
+     `RuntimeError` with the same message shape.
+   - `arch.communicate(...)` uses `timeout=_GIT_SUB_TIMEOUT`
+   - `git init` uses `timeout=_GIT_SUB_TIMEOUT`
+   - the three seed commands (`symbolic-ref` / `update-ref` / `read-tree`) use
+     `timeout=_GIT_SUB_TIMEOUT`
+   This prevents a stuck git from pinning a default-executor thread — which
+   would have re-introduced the freeze at scale once we moved the work off the
+   loop.
+
+3. **Edit A/B/C — off-thread everything inside `ensure_sandbox`:**
+   - `_prep_overlay_dirs()` local `def` wraps the 4 `mkdir` calls and is `await`ed
+     via `asyncio.to_thread(_prep_overlay_dirs)`.
+   - The parent-conv probe `overlay_base_dir(parent_conv).is_dir()` is run via
+     `await asyncio.to_thread(overlay_base_dir(parent_conv).is_dir)`.
+   - `frozen_tree_for(parent_conv)` is `await asyncio.to_thread(...)`.
+   - A small `_seed_subagent_base()` local `def` wraps the `_overlay_root(...).mkdir`,
+     `overlay_tree_path(...).write_text` of the sub-agent branch and is `await`ed.
+   - The host-snapshot branch is **gated by `_materialise_sem()`** (the bounded
+     sem): `snapshot_host_tree`, `snapshot_host_head`, and
+     `materialise_frozen_base` are all `await asyncio.to_thread(...)`ed.
+   - The slow `podman run` (~line 400) was already async-clean and is left as is;
+     because it sits *outside* the sem block, multiple sandboxes can still
+     overlap their `podman run` while at most 2 do the heavy git reproduction.
+
+4. **defensive init:** `tree: str | None = None` so the success-log
+   `(tree or "?")` at the end always has a bound name across both branches
+   (matches original runtime behaviour; the sub-agent branch's `tree = None`
+   case now logs `?` instead of raising `UnboundLocalError`, which is strictly
+   safer).
+
+**Verified:** `python3 -m py_compile src/crack_server/sandbox.py` → OK.
+
+**Not done in this pass (see §6 audit):** the `*_sync` wrapper audit, and the
+`rag.py` / `git_utils.py` / `pi_proc.py` / `patch.py` subprocess audit. Those
+are independent follow-ups; the chat-blockage symptom (§1) is fully addressed
+by the `ensure_sandbox` change since every `await sandbox.ensure_sandbox(...)`
+call site (`chats.py:1436`, `chats.py:1470`, `sub_agents/base.py:316`) now hits
+only async-clean code.

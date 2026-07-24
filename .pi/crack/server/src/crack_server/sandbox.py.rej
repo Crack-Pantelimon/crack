@@ -1,0 +1,117 @@
+diff a/.pi/crack/server/src/crack_server/sandbox.py b/.pi/crack/server/src/crack_server/sandbox.py	(rejected hunks)
+@@ -26,6 +26,23 @@ TARGET_VOLUME = "crack-dev-target-dir"
+ SANDBOX_IMAGE = "localhost/crack-dev:latest"
+ _DEFAULT_EXEC_TIMEOUT = 60
+ _KILL_GRACE_SECONDS = 2.0
++# Per-subprocess timeout guarding the synchronous git materialisation steps that
++# run off the event loop via asyncio.to_thread (see ensure_sandbox). Without it a
++# stuck git would pin a thread of the default executor and re-introduce the
++# freeze at scale.
++_GIT_SUB_TIMEOUT = 60
++# Bounds how many sandboxes can do the git tree materialisation at once. The
++# slow ``git archive | tar -x`` + 4 plumbing commands is the fs/git-pressure
++# hot spot, so we cap overlap here while still letting the ``podman run`` part
++# of other sandboxes overlap freely.
++_SANDBOX_MAT_SEM: asyncio.Semaphore | None = None
++
++
++def _materialise_sem() -> asyncio.Semaphore:
++    global _SANDBOX_MAT_SEM
++    if _SANDBOX_MAT_SEM is None:
++        _SANDBOX_MAT_SEM = asyncio.Semaphore(2)
++    return _SANDBOX_MAT_SEM
+ 
+ 
+ def sandbox_name(conv_id: str) -> str:
+@@ -173,11 +190,17 @@ def materialise_frozen_base(
+         stderr=subprocess.PIPE,
+     )
+     assert arch.stdout is not None
+-    tar = subprocess.run(
+-        ["tar", "-x", "-C", str(dest)],
+-        stdin=arch.stdout, capture_output=True, check=False,
+-    )
+-    arch_stderr = arch.communicate()[1]
++    try:
++        tar = subprocess.run(
++            ["tar", "-x", "-C", str(dest)],
++            stdin=arch.stdout, capture_output=True, check=False,
++            timeout=_GIT_SUB_TIMEOUT,
++        )
++    except subprocess.TimeoutExpired:
++        arch.kill()
++        arch.communicate()
++        raise RuntimeError(f"tar -x for {tree[:12]} timed out after {_GIT_SUB_TIMEOUT}s")
++    arch_stderr = arch.communicate(timeout=_GIT_SUB_TIMEOUT)[1]
+     if arch.returncode != 0 or tar.returncode != 0:
+         raise RuntimeError(
+             f"git archive|tar failed for {tree[:12]}: "
+@@ -186,7 +209,7 @@ def materialise_frozen_base(
+         )
+     init = subprocess.run(
+         ["git", "init", str(dest)],
+-        capture_output=True, text=True, check=False,
++        capture_output=True, text=True, check=False, timeout=_GIT_SUB_TIMEOUT,
+     )
+     if init.returncode != 0:
+         raise RuntimeError(f"git init in frozen base failed: {init.stderr or init.stdout}")
+@@ -212,6 +235,7 @@ def materialise_frozen_base(
+         ):
+             seeded = subprocess.run(
+                 seed_cmd, capture_output=True, text=True, check=False, env=seed_env,
++                timeout=_GIT_SUB_TIMEOUT,
+             )
+             if seeded.returncode != 0:
+                 raise RuntimeError(
+@@ -330,24 +354,39 @@ async def ensure_sandbox(conv_id: str, *, parent_conv: str | None = None) -> str
+     target_vol = await target_volume_host_path()
+     ovl = _host_overlay_root(vol, conv_id)
+     upper, work = _overlay_dirs(conv_id)
+-    upper.mkdir(parents=True, exist_ok=True)
+-    work.mkdir(parents=True, exist_ok=True)
+     t_upper, t_work = _target_overlay_dirs(conv_id)
+-    t_upper.mkdir(parents=True, exist_ok=True)
+-    t_work.mkdir(parents=True, exist_ok=True)
+ 
+-    if parent_conv and overlay_base_dir(parent_conv).is_dir():
++    def _prep_overlay_dirs() -> None:
++        upper.mkdir(parents=True, exist_ok=True)
++        work.mkdir(parents=True, exist_ok=True)
++        t_upper.mkdir(parents=True, exist_ok=True)
++        t_work.mkdir(parents=True, exist_ok=True)
++
++    await asyncio.to_thread(_prep_overlay_dirs)
++
++    tree: str | None = None
++    if parent_conv and await asyncio.to_thread(overlay_base_dir(parent_conv).is_dir):
+         # Share the parent's immutable lower (overlay lower is read-only).
+         lower_host = f"{_host_overlay_root(vol, parent_conv)}/base"
+-        tree = frozen_tree_for(parent_conv)
++        tree = await asyncio.to_thread(frozen_tree_for, parent_conv)
+         if tree:
+-            _overlay_root(conv_id).mkdir(parents=True, exist_ok=True)
+-            overlay_tree_path(conv_id).write_text(tree + "\n", encoding="utf-8")
++            def _seed_subagent_base() -> None:
++                _overlay_root(conv_id).mkdir(parents=True, exist_ok=True)
++                overlay_tree_path(conv_id).write_text(tree + "\n", encoding="utf-8")
++
++            await asyncio.to_thread(_seed_subagent_base)
+     else:
+-        tree = snapshot_host_tree()
+-        head_sha, branch = snapshot_host_head()
+-        base = overlay_base_dir(conv_id)
+-        materialise_frozen_base(tree, base, head_sha=head_sha, branch=branch)
++        # git materialisation is the slowest, fs/git-pressure hot spot: run it
++        # off the event loop so the loop stays free for other coroutines, and
++        # bound overlap with a semaphore so concurrent sandbox intros don't
++        # exhaust the default executor / saturate the host git/fs stack.
++        async with _materialise_sem():
++            tree = await asyncio.to_thread(snapshot_host_tree)
++            head_sha, branch = await asyncio.to_thread(snapshot_host_head)
++            base = overlay_base_dir(conv_id)
++            await asyncio.to_thread(
++                materialise_frozen_base, tree, base, head_sha=head_sha, branch=branch,
++            )
+         lower_host = f"{ovl}/base"
+ 
+     # Every sandbox (top-level or sub-agent) overlays /workspace/target on the
