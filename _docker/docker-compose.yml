@@ -72,16 +72,27 @@ services:
 
   graphiti-mcp:
     container_name: graphiti-mcp
-    image: docker.io/zepai/knowledge-graph-mcp:latest
+    # standalone = MCP only (no embedded FalkorDB/browser); we run those as siblings.
+    image: docker.io/zepai/knowledge-graph-mcp:standalone
+    volumes:
+      - type: bind
+        source: ./graphiti-mcp-config.yaml
+        target: /app/mcp/config/config.yaml
+        read_only: true
     environment:
       FALKORDB_URI: redis://falkordb:6379
       FALKORDB_DATABASE: graphiti
       GRAPHITI_GROUP_ID: crack-repo
-      OPENAI_BASE_URL: http://ollama:11434/v1
+      # Config yaml expands OPENAI_API_URL (not OPENAI_BASE_URL).
+      OPENAI_API_URL: http://ollama:11434/v1
       OPENAI_API_KEY: ollama
-      MODEL_NAME: llama3.2
+      OPENAI_BASE_URL: http://ollama:11434/v1
+      MODEL_NAME: deepseek-r1:7b
       GRAPHITI_TELEMETRY_ENABLED: "false"
+      TELEMETRY_ENABLED: "false"
+      DO_NOT_TRACK: "1"
       SEMAPHORE_LIMIT: "3"
+      BROWSER: "0"
     ports:
       - 127.0.0.1:8000:8000
     depends_on:
@@ -149,6 +160,11 @@ services:
       FALKORDB_PORT: 6379
       FALKORDB_DATABASE: graphiti
       OLLAMA_HOST: http://ollama:11434
+      OPENAI_API_KEY: ollama
+      OPENAI_BASE_URL: http://ollama:11434/v1
+      GRAPHITI_LLM_MODEL: deepseek-r1:7b
+      GRAPHITI_EMBEDDING_MODEL: all-minilm
+      GRAPHITI_EMBEDDING_DIMENSION: "384"
       GRAPHITI_TELEMETRY_ENABLED: "false"
       TELEMETRY_ENABLED: "false"
       DO_NOT_TRACK: "1"

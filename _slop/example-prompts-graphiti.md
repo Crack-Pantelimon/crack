@@ -3,6 +3,11 @@
 These prompts assume the local `ollama`, `falkordb`, and `falkordb-browser`
 services are running and that Graphiti telemetry is disabled.
 
+Models (Ollama local LLM guide + RAG-matching embedder):
+
+- LLM: `deepseek-r1:7b` via `OpenAIGenericClient` → `http://ollama:11434/v1`
+- Embeddings: `all-minilm` (384-dim, same as RAG / code-search), not `nomic-embed-text`
+
 ## Seed a small graph
 
 Add three episodes to the `crack-repo` group:

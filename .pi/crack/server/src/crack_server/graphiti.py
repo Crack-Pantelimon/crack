@@ -1,5 +1,12 @@
 """Small, fail-open Graphiti integration for the local FalkorDB graph.
 
+Configured per Graphiti's "Ollama (Local LLMs)" guide:
+https://help.getzep.com/graphiti/configuration/llm-configuration
+
+Uses ``OpenAIGenericClient`` (chat/completions + response_format) because
+Ollama does not implement ``/v1/responses``. Embeddings reuse the same small
+``all-minilm`` model as the RAG indexer (384-dim) instead of nomic-embed-text.
+
 Graphiti is initialized lazily so the rest of the server remains usable while
 FalkorDB, Ollama, or the optional Poetry dependency is unavailable.
 """
@@ -16,12 +23,14 @@ logger = logging.getLogger("uvicorn.error")
 FALKORDB_HOST = os.environ.get("FALKORDB_HOST", "falkordb")
 FALKORDB_PORT = int(os.environ.get("FALKORDB_PORT", "6379"))
 FALKORDB_DATABASE = os.environ.get("FALKORDB_DATABASE", "graphiti")
-GRAPHITI_LLM_MODEL = os.environ.get("GRAPHITI_LLM_MODEL", "llama3.2")
+# Tutorial model: deepseek-r1:7b. Override via GRAPHITI_LLM_MODEL if needed.
+GRAPHITI_LLM_MODEL = os.environ.get("GRAPHITI_LLM_MODEL", "deepseek-r1:7b")
+# Match RAG / code-search: all-minilm @ 384 dims (45 MB), not nomic-embed-text.
 GRAPHITI_EMBEDDING_MODEL = os.environ.get(
-    "GRAPHITI_EMBEDDING_MODEL", "nomic-embed-text"
+    "GRAPHITI_EMBEDDING_MODEL", "all-minilm"
 )
 GRAPHITI_EMBEDDING_DIMENSION = int(
-    os.environ.get("GRAPHITI_EMBEDDING_DIMENSION", "768")
+    os.environ.get("GRAPHITI_EMBEDDING_DIMENSION", "384")
 )
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 SEARCH_LIMIT = int(os.environ.get("GRAPHITI_SEARCH_LIMIT", "20"))
@@ -31,6 +40,10 @@ SEARCH_LIMIT = int(os.environ.get("GRAPHITI_SEARCH_LIMIT", "20"))
 os.environ.setdefault("GRAPHITI_TELEMETRY_ENABLED", "false")
 os.environ.setdefault("TELEMETRY_ENABLED", "false")
 os.environ.setdefault("DO_NOT_TRACK", "1")
+# OpenAI SDK / Graphiti reranker still peek at these even when config.api_key
+# is passed explicitly — keep them pointed at local Ollama.
+os.environ.setdefault("OPENAI_API_KEY", "ollama")
+os.environ.setdefault("OPENAI_BASE_URL", f"{OLLAMA_HOST.rstrip('/')}/v1")
 
 _graph: Any | None = None
 _init_error: str | None = None
@@ -38,10 +51,11 @@ _init_error: str | None = None
 
 def _build_graph() -> Any:
     from graphiti_core import Graphiti
+    from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
     from graphiti_core.driver.falkordb_driver import FalkorDriver
     from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
     from graphiti_core.llm_client.config import LLMConfig
-    from graphiti_core.llm_client.openai_client import OpenAIClient
+    from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
 
     driver = FalkorDriver(
         host=FALKORDB_HOST,
@@ -56,10 +70,9 @@ def _build_graph() -> Any:
         small_model=GRAPHITI_LLM_MODEL,
         temperature=0.0,
     )
-    # Ollama exposes an OpenAI-compatible /v1 API. Graphiti 0.29 does not
-    # ship an Ollama-specific client, so use its native OpenAI adapters while
-    # keeping all inference and embeddings local.
-    llm_client = OpenAIClient(config=llm_config)
+    # OpenAIGenericClient → /v1/chat/completions (Ollama-compatible).
+    # OpenAIClient would hit /v1/responses, which Ollama does not implement.
+    llm_client = OpenAIGenericClient(config=llm_config)
     embedder = OpenAIEmbedder(
         config=OpenAIEmbedderConfig(
             api_key="ollama",
@@ -72,6 +85,7 @@ def _build_graph() -> Any:
         graph_driver=driver,
         llm_client=llm_client,
         embedder=embedder,
+        cross_encoder=OpenAIRerankerClient(client=llm_client, config=llm_config),
     )
 
 
@@ -98,6 +112,7 @@ def status() -> dict[str, Any]:
         "database": FALKORDB_DATABASE,
         "llm_model": GRAPHITI_LLM_MODEL,
         "embedding_model": GRAPHITI_EMBEDDING_MODEL,
+        "embedding_dim": GRAPHITI_EMBEDDING_DIMENSION,
     }
 
 
