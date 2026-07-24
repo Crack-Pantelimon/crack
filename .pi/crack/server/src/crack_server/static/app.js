@@ -368,4 +368,145 @@
     evt.preventDefault();
     files.forEach(function (f) { uploadAttachment(ep, f); });
   });
+
+  // ---- Patch review (diff2html) -------------------------------------------
+  function initPatchReviews(root) {
+    const scope = root || document;
+    if (typeof Diff2HtmlUI === 'undefined' && typeof Diff2Html === 'undefined') return;
+    scope.querySelectorAll('.patch-review').forEach(function (panel) {
+      if (panel.getAttribute('data-d2h-ready') === '1') return;
+      const diffEl = panel.querySelector('script.patch-review-diff');
+      const target = panel.querySelector('.patch-review-d2h');
+      if (!diffEl || !target) return;
+      const diffText = diffEl.textContent || '';
+      if (!diffText.trim()) {
+        target.innerHTML = '<p class="muted">Empty diff.</p>';
+        panel.setAttribute('data-d2h-ready', '1');
+        return;
+      }
+      let outputFormat = 'line-by-line';
+      function render() {
+        const cfg = {
+          drawFileList: true,
+          matching: 'lines',
+          outputFormat: outputFormat,
+          synchronisedScroll: true,
+          highlight: true,
+          fileListToggle: true,
+          fileListStartVisible: true,
+        };
+        try {
+          if (typeof Diff2HtmlUI !== 'undefined') {
+            const ui = new Diff2HtmlUI(target, diffText, cfg);
+            ui.draw();
+          } else {
+            target.innerHTML = Diff2Html.getPrettyHtml(diffText, cfg);
+          }
+        } catch (e) {
+          console.error('diff2html failed', e);
+          target.innerHTML = '<pre class="traj-note-log"></pre>';
+          target.querySelector('pre').textContent = diffText.slice(0, 20000);
+        }
+        wireCommentGutters(panel, target);
+      }
+      render();
+      panel.setAttribute('data-d2h-ready', '1');
+      panel.querySelectorAll('.patch-view-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          outputFormat = btn.getAttribute('data-view') || 'line-by-line';
+          panel.removeAttribute('data-d2h-ready');
+          target.innerHTML = '';
+          panel.setAttribute('data-d2h-ready', '0');
+          // re-init
+          const was = panel.getAttribute('data-d2h-ready');
+          panel.setAttribute('data-d2h-ready', '0');
+          render();
+          panel.setAttribute('data-d2h-ready', '1');
+        });
+      });
+      const bodyToggle = panel.querySelector('.patch-body-toggle');
+      if (bodyToggle) {
+        bodyToggle.addEventListener('click', function () {
+          const hidden = target.classList.toggle('is-hidden');
+          bodyToggle.textContent = hidden ? 'Show diff' : 'Hide diff';
+        });
+      }
+    });
+  }
+
+  function wireCommentGutters(panel, target) {
+    const chatId = panel.getAttribute('data-chat-id');
+    if (!chatId) return;
+    target.querySelectorAll('.d2h-code-line, .d2h-code-side-line').forEach(function (row) {
+      if (row.querySelector('.patch-line-comment-btn')) return;
+      const lineNum = row.querySelector('.d2h-code-linenumber, .d2h-code-side-linenumber');
+      const n = lineNum && (lineNum.getAttribute('data-line-number') || lineNum.textContent || '').trim();
+      if (!n || !/^\d+$/.test(n)) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'patch-line-comment-btn';
+      btn.textContent = '+';
+      btn.title = 'Comment on line ' + n;
+      (lineNum || row).prepend(btn);
+      btn.addEventListener('click', function (evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        openLineCommentBox(panel, row, n);
+      });
+    });
+  }
+
+  function openLineCommentBox(panel, row, line) {
+    const chatId = panel.getAttribute('data-chat-id');
+    let box = row.nextElementSibling;
+    if (box && box.classList && box.classList.contains('patch-line-comment-box')) {
+      box.querySelector('textarea').focus();
+      return;
+    }
+    box = document.createElement('div');
+    box.className = 'patch-line-comment-box';
+    box.innerHTML = '<textarea placeholder="Comment…"></textarea><button type="button">Save</button>';
+    row.insertAdjacentElement('afterend', box);
+    const ta = box.querySelector('textarea');
+    const save = box.querySelector('button');
+    ta.focus();
+    save.addEventListener('click', function () {
+      const body = (ta.value || '').trim();
+      if (!body) return;
+      // Best-effort file path from nearest file header
+      let file = '';
+      let node = row;
+      while (node) {
+        const fileWrap = node.closest && node.closest('.d2h-file-wrapper');
+        if (fileWrap) {
+          const nameEl = fileWrap.querySelector('.d2h-file-name, .d2h-file-name-wrapper');
+          file = (nameEl && nameEl.textContent || '').trim();
+          break;
+        }
+        node = node.parentElement;
+      }
+      const fd = new FormData();
+      fd.append('file', file || 'unknown');
+      fd.append('side', 'new');
+      fd.append('line', String(line));
+      fd.append('body', body);
+      fetch('/api/chats/' + encodeURIComponent(chatId) + '/patch/comment', {
+        method: 'POST',
+        body: fd,
+        headers: { 'HX-Request': 'true' },
+      }).then(function (r) { return r.text(); }).then(function (html) {
+        const content = document.getElementById('chat-content');
+        if (content && html) {
+          content.outerHTML = html;
+          initPatchReviews(document);
+        }
+      }).catch(function (e) { console.error(e); });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () { initPatchReviews(document); });
+  document.body.addEventListener('htmx:afterSwap', function (evt) {
+    initPatchReviews(evt.target || document);
+  });
+
 })();

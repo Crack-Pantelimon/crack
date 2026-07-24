@@ -250,6 +250,7 @@ def append_traj_note(
     detail: str = "",
     status: str = "",
     at: float | None = None,
+    **extra: str,
 ) -> None:
     """Append a UI-only trajectory note to a chat/run state's ``traj_notes`` ring.
 
@@ -271,6 +272,9 @@ def append_traj_note(
         note["detail"] = detail
     if status:
         note["status"] = status
+    for k, v in extra.items():
+        if v is not None and v != "":
+            note[k] = v
 
     def _append(state: dict) -> dict:
         notes = list(state.get("traj_notes") or [])

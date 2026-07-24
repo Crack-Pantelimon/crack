@@ -119,6 +119,11 @@ def overlay_tree_path(conv_id: str) -> Path:
     return _overlay_root(conv_id) / "tree"
 
 
+def overlay_head_path(conv_id: str) -> Path:
+    """File holding the frozen ``HEAD sha branch`` line for this sandbox."""
+    return _overlay_root(conv_id) / "head"
+
+
 def snapshot_host_tree(root: Path | None = None) -> str:
     """``git write-tree`` on the host checkout (clean gate ⇒ equals HEAD^{tree})."""
     repo = root or project_root()
@@ -258,6 +263,25 @@ def frozen_tree_for(conv_id: str) -> str | None:
     if not path.is_file():
         return None
     return path.read_text(encoding="utf-8").strip() or None
+
+
+def frozen_head_for(conv_id: str) -> str | None:
+    """Return the frozen base HEAD sha for ``conv_id``, or None.
+
+    ``overlays/head`` is written by :func:`materialise_frozen_base` as
+    ``\"{sha} {branch}\\n\"``; only the sha is needed for bundle parents /
+    ``merge-tree`` merge-bases.
+    """
+    try:
+        path = overlay_head_path(conv_id)
+    except ValueError:
+        return None
+    if not path.is_file():
+        return None
+    line = path.read_text(encoding="utf-8").strip()
+    if not line:
+        return None
+    return line.split()[0] or None
 
 
 def _podman_sync(*args: str, timeout: float = _DEFAULT_EXEC_TIMEOUT) -> tuple[int, str, str]:
@@ -522,6 +546,32 @@ def kill_session_sync(name: str, session_id: str) -> None:
             return
         time.sleep(0.1)
     _podman_sync("exec", name, "pkill", "-KILL", "-f", session_id)
+
+
+def stop_sandbox_sync(conv_id: str) -> None:
+    """Pause a sandbox for human review without removing the container/overlay."""
+    name = sandbox_name(conv_id)
+    rc, _, _ = _podman_sync("container", "exists", name)
+    if rc != 0:
+        return
+    rc, out, err = _podman_sync("stop", name)
+    if rc != 0:
+        logger.warning("podman stop %s failed (rc=%d): %s", name, rc, err or out)
+    else:
+        logger.info("stopped sandbox %s (retained for review)", name)
+
+
+async def stop_sandbox(conv_id: str) -> None:
+    """Async form: pause a sandbox for human review (no remove)."""
+    name = sandbox_name(conv_id)
+    rc, out, err = await _podman("container", "exists", name)
+    if rc != 0:
+        return
+    rc, out, err = await _podman("stop", name)
+    if rc != 0:
+        logger.warning("podman stop %s failed (rc=%d): %s", name, rc, err or out)
+    else:
+        logger.info("stopped sandbox %s (retained for review)", name)
 
 
 def destroy_sandbox_sync(conv_id: str) -> None:

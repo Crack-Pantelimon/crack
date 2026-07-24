@@ -177,6 +177,7 @@ def _render_base(title: str, body: str, right: str = "") -> str:
     href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
   >
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/vendor/diff2html/diff2html.min.css">
   <script
     src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
     integrity="sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
@@ -191,6 +192,8 @@ def _render_base(title: str, body: str, right: str = "") -> str:
     </main>
     {right_aside}
   </div>
+  <script src="/static/vendor/diff2html/diff2html.min.js"></script>
+  <script src="/static/vendor/diff2html/diff2html-ui.min.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>"""

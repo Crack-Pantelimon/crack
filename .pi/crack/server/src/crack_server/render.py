@@ -460,7 +460,15 @@ def render_note_row(entry: dict) -> str:
     """A UI-only trajectory note (``kind="note"``): a harness-authored marker such
     as a sub-agent returning or a patch being built/applied. Rendered as a thin
     badge line, styled by ``note_type``/``status``, with optional expandable
-    ``detail`` (e.g. a failed ``git apply`` stderr)."""
+    ``detail`` (e.g. a failed ``git apply`` stderr). Review-capable patch notes
+    expand into the full human-review panel.
+    """
+    if (
+        str(entry.get("note_type") or "") == "patch"
+        and str(entry.get("review") or "") in ("1", "true", "yes")
+    ):
+        return render_patch_review_panel(entry)
+
     esc = _ui._esc
     note_type = str(entry.get("note_type") or "note")
     status = str(entry.get("status") or "")
@@ -483,6 +491,127 @@ def render_note_row(entry: dict) -> str:
             f'<pre class="traj-note-log">{esc(detail)}</pre></details>'
         )
     return body + "</div>"
+
+
+def render_patch_review_panel(entry: dict) -> str:
+    """GitHub-style review panel: diff2html host + Commit/Reject/Ignore actions."""
+    from html import escape as html_escape
+    from pathlib import Path
+
+    from crack_server import paths
+
+    esc = _ui._esc
+    chat_id = str(entry.get("chat_id") or "")
+    text = str(entry.get("text") or "Ready for review")
+    at = entry.get("at")
+    ago = f' <small class="muted">· {_ui._format_ago(float(at))}</small>' if at else ""
+
+    pending: dict = {}
+    comments: list = []
+    confirm_needed = False
+    refreshed = False
+    title = ""
+    ignored = False
+    if chat_id:
+        try:
+            st = paths.chat_state(chat_id).read()
+            pending = dict(st.get("pending_patch") or {})
+            comments = list(st.get("review_comments") or [])
+            confirm_needed = bool(st.get("review_confirm_needed"))
+            refreshed = bool(st.get("review_refreshed_diff"))
+            title = str(pending.get("title") or "")
+            ignored = bool(pending.get("ignored"))
+        except (ValueError, FileNotFoundError):
+            pass
+
+    diff_text = ""
+    patch_path = Path(str(pending.get("patch_path") or ""))
+    if not patch_path.is_file() and chat_id:
+        patch_path = paths.chat_dir(chat_id) / "patch.diff"
+    if patch_path.is_file():
+        try:
+            diff_text = patch_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            diff_text = ""
+
+    # Cap huge diffs in the inline payload (collapse behind click via CSS/JS).
+    MAX_INLINE = 400_000
+    truncated = len(diff_text) > MAX_INLINE
+    if truncated:
+        diff_text = diff_text[:MAX_INLINE] + "\n\n… (truncated for display) …\n"
+
+    refreshed_banner = ""
+    if refreshed or confirm_needed:
+        refreshed_banner = (
+            '<div class="patch-review-refreshed">'
+            "View refreshed — host moved since this patch was built. "
+            "Confirm Commit again to integrate the updated merge."
+            "</div>"
+        )
+
+    if ignored:
+        return (
+            f'<div class="stage-msg traj-note traj-note--patch">'
+            f'<span class="traj-note-line">⏸ Ignored — patch left on disk{ago}</span>'
+            f"</div>"
+        )
+
+    actions = ""
+    if chat_id and pending:
+        confirm_field = (
+            '<input type="hidden" name="confirm" value="1">' if confirm_needed else ""
+        )
+        commit_label = "Confirm Commit" if confirm_needed else "Commit"
+        actions = f"""
+<div class="patch-review-actions">
+  <form class="patch-review-commit"
+        hx-post="/api/chats/{esc(chat_id)}/patch/commit"
+        hx-target="#chat-content" hx-swap="outerHTML">
+    {confirm_field}
+    <label>Commit message
+      <input type="text" name="message" value="{esc(title)}" />
+    </label>
+    <button type="submit">{esc(commit_label)}</button>
+  </form>
+  <form class="patch-review-reject"
+        hx-post="/api/chats/{esc(chat_id)}/patch/reject"
+        hx-target="#chat-content" hx-swap="outerHTML">
+    <label>Reject with comments
+      <textarea name="message" rows="2"
+        placeholder="Feedback for the agent (per-line comments are appended)"></textarea>
+    </label>
+    <button type="submit" class="secondary">Reject</button>
+  </form>
+  <form hx-post="/api/chats/{esc(chat_id)}/patch/ignore"
+        hx-target="#chat-content" hx-swap="outerHTML">
+    <button type="submit" class="contrast">Ignore</button>
+  </form>
+</div>
+"""
+
+    comments_json = html_escape(json.dumps(comments), quote=True)
+    # Use a script type that browsers won't execute; Diff2HtmlUI reads textContent.
+    diff_payload = html_escape(diff_text)
+    panel_id = f"patch-review-{esc(chat_id or 'x')}"
+
+    return f"""
+<div class="stage-msg traj-note traj-note--patch patch-review" id="{panel_id}"
+     data-chat-id="{esc(chat_id)}"
+     data-comments="{comments_json}">
+  <div class="patch-review-header">
+    <span class="traj-note-line">🔎 {esc(text)}{ago}</span>
+    <div class="patch-review-toggles">
+      <button type="button" class="patch-view-toggle" data-view="line-by-line">Inline</button>
+      <button type="button" class="patch-view-toggle" data-view="side-by-side">Side-by-side</button>
+      <button type="button" class="patch-body-toggle">Hide diff</button>
+    </div>
+  </div>
+  {refreshed_banner}
+  <script type="application/x-diff" class="patch-review-diff">{diff_payload}</script>
+  <div class="patch-review-d2h"></div>
+  {actions}
+</div>
+"""
 
 
 def new_model_state() -> dict:

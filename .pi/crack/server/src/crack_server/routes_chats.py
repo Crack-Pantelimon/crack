@@ -155,6 +155,68 @@ def api_chat_delete(chat_id: str) -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
+# Patch review gate (Commit / Reject / Ignore / per-line comments)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/chats/{chat_id}/patch/commit", response_class=HTMLResponse)
+async def api_chat_patch_commit(
+    chat_id: str,
+    message: str = Form(default=""),
+    confirm: str | None = Form(default=None),
+) -> HTMLResponse:
+    """Merge the pending patch onto the host and path-scoped commit."""
+    chats.check_chat_id(chat_id)
+    from crack_server import patch as patch_mod
+
+    await patch_mod.handle_patch_commit(
+        chat_id, message=message, confirm=bool(confirm),
+    )
+    return HTMLResponse(chats.render_chat_content(chat_id))
+
+
+@router.post("/api/chats/{chat_id}/patch/comment", response_class=HTMLResponse)
+def api_chat_patch_comment(
+    chat_id: str,
+    file: str = Form(...),
+    side: str = Form(default="new"),
+    line: int = Form(...),
+    body: str = Form(...),
+) -> HTMLResponse:
+    """Append a per-line review comment; return a small status fragment."""
+    chats.check_chat_id(chat_id)
+    from crack_server import patch as patch_mod
+
+    patch_mod.handle_patch_comment(
+        chat_id, file=file, side=side, line=line, body=body,
+    )
+    return HTMLResponse(chats.render_chat_content(chat_id))
+
+
+@router.post("/api/chats/{chat_id}/patch/reject", response_class=HTMLResponse)
+async def api_chat_patch_reject(
+    chat_id: str,
+    message: str = Form(default=""),
+) -> HTMLResponse:
+    """Reject pending patch with message + per-line comments → agent follow-up."""
+    chats.check_chat_id(chat_id)
+    from crack_server import patch as patch_mod
+
+    await patch_mod.handle_patch_reject(chat_id, message=message)
+    return HTMLResponse(chats.render_chat_content(chat_id))
+
+
+@router.post("/api/chats/{chat_id}/patch/ignore", response_class=HTMLResponse)
+def api_chat_patch_ignore(chat_id: str) -> HTMLResponse:
+    """Leave the pending patch on disk; no teardown."""
+    chats.check_chat_id(chat_id)
+    from crack_server import patch as patch_mod
+
+    patch_mod.handle_patch_ignore(chat_id)
+    return HTMLResponse(chats.render_chat_content(chat_id))
+
+
+# ---------------------------------------------------------------------------
 # Media (persisted turn thumbnails) + message-image attachments
 # ---------------------------------------------------------------------------
 

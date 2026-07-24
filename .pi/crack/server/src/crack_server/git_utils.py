@@ -136,11 +136,13 @@ def ansi_to_html(text: str) -> str:
     return "".join(out)
 
 
-def commit(add: str | Path | list[str | Path], message: str) -> None:
+def commit(add: str | Path | list[str | Path], message: str) -> str | None:
     """`git add <paths…>` then `git commit -m "slopmaster3000: <message>"`.
 
     ``add`` is a single path or a list of paths (relative to, or under, the
-    project root). Any git failure is logged and swallowed."""
+    project root). Any git failure is logged and swallowed. Returns the short
+    commit hash on success, else ``None``.
+    """
     root = paths.project_root()
     if isinstance(add, (str, Path)):
         add_paths = [str(add)]
@@ -169,7 +171,13 @@ def commit(add: str | Path | list[str | Path], message: str) -> None:
                 message,
                 (result.stdout or result.stderr).strip()[:200],
             )
-        else:
-            logger.info("git_utils: committed %r", message)
+            return None
+        logger.info("git_utils: committed %r", message)
+        head = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=False,
+        )
+        return (head.stdout or "").strip() or None
     except Exception as e:  # noqa: BLE001 — checkpoint commits must never raise
         logger.error("git_utils: commit failed for %r: %s", message, e)
+        return None

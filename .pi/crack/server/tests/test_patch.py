@@ -158,7 +158,8 @@ def test_record_chat_apply_failure_sets_error_without_enqueue(tmp_path, monkeypa
 
 
 @pytest.mark.anyio
-async def test_finalize_chat_sandbox_apply_failure_does_not_enqueue(tmp_path, monkeypatch):
+async def test_publish_pending_patch_enters_review(tmp_path, monkeypatch):
+    """Finished turn publishes a pending patch and stops the container (no host apply)."""
     from crack_server import chats, paths, queue
 
     monkeypatch.setenv("CRACK_PI_PROJECT_ROOT", str(tmp_path))
@@ -180,17 +181,22 @@ async def test_finalize_chat_sandbox_apply_failure_does_not_enqueue(tmp_path, mo
             big_files=(), nag_attempt=0,
         )),
     )
+    stop = AsyncMock()
+    destroy = AsyncMock()
+    monkeypatch.setattr(p.sandbox, "stop_sandbox", stop)
+    monkeypatch.setattr(p.sandbox, "destroy_sandbox", destroy)
     monkeypatch.setattr(p, "apply_patch_on_host", AsyncMock(return_value=(False, "boom")))
-    monkeypatch.setattr(p.sandbox, "destroy_sandbox", AsyncMock())
 
     await p.finalize_chat_sandbox(chat_id, f"crack-sbx-{chat_id}")
 
     state = paths.chat_state(chat_id).read()
-    assert state["phase"] == "idle"
-    assert state.get("error")
-    assert not state.get("pending")
+    assert state["phase"] == "review"
+    assert state.get("pending_patch")
+    assert not state.get("error")
     assert enqueued == []
     assert not queue.has_job(chat_id, chats.CHAT_JOB_SLUG)
+    stop.assert_awaited_once()
+    destroy.assert_not_awaited()
 
 
 def test_notify_parent_apply_failure_chat_records_error_not_enqueues(tmp_path, monkeypatch):
@@ -292,12 +298,14 @@ def test_drain_applies_in_dispatch_order(drain_chat, monkeypatch):
     applied: list[str] = []
     monkeypatch.setattr(p.sandbox, "sandbox_enabled", lambda: True)
     monkeypatch.setattr(runner, "active_child_count", lambda *a, **k: 0)
+    monkeypatch.setattr(p, "_provenance_commit_in_sandbox", lambda *a, **k: None)
 
-    def fake_apply(sbx, patch_path):
+    def fake_merge(sbx, artifact_dir):
+        patch_path = p.patch_diff_path(artifact_dir)
         applied.append(patch_path.read_text().strip())
-        return True, ""
+        return p.MergeResult(ok=True, changed_paths=("x",))
 
-    monkeypatch.setattr(p, "apply_patch_to_sandbox_sync", fake_apply)
+    monkeypatch.setattr(p, "merge_apply_sync", fake_merge)
 
     p.drain_parent_patches(drain_chat, "chat", drain_chat)
 
@@ -318,8 +326,8 @@ def test_drain_defers_while_siblings_running(drain_chat, monkeypatch):
     monkeypatch.setattr(p.sandbox, "sandbox_enabled", lambda: True)
     monkeypatch.setattr(runner, "active_child_count", lambda *a, **k: 1)  # sibling alive
     monkeypatch.setattr(
-        p, "apply_patch_to_sandbox_sync",
-        lambda s, pp: (applied.append(pp), (True, ""))[1],
+        p, "merge_apply_sync",
+        lambda s, ad: (applied.append(str(ad)), p.MergeResult(ok=True))[1],
     )
 
     p.drain_parent_patches(drain_chat, "chat", drain_chat)
@@ -338,7 +346,10 @@ def test_drain_conflict_notifies_and_clears(drain_chat, monkeypatch):
     notified: list[str] = []
     monkeypatch.setattr(p.sandbox, "sandbox_enabled", lambda: True)
     monkeypatch.setattr(runner, "active_child_count", lambda *a, **k: 0)
-    monkeypatch.setattr(p, "apply_patch_to_sandbox_sync", lambda s, pp: (False, "conflict"))
+    monkeypatch.setattr(
+        p, "merge_apply_sync",
+        lambda s, ad: p.MergeResult(ok=False, err="conflict"),
+    )
     monkeypatch.setattr(
         p, "notify_parent_apply_failure",
         lambda pk, pi, cid, err, pp: notified.append(err),
@@ -361,14 +372,14 @@ def test_drain_apply_exception_leaves_pending(drain_chat, monkeypatch):
     monkeypatch.setattr(p.sandbox, "sandbox_enabled", lambda: True)
     monkeypatch.setattr(runner, "active_child_count", lambda *a, **k: 0)
 
-    def boom(sbx, pp):
+    def boom(sbx, ad):
         raise RuntimeError("podman timed out")
 
-    monkeypatch.setattr(p, "apply_patch_to_sandbox_sync", boom)
+    monkeypatch.setattr(p, "merge_apply_sync", boom)
 
     p.drain_parent_patches(drain_chat, "chat", drain_chat)
 
-    # A raised apply must NOT clear the flag (so a later drain retries it) and must
+    # A raised merge must NOT clear the flag (so a later drain retries it) and must
     # release the drain lock.
     assert paths.run_state(drain_chat, rid).read().get("patch_pending") is True
     assert paths.chat_state(drain_chat).read().get("patch_draining") is False

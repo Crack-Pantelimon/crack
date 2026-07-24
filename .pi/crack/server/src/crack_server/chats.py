@@ -83,11 +83,15 @@ def _tool_status_from_block(block: dict) -> str:
 
 
 def chat_status_dot(chat_id: str) -> dict:
-    """``{"phase": chatting|awaiting|idle|error, "tool": ok|err|pending|none}``."""
+    """``{"phase": chatting|awaiting|idle|error|review, "tool": ok|err|pending|none}``."""
     state = paths.chat_state(chat_id).read()
     phase_raw = state.get("phase") or "idle"
     if phase_raw == "chatting":
         phase = "chatting"
+    elif phase_raw == "review" or (
+        state.get("pending_patch") and not (state.get("pending_patch") or {}).get("ignored")
+    ):
+        phase = "review"
     elif phase_raw == "error" or state.get("error"):
         phase = "error"
     elif state.get("pending_question") or state.get("waiting_on"):
