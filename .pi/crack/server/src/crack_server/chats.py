@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from crack_server import ui as _ui
-from crack_server import attachments, chat_engine, compaction, context_guard, context_stats, git_utils
+from crack_server import attachments, chat_engine, compaction, context_stats, git_utils
 from crack_server import paths, patch, pi_runner, queue, sandbox, settings as _settings, titles
 from crack_server.chat_engine import MAX_CHAT_HOPS
 from crack_server.state import chat_state_mtime
