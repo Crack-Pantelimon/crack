@@ -70,7 +70,7 @@
       ],
       "env": {
         "HOME": "/root",
-        "CARGO_TARGET_DIR": "/workspace/target/rust-anal"
+        "CARGO_TARGET_DIR": "/workspace/target/serena-lang-tools/rust-anal"
       }
     }
   }

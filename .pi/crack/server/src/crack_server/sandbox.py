@@ -120,13 +120,47 @@ def snapshot_host_tree(root: Path | None = None) -> str:
     return tree
 
 
-def materialise_frozen_base(tree: str, dest: Path, *, repo: Path | None = None) -> None:
+def snapshot_host_head(root: Path | None = None) -> tuple[str, str]:
+    """Return the host checkout's ``(HEAD sha, branch)`` for seeding the base repo.
+
+    The branch name is only used for the local ref; ``HEAD`` points straight at
+    the sha, so a detached HEAD still resolves (branch falls back to ``master``).
+    """
+    repo = root or project_root()
+
+    def _git(*args: str) -> str:
+        proc = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            capture_output=True, text=True, check=False, timeout=60,
+        )
+        return proc.stdout.strip() if proc.returncode == 0 else ""
+
+    head_sha = _git("rev-parse", "HEAD")
+    if not head_sha:
+        raise RuntimeError(f"git rev-parse HEAD failed on host checkout {repo}")
+    branch = _git("symbolic-ref", "--short", "HEAD") or "master"
+    return head_sha, branch
+
+
+def materialise_frozen_base(
+    tree: str,
+    dest: Path,
+    *,
+    repo: Path | None = None,
+    head_sha: str | None = None,
+    branch: str = "master",
+) -> None:
     """Materialise tracked files from ``tree`` into ``dest`` (no gitignored junk).
 
     Also seeds a minimal ``.git`` whose object alternates point at the host
     object store bind-mounted into sandboxes at ``/crack-host-git-objects``,
     so in-sandbox ``git write-tree`` / ``git diff`` can resolve the frozen
     base tree while new blobs land in the writable overlay upper.
+
+    When ``head_sha`` is given, HEAD is pointed at that commit and the index is
+    seeded from it, so the frozen base is a *real* repo: ``git status`` is clean
+    (the clean-gate guarantees ``tree == HEAD^{tree}``), ``git log`` shows real
+    history, and edits to tracked files show up in ``git diff`` / ``git status``.
     """
     repo = repo or project_root()
     if (dest / ".git" / "objects" / "info" / "alternates").is_file() and any(dest.iterdir()):
@@ -160,6 +194,32 @@ def materialise_frozen_base(tree: str, dest: Path, *, repo: Path | None = None) 
     alt.parent.mkdir(parents=True, exist_ok=True)
     # Sandbox-visible path of the host object store (mounted in ensure_sandbox).
     alt.write_text("/crack-host-git-objects\n", encoding="utf-8")
+    if head_sha:
+        # Point HEAD at the host commit and seed the index from its tree. These
+        # run here (in crack-dev, not the sandbox), so the on-disk alternates
+        # path (/crack-host-git-objects) is not yet mounted — resolve the commit
+        # and tree objects through crack-dev's own object store instead. Only
+        # tree/commit objects are needed (no blob content), and update-ref writes
+        # no new object, so nothing leaks outside the frozen base.
+        seed_env = {
+            **os.environ,
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(repo / ".git" / "objects"),
+        }
+        for seed_cmd in (
+            ["git", "-C", str(dest), "symbolic-ref", "HEAD", f"refs/heads/{branch}"],
+            ["git", "-C", str(dest), "update-ref", f"refs/heads/{branch}", head_sha],
+            ["git", "-C", str(dest), "read-tree", head_sha],
+        ):
+            seeded = subprocess.run(
+                seed_cmd, capture_output=True, text=True, check=False, env=seed_env,
+            )
+            if seeded.returncode != 0:
+                raise RuntimeError(
+                    f"seeding frozen base git ({' '.join(seed_cmd[3:])}) failed: "
+                    f"{(seeded.stderr or seeded.stdout).strip()}"
+                )
+        # Persist HEAD/branch next to the tree id for debugging / replay parity.
+        (dest.parent / "head").write_text(f"{head_sha} {branch}\n", encoding="utf-8")
     # Record the frozen tree id next to the base for callers.
     (dest.parent / "tree").write_text(tree + "\n", encoding="utf-8")
     logger.info("materialised frozen base %s → %s", tree[:12], dest)
@@ -285,8 +345,9 @@ async def ensure_sandbox(conv_id: str, *, parent_conv: str | None = None) -> str
             overlay_tree_path(conv_id).write_text(tree + "\n", encoding="utf-8")
     else:
         tree = snapshot_host_tree()
+        head_sha, branch = snapshot_host_head()
         base = overlay_base_dir(conv_id)
-        materialise_frozen_base(tree, base)
+        materialise_frozen_base(tree, base, head_sha=head_sha, branch=branch)
         lower_host = f"{ovl}/base"
 
     # Every sandbox (top-level or sub-agent) overlays /workspace/target on the

@@ -156,3 +156,101 @@ Use `edit` for small changes; `write` replaces the ENTIRE file.
     { "action": "write", "items": ["Read foo.rs", "Add docs", "Build"] }
     { "action": "toggle", "id": 2 }
     { "action": "list" }
+
+# Using MCP tools (serena, chromium, …) — read this before calling `mcp`
+
+`mcp` is **one** tool: a gateway to every MCP server. You do not call
+`serena_find_symbol` directly — you call `mcp` with a payload that names the
+server and tool. Weak models get this wrong constantly; copy the examples exactly.
+
+## The gateway verbs
+
+- `{}` — list servers and their connection state.
+- `{ "connect": "serena" }` — **connect** a server and list its tools. **Servers
+  start DISCONNECTED. You MUST connect once per session before any tool call**,
+  or you get `Use mcp({ connect: "serena" }) or /mcp reconnect serena`.
+- `{ "describe": "serena_find_symbol" }` — print one tool's parameter schema.
+- `{ "server": "serena", "tool": "serena_find_symbol", "args": { … } }` —
+  **call** a tool.
+
+## Rule 1 (the #1 mistake) — the tool's params go INSIDE `args`
+
+Never put a tool's own parameters as siblings of `tool`. The gateway only reads
+the `args` field, so the server receives `{}` → `Field required … name_path_pattern`.
+
+WRONG (server sees `{}`):
+
+    mcp { "tool": "serena_find_symbol", "name_path_pattern": "Foo" }
+
+RIGHT:
+
+    mcp { "server": "serena", "tool": "serena_find_symbol",
+          "args": { "name_path_pattern": "Foo" } }
+
+## Rule 2 — `args` is JSON: booleans are `true`/`false`, not `True`
+
+`"include_body": True` → `Invalid args JSON`. Use lowercase `true`/`false`.
+(`args` may be a real JSON object — preferred — or a JSON-valid string.)
+
+## Rule 3 — serena tool names are `serena_`-prefixed
+
+`get_symbols_overview` → `Tool not found`. It is `serena_get_symbols_overview`.
+
+## serena tools (connect first, then call `serena_<name>`)
+
+*Read / navigate:*
+
+- `serena_get_symbols_overview` — top-level symbols of a file. Needs `relative_path`.
+- `serena_find_symbol` — find a symbol by name/path. Needs `name_path_pattern`;
+  add `"include_body": true` to get its source (capture this before editing).
+- `serena_find_referencing_symbols` — who references a symbol. Needs `name_path`
+  **and** `relative_path` (the file the symbol is defined in).
+- `serena_find_implementations` — implementers of a trait/interface. Needs `name_path`.
+- `serena_find_declaration` — jump to a symbol's declaration.
+- `serena_get_diagnostics_for_file` — LSP errors/warnings. Needs `relative_path`.
+
+*Edit (symbol-aware — prefer over raw `edit` for whole-symbol changes):*
+
+- `serena_replace_symbol_body` — replace a symbol's body. Needs `name_path`,
+  `relative_path`, `body`.
+- `serena_insert_after_symbol` / `serena_insert_before_symbol` — add code next to a
+  symbol. Needs `name_path`, `relative_path`, `body`.
+- `serena_rename_symbol` — rename across references. Needs `name_path`, `relative_path`,
+  `new_name`.
+- `serena_safe_delete_symbol` — delete a symbol and its references.
+- `serena_replace_content` / `serena_replace_in_files` — text-level replace.
+
+*Memory / onboarding (rarely needed for a one-off task — skip unless asked):*
+the `serena_*_memory`, `serena_onboarding`, `serena_initial_instructions` set.
+
+## Worked run A — Rust: find a definition, then its references
+
+    mcp { "connect": "serena" }
+    mcp { "server": "serena", "tool": "serena_find_symbol",
+          "args": { "name_path_pattern": "TreeMapTile", "include_body": true } }
+    # read `relative_path` from the result, e.g. crack_demo/.../map_lod.rs, then:
+    mcp { "server": "serena", "tool": "serena_find_referencing_symbols",
+          "args": { "name_path": "TreeMapTile",
+                    "relative_path": "crack_demo/.../map_lod.rs" } }
+
+## Worked run B — symbol-safe edit, then exact revert
+
+    mcp { "connect": "serena" }
+    # 1. capture the ORIGINAL body verbatim — you need it to revert exactly:
+    mcp { "server": "serena", "tool": "serena_find_symbol",
+          "args": { "name_path_pattern": "spawn_root_map_tiles",
+                    "relative_path": "crack_demo/.../map_lod.rs",
+                    "include_body": true } }
+    # 2. edit it:
+    mcp { "server": "serena", "tool": "serena_replace_symbol_body",
+          "args": { "name_path": "spawn_root_map_tiles",
+                    "relative_path": "crack_demo/.../map_lod.rs",
+                    "body": "fn spawn_root_map_tiles(/* … new body … */) { … }" } }
+    # 3. revert by replacing with the body string captured in step 1:
+    mcp { "server": "serena", "tool": "serena_replace_symbol_body",
+          "args": { "name_path": "spawn_root_map_tiles",
+                    "relative_path": "crack_demo/.../map_lod.rs",
+                    "body": "<the exact original body from step 1>" } }
+
+The first serena call in a fresh session may take a minute while the language
+server warms up — wait for it, do not spam retries.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -107,7 +108,7 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
     def fake_snapshot(root=None):
         return "a" * 40
 
-    def fake_materialise(tree, dest, *, repo=None):
+    def fake_materialise(tree, dest, *, repo=None, head_sha=None, branch="master"):
         dest.mkdir(parents=True, exist_ok=True)
         (dest / "README").write_text("x")
         (dest.parent / "tree").write_text(tree + "\n")
@@ -115,6 +116,7 @@ async def test_ensure_sandbox_creates_with_overlay_dirs(monkeypatch, tmp_path):
     with (
         patch.object(s, "_podman", side_effect=fake_podman),
         patch.object(s, "snapshot_host_tree", side_effect=fake_snapshot),
+        patch.object(s, "snapshot_host_head", side_effect=lambda root=None: ("d" * 40, "master")),
         patch.object(s, "materialise_frozen_base", side_effect=fake_materialise),
     ):
         name = await s.ensure_sandbox(chat_id)
@@ -192,6 +194,69 @@ async def test_ensure_sandbox_child_target_overlay_uses_shared_base(monkeypatch,
     assert "/host/vol/crack-dev-target-dir:/workspace/target:O" in joined
     assert f"{parent_host_overlay}/target-upper:/workspace/target" not in joined
     assert f"upperdir={child_host_overlay}/target-upper" in joined
+
+
+def test_materialise_frozen_base_seeds_real_git(tmp_path):
+    """The frozen base is a real repo: HEAD resolves and git status is clean."""
+    import subprocess as sp
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args, **kw):
+        return sp.run(
+            ["git", "-C", str(repo), *args],
+            check=True, capture_output=True, text=True, **kw,
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "Tester")
+    (repo / "README").write_text("hello\n")
+    (repo / "sub").mkdir()
+    (repo / "sub" / "code.py").write_text("x = 1\n")
+    git("add", "-A")
+    git("commit", "-q", "-m", "init")
+
+    head = git("rev-parse", "HEAD").stdout.strip()
+    tree = git("write-tree").stdout.strip()
+    branch = git("symbolic-ref", "--short", "HEAD").stdout.strip()
+
+    dest = tmp_path / "overlays" / "base"
+    s.materialise_frozen_base(tree, dest, repo=repo, head_sha=head, branch=branch)
+
+    # HEAD resolves to the real sha without needing the object store.
+    rev = sp.run(
+        ["git", "-C", str(dest), "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=False,
+    )
+    assert rev.returncode == 0
+    assert rev.stdout.strip() == head
+
+    # status/diff need the commit tree objects; the sandbox provides them via the
+    # /crack-host-git-objects mount — mirror that here with the alternates env.
+    obj_env = {
+        **os.environ,
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES": str(repo / ".git" / "objects"),
+    }
+    status = sp.run(
+        ["git", "-C", str(dest), "status", "--porcelain"],
+        capture_output=True, text=True, check=False, env=obj_env,
+    )
+    assert status.returncode == 0
+    assert status.stdout.strip() == ""
+
+    # Editing a tracked file now shows up (it read as untracked before the fix).
+    (dest / "README").write_text("changed\n")
+    dirty = sp.run(
+        ["git", "-C", str(dest), "status", "--porcelain"],
+        capture_output=True, text=True, check=False, env=obj_env,
+    )
+    assert " M README" in dirty.stdout or "M  README" in dirty.stdout
+
+    # HEAD/branch persisted next to the tree id.
+    assert (dest.parent / "head").read_text().split()[0] == head
+    assert (dest.parent / "tree").read_text().strip() == tree
 
 
 @pytest.mark.anyio

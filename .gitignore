@@ -27,8 +27,13 @@ gain.ndjson
 # Runtime logs from the network-reachable MCP HTTP bridges (see _cont_start.sh).
 .pi/crack/harness/mcp-http/
 
-# Serena MCP: per-project cache/memories + global config it writes into the repo root.
-.serena/
+# Serena MCP: ignore the cache CONTENTS, memories, local override, and the global
+# config serena writes into the repo root — but TRACK project.yml (its versioned
+# config) and the cache symlink, so the frozen sandbox base (git archive of
+# tracked files) inherits the Python LS config and the warm cache pointer.
+.serena/*
+!.serena/project.yml
+!.serena/cache
 
 /tmp/
 post3.db-journal
