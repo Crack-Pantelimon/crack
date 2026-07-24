@@ -208,12 +208,12 @@ async def _shutdown(
         if sandbox:
             from crack_server import sandbox as sandbox_mod
 
-            if sandbox_mod.session_alive_sync(sandbox, session_id):
+            if await asyncio.to_thread(sandbox_mod.session_alive_sync, sandbox, session_id):
                 logger.info(
                     "%s hop %d: rpc pi still alive after %.0fs; killing session %s",
                     log_prefix, hop, EXIT_GRACE_SECONDS, session_id,
                 )
-                sandbox_mod.kill_session_sync(sandbox, session_id)
+                await asyncio.to_thread(sandbox_mod.kill_session_sync, sandbox, session_id)
         else:
             proc.kill()
             await proc.wait()

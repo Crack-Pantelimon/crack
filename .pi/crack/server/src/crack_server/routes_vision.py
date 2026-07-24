@@ -16,7 +16,7 @@ router = APIRouter()
 logger = logging.getLogger("uvicorn.error")
 
 
-def _resolve_sandbox_name(body: dict) -> str | None:
+async def _resolve_sandbox_name(body: dict) -> str | None:
     """Return the sandbox container name when the caller is running in one.
 
     The extension sends ``conv_id`` (chat id or run id — whichever owns the
@@ -29,7 +29,7 @@ def _resolve_sandbox_name(body: dict) -> str | None:
     if not conv_id:
         return None
     name = sandbox.sandbox_name(conv_id)
-    if not sandbox.container_exists_sync(name):
+    if not await sandbox.container_exists(name):
         raise HTTPException(
             status_code=400,
             detail=f"sandbox for conv_id={conv_id!r} is not running",
@@ -67,7 +67,7 @@ async def api_vision_analyze(request: Request) -> JSONResponse:
     ):
         raise HTTPException(status_code=400, detail="image_paths must be a non-empty list of strings")
 
-    sbx = _resolve_sandbox_name(body)
+    sbx = await _resolve_sandbox_name(body)
     paths: list[Path] = []
     missing: list[str] = []
     invalid: list[str] = []

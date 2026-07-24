@@ -155,6 +155,7 @@ def commit(add: str | Path | list[str | Path], message: str) -> str | None:
             check=True,
             capture_output=True,
             text=True,
+            timeout=30,
         )
         # Scope the commit to these paths so a checkpoint never sweeps in other
         # changes that happen to be staged in the shared working tree.
@@ -163,6 +164,7 @@ def commit(add: str | Path | list[str | Path], message: str) -> str | None:
              "commit", "-m", f"{COMMIT_PREFIX}{message}", "--", *add_paths],
             capture_output=True,
             text=True,
+            timeout=30,
         )
         if result.returncode != 0:
             # Most commonly "nothing to commit" — informational, not an error.
@@ -176,6 +178,7 @@ def commit(add: str | Path | list[str | Path], message: str) -> str | None:
         head = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
             capture_output=True, text=True, check=False,
+            timeout=15,
         )
         return (head.stdout or "").strip() or None
     except Exception as e:  # noqa: BLE001 — checkpoint commits must never raise

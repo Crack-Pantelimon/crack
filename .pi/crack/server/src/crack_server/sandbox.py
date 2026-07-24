@@ -603,6 +603,17 @@ def container_exists_sync(name: str) -> bool:
     return rc == 0
 
 
+async def container_exists(name: str) -> bool:
+    """Async form of :func:`container_exists_sync` — use from ``async def``.
+
+    The sync version lands on the event loop thread (it does ``subprocess.run``
+    under the hood) and freezes every other coroutine until podman answers,
+    so any async caller awaiting this loop should use this form instead.
+    """
+    rc, _, _ = await _podman("container", "exists", name)
+    return rc == 0
+
+
 async def path_is_file(name: str, path: str) -> bool:
     """True when ``path`` is a regular file inside the sandbox."""
     rc, _, _ = await _podman("exec", name, "test", "-f", path)
