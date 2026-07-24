@@ -40,7 +40,7 @@ services:
 
   ollama:
     container_name: ollama
-    image: docker.io/ollama/ollama:0.9.6
+    image: docker.io/ollama/ollama:0.32.3
     volumes:
       - ollama-data:/root/.ollama
     devices:
@@ -87,7 +87,7 @@ services:
       OPENAI_API_URL: http://ollama:11434/v1
       OPENAI_API_KEY: ollama
       OPENAI_BASE_URL: http://ollama:11434/v1
-      MODEL_NAME: deepseek-r1:7b
+      MODEL_NAME: qwen3.5:4b
       GRAPHITI_TELEMETRY_ENABLED: "false"
       TELEMETRY_ENABLED: "false"
       DO_NOT_TRACK: "1"
@@ -162,7 +162,7 @@ services:
       OLLAMA_HOST: http://ollama:11434
       OPENAI_API_KEY: ollama
       OPENAI_BASE_URL: http://ollama:11434/v1
-      GRAPHITI_LLM_MODEL: deepseek-r1:7b
+      GRAPHITI_LLM_MODEL: qwen3.5:4b
       GRAPHITI_EMBEDDING_MODEL: all-minilm
       GRAPHITI_EMBEDDING_DIMENSION: "384"
       GRAPHITI_TELEMETRY_ENABLED: "false"

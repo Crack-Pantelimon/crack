@@ -1,5 +1,5 @@
 # Graphiti MCP — Ollama local LLM (mirrors Zep "Ollama (Local LLMs)" guide).
-# LLM: deepseek-r1:7b via OpenAI-compatible /v1 on ollama.
+# LLM: qwen3.5:4b via OpenAI-compatible /v1 on ollama.
 # Embeddings: all-minilm @ 384 dims (same as RAG / code-search indexer).
 
 server:
@@ -9,7 +9,7 @@ server:
 
 llm:
   provider: "openai"
-  model: "deepseek-r1:7b"
+  model: "qwen3.5:4b"
   max_tokens: 4096
 
   providers:

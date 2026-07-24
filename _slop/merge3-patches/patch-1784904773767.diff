@@ -1,0 +1,113 @@
+diff --git a/.pi/crack/server/src/crack_server/git_utils.py b/.pi/crack/server/src/crack_server/git_utils.py
+index b64a8601..27072026 100644
+--- a/.pi/crack/server/src/crack_server/git_utils.py
++++ b/.pi/crack/server/src/crack_server/git_utils.py
+@@ -155,6 +155,7 @@ def commit(add: str | Path | list[str | Path], message: str) -> str | None:
+             check=True,
+             capture_output=True,
+             text=True,
++            timeout=30,
+         )
+         # Scope the commit to these paths so a checkpoint never sweeps in other
+         # changes that happen to be staged in the shared working tree.
+@@ -163,6 +164,7 @@ def commit(add: str | Path | list[str | Path], message: str) -> str | None:
+              "commit", "-m", f"{COMMIT_PREFIX}{message}", "--", *add_paths],
+             capture_output=True,
+             text=True,
++            timeout=30,
+         )
+         if result.returncode != 0:
+             # Most commonly "nothing to commit" — informational, not an error.
+@@ -176,6 +178,7 @@ def commit(add: str | Path | list[str | Path], message: str) -> str | None:
+         head = subprocess.run(
+             ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+             capture_output=True, text=True, check=False,
++            timeout=15,
+         )
+         return (head.stdout or "").strip() or None
+     except Exception as e:  # noqa: BLE001 — checkpoint commits must never raise
+diff --git a/.pi/crack/server/src/crack_server/patch.py b/.pi/crack/server/src/crack_server/patch.py
+index 9e15e86b..b9ea9fe4 100644
+--- a/.pi/crack/server/src/crack_server/patch.py
++++ b/.pi/crack/server/src/crack_server/patch.py
+@@ -1488,7 +1488,7 @@ async def handle_patch_commit(
+     # Self-mod gate at Commit time (tests → merge → commit → health-watch).
+     if patch_path.is_file() and patch_touches_self_mod(patch_path):
+         sbx_name = sandbox.sandbox_name(chat_id)
+-        if sandbox.container_exists_sync(sbx_name):
++        if await sandbox.container_exists(sbx_name):
+             await sandbox.ensure_sandbox(chat_id)
+             passed, output = await run_sandbox_tests(sbx_name)
+             if not passed:
+diff --git a/.pi/crack/server/src/crack_server/pi_rpc.py b/.pi/crack/server/src/crack_server/pi_rpc.py
+index d0fb8901..c338c592 100644
+--- a/.pi/crack/server/src/crack_server/pi_rpc.py
++++ b/.pi/crack/server/src/crack_server/pi_rpc.py
+@@ -208,12 +208,12 @@ async def _shutdown(
+         if sandbox:
+             from crack_server import sandbox as sandbox_mod
+ 
+-            if sandbox_mod.session_alive_sync(sandbox, session_id):
++            if await asyncio.to_thread(sandbox_mod.session_alive_sync, sandbox, session_id):
+                 logger.info(
+                     "%s hop %d: rpc pi still alive after %.0fs; killing session %s",
+                     log_prefix, hop, EXIT_GRACE_SECONDS, session_id,
+                 )
+-                sandbox_mod.kill_session_sync(sandbox, session_id)
++                await asyncio.to_thread(sandbox_mod.kill_session_sync, sandbox, session_id)
+         else:
+             proc.kill()
+             await proc.wait()
+diff --git a/.pi/crack/server/src/crack_server/routes_vision.py b/.pi/crack/server/src/crack_server/routes_vision.py
+index 370fcc9e..d7be8791 100644
+--- a/.pi/crack/server/src/crack_server/routes_vision.py
++++ b/.pi/crack/server/src/crack_server/routes_vision.py
+@@ -16,7 +16,7 @@ router = APIRouter()
+ logger = logging.getLogger("uvicorn.error")
+ 
+ 
+-def _resolve_sandbox_name(body: dict) -> str | None:
++async def _resolve_sandbox_name(body: dict) -> str | None:
+     """Return the sandbox container name when the caller is running in one.
+ 
+     The extension sends ``conv_id`` (chat id or run id — whichever owns the
+@@ -29,7 +29,7 @@ def _resolve_sandbox_name(body: dict) -> str | None:
+     if not conv_id:
+         return None
+     name = sandbox.sandbox_name(conv_id)
+-    if not sandbox.container_exists_sync(name):
++    if not await sandbox.container_exists(name):
+         raise HTTPException(
+             status_code=400,
+             detail=f"sandbox for conv_id={conv_id!r} is not running",
+@@ -67,7 +67,7 @@ async def api_vision_analyze(request: Request) -> JSONResponse:
+     ):
+         raise HTTPException(status_code=400, detail="image_paths must be a non-empty list of strings")
+ 
+-    sbx = _resolve_sandbox_name(body)
++    sbx = await _resolve_sandbox_name(body)
+     paths: list[Path] = []
+     missing: list[str] = []
+     invalid: list[str] = []
+diff --git a/.pi/crack/server/src/crack_server/sandbox.py b/.pi/crack/server/src/crack_server/sandbox.py
+index b189652b..a4888faa 100644
+--- a/.pi/crack/server/src/crack_server/sandbox.py
++++ b/.pi/crack/server/src/crack_server/sandbox.py
+@@ -603,6 +603,17 @@ def container_exists_sync(name: str) -> bool:
+     return rc == 0
+ 
+ 
++async def container_exists(name: str) -> bool:
++    """Async form of :func:`container_exists_sync` — use from ``async def``.
++
++    The sync version lands on the event loop thread (it does ``subprocess.run``
++    under the hood) and freezes every other coroutine until podman answers,
++    so any async caller awaiting this loop should use this form instead.
++    """
++    rc, _, _ = await _podman("container", "exists", name)
++    return rc == 0
++
++
+ async def path_is_file(name: str, path: str) -> bool:
+     """True when ``path`` is a regular file inside the sandbox."""
+     rc, _, _ = await _podman("exec", name, "test", "-f", path)

@@ -23,8 +23,8 @@ logger = logging.getLogger("uvicorn.error")
 FALKORDB_HOST = os.environ.get("FALKORDB_HOST", "falkordb")
 FALKORDB_PORT = int(os.environ.get("FALKORDB_PORT", "6379"))
 FALKORDB_DATABASE = os.environ.get("FALKORDB_DATABASE", "graphiti")
-# Tutorial model: deepseek-r1:7b. Override via GRAPHITI_LLM_MODEL if needed.
-GRAPHITI_LLM_MODEL = os.environ.get("GRAPHITI_LLM_MODEL", "deepseek-r1:7b")
+# Tutorial model: qwen3.5:4b. Override via GRAPHITI_LLM_MODEL if needed.
+GRAPHITI_LLM_MODEL = os.environ.get("GRAPHITI_LLM_MODEL", "qwen3.5:4b")
 # Match RAG / code-search: all-minilm @ 384 dims (45 MB), not nomic-embed-text.
 GRAPHITI_EMBEDDING_MODEL = os.environ.get(
     "GRAPHITI_EMBEDDING_MODEL", "all-minilm"
