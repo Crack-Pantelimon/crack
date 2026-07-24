@@ -5,7 +5,7 @@ set -euo pipefail
 
 OLLAMA_HOST="${OPENAI_API_URL:-http://ollama:11434/v1}"
 OLLAMA_BASE="${OLLAMA_HOST%/v1}"
-LLM_MODEL="${MODEL_NAME:-qwen3.5:4b}"
+LLM_MODEL="${MODEL_NAME:-qwen3.5:0.8b}"
 EMBED_MODEL="${GRAPHITI_EMBEDDING_MODEL:-all-minilm}"
 
 wait_ollama() {

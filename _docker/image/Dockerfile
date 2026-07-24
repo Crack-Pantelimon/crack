@@ -96,6 +96,8 @@ ENV POETRY_VIRTUALENVS_PATH=/workspace/target/python-venvs/
 # POETRY_VIRTUALENVS_PATH above (venv in the overlaid target volume, not in-project).
 RUN ln -sf /usr/bin/python3 /usr/local/bin/python
 
+RUN pi install npm:pi-provider-kimi-code
+
 VOLUME /root
 WORKDIR /workspace
 
