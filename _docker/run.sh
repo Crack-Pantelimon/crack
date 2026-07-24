@@ -24,3 +24,7 @@ COMPOSE=(docker compose -f "$SCRIPT_DIR/docker-compose.yml")
 # Always cycle crack-dev so code/_cont_start.sh changes take effect,
 # without touching its (formerly depends_on) infra siblings.
 "${COMPOSE[@]}" up -d --force-recreate --no-deps crack-dev
+
+# Graphiti MCP + FalkorDB browser bind-mount entrypoints/patches and env; recreate
+# so those take effect without bouncing milvus/ollama/falkordb data planes.
+"${COMPOSE[@]}" up -d --force-recreate --no-deps graphiti-mcp falkordb-browser

@@ -7,6 +7,10 @@
    /v1/chat/completions — switch to OpenAIGenericClient and pass api_url as base_url.
 3. qwen3.5 thinking: inject reasoning_effort=none into every chat.completions
    call (and cap max_tokens) so Graphiti extracts don't burn the GPU for minutes.
+4. Queue worker: keep strong refs to asyncio tasks (fire-and-forget create_task can
+   be GC'd before the worker starts — episodes stay "queued" forever).
+5. add_memory: when GRAPHITI_SYNC_ADD=1 (default), await episode processing so MCP
+   callers don't report success while the FalkorDB graph is still empty.
 """
 from __future__ import annotations
 
@@ -24,6 +28,8 @@ RERANKER = Path(
     "/app/mcp/.venv/lib/python3.11/site-packages/"
     "graphiti_core/cross_encoder/openai_reranker_client.py"
 )
+QUEUE_SERVICE = Path("/app/mcp/src/services/queue_service.py")
+MCP_SERVER = Path("/app/mcp/src/graphiti_mcp_server.py")
 
 
 def patch_fastmcp() -> None:
@@ -156,12 +162,167 @@ def patch_reranker_no_think() -> None:
     print(f"patched {RERANKER}: reasoning_effort=none")
 
 
+def patch_queue_strong_refs_and_done_event() -> None:
+    """Keep worker task refs + signal completion via asyncio.Event on each episode."""
+    text = QUEUE_SERVICE.read_text(encoding="utf-8")
+    if "_worker_tasks" in text and "done_event" in text:
+        print(f"skip {QUEUE_SERVICE}: already patched for strong refs / done_event")
+        return
+
+    old_init = '''    def __init__(self):
+        """Initialize the queue service."""
+        # Dictionary to store queues for each group_id
+        self._episode_queues: dict[str, asyncio.Queue] = {}
+        # Dictionary to track if a worker is running for each group_id
+        self._queue_workers: dict[str, bool] = {}
+        # Store the graphiti client after initialization
+        self._graphiti_client: Any = None
+'''
+    new_init = '''    def __init__(self):
+        """Initialize the queue service."""
+        # Dictionary to store queues for each group_id
+        self._episode_queues: dict[str, asyncio.Queue] = {}
+        # Dictionary to track if a worker is running for each group_id
+        self._queue_workers: dict[str, bool] = {}
+        # Strong refs so fire-and-forget create_task workers are not GC'd
+        self._worker_tasks: dict[str, asyncio.Task] = {}
+        # Store the graphiti client after initialization
+        self._graphiti_client: Any = None
+'''
+    if old_init not in text:
+        raise SystemExit(f"failed to locate QueueService.__init__ in {QUEUE_SERVICE}")
+    text = text.replace(old_init, new_init, 1)
+
+    old_start = '''        # Start a worker for this queue if one isn't already running
+        if not self._queue_workers.get(group_id, False):
+            asyncio.create_task(self._process_episode_queue(group_id))
+
+        return self._episode_queues[group_id].qsize()
+'''
+    new_start = '''        # Start a worker for this queue if one isn't already running.
+        # Keep a strong reference — bare create_task can be garbage-collected
+        # before the worker starts, leaving episodes stuck "queued" forever.
+        if not self._queue_workers.get(group_id, False):
+            self._worker_tasks[group_id] = asyncio.create_task(
+                self._process_episode_queue(group_id)
+            )
+
+        return self._episode_queues[group_id].qsize()
+'''
+    if old_start not in text:
+        raise SystemExit(f"failed to locate create_task site in {QUEUE_SERVICE}")
+    text = text.replace(old_start, new_start, 1)
+
+    old_process = '''        async def process_episode():
+            """Process the episode using the graphiti client."""
+            try:
+                logger.info(f'Processing episode {uuid} for group {group_id}')
+
+                # Process the episode using the graphiti client
+                await self._graphiti_client.add_episode(
+                    name=name,
+                    episode_body=content,
+                    source_description=source_description,
+                    source=episode_type,
+                    group_id=group_id,
+                    reference_time=datetime.now(timezone.utc),
+                    entity_types=entity_types,
+                    uuid=uuid,
+                )
+
+                logger.info(f'Successfully processed episode {uuid} for group {group_id}')
+
+            except Exception as e:
+                logger.error(f'Failed to process episode {uuid} for group {group_id}: {str(e)}')
+                raise
+
+        # Use the existing add_episode_task method to queue the processing
+        return await self.add_episode_task(group_id, process_episode)
+'''
+    new_process = '''        done_event = asyncio.Event()
+        error_box: list[BaseException] = []
+
+        async def process_episode():
+            """Process the episode using the graphiti client."""
+            try:
+                logger.info(f'Processing episode {uuid} for group {group_id}')
+
+                # Process the episode using the graphiti client
+                await self._graphiti_client.add_episode(
+                    name=name,
+                    episode_body=content,
+                    source_description=source_description,
+                    source=episode_type,
+                    group_id=group_id,
+                    reference_time=datetime.now(timezone.utc),
+                    entity_types=entity_types,
+                    uuid=uuid,
+                )
+
+                logger.info(f'Successfully processed episode {uuid} for group {group_id}')
+
+            except Exception as e:
+                logger.error(f'Failed to process episode {uuid} for group {group_id}: {str(e)}')
+                error_box.append(e)
+                raise
+            finally:
+                done_event.set()
+
+        # Use the existing add_episode_task method to queue the processing
+        position = await self.add_episode_task(group_id, process_episode)
+
+        # Optional sync wait (GRAPHITI_SYNC_ADD=1): MCP returns only after nodes land.
+        if os.environ.get('GRAPHITI_SYNC_ADD', '1') == '1':
+            await done_event.wait()
+            if error_box:
+                raise error_box[0]
+
+        return position
+'''
+    if old_process not in text:
+        raise SystemExit(f"failed to locate process_episode in {QUEUE_SERVICE}")
+    if "import os" not in text:
+        text = text.replace(
+            "import asyncio\nimport logging\n",
+            "import asyncio\nimport logging\nimport os\n",
+            1,
+        )
+    text = text.replace(old_process, new_process, 1)
+    QUEUE_SERVICE.write_text(text, encoding="utf-8")
+    print(f"patched {QUEUE_SERVICE}: strong worker refs + optional sync wait")
+
+
+def patch_add_memory_message() -> None:
+    """Clarify SuccessResponse when GRAPHITI_SYNC_ADD waits for completion."""
+    text = MCP_SERVER.read_text(encoding="utf-8")
+    if "processed into group" in text:
+        print(f"skip {MCP_SERVER}: add_memory message already patched")
+        return
+    old = '''        return SuccessResponse(
+            message=f"Episode '{name}' queued for processing in group '{effective_group_id}'"
+        )
+'''
+    new = '''        sync = os.environ.get('GRAPHITI_SYNC_ADD', '1') == '1'
+        verb = 'processed into' if sync else 'queued for processing in'
+        return SuccessResponse(
+            message=f"Episode '{name}' {verb} group '{effective_group_id}'"
+        )
+'''
+    if old not in text:
+        raise SystemExit(f"failed to locate SuccessResponse in {MCP_SERVER}")
+    text = text.replace(old, new, 1)
+    MCP_SERVER.write_text(text, encoding="utf-8")
+    print(f"patched {MCP_SERVER}: sync-aware add_memory message")
+
+
 if __name__ == "__main__":
     try:
         patch_fastmcp()
         patch_factories()
         patch_generic_client_no_think()
         patch_reranker_no_think()
+        patch_queue_strong_refs_and_done_event()
+        patch_add_memory_message()
     except SystemExit as exc:
         # Don't crash-loop the container on a version-skewed patch; log and boot.
         print(f"WARNING: ollama patch incomplete: {exc}", flush=True)

@@ -61,14 +61,40 @@ services:
   falkordb-browser:
     container_name: falkordb-browser
     image: docker.io/falkordb/falkordb-browser:latest
+    # Upstream always shows a login form; our command puts Next on :3001 and
+    # an auto-login reverse proxy on :3000 that mints a NextAuth session to
+    # FALKORDB_HOST (docker DNS), so http://localhost:3000 needs no typing.
+    # Keep the image entrypoint so it still generates a valid ENCRYPTION_KEY.
+    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
+    command: ["/bin/sh", "/browser_entrypoint.sh"]
+    volumes:
+      - type: bind
+        source: ./_falkordb_browser_entrypoint.sh
+        target: /browser_entrypoint.sh
+        read_only: true
+      - type: bind
+        source: ./_falkordb_browser_autologin.js
+        target: /autologin.js
+        read_only: true
     environment:
       FALKORDB_HOST: falkordb
-      FALKORDB_PORT: 6379
+      FALKORDB_PORT: "6379"
+      FALKORDB_URL: redis://falkordb:6379
+      # Stable 32-byte key (overrides image .env.local placeholder).
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      AUTH_URL: http://localhost:3000/
+      PUBLISHED_PORT: "3000"
+      AUTOLOGIN_BACKEND_PORT: "3001"
     ports:
       - 127.0.0.1:3000:3000
     depends_on:
       - falkordb
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   graphiti-mcp:
     container_name: graphiti-mcp
@@ -99,17 +125,27 @@ services:
       OPENAI_API_KEY: ollama
       OPENAI_BASE_URL: http://ollama:11434/v1
       MODEL_NAME: qwen3.5:4b
+      GRAPHITI_EMBEDDING_MODEL: all-minilm
+      # Await episode processing so MCP "success" means nodes are in FalkorDB.
+      GRAPHITI_SYNC_ADD: "1"
       GRAPHITI_TELEMETRY_ENABLED: "false"
       TELEMETRY_ENABLED: "false"
       DO_NOT_TRACK: "1"
       SEMAPHORE_LIMIT: "3"
       BROWSER: "0"
+      PYTHONUNBUFFERED: "1"
     ports:
       - 127.0.0.1:8000:8000
     depends_on:
       - falkordb
       - ollama
     restart: unless-stopped
+    # journald drops most of this container's stdout; json-file keeps docker logs usable.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   milvus-etcd:
     container_name: milvus-etcd
